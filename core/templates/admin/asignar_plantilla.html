@@ -1,0 +1,61 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+
+<div style="background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); max-width: 600px; margin: 40px auto; font-family: sans-serif;">
+    
+    <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 15px; margin-top: 0;">
+        🚀 Asignar Entrenamiento
+    </h2>
+
+    <p style="color: #7f8c8d; font-size: 1.1em; line-height: 1.5;">
+        Estás a punto de clonar las siguientes plantillas al calendario del alumno. 
+        <br>Se crearán copias independientes.
+    </p>
+
+    <ul style="background: #f8f9fa; padding: 20px; border-left: 5px solid #3498db; list-style: none; margin: 25px 0; border-radius: 4px;">
+        {% for item in items %}
+            <li style="font-size: 1.1em; margin-bottom: 10px; color: #34495e; padding-bottom: 5px; border-bottom: 1px solid #eee;">
+                <strong>{{ item.titulo }}</strong> 
+                <span style="font-size: 0.9em; color: #95a5a6; float: right;">
+                    {{ item.get_deporte_display }}
+                </span>
+            </li>
+        {% endfor %}
+    </ul>
+
+    <form action="" method="post">
+        {% csrf_token %}
+        
+        {% for hidden in form.hidden_fields %}
+            {{ hidden }}
+        {% endfor %}
+
+        <div style="margin-bottom: 25px;">
+            <label style="display: block; margin-bottom: 8px; font-weight: bold; color: #2c3e50;">
+                Selecciona al Alumno:
+            </label>
+            {{ form.alumno }}
+        </div>
+
+        <div style="margin-bottom: 25px;">
+            <label style="display: block; margin-bottom: 8px; font-weight: bold; color: #2c3e50;">
+                Fecha de Ejecución:
+            </label>
+            {{ form.fecha }}
+        </div>
+
+        <input type="hidden" name="action" value="asignar_a_alumno_action" />
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee;">
+            <a href="#" onclick="window.history.back(); return false;" style="color: #e74c3c; text-decoration: none; font-weight: bold;">
+               Cancelar
+            </a>
+               
+            <input type="submit" name="apply" value="Confirmar Asignación" 
+                   style="background-color: #27ae60; color: white; padding: 12px 30px; border: none; border-radius: 5px; cursor: pointer; font-size: 1em; font-weight: bold; box-shadow: 0 2px 5px rgba(39, 174, 96, 0.3);" />
+        </div>
+    </form>
+
+</div> 
+{% endblock %}
