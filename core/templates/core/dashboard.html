@@ -11,40 +11,50 @@
         h1 { color: #2c3e50; margin: 0; }
         
         .messages { list-style: none; padding: 0; margin-bottom: 20px; }
-        .messages li { padding: 15px; margin-bottom: 10px; border-radius: 5px; color: white; font-weight: bold; }
+        .messages li { padding: 15px; margin-bottom: 10px; border-radius: 5px; color: white; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .messages li.success { background-color: #28a745; }
         .messages li.error { background-color: #dc3545; }
         .messages li.info { background-color: #17a2b8; }
 
         .dashboard-container { display: flex; flex-direction: column; gap: 30px; }
-        .section-box { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .section-box { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
         
-        .strava-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; }
-        .activity-card { border-left: 4px solid #fc4c02; background: #fff5f0; padding: 10px; margin-bottom: 10px; }
+        .strava-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+        .activity-card { border-left: 4px solid #fc4c02; background: #fff5f0; padding: 15px; margin-bottom: 10px; border-radius: 0 8px 8px 0; transition: transform 0.2s; }
+        .activity-card:hover { transform: translateX(5px); }
         
-        .btn-strava { 
-            background-color: #fc4c02; 
-            color: white; 
-            padding: 8px 15px; 
+        /* BOTONES ESCALABLES */
+        .action-buttons { display: flex; gap: 10px; }
+        
+        .btn-base { 
+            padding: 10px 20px; 
             text-decoration: none; 
-            border-radius: 5px; 
-            font-weight: bold; 
+            border-radius: 6px; 
+            font-weight: 600; 
             cursor: pointer;
             border: none;
             font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            transition: background-color 0.3s;
         }
+        
+        .btn-strava { background-color: #fc4c02; color: white; }
         .btn-strava:hover { background-color: #e34402; }
         
+        .btn-dark { background-color: #2c3e50; color: white; }
+        .btn-dark:hover { background-color: #34495e; }
+        
         .calendar-list { list-style: none; padding: 0; }
-        .calendar-item { padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; }
-        .status-dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+        .calendar-item { padding: 12px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .status-dot { height: 12px; width: 12px; border-radius: 50%; display: inline-block; margin-right: 8px; }
     </style>
 </head>
 <body>
 
     <header>
         <h1>Panel de Control - Mendieta Trail</h1>
-        <p>Bienvenido, <strong>{{ user.username }}</strong></p>
+        <p style="color: #7f8c8d;">Bienvenido al centro de mando, <strong>{{ user.username }}</strong></p>
     </header>
 
     {% if messages %}
@@ -59,48 +69,72 @@
 
         <div class="section-box">
             <div class="strava-header">
-                <h2>🔥 Historial de Actividades (Base de Datos)</h2>
+                <div>
+                    <h2 style="margin:0;">🔥 Historial de Actividades</h2>
+                    <p style="margin:5px 0 0 0; font-size: 0.9em; color: #95a5a6;">Sincronización directa con base de datos</p>
+                </div>
                 
-                {% if not strava_connected %}
-                    <a href="{% provider_login_url 'strava' process='connect' %}" class="btn-strava">Conectar Strava</a>
-                {% else %}
-                    <form method="POST" style="display:inline;">
-                        {% csrf_token %}
-                        <button type="submit" name="sync_strava" class="btn-strava">🔄 Sincronizar Ahora</button>
-                    </form>
-                {% endif %}
+                <div class="action-buttons">
+                    {% if not strava_connected %}
+                        <a href="{% provider_login_url 'strava' process='connect' %}" class="btn-base btn-strava">
+                            🔗 Conectar Strava
+                        </a>
+                    {% else %}
+                        <form method="POST">
+                            {% csrf_token %}
+                            <button type="submit" name="sync_strava" class="btn-base btn-strava" title="Trae las últimas 10 actividades">
+                                🔄 Sync Reciente
+                            </button>
+                        </form>
+
+                        <form method="POST">
+                            {% csrf_token %}
+                            <button type="submit" name="sync_history" class="btn-base btn-dark" title="Descarga 60 días y recalcula el Fitness (CTL)">
+                                📚 Carga Inicial (60 días)
+                            </button>
+                        </form>
+                    {% endif %}
+                </div>
             </div>
 
             {% if strava_connected %}
                 {% if activities %}
-                    {% for activity in activities %}
-                        <div class="activity-card">
-                            <strong>{{ activity.nombre }}</strong><br>
-                            <small>📅 {{ activity.fecha_inicio|date:"d M Y H:i" }} | 📏 {{ activity.distancia }}m | ⏱️ {{ activity.tiempo_movimiento }}s</small>
-                        </div>
-                    {% endfor %}
+                    <div style="max-height: 400px; overflow-y: auto;">
+                        {% for activity in activities %}
+                            <div class="activity-card">
+                                <div style="font-size: 1.1em; color: #2c3e50;"><strong>{{ activity.nombre }}</strong></div>
+                                <div style="color: #7f8c8d; font-size: 0.9em; margin-top: 5px;">
+                                    📅 {{ activity.fecha_inicio|date:"d M Y H:i" }} | 
+                                    📏 {{ activity.distancia|floatformat:2 }}m | 
+                                    ⛰️ {{ activity.desnivel_positivo|default:"0" }}m+
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
                 {% else %}
-                    <p>No hay actividades guardadas. ¡Pulsa "Sincronizar Ahora" para descargar tus datos!</p>
+                    <div style="text-align: center; padding: 40px; color: #95a5a6; border: 2px dashed #bdc3c7; border-radius: 8px;">
+                        <p>No hay actividades guardadas.</p>
+                        <p><strong>¡Pulsa "Carga Inicial" para reconstruir tu historial!</strong></p>
+                    </div>
                 {% endif %}
             {% else %}
-                <p>Vincula tu cuenta para comenzar a descargar tu historial.</p>
+                <p>⚠️ Vincula tu cuenta para comenzar a descargar tu historial.</p>
             {% endif %}
         </div>
 
         <div class="section-box">
-            <h2>📅 Calendario de Entrenamientos</h2>
-            <p>Mostrando próximos eventos asignados:</p>
+            <h2>📅 Próximos Entrenamientos</h2>
             <ul class="calendar-list">
                 {% for evento in eventos %}
                     <li class="calendar-item">
                         <span>
                             <span class="status-dot" style="background-color: {{ evento.color }};"></span>
-                            <strong>{{ evento.title }}</strong>
+                            <strong style="font-size: 1.05em;">{{ evento.title }}</strong>
                         </span>
-                        <span>{{ evento.start }}</span>
+                        <span style="color: #7f8c8d; font-weight: 500;">{{ evento.start }}</span>
                     </li>
                 {% empty %}
-                    <p>No hay entrenamientos asignados.</p>
+                    <p style="color: #95a5a6;">No hay entrenamientos asignados en el futuro cercano.</p>
                 {% endfor %}
             </ul>
         </div>

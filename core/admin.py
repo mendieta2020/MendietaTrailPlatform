@@ -1,286 +1,134 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from django.urls import reverse
-from django import forms
-from django.shortcuts import render, redirect
-from django.contrib import messages
-from django.contrib.admin import helpers 
-import nested_admin  # <--- IMPORTANTE: Importamos la librería para anidar
-
-# Importamos tus modelos, servicios y TAREAS (Nuevo)
 from .models import (
-    Alumno, PlantillaEntrenamiento, BloqueEntrenamiento, 
-    PasoEntrenamiento, Entrenamiento, 
-    Carrera, InscripcionCarrera,
-    Actividad # <--- NUEVO MODELO IMPORTADO
+    Equipo, Alumno, Pago, 
+    PlantillaEntrenamiento, Entrenamiento, 
+    Carrera, InscripcionCarrera, Actividad
 )
-from .services import asignar_plantilla_a_alumno
-from .tasks import procesar_metricas_entrenamiento # <--- IMPORTANTE: El Ejecutor
 
 # ==============================================================================
-#  1. CONFIGURACIÓN VISUAL AVANZADA (NESTED INLINES)
+#  CONFIGURACIÓN DEL PANEL DE ADMINISTRACIÓN (MODERNO)
 # ==============================================================================
 
-# Formulario para mejorar el aspecto de los inputs
-class PasoInlineForm(forms.ModelForm):
-    class Meta:
-        model = PasoEntrenamiento
-        fields = '__all__'
-        widgets = {
-            'titulo_paso': forms.TextInput(attrs={'style': 'width: 250px;', 'placeholder': 'Ej: Trote suave'}),
-            'nota_paso': forms.TextInput(attrs={'style': 'width: 200px;', 'placeholder': 'Notas clave...'}),
-            'valor_duracion': forms.NumberInput(attrs={'style': 'width: 70px;'}),
-            'orden': forms.NumberInput(attrs={'style': 'width: 50px; text-align: center;'}),
-        }
+@admin.register(Equipo)
+class EquipoAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'cantidad_alumnos_visual', 'color_visual', 'created_at')
+    search_fields = ('nombre', 'descripcion')
 
-# CAMBIO 1: Usamos NestedTabularInline
-class PasoInline(nested_admin.NestedTabularInline):
-    model = PasoEntrenamiento
-    form = PasoInlineForm
-    extra = 0 
-    min_num = 1 
-    fk_name = 'bloque' # Asegura la relación correcta
-    sortable_field_name = "orden"
-    
-    fields = ('orden', 'fase', 'valor_duracion', 'unidad_duracion', 'objetivo', 'titulo_paso', 'nota_paso')
-    
-    verbose_name = "👟 Paso del Ejercicio"
-    verbose_name_plural = "👟 DETALLE DE LOS PASOS"
-    
-    classes = ['collapse'] 
+    def cantidad_alumnos_visual(self, obj):
+        count = obj.cantidad_alumnos
+        return f"{count} Atletas"
+    cantidad_alumnos_visual.short_description = "Miembros"
 
-# CAMBIO 2: Usamos NestedStackedInline y metemos los Pasos ADENTRO
-class BloqueInline(nested_admin.NestedStackedInline):
-    model = BloqueEntrenamiento
-    extra = 0
-    verbose_name = "🔁 BLOQUE / SECUENCIA"
-    verbose_name_plural = "🏗️ ESTRUCTURA DE LA SESIÓN (Define los bloques aquí)"
-    sortable_field_name = "orden"
+    def color_visual(self, obj):
+        return format_html(
+            '<div style="width: 20px; height: 20px; background-color: {}; border-radius: 50%; border: 1px solid #ccc;"></div>',
+            obj.color_identificador
+        )
+    color_visual.short_description = "Color"
+
+
+@admin.register(Alumno)
+class AlumnoAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'apellido', 'equipo', 'estado_actual', 'strava_athlete_id', 'ultimo_pago_status')
+    list_filter = ('estado_actual', 'equipo', 'categoria')
+    search_fields = ('nombre', 'apellido', 'email', 'strava_athlete_id')
     
+    # Organizamos los campos en secciones
     fieldsets = (
-        (None, {
-            'fields': (('orden', 'nombre_bloque', 'repeticiones'),)
+        ('Información Personal', {
+            'fields': ('usuario', 'entrenador', 'equipo', 'nombre', 'apellido', 'email', 'telefono', 'ciudad', 'strava_athlete_id')
+        }),
+        ('Estado y Finanzas', {
+            'fields': ('estado_actual', 'fecha_ultimo_pago', 'esta_lesionado', 'apto_medico_al_dia')
+        }),
+        ('Fisiología & Zonas', {
+            'fields': ('vo2_max', 'vam_actual', 'fcm', 'fcreposo', 'zonas_fc', 'zonas_velocidad')
         }),
     )
-    
-    # ¡AQUÍ ESTÁ LA MAGIA! Esto permite editar pasos dentro del bloque sin salir
-    inlines = [PasoInline]
 
-# ==============================================================================
-#  2. ACCIÓN DE ASIGNACIÓN MASIVA (Tu lógica original)
-# ==============================================================================
+    def ultimo_pago_status(self, obj):
+        return obj.situacion_financiera if hasattr(obj, 'situacion_financiera') else "-"
+    ultimo_pago_status.short_description = "Estado Pago"
 
-class AsignarForm(forms.Form):
-    _selected_action = forms.CharField(widget=forms.MultipleHiddenInput)
-    alumno = forms.ModelChoiceField(queryset=Alumno.objects.all(), label="Selecciona el Alumno")
-    fecha = forms.DateField(widget=forms.SelectDateWidget, label="Fecha de Ejecución")
 
-def asignar_a_alumno_action(modeladmin, request, queryset):
-    if 'apply' in request.POST:
-        form = AsignarForm(request.POST)
-        if form.is_valid():
-            alumno = form.cleaned_data['alumno']
-            fecha = form.cleaned_data['fecha']
-            creados = 0
-            
-            for plantilla in queryset:
-                if plantilla.bloques.count() == 0:
-                    modeladmin.message_user(request, f"⚠️ {plantilla.titulo}: Vacía (sin bloques).", level=messages.ERROR)
-                    continue
-                
-                asignar_plantilla_a_alumno(plantilla, alumno, fecha)
-                creados += 1
-            
-            if creados > 0:
-                modeladmin.message_user(request, f"✅ ¡Éxito! {creados} entrenamientos asignados a {alumno}.", level=messages.SUCCESS)
-            return redirect(request.get_full_path())
-    else:
-        form = AsignarForm(initial={'_selected_action': request.POST.getlist(helpers.ACTION_CHECKBOX_NAME)})
+@admin.register(Pago)
+class PagoAdmin(admin.ModelAdmin):
+    list_display = ('fecha_pago', 'alumno', 'monto', 'metodo', 'es_valido_visual')
+    list_filter = ('es_valido', 'metodo', 'fecha_pago')
+    search_fields = ('alumno__nombre', 'alumno__apellido')
+    actions = ['validar_pagos']
 
-    return render(request, 'admin/asignar_plantilla.html', {
-        'items': queryset, 'form': form, 'title': 'Asignar Plantilla'
-    })
+    def es_valido_visual(self, obj):
+        return "✅ Validado" if obj.es_valido else "⏳ Pendiente"
+    es_valido_visual.short_description = "Estado"
 
-asignar_a_alumno_action.short_description = "🚀 Asignar a Alumno (Copiar al Calendario)"
+    @admin.action(description='✅ Validar pagos seleccionados')
+    def validar_pagos(self, request, queryset):
+        queryset.update(es_valido=True)
+        # Disparamos la señal de actualización manualmente si es necesario
+        for pago in queryset:
+            pago.save() # Esto fuerza la actualización de la fecha en el alumno
 
-# ==============================================================================
-#  3. ACCIÓN DE CÁLCULO DE MÉTRICAS (NUEVO - FASE 5.C)
-# ==============================================================================
 
-@admin.action(description="⚡ Calcular Métricas (TSS / TRIMP / Load)")
-def calcular_metricas_action(modeladmin, request, queryset):
-    """
-    Recorre los entrenamientos seleccionados y ejecuta el cálculo fisiológico.
-    """
-    conteo = 0
-    errores = 0
-    for entreno in queryset:
-        # En producción usaríamos .delay() de Celery. Aquí llamamos directo para ver el resultado ya.
-        try:
-            resultado = procesar_metricas_entrenamiento(entreno.id)
-            if "OK" in resultado:
-                conteo += 1
-            else:
-                errores += 1
-        except Exception:
-            errores += 1
-            
-    mensaje = f"✅ Se recalcularon las métricas de {conteo} entrenamientos."
-    if errores > 0:
-        mensaje += f" (Hubo {errores} fallos o saltos por falta de datos)."
-    
-    nivel = messages.SUCCESS if errores == 0 else messages.WARNING
-    modeladmin.message_user(request, mensaje, level=nivel)
-
-# ==============================================================================
-#  4. PANELES PRINCIPALES (Vistas de Lista y Edición)
-# ==============================================================================
-
-# CAMBIO 3: Usamos NestedModelAdmin para que soporte la anidación
 @admin.register(PlantillaEntrenamiento)
-class PlantillaAdmin(nested_admin.NestedModelAdmin):
-    # Vista de Lista
-    list_display = ('get_emoji_deporte', 'titulo', 'get_dificultad_visual', 'ver_estructura', 'acciones')
-    list_display_links = ('titulo',)
+class PlantillaAdmin(admin.ModelAdmin):
+    list_display = ('titulo', 'deporte', 'etiqueta_dificultad', 'created_at')
     list_filter = ('deporte', 'etiqueta_dificultad')
     search_fields = ('titulo', 'descripcion_global')
-    actions = [asignar_a_alumno_action]
-    list_per_page = 20
+    readonly_fields = ('created_at',)
 
-    # Vista de Edición
-    fieldsets = (
-        ('ENCABEZADO', {
-            'fields': (('titulo', 'deporte'), ('etiqueta_dificultad', 'enlace_video')),
-            'description': 'Datos generales de la sesión.'
-        }),
-        ('CONTENIDO', {
-            'fields': ('descripcion_global',),
-            'classes': ('wide',),
-        }),
-    )
-    
-    # Esto renderiza Bloques y Pasos en cascada
-    inlines = [BloqueInline]
 
-    # --- Decoradores Visuales ---
-    def ver_estructura(self, obj):
-        bloques = obj.bloques.count()
-        return f"{bloques} Bloques"
-    ver_estructura.short_description = "Estructura"
-
-    def acciones(self, obj):
-        url = reverse('admin:core_plantillaentrenamiento_change', args=[obj.id])
-        return format_html(f'<a href="{url}" class="button" style="background:#3b82f6; color:white; padding:4px 10px; border-radius:4px;">✏️ Editar</a>')
-
-# --- EDITOR DE BLOQUES INDIVIDUAL (Opcional, pero útil) ---
-@admin.register(BloqueEntrenamiento)
-class BloqueAdmin(nested_admin.NestedModelAdmin):
-    list_display = ('plantilla', 'orden', 'resumen', 'conteo_pasos')
-    
-    def get_fields(self, request, obj=None):
-        if obj and obj.entrenamiento:
-            return (('entrenamiento', 'orden'), ('nombre_bloque', 'repeticiones'))
-        return (('plantilla', 'orden'), ('nombre_bloque', 'repeticiones'))
-
-    # También permitimos editar pasos aquí
-    inlines = [PasoInline]
-
-    def resumen(self, obj):
-        return f"{obj.nombre_bloque} (x{obj.repeticiones})"
-    def conteo_pasos(self, obj):
-        return obj.pasos.count()
-
-# --- ENTRENAMIENTO REAL (Calendario) ---
-# CAMBIO 4: También lo hacemos Nested para ver la estructura del alumno
 @admin.register(Entrenamiento)
-class EntrenamientoAdmin(nested_admin.NestedModelAdmin):
-    # Agregamos 'ver_carga' para visualizar el resultado del cálculo
-    list_display = ('fecha_asignada', 'alumno', 'titulo', 'completado_visual', 'ver_carga') 
-    list_filter = ('fecha_asignada', 'completado', 'alumno')
+class EntrenamientoAdmin(admin.ModelAdmin):
+    list_display = ('fecha_asignada', 'alumno', 'titulo', 'tipo_actividad', 'completado', 'cumplimiento_visual')
+    list_filter = ('completado', 'tipo_actividad', 'fecha_asignada')
     search_fields = ('titulo', 'alumno__nombre', 'alumno__apellido')
     date_hierarchy = 'fecha_asignada'
     
-    # Agregamos la nueva acción al menú desplegable
-    actions = [calcular_metricas_action]
-    
-    # Permite ver y editar la estructura completa del alumno
-    inlines = [BloqueInline]
-
-    # Campos de solo lectura para las métricas (para que nadie las edite a mano por error)
-    readonly_fields = ('tss', 'trimp', 'intensity_factor', 'load_final', 'kilojoules', 'created_at')
-
-    # Organización visual en el formulario de edición
     fieldsets = (
-        ('Datos Principales', {
-            'fields': (('alumno', 'fecha_asignada'), ('titulo', 'completado'), 'plantilla_origen')
+        ('Asignación', {
+            'fields': ('alumno', 'plantilla_origen', 'titulo', 'fecha_asignada', 'tipo_actividad')
         }),
-        ('Ejecución Real (Inputs)', {
-            'fields': (('tiempo_real_min', 'distancia_real_km', 'desnivel_real_m'), 
-                       ('potencia_promedio', 'frecuencia_cardiaca_promedio', 'rpe')),
-            'description': 'Datos sincronizados desde Strava o ingresados manualmente.'
+        ('Planificación (JSON)', {
+            'fields': ('estructura', 'descripcion_detallada')
         }),
-        ('Métricas Fisiológicas (Outputs)', {
-            'fields': (('load_final', 'tss', 'trimp'), ('intensity_factor', 'kilojoules')),
-            'classes': ('collapse',),
-            'description': 'Calculado automáticamente por el algoritmo.'
+        ('Métricas Planificadas', {
+            'fields': ('distancia_planificada_km', 'tiempo_planificado_min', 'desnivel_planificado_m', 'intensidad_planificada')
         }),
-        ('Otros', {
-            'fields': ('feedback_alumno', ('strava_id', 'garmin_id')),
-            'classes': ('collapse',)
-        })
+        ('Resultados Reales', {
+            'fields': ('completado', 'distancia_real_km', 'tiempo_real_min', 'rpe', 'feedback_alumno', 'porcentaje_cumplimiento')
+        }),
     )
 
-    def completado_visual(self, obj):
-        color = 'green' if obj.completado else 'red'
-        icon = '✅' if obj.completado else '⏳'
-        return format_html(f'<span style="color:{color};">{icon}</span>')
-    completado_visual.short_description = "Estado"
+    def cumplimiento_visual(self, obj):
+        if not obj.completado: return "-"
+        if obj.porcentaje_cumplimiento >= 90:
+            color = "green"
+        elif obj.porcentaje_cumplimiento >= 50:
+            color = "orange"
+        else:
+            color = "red"
+        return format_html('<b style="color:{}">{}%</b>', color, obj.porcentaje_cumplimiento)
+    cumplimiento_visual.short_description = "% Cump."
 
-    # Columna visual para ver la carga calculada
-    def ver_carga(self, obj):
-        if obj.load_final:
-            # Mostramos en negrita el Load Final y detalles en gris
-            return format_html(
-                '<span style="font-size:1.1em; font-weight:bold; color:#2c3e50;">{}</span> '
-                '<span style="color:#7f8c8d; font-size:0.9em;">(TSS:{} | TRIMP:{})</span>',
-                obj.load_final, 
-                int(obj.tss) if obj.tss else "-", 
-                int(obj.trimp) if obj.trimp else "-"
-            )
-        return format_html('<span style="color:#bdc3c7;">-</span>')
-    ver_carga.short_description = "Carga (Load)"
-
-# --- OTROS (Sin cambios mayores, solo Admin estándar) ---
-@admin.register(Alumno)
-class AlumnoAdmin(admin.ModelAdmin):
-    # Agregamos los campos nuevos al admin de alumnos
-    list_display = ('nombre', 'apellido', 'categoria', 'ftp', 'ciudad')
-    search_fields = ('nombre', 'apellido')
-    fieldsets = (
-        ('Información Personal', {
-            'fields': (('nombre', 'apellido'), ('email', 'telefono'), 'ciudad', 'fecha_nacimiento')
-        }),
-        ('Datos Físicos', {
-            'fields': (('peso', 'altura'), 'categoria')
-        }),
-        ('Perfil de Rendimiento (Zones)', {
-            'fields': (('ftp', 'fcm', 'fcreposo'),),
-            'description': 'Datos críticos para el cálculo de métricas (TSS, TRIMP).'
-        }),
-    )
 
 @admin.register(Carrera)
 class CarreraAdmin(admin.ModelAdmin):
-    list_display = ('nombre', 'tipo', 'fecha', 'distancia_km')
+    list_display = ('nombre', 'fecha', 'distancia_km', 'desnivel_positivo_m')
+    search_fields = ('nombre',)
+    list_filter = ('fecha',)
+
 
 @admin.register(InscripcionCarrera)
 class InscripcionAdmin(admin.ModelAdmin):
     list_display = ('alumno', 'carrera', 'estado')
+    list_filter = ('estado',)
+    search_fields = ('alumno__nombre', 'carrera__nombre')
 
-# --- 6. ADMIN DE PERSISTENCIA (STRAVA / EXTERNO) - FASE 8 ---
+
 @admin.register(Actividad)
 class ActividadAdmin(admin.ModelAdmin):
-    list_display = ('nombre', 'usuario', 'fecha_inicio', 'distancia', 'tipo_deporte', 'strava_id')
-    list_filter = ('tipo_deporte', 'fecha_inicio', 'usuario')
-    search_fields = ('nombre', 'strava_id', 'usuario__username')
-    readonly_fields = ('creado_en', 'datos_brutos') # Protegemos los datos crudos
+    list_display = ('nombre', 'usuario', 'tipo_deporte', 'fecha_inicio', 'distancia')
+    list_filter = ('tipo_deporte', 'fecha_inicio')
+    search_fields = ('nombre', 'strava_id')

@@ -7,6 +7,7 @@ from pathlib import Path
 import os
 import sys
 from dotenv import load_dotenv
+from datetime import timedelta # Importamos timedelta para JWT
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -15,7 +16,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 env_path = BASE_DIR / '.env'
 load_dotenv(env_path)
 
-# --- VALIDACIÓN ESTRICTA DE CONFIGURACIÓN (Production-Grade) ---
+# --- VALIDACIÓN ESTRICTA DE CONFIGURACIÓN ---
 def get_env_variable(var_name, default=None, required=True):
     try:
         return os.environ[var_name]
@@ -23,30 +24,32 @@ def get_env_variable(var_name, default=None, required=True):
         if required:
             error_msg = f"❌ ERROR CRÍTICO: La variable de entorno {var_name} no está configurada."
             print(error_msg)
-            # En producción, esto debería detener el deploy.
-            # En desarrollo, lanzamos una excepción clara.
-            raise Exception(error_msg)
+            if not default:
+                raise Exception(error_msg)
         return default
 
-# Variables Críticas (Sin esto, la app no debe arrancar)
+# Variables Críticas
 SECRET_KEY = get_env_variable("SECRET_KEY")
 DEBUG = get_env_variable("DEBUG", "False") == "True"
 
-# Configuración de Hosts (Segura)
+# --- CONFIGURACIÓN DE HOSTS (Ngrok Ready) ---
 if DEBUG:
-    ALLOWED_HOSTS = ["localhost", "127.0.0.1", "[::1]"]
+    # Permitimos todo en desarrollo para evitar problemas con túneles dinámicos
+    ALLOWED_HOSTS = ['*']
 else:
-    # En producción, aquí iría tu dominio real (ej: 'plataforma.mendieta.com')
     ALLOWED_HOSTS = get_env_variable("ALLOWED_HOSTS", "localhost").split(",")
 
 # Credenciales de Terceros (Strava)
 STRAVA_CLIENT_ID = get_env_variable("STRAVA_CLIENT_ID")
 STRAVA_CLIENT_SECRET = get_env_variable("STRAVA_CLIENT_SECRET")
 
-# ---------------------------------------------------------------
+# Clave para IA
+OPENAI_API_KEY = get_env_variable("OPENAI_API_KEY")
 
-# Application definition
 
+# ==============================================================================
+#  APLICACIONES INSTALADAS
+# ==============================================================================
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -54,24 +57,29 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django.contrib.sites',  # <--- REQUERIDO
+    'django.contrib.sites',  # <--- REQUERIDO POR ALLAUTH
 
     # --- TERCEROS ---
     'nested_admin',
     'rest_framework',
+    'rest_framework_simplejwt', # <--- NUEVO: JWT
+    'django_filters',           # <--- FILTROS AVANZADOS API
     'drf_yasg',
+    'corsheaders', 
     
     # --- LOGIN SOCIAL (ALLAUTH) ---
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
-    'allauth.socialaccount.providers.strava', # <--- Proveedor Strava
+    'allauth.socialaccount.providers.strava', 
 
     # --- MIS APPS ---
     'core',
+    'analytics',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware', # <--- CORS SIEMPRE PRIMERO
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -79,8 +87,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    # IMPORTANTE: Esta línea es necesaria para las versiones modernas de allauth
-    'allauth.account.middleware.AccountMiddleware', 
+    'allauth.account.middleware.AccountMiddleware', # ALLAUTH AL FINAL
 ]
 
 ROOT_URLCONF = 'backend.urls'
@@ -88,15 +95,14 @@ ROOT_URLCONF = 'backend.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'core/templates'], # <--- IMPORTANTE PARA EL DASHBOARD
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
-                # --- REQUERIDO POR ALLAUTH ---
-                'django.template.context_processors.request', 
+                'django.template.context_processors.request', # Requerido por Allauth
             ],
         },
     },
@@ -104,7 +110,9 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'backend.wsgi.application'
 
-# Database
+# ==============================================================================
+#  BASE DE DATOS
+# ==============================================================================
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -116,6 +124,9 @@ DATABASES = {
     }
 }
 
+# ==============================================================================
+#  SEGURIDAD Y PASSWORD
+# ==============================================================================
 AUTH_PASSWORD_VALIDATORS = [
     { 'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator', },
     { 'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator', },
@@ -128,31 +139,58 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
-# Static files
-STATIC_URL = 'static/'
+# ==============================================================================
+#  ARCHIVOS ESTÁTICOS Y MULTIMEDIA (VIDEOS & DOCUMENTOS)
+# ==============================================================================
+
+# Archivos CSS/JS del sistema (Admin)
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Archivos subidos por el usuario (Videos de Gym, Comprobantes)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# --- 🚀 ESCALABILIDAD: LÍMITES DE SUBIDA (VIDEOS) ---
+# Aumentamos el límite para permitir videos cortos de técnica (Gym Pro)
+# Default Django es 2.5MB. Lo subimos a 100MB.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 104857600  # 100 MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 104857600  # 100 MB
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# --- SWAGGER ---
+# ==============================================================================
+#  REST FRAMEWORK & SEGURIDAD (JWT)
+# ==============================================================================
 SWAGGER_SETTINGS = {
     'SECURITY_DEFINITIONS': {
-        'Bearer': {
-            'type': 'apiKey', 'name': 'Authorization', 'in': 'header'
-        }
+        'Bearer': {'type': 'apiKey', 'name': 'Authorization', 'in': 'header'}
     }
 }
 
-# --- REST FRAMEWORK ---
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.IsAuthenticated',
+        'rest_framework.permissions.IsAuthenticated', # 🔒 CERRADO POR DEFECTO
     ),
+    'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend'],
 }
 
-# --- CELERY / REDIS ---
+# --- CONFIGURACIÓN JWT (Simple JWT) ---
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60), # Token dura 1 hora
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),    # Refresh dura 7 días
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+}
+
+# ==============================================================================
+#  CELERY / REDIS (CONFIGURACIÓN OPTIMIZADA)
+# ==============================================================================
 CELERY_BROKER_URL = 'redis://127.0.0.1:6379/0'
 CELERY_RESULT_BACKEND = 'redis://127.0.0.1:6379/0'
 CELERY_ACCEPT_CONTENT = ['json']
@@ -160,9 +198,39 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 
-# ==========================================
-# 🔗 CONFIGURACIÓN DE STRAVA (ALLAUTH)
-# ==========================================
+# --- MODO INMEDIATO (EAGER MODE) ---
+# CRÍTICO: Esto hace que Django ejecute la tarea inmediatamente en local
+# sin esperar a un worker externo. Vital para ver los logs en tiempo real.
+CELERY_TASK_ALWAYS_EAGER = False
+CELERY_TASK_EAGER_PROPAGATES = False
+
+# ==============================================================================
+#  EMAIL (DESARROLLO)
+# ==============================================================================
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+DEFAULT_FROM_EMAIL = 'Mendieta Platform <noreply@mendieta.ai>'
+
+# ==============================================================================
+#  CORS & SEGURIDAD WEBHOOKS
+# ==============================================================================
+# Permitir acceso desde el Frontend (React)
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True # 🔓 Desarrollo fácil
+else:
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ]
+
+# CRÍTICO: Dominios confiables para recibir POST (Webhooks Strava)
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:5173",
+    "https://overfaithfully-piquant-bryn.ngrok-free.dev",  # <--- TU NGROK ACTUAL
+]
+
+# ==============================================================================
+#  CONFIGURACIÓN MAESTRA DE STRAVA (ALLAUTH)
+# ==============================================================================
 
 SITE_ID = 1 
 
@@ -172,35 +240,28 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 # --- REDIRECCIONES ---
-# Login normal
-LOGIN_REDIRECT_URL = '/dashboard/'
-LOGOUT_REDIRECT_URL = '/dashboard/'
-# NUEVO: Redirección tras conectar una cuenta social (evita la pantalla blanca)
-ACCOUNT_CONNECT_REDIRECT_URL = '/dashboard/'
+LOGIN_REDIRECT_URL = 'http://localhost:5173/dashboard'
+LOGOUT_REDIRECT_URL = 'http://localhost:5173/'
+ACCOUNT_CONNECT_REDIRECT_URL = 'http://localhost:5173/dashboard'
 
 # --- COMPORTAMIENTO SOCIAL ---
-# Login inmediato, saltando confirmaciones innecesarias
 SOCIALACCOUNT_LOGIN_ON_GET = True
+SOCIALACCOUNT_STORE_TOKENS = True 
+ACCOUNT_SESSION_REMEMBER = True 
+ACCOUNT_LOGOUT_ON_GET = True
 
-# NUEVO: Forzar guardado del Token (CRUCIAL para leer actividades después en Background)
-SOCIALACCOUNT_STORE_TOKENS = True
+# --- RELAJAR REGLAS DE EMAIL ---
+ACCOUNT_EMAIL_VERIFICATION = 'none' 
+ACCOUNT_SIGNUP_FIELDS = ['email', 'username']
 
 SOCIALACCOUNT_PROVIDERS = {
     'strava': {
-        'APP': {
-            'client_id': STRAVA_CLIENT_ID,
-            'secret': STRAVA_CLIENT_SECRET,
-            'key': ''
-        },
-        # ------------------------------------------------------------------
-        # SOLUCIÓN DE INGENIERÍA:
-        # Inyectamos 'scope' como string en AUTH_PARAMS.
-        # ------------------------------------------------------------------
+        'SCOPE': [
+            'read,activity:read_all,profile:read_all'
+        ],
         'AUTH_PARAMS': {
-            'scope': 'read,activity:read_all,profile:read_all', 
-            'approval_prompt': 'force', 
+            'approval_prompt': 'force',
         },
-        'VERIFIED_EMAIL': True,
-        'VERSION': 'v3',
+        'verified_email': False,
     }
 }

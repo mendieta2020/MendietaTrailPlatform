@@ -1,0 +1,131 @@
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status, permissions
+from core.models import Entrenamiento, Alumno, InscripcionCarrera
+from django.utils import timezone
+import pandas as pd
+import numpy as np
+from datetime import timedelta
+
+class PMCDataView(APIView):
+    """
+    API Científica 6.0 (Full Elite Data - Sanitized).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        try:
+            # 1. IDENTIFICACIÓN
+            user = request.user
+            alumno_id = request.query_params.get('alumno_id')
+            sport_filter = request.query_params.get('sport')
+
+            if hasattr(user, 'perfil_alumno'):
+                alumno_id = user.perfil_alumno.id
+            elif hasattr(user, 'alumnos'):
+                if not alumno_id:
+                    first_active = Entrenamiento.objects.filter(alumno__entrenador=user).first()
+                    if first_active: alumno_id = first_active.alumno_id
+                    else: return Response([], status=200)
+            else:
+                return Response({"error": "No autorizado"}, status=403)
+
+            # 2. QUERYSET
+            filters = {'alumno_id': alumno_id}
+            if sport_filter and sport_filter != 'ALL':
+                if sport_filter == 'RUN': filters['tipo_actividad__in'] = ['RUN', 'TRAIL']
+                elif sport_filter == 'BIKE': filters['tipo_actividad__in'] = ['BIKE', 'MTB', 'INDOOR_BIKE', 'CYCLING']
+                elif sport_filter == 'STRENGTH': filters['tipo_actividad'] = 'STRENGTH'
+                else: filters['tipo_actividad'] = sport_filter
+
+            qs = Entrenamiento.objects.filter(**filters).values(
+                'fecha_asignada', 'tiempo_planificado_min', 'tiempo_real_min', 
+                'distancia_planificada_km', 'distancia_real_km',
+                'desnivel_planificado_m', 'desnivel_real_m',
+                'rpe', 'rpe_planificado', 'completado', 'tipo_actividad'
+            )
+
+            objetivos_qs = InscripcionCarrera.objects.filter(alumno_id=alumno_id).select_related('carrera').values(
+                'carrera__fecha', 'carrera__nombre', 'carrera__distancia_km', 'carrera__desnivel_positivo_m'
+            )
+
+            if not qs.exists(): return Response([], status=200)
+
+            # 3. PANDAS ENGINE
+            df = pd.DataFrame(list(qs))
+            df['fecha_asignada'] = pd.to_datetime(df['fecha_asignada'])
+
+            # Limpieza Inicial (NaN -> 0)
+            cols_num = ['tiempo_planificado_min', 'tiempo_real_min', 'distancia_planificada_km', 'distancia_real_km', 'desnivel_planificado_m', 'desnivel_real_m', 'rpe', 'rpe_planificado']
+            for col in cols_num:
+                if col not in df.columns: df[col] = 0.0
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+
+            # --- CÁLCULOS ---
+            df['rpe_real'] = np.where(df['rpe'] > 0, df['rpe'], 4.0)
+            df['real_load'] = np.where(df['completado'], df['tiempo_real_min'] * df['rpe_real'], 0.0)
+            df['plan_load'] = df['tiempo_planificado_min'] * np.where(df['rpe_planificado'] > 0, df['rpe_planificado'], 6.0)
+
+            df['real_dist'] = np.where(df['completado'], df['distancia_real_km'], 0.0)
+            df['plan_dist'] = df['distancia_planificada_km']
+            df['real_time'] = np.where(df['completado'], df['tiempo_real_min'], 0.0)
+            df['plan_time'] = df['tiempo_planificado_min']
+            
+            df['real_elev'] = np.where(df['completado'], df['desnivel_real_m'], 0.0)
+            df['plan_elev'] = df['desnivel_planificado_m']
+            
+            # Desnivel Negativo (Estimado)
+            df['elev_loss'] = np.where((df['tipo_actividad'].isin(['TRAIL', 'RUN'])) & df['completado'], df['real_elev'], 0.0)
+            
+            # Calorías
+            df['calories'] = np.where(df['completado'], (df['tiempo_real_min'] * df['rpe_real'] * 1.5), 0.0)
+
+            # Agrupación
+            df_daily = df.groupby('fecha_asignada').sum(numeric_only=True).reset_index()
+            df_daily.set_index('fecha_asignada', inplace=True)
+
+            # Reindexado
+            start_date = timezone.now().date() - timedelta(days=365)
+            end_date = timezone.now().date() + timedelta(days=180)
+            idx = pd.date_range(start=start_date, end=end_date)
+            df_daily = df_daily.reindex(idx, fill_value=0.0)
+
+            # Banister
+            df_daily['ctl'] = df_daily['real_load'].ewm(span=42, adjust=False).mean()
+            df_daily['atl'] = df_daily['real_load'].ewm(span=7, adjust=False).mean()
+            df_daily['tsb'] = df_daily['ctl'] - df_daily['atl']
+
+            # Serialización
+            objetivos_map = {obj['carrera__fecha'].strftime('%Y-%m-%d'): {"nombre": obj['carrera__nombre'], "km": obj['carrera__distancia_km'], "elev": obj['carrera__desnivel_positivo_m']} for obj in objetivos_qs}
+            
+            cutoff_date = pd.Timestamp(timezone.now().date() - timedelta(days=365))
+            df_final = df_daily[df_daily.index >= cutoff_date]
+
+            data = []
+            today = timezone.now().date()
+
+            for fecha, row in df_final.iterrows():
+                f_str = fecha.strftime('%Y-%m-%d')
+                is_future = fecha.date() > today
+                
+                data.append({
+                    "fecha": f_str,
+                    "is_future": is_future,
+                    "ctl": round(float(row['ctl']), 1) if not is_future else 0,
+                    "atl": round(float(row['atl']), 1) if not is_future else 0,
+                    "tsb": round(float(row['tsb']), 1) if not is_future else 0,
+                    "load": int(row['plan_load']) if is_future else int(row['real_load']),
+                    "dist": round(float(row['plan_dist']), 1) if is_future else round(float(row['real_dist']), 1),
+                    "time": int(row['plan_time']) if is_future else int(row['real_time']),
+                    "elev_gain": int(row['plan_elev']) if is_future else int(row['real_elev']),
+                    "elev_loss": int(row['elev_loss']), 
+                    "calories": int(row['calories']),
+                    "race": objetivos_map.get(f_str, None)
+                })
+
+            return Response(data, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            print(f"❌ Analytics Error: {str(e)}")
+            # Devolvemos array vacío para NO ROMPER el frontend
+            return Response([], status=status.HTTP_200_OK)

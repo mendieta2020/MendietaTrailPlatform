@@ -5,8 +5,11 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
-# Importamos la vista del dashboard directamente
+# Importamos la vista del dashboard directamente (Vista Clásica)
 from core.views import dashboard_entrenador
+
+# --- Importamos el Webhook Listener ---
+from core.webhooks import strava_webhook
 
 # --- Importaciones para Documentación (Swagger) y Autenticación (JWT) ---
 from rest_framework import permissions
@@ -35,28 +38,41 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     
     # 2. LOGIN SOCIAL (STRAVA/ALLAUTH)
-    # Esta línea es CRUCIAL: Habilita las rutas /accounts/login, /accounts/strava/login, etc.
-    # Sin esto, el botón "Conectar Strava" en el dashboard dará error.
     path('accounts/', include('allauth.urls')), 
 
     # 3. Herramientas Administrativas (Nested Admin)
     path('_nested_admin/', include('nested_admin.urls')),
 
-    # 4. Dashboard del Entrenador
-    # Ruta directa para ver el panel visual
+    # 4. Dashboard del Entrenador (Vista Legacy/Django Template)
     path('dashboard/', dashboard_entrenador, name='dashboard_principal'),
 
-    # 5. La API del Core (Endpoints para datos)
-    path('api/', include('core.urls')),
+    # ==============================================================
+    # 5. WEBHOOKS (La "Oreja" del sistema)
+    # ==============================================================
+    path('webhooks/strava/', strava_webhook, name='strava_webhook'),
 
-    # 6. Autenticación (Tokens JWT)
+    # ==============================================================
+    # 6. API REST ENDPOINTS (El Corazón del SaaS React)
+    # ==============================================================
+    
+    # 🔥 AQUÍ VIAJAN LOS DATOS DE ENTRENAMIENTO Y VIDEOS 🔥
+    path('api/', include('core.urls')), 
+
+    # Rutas de Analytics (Ciencia de Datos, PMC, Widgets)
+    path('api/analytics/', include('analytics.urls')),
+
+    # ==============================================================
+
+    # 7. Autenticación (Tokens JWT)
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 
-    # 7. Documentación Interactiva (Swagger)
+    # 8. Documentación Interactiva (Swagger)
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
 ]
 
-# Configuración para servir archivos estáticos en desarrollo
+# --- CONFIGURACIÓN PARA SERVIR ARCHIVOS EN MODO DESARROLLO ---
+# ⚠️ CRÍTICO: Esto permite que el Frontend reproduzca los videos subidos
 if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

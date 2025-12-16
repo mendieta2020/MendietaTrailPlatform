@@ -1,8 +1,31 @@
+from django.conf import settings
 from django.db import models
-from django.contrib.auth.models import User  # <--- NUEVO IMPORT NECESARIO
+from django.contrib.auth.models import User
 from django.utils.html import format_html
+from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver
+from datetime import date, timedelta
+from django.db.models import Sum
 
-# --- 1. CONFIGURACIÓN Y CONSTANTES ---
+# ==============================================================================
+#  1. CONFIGURACIÓN Y CONSTANTES (GLOBALES)
+# ==============================================================================
+
+# --- CONSTANTES DE NEGOCIO ---
+ESTADOS_ALUMNO = [
+    ('ACTIVO', '✅ Activo (Entrenando)'),
+    ('LESIONADO', '🚑 Inactivo (Lesión)'),
+    ('PAUSA', '⏸️ Inactivo (Temporal/Vacaciones)'),
+    ('DEUDA', '💰 Inactivo (Falta de Pago)'),
+    ('BAJA', '❌ Baja Definitiva')
+]
+
+METODOS_PAGO = [
+    ('TRANSFERENCIA', '🏦 Transferencia Bancaria'),
+    ('EFECTIVO', '💵 Efectivo'),
+    ('TARJETA', '💳 Tarjeta / Suscripción (Stripe/MP)'),
+    ('BONIFICADO', '🎁 Becado / Canje')
+]
 
 TIPO_ACTIVIDAD = [
     ('RUN', 'Running (Calle)'), ('TRAIL', 'Trail Running (Montaña)'),
@@ -12,255 +35,239 @@ TIPO_ACTIVIDAD = [
     ('REST', 'Descanso Total'), ('OTHER', 'Otro'),
 ]
 
-FASE_PASO = [
-    ('WARMUP', '🔥 Calentamiento'), ('ACTIVE', '⚡ Activo / Intervalo'),
-    ('RECOVERY', '💤 Recuperación'), ('COOLDOWN', '❄️ Vuelta a la calma'),
-    ('OTHER', '📝 Nota Técnica'),
+INTENSIDAD_ZONAS = [('Z1', 'Z1 Recup'), ('Z2', 'Z2 Base'), ('Z3', 'Z3 Tempo'), ('Z4', 'Z4 Umbral'), ('Z5', 'Z5 VO2')]
+TIPO_TERRENO = [
+    (1.00, '🛣️ Asfalto / Pista'), (1.05, '🌲 Sendero Corrible'), 
+    (1.15, '⛰️ Técnico Medio'), (1.25, '🧗 Técnico Duro'), (1.40, '🧟 Extremo')
+]
+TURNOS_DIA = [
+    ('M', 'Mañana'), ('T', 'Tarde'), ('N', 'Noche'), 
+    ('MT', 'Mañana/Tarde'), ('TN', 'Tarde/Noche'), ('FULL', 'Todo el Día'),
+    ('NO', '❌ NO DISPONIBLE')
 ]
 
-TIPO_DURACION = [
-    ('DISTANCE', 'Distancia'), ('TIME', 'Tiempo'),
-    ('LAP_BUTTON', 'Presionar Lap'), ('CALORIES', 'Calorías'),
-    ('OPEN', 'Abierto / Sin límite'),
-]
+# ==============================================================================
+#  2. MODELOS PRINCIPALES
+# ==============================================================================
 
-UNIDAD_MEDIDA = [
-    ('KM', 'km'), ('METERS', 'metros'),
-    ('MIN', 'minutos'), ('SEC', 'segundos'),
-]
+# --- NUEVO MODELO: VIDEOS DE EJERCICIOS (GIMNASIO PRO) ---
+class VideoEjercicio(models.Model):
+    titulo = models.CharField(max_length=100, blank=True, help_text="Ej: Sentadilla Técnica")
+    archivo = models.FileField(upload_to='videos_ejercicios/', help_text="Soporta MP4, MOV, GIF")
+    uploaded_at = models.DateTimeField(auto_now_add=True)
 
-TIPO_OBJETIVO = [
-    ('NONE', 'Sin Objetivo'),
-    ('RPE_1', '1 - Muy Suave (Recuperación)'), ('RPE_2', '2 - Suave (Aeróbico Extensivo)'),
-    ('RPE_3', '3 - Moderado (Aeróbico Medio)'), ('RPE_4', '4 - Ritmo Maratón'),
-    ('RPE_5', '5 - Umbral Anaeróbico'), ('RPE_6', '6 - VO2 Max'),
-    ('RPE_7', '7 - Capacidad Anaeróbica'), ('RPE_8', '8 - Sprint'),
-    ('RPE_9', '9 - Neuromuscular'), ('RPE_10', '10 - Máximo Esfuerzo'),
-    ('ZONA_FC', 'Zona Frecuencia Cardíaca'), ('PACE', 'Ritmo Objetivo'),
-]
+    class Meta:
+        verbose_name = "🎥 Video de Ejercicio"
+        verbose_name_plural = "🎥 Videos de Ejercicios"
 
-ZONA_INTENSIDAD = [
-    ('Z1', 'Z1 - Recuperación'), ('Z2', 'Z2 - Aeróbico Base'),
-    ('Z3', 'Z3 - Ritmo Tempo'), ('Z4', 'Z4 - Umbral Lactato'),
-    ('Z5', 'Z5 - VO2 Max'), ('Z6', 'Z6 - Anaeróbico'), ('Z7', 'Z7 - Neuromuscular'),
-]
+    def __str__(self):
+        return f"Video {self.id}: {self.titulo or 'Sin Título'}"
 
-# --- 2. MODELOS PRINCIPALES ---
+# --- EQUIPOS (CLUSTERS DE ENTRENAMIENTO) ---
+class Equipo(models.Model):
+    nombre = models.CharField(max_length=100, unique=True, help_text="Ej: Inicial Calle, Avanzado Montaña")
+    descripcion = models.TextField(blank=True, null=True)
+    color_identificador = models.CharField(max_length=7, default="#F57C00", help_text="Color Hexadecimal para el calendario")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "🏆 Equipo / Grupo"
+        verbose_name_plural = "🏆 Equipos"
+
+    def __str__(self):
+        return self.nombre
+
+    @property
+    def cantidad_alumnos(self):
+        return self.alumnos.count()
 
 class Alumno(models.Model):
+    entrenador = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='alumnos', null=True, blank=True)
+    usuario = models.OneToOneField(User, on_delete=models.CASCADE, related_name='perfil_alumno', null=True, blank=True)
+    
+    # --- VINCULACIÓN A EQUIPO ---
+    equipo = models.ForeignKey(
+        Equipo, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='alumnos'
+    )
+
+    strava_athlete_id = models.CharField(max_length=50, unique=True, null=True, blank=True, help_text="ID Strava")
+    
+    # --- DATOS PERSONALES ---
     nombre = models.CharField(max_length=100)
     apellido = models.CharField(max_length=100)
     email = models.EmailField(unique=True, null=True, blank=True)
     telefono = models.CharField(max_length=20, null=True, blank=True)
+    instagram = models.CharField(max_length=50, blank=True, help_text="Usuario sin @")
     ciudad = models.CharField(max_length=50, null=True, blank=True)
-    peso = models.FloatField(help_text="Peso en Kg")
-    altura = models.FloatField(help_text="Altura en Metros (ej: 1.75)")
-    fecha_nacimiento = models.DateField()
+    
+    # --- ESTADO Y FINANZAS ---
+    estado_actual = models.CharField(max_length=20, choices=ESTADOS_ALUMNO, default='ACTIVO', verbose_name="Estado Actual")
+    fecha_alta = models.DateField(auto_now_add=True)
+    fecha_ultimo_pago = models.DateField(null=True, blank=True, verbose_name="📅 Último Pago")
+    
+    # Salud
+    esta_lesionado = models.BooleanField(default=False)
+    apto_medico_al_dia = models.BooleanField(default=False)
+    
+    # --- BIOMETRÍA ---
+    peso = models.FloatField(help_text="Peso en Kg", default=70.0)
+    altura = models.FloatField(help_text="Altura en Metros", default=1.70)
+    fecha_nacimiento = models.DateField(null=True, blank=True)
     CATEGORIAS = [('K21', '21K'), ('K42', '42K'), ('ULTRA', 'Ultra')]
     categoria = models.CharField(max_length=10, choices=CATEGORIAS, default='K21')
+    
+    # --- FISIOLOGÍA AVANZADA (Para cálculos de carga) ---
+    fcm = models.IntegerField(default=180, help_text="FC Máxima")
+    fcreposo = models.IntegerField(default=50, help_text="FC Reposo")
+    vo2_max = models.FloatField(default=0, verbose_name="VO2 Máx (Calc)")
+    vam_actual = models.FloatField(default=0, verbose_name="VAM (Calc)")
+    ftp_ciclismo = models.IntegerField(default=0, verbose_name="FTP (Watts)") # Nuevo para triatletas
+    
+    # --- ZONAS DE ENTRENAMIENTO (Calculadas o Manuales) ---
+    # Esto es clave para enviar entrenamientos estructurados a Garmin
+    zonas_fc = models.JSONField(default=dict, blank=True, help_text="{'z1': [120, 135], 'z2': [136, 145]...}")
+    zonas_velocidad = models.JSONField(default=dict, blank=True, help_text="Ritmos en seg/km")
 
-    # --- NUEVOS CAMPOS FISIOLÓGICOS (FASE 5.C) ---
-    ftp = models.IntegerField(default=200, help_text="Potencia Umbral Funcional (Watts)")
-    fcm = models.IntegerField(default=180, help_text="Frecuencia Cardíaca Máxima")
-    fcreposo = models.IntegerField(default=50, help_text="Frecuencia Cardíaca en Reposo")
-    # ---------------------------------------------
+    def __str__(self): return f"{self.nombre} {self.apellido}"
 
-    def __str__(self):
-        return f"{self.nombre} {self.apellido}"
-
-class PlantillaEntrenamiento(models.Model):
-    titulo = models.CharField(max_length=200, help_text="Ej: Series 10x400m + Umbral")
-    deporte = models.CharField(max_length=20, choices=TIPO_ACTIVIDAD, default='RUN')
-    descripcion_global = models.TextField(blank=True, help_text="Descripción completa, enlaces, estrategia. ¡Usa emojis! 🚴‍♂️🏃‍♀️")
-    enlace_video = models.URLField(blank=True, null=True, help_text="Link a YouTube/Vimeo explicativo")
-    DIFICULTADES = [('EASY', '🟢 Suave'), ('MODERATE', '🟡 Moderado'), ('HARD', '🔴 Duro'), ('EXTREME', '⚫ Extremo')]
-    etiqueta_dificultad = models.CharField(max_length=20, choices=DIFICULTADES, default='MODERATE')
+# --- MODELO PAGOS ---
+class Pago(models.Model):
+    alumno = models.ForeignKey(Alumno, on_delete=models.CASCADE, related_name='pagos')
+    fecha_pago = models.DateField(default=date.today)
+    monto = models.DecimalField(max_digits=10, decimal_places=2)
+    metodo = models.CharField(max_length=20, choices=METODOS_PAGO, default='TRANSFERENCIA')
+    es_valido = models.BooleanField(default=False, verbose_name="✅ Validado")
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = "📂 Plantilla de Librería"
-        verbose_name_plural = "Librería de Entrenamientos"
+        ordering = ['-fecha_pago']
 
-    def __str__(self):
-        return f"{self.titulo}"
+# --- PLANTILLAS DE ENTRENAMIENTO (LIBRERÍA) ---
+class PlantillaEntrenamiento(models.Model):
+    titulo = models.CharField(max_length=200)
+    deporte = models.CharField(max_length=20, choices=TIPO_ACTIVIDAD, default='RUN')
+    descripcion_global = models.TextField(blank=True) # Resumen visual
+    
+    # --- 🔥 ESTRUCTURA JSON (El Cerebro) ---
+    # Aquí guardamos los bloques: Calentamiento, Series, etc. para Garmin/Frontend
+    # Ejemplo: { "bloques": [ { "tipo": "WARMUP", "duracion": 600, "target": "Z1" } ] }
+    estructura = models.JSONField(default=dict, blank=True)
+    
+    etiqueta_dificultad = models.CharField(max_length=20, choices=[('EASY', '🟢 Suave'), ('MODERATE', '🟡 Moderado'), ('HARD', '🔴 Duro')], default='MODERATE')
+    created_at = models.DateTimeField(auto_now_add=True)
 
-    def get_emoji_deporte(self):
-        emojis = {'RUN': '🏃‍♂️', 'TRAIL': '⛰️🏃‍♂️', 'CYCLING': '🚴‍♂️', 'MTB': '🚵‍♂️', 'SWIMMING': '🏊‍♂️', 'STRENGTH': '🏋️‍♂️', 'CARDIO': '🤸‍♂️', 'INDOOR_BIKE': '🚴‍♀️🏠', 'REST': '🛌', 'OTHER': '⚙️'}
-        return emojis.get(self.deporte, '❓')
-    get_emoji_deporte.short_description = 'Tipo'
+    def __str__(self): return self.titulo
 
-    def get_dificultad_visual(self):
-        colores = {'EASY': '#28a745', 'MODERATE': '#ffc107', 'HARD': '#dc3545', 'EXTREME': '#343a40'}
-        color = colores.get(self.etiqueta_dificultad, '#6c757d')
-        return format_html('<span style="background-color: {}; color: white; padding: 4px 8px; border-radius: 10px; font-weight: bold; font-size: 0.8em;">{}</span>', color, self.get_etiqueta_dificultad_display())
-    get_dificultad_visual.short_description = 'Dificultad'
-
-# --- 3. MODELO DE ASIGNACIÓN (El Calendario) ---
-
+# --- ENTRENAMIENTO (CALENDARIO) ---
 class Entrenamiento(models.Model):
     alumno = models.ForeignKey(Alumno, on_delete=models.CASCADE, related_name='entrenamientos')
     plantilla_origen = models.ForeignKey(PlantillaEntrenamiento, on_delete=models.SET_NULL, null=True, blank=True)
+    
     fecha_asignada = models.DateField()
     titulo = models.CharField(max_length=200)
-    completado = models.BooleanField(default=False)
     
-    # Feedback y Datos Reales
-    distancia_real_km = models.FloatField(null=True, blank=True)
+    # Descripción simple (para notas rápidas del coach)
+    descripcion_detallada = models.TextField(blank=True, null=True)
+    
+    # --- 🔥 ESTRUCTURA JSON PRO (La Clave de la Escalabilidad) ---
+    # Al clonar la plantilla, copiamos su estructura aquí.
+    # Esto permite editar el entrenamiento del alumno SIN afectar la plantilla original.
+    # Y es lo que leerá la API de Garmin para subir el workout al reloj.
+    estructura = models.JSONField(default=dict, blank=True)
+
+    tipo_actividad = models.CharField(max_length=20, choices=TIPO_ACTIVIDAD, default='RUN')
+    
+    # Métricas Planificadas (Resumen para Analytics)
+    distancia_planificada_km = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    tiempo_planificado_min = models.IntegerField(null=True, blank=True)
+    desnivel_planificado_m = models.IntegerField(null=True, blank=True)
+    rpe_planificado = models.IntegerField(default=0)
+    
+    # Métricas Reales (Feedback del Atleta / Strava)
+    completado = models.BooleanField(default=False)
+    distancia_real_km = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
     tiempo_real_min = models.IntegerField(null=True, blank=True)
     desnivel_real_m = models.IntegerField(null=True, blank=True)
-    
-    # --- INPUTS PARA CÁLCULO (FASE 5.C) ---
-    potencia_promedio = models.IntegerField(null=True, blank=True, help_text="Vatios medios (Avg Watts)")
-    frecuencia_cardiaca_promedio = models.IntegerField(null=True, blank=True, help_text="Pulsaciones medias (Avg HR)")
-    # --------------------------------------
-
-    rpe = models.IntegerField(null=True, blank=True)
+    rpe = models.IntegerField(null=True, blank=True, help_text="RPE Real sentido por el atleta")
     feedback_alumno = models.TextField(null=True, blank=True)
+    
+    # IDs Externos
     strava_id = models.CharField(max_length=50, blank=True, null=True)
-    garmin_id = models.CharField(max_length=50, blank=True, null=True)
     
-    # --- RESULTADOS MÉTRICAS CALCULADAS (FASE 5.C) ---
-    tss = models.FloatField(null=True, blank=True, help_text="Training Stress Score (Carga de Potencia)")
-    trimp = models.FloatField(null=True, blank=True, help_text="Training Impulse (Carga Cardíaca)")
-    intensity_factor = models.FloatField(null=True, blank=True, help_text="IF: Intensidad relativa al FTP")
-    normalized_power = models.IntegerField(null=True, blank=True, help_text="NP: Potencia Normalizada estimada")
-    kilojoules = models.IntegerField(null=True, blank=True, help_text="Trabajo total realizado")
+    # Métricas Avanzadas (Carga)
+    porcentaje_cumplimiento = models.IntegerField(default=0)
     
-    load_final = models.FloatField(null=True, blank=True, help_text="Carga Final (Prioridad: TSS > TRIMP > RPE)")
-    # -------------------------------------------------
-
     created_at = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
+    class Meta: 
         ordering = ['-fecha_asignada']
 
-    def __str__(self):
-        return f"{self.fecha_asignada} - {self.titulo} ({self.alumno})"
+    def __str__(self): return f"{self.fecha_asignada} - {self.titulo}"
 
-# --- 4. ESTRUCTURA (BLOQUES Y PASOS) ---
+    def save(self, *args, **kwargs):
+        # Cálculo automático de cumplimiento al guardar
+        if self.completado:
+            ratio = 0
+            if self.distancia_planificada_km and self.distancia_planificada_km > 0:
+                # Convertimos a float para calcular, ya que Decimal puede dar problemas mixtos
+                plan = float(self.distancia_planificada_km)
+                real = float(self.distancia_real_km or 0)
+                ratio = (real / plan) * 100
+            elif self.tiempo_planificado_min and self.tiempo_planificado_min > 0:
+                plan = self.tiempo_planificado_min
+                real = self.tiempo_real_min or 0
+                ratio = (real / plan) * 100
+            
+            self.porcentaje_cumplimiento = int(min(max(ratio, 0), 200))
+        
+        super().save(*args, **kwargs)
 
+# --- MODELOS DEPRECATED (SE MANTIENEN POR SEGURIDAD DE MIGRACIÓN) ---
+# En el futuro, eliminaremos BloqueEntrenamiento y PasoEntrenamiento
+# ya que toda esa info ahora vive dentro del JSONField 'estructura'.
 class BloqueEntrenamiento(models.Model):
-    plantilla = models.ForeignKey(PlantillaEntrenamiento, related_name='bloques', on_delete=models.CASCADE, null=True, blank=True)
-    entrenamiento = models.ForeignKey(Entrenamiento, related_name='bloques_reales', on_delete=models.CASCADE, null=True, blank=True)
+    # Modelo Legacy - No usar para nuevo desarrollo
+    plantilla = models.ForeignKey(PlantillaEntrenamiento, related_name='bloques_legacy', on_delete=models.CASCADE, null=True, blank=True)
+    entrenamiento = models.ForeignKey('Entrenamiento', related_name='bloques_reales_legacy', on_delete=models.CASCADE, null=True, blank=True)
     orden = models.PositiveIntegerField(default=1)
-    nombre_bloque = models.CharField(max_length=100, default="Bloque Estándar", blank=True) 
-    repeticiones = models.PositiveIntegerField(default=1, help_text="Repeticiones de este bloque")
-
-    class Meta:
-        ordering = ['orden']
-        verbose_name = "Estructura"
-        verbose_name_plural = "Estructura"
-
-    def __str__(self):
-        return f"Bloque {self.orden}"
 
 class PasoEntrenamiento(models.Model):
-    bloque = models.ForeignKey(BloqueEntrenamiento, related_name='pasos', on_delete=models.CASCADE)
+    # Modelo Legacy - No usar para nuevo desarrollo
+    bloque = models.ForeignKey(BloqueEntrenamiento, related_name='pasos_legacy', on_delete=models.CASCADE)
     orden = models.PositiveIntegerField(default=1)
-    fase = models.CharField(max_length=20, choices=FASE_PASO, default='ACTIVE', verbose_name="Tipo")
-    
-    # --- CAMPO INTEGRADO CORRECTAMENTE ---
-    tipo_duracion = models.CharField(max_length=20, choices=TIPO_DURACION, default='TIME', verbose_name="Tipo Duración") 
-    
-    titulo_paso = models.CharField(max_length=100, blank=True, verbose_name="Descripción")
-    
-    # --- CAMPOS DE DATOS ---
-    valor_duracion = models.FloatField(default=0, verbose_name="Cantidad")
-    unidad_duracion = models.CharField(max_length=10, choices=UNIDAD_MEDIDA, default='KM', verbose_name="Unidad")
-    objetivo = models.CharField(max_length=20, choices=TIPO_OBJETIVO, default='RPE_2', verbose_name="Intensidad")
-    nota_paso = models.CharField(max_length=200, blank=True, help_text="Nota extra")
 
-    class Meta:
-        ordering = ['orden']
-        verbose_name = "Paso"
-        verbose_name_plural = "Pasos del Bloque"
-
-    def __str__(self):
-        return f"{self.orden}. {self.titulo_paso}"
-
-# --- MÓDULO DE COMPETICIONES Y EVENTOS ---
-
-TIPO_CARRERA = [
-    ('TRAIL', 'Trail Running'),
-    ('ULTRA', 'Ultra Distancia'),
-    ('CALLE', 'Calle / Asfalto'),
-    ('CICLISMO', 'Ciclismo'),
-    ('TRIATLON', 'Triatlón'),
-    ('AVENTURA', 'Carrera de Aventura'),
-    ('OTRO', 'Otro Evento'),
-]
-
+# --- OTROS MODELOS (Carreras, Actividades, Signal) ---
 class Carrera(models.Model):
-    nombre = models.CharField(max_length=200, help_text="Ej: Patagonia Run 2025")
-    tipo = models.CharField(max_length=20, choices=TIPO_CARRERA, default='TRAIL')
+    nombre = models.CharField(max_length=200)
     fecha = models.DateField()
-    lugar = models.CharField(max_length=100, blank=True, help_text="Ciudad / Provincia")
-    distancia_km = models.FloatField(help_text="Distancia total")
-    desnivel_positivo_m = models.IntegerField(default=0, help_text="Metros acumulados (+)")
-    web_oficial = models.URLField(blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"{self.nombre} ({self.fecha.year})"
+    distancia_km = models.FloatField()
+    desnivel_positivo_m = models.IntegerField(default=0)
+    def __str__(self): return self.nombre
 
 class InscripcionCarrera(models.Model):
-    ESTADOS = [
-        ('INSCRITO', '✅ Inscrito'),
-        ('INTERESADO', '👀 Interesado / Objetivo Posible'),
-        ('BAJA', '❌ Baja / No corre'),
-        ('FINALIZADO', '🏅 Finalizó'),
-        ('DNF', '💀 Abandonó (DNF)'),
-    ]
-
     alumno = models.ForeignKey(Alumno, on_delete=models.CASCADE, related_name='carreras')
     carrera = models.ForeignKey(Carrera, on_delete=models.CASCADE, related_name='inscriptos')
-    estado = models.CharField(max_length=20, choices=ESTADOS, default='INSCRITO')
-    prioridad = models.CharField(max_length=1, choices=[('A', 'A - Principal'), ('B', 'B - Preparatoria'), ('C', 'C - Entrenamiento')], default='A', help_text="Importancia de la carrera")
-    tiempo_oficial = models.DurationField(null=True, blank=True, help_text="Tiempo final hh:mm:ss")
-    posicion_general = models.IntegerField(null=True, blank=True)
-    posicion_categoria = models.IntegerField(null=True, blank=True)
-    feedback_carrera = models.TextField(blank=True, help_text="Análisis post-carrera del alumno")
+    estado = models.CharField(max_length=20, default='INSCRITO')
 
-    class Meta:
-        unique_together = ('alumno', 'carrera')
-        verbose_name = "🏅 Inscripción / Objetivo"
-        verbose_name_plural = " Calendario de Carreras"
-
-    def __str__(self):
-        return f"{self.alumno} -> {self.carrera}"
-
-# --- 6. MODELO DE PERSISTENCIA (STRAVA / EXTERNO) - FASE 8 ---
 class Actividad(models.Model):
-    # Vinculamos la actividad al usuario de Django (el dueño de la cuenta Strava)
-    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='actividades_strava')
-    
-    # ID único de Strava (Evita guardar la misma carrera dos veces)
-    strava_id = models.BigIntegerField(unique=True, help_text="ID único de la actividad en Strava")
-    
-    # Datos básicos
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='actividades_strava')
+    strava_id = models.BigIntegerField(unique=True)
     nombre = models.CharField(max_length=255)
-    distancia = models.FloatField(help_text="Distancia en metros")
-    tiempo_movimiento = models.IntegerField(help_text="Tiempo en segundos")
-    fecha_inicio = models.DateTimeField(help_text="Fecha y hora de inicio (Local)")
-    tipo_deporte = models.CharField(max_length=50, help_text="Run, Ride, Swim, etc.")
-    
-    # Datos avanzados (opcionales por ahora, pero listos para el futuro)
-    desnivel_positivo = models.FloatField(default=0.0, null=True, blank=True)
-    ritmo_promedio = models.FloatField(help_text="Metros por segundo", null=True, blank=True)
-    mapa_polilinea = models.TextField(null=True, blank=True, help_text="Código del mapa para dibujar")
-    
-    # JSON Crudo: Guardamos TODO lo que manda Strava por si queremos datos raros a futuro
-    datos_brutos = models.JSONField(default=dict, blank=True)
+    distancia = models.FloatField()
+    tiempo_movimiento = models.IntegerField()
+    fecha_inicio = models.DateTimeField()
+    tipo_deporte = models.CharField(max_length=50)
+    desnivel_positivo = models.FloatField(default=0.0)
+    def __str__(self): return self.nombre
 
-    # Auditoría interna
-    creado_en = models.DateTimeField(auto_now_add=True)
-    actualizado_en = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        verbose_name = "Actividad Importada"
-        verbose_name_plural = "Actividades Importadas"
-        ordering = ['-fecha_inicio'] # Las más nuevas primero
-
-    def __str__(self):
-        return f"{self.nombre} ({self.distancia:.0f}m) - {self.usuario.username}"
+@receiver(post_save, sender=Pago)
+def actualizar_pago_alumno(sender, instance, **kwargs):
+    if instance.es_valido:
+        alumno = instance.alumno
+        if not alumno.fecha_ultimo_pago or instance.fecha_pago > alumno.fecha_ultimo_pago:
+            alumno.fecha_ultimo_pago = instance.fecha_pago
+            alumno.save()
