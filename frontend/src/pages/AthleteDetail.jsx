@@ -94,7 +94,7 @@ const AthleteDetail = () => {
       <Box sx={{ mb: 4 }}>
           {/* El ErrorBoundary atrapa cualquier crash dentro del gráfico y evita la pantalla blanca */}
           <ErrorBoundary height={550}>
-              <StudentPerformanceChart />
+              <StudentPerformanceChart alumnoId={id} />
           </ErrorBoundary>
       </Box>
 

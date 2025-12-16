@@ -5,14 +5,14 @@ import {
 } from 'recharts';
 import { 
     Box, Paper, Typography, CircularProgress, Chip, MenuItem, Select, FormControl, 
-    ToggleButton, ToggleButtonGroup, Stack, Divider 
+    ToggleButton, ToggleButtonGroup, Stack, Divider, Grid
 } from '@mui/material';
 import { 
     AutoGraph, Flag, Timer, Terrain, Straighten, DirectionsRun, PedalBike, 
-    FitnessCenter, Layers, LocalFireDepartment, EmojiEvents
+    Layers, LocalFireDepartment, EmojiEvents
 } from '@mui/icons-material';
 import client from '../../api/client';
-import { format, parseISO, isFuture, addMonths, subMonths, isValid, differenceInWeeks } from 'date-fns';
+import { format, parseISO, addMonths, subMonths, isValid, differenceInWeeks } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 // --- COLORES PROFESIONALES ---
@@ -48,7 +48,7 @@ const safeFormat = (dateStr, formatStr) => {
     } catch { return ''; }
 };
 
-const StudentPerformanceChart = () => {
+const StudentPerformanceChart = ({ alumnoId } = {}) => {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [metric, setMetric] = useState('PERFORMANCE');
@@ -60,7 +60,11 @@ const StudentPerformanceChart = () => {
         const fetchData = async () => {
             try {
                 setLoading(true);
-                const res = await client.get(`/api/analytics/pmc/?sport=${sport}`);
+                const params = new URLSearchParams();
+                if (sport) params.set('sport', sport);
+                if (alumnoId) params.set('alumno_id', String(alumnoId));
+                const qs = params.toString();
+                const res = await client.get(qs ? `/api/analytics/pmc/?${qs}` : `/api/analytics/pmc/`);
                 if (isMounted) {
                     if (Array.isArray(res.data)) {
                         const sanitizedData = res.data.map(item => ({
@@ -89,7 +93,7 @@ const StudentPerformanceChart = () => {
         };
         fetchData();
         return () => { isMounted = false; };
-    }, [sport]);
+    }, [sport, alumnoId]);
 
     // Filtrado de Datos
     const getFilteredData = () => {
