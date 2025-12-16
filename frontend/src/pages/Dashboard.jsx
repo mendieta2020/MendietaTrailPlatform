@@ -41,7 +41,7 @@ const Dashboard = () => {
   const [periodo, setPeriodo] = useState('THIS_MONTH');
   
   // Datos
-  const [kpiData, setKpiData] = useState({ alumnos: 0, ingresos: 0 });
+  const [kpiData, setKpiData] = useState({ alumnos: 0, ingresos: 0, riesgoHigh: 0, riesgoMedium: 0 });
   const [pmcData, setPmcData] = useState([]); // Datos reales del Backend
   const [pagosData, setPagosData] = useState([]);
 
@@ -53,14 +53,18 @@ const Dashboard = () => {
         
         // 1. Cargar KPIs Básicos
         const [resAlumnos, resPagos] = await Promise.all([
-          client.get('/api/alumnos/'),
+          client.get('/api/alumnos/?include_injury_risk=1'),
           client.get('/api/pagos/')
         ]);
 
         const totalIngresos = resPagos.data.reduce((acc, pago) => acc + parseFloat(pago.monto), 0);
+        const high = (resAlumnos.data || []).filter(a => a?.injury_risk?.risk_level === 'HIGH').length;
+        const medium = (resAlumnos.data || []).filter(a => a?.injury_risk?.risk_level === 'MEDIUM').length;
         setKpiData({ 
             alumnos: resAlumnos.data.length, 
-            ingresos: totalIngresos 
+            ingresos: totalIngresos,
+            riesgoHigh: high,
+            riesgoMedium: medium,
         });
         setPagosData(resPagos.data);
 
@@ -155,10 +159,11 @@ const Dashboard = () => {
         <Grid item xs={12} sm={6} md={3}>
           <StatCard 
             title="Riesgo Lesión" 
-            value="0" 
-            sub="Sin alertas críticas" 
+            value={kpiData.riesgoHigh} 
+            sub={kpiData.riesgoHigh > 0 ? `ALTO: ${kpiData.riesgoHigh} • MEDIO: ${kpiData.riesgoMedium}` : `MEDIO: ${kpiData.riesgoMedium} • Sin alertas altas`} 
             color="#EF4444" 
             icon={LocalHospital}
+            loading={loading}
           />
         </Grid>
       </Grid>
