@@ -39,12 +39,14 @@ if DEBUG:
 else:
     ALLOWED_HOSTS = get_env_variable("ALLOWED_HOSTS", "localhost").split(",")
 
-# Credenciales de Terceros (Strava)
-STRAVA_CLIENT_ID = get_env_variable("STRAVA_CLIENT_ID")
-STRAVA_CLIENT_SECRET = get_env_variable("STRAVA_CLIENT_SECRET")
+# Strava (opcional en local, requerido solo si querés en prod)
+STRAVA_CLIENT_ID = get_env_variable("STRAVA_CLIENT_ID", default="", required=not DEBUG)
+STRAVA_CLIENT_SECRET = get_env_variable("STRAVA_CLIENT_SECRET", default="", required=not DEBUG)
+# Este es el token que definiste en tu .env (MENDIETA_SECRET_TOKEN_2025)
+STRAVA_WEBHOOK_VERIFY_TOKEN = get_env_variable("STRAVA_WEBHOOK_VERIFY_TOKEN", default="", required=not DEBUG)
 
-# Clave para IA
-OPENAI_API_KEY = get_env_variable("OPENAI_API_KEY")
+# OpenAI (opcional en local)
+OPENAI_API_KEY = get_env_variable("OPENAI_API_KEY", default="", required=False)
 
 
 # ==============================================================================
@@ -116,13 +118,14 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'mendieta_db',
-        'USER': 'postgres',
-        'PASSWORD': 'Menfer95',
-        'HOST': 'localhost',
-        'PORT': '5432',
+        'NAME': get_env_variable("DB_NAME"),
+        'USER': get_env_variable("DB_USER"),
+        'PASSWORD': get_env_variable("DB_PASSWORD"),
+        'HOST': get_env_variable("DB_HOST", "localhost", required=False),
+        'PORT': get_env_variable("DB_PORT", "5432", required=False),
     }
 }
+
 
 # ==============================================================================
 #  SEGURIDAD Y PASSWORD
@@ -223,9 +226,10 @@ else:
     ]
 
 # CRÍTICO: Dominios confiables para recibir POST (Webhooks Strava)
+# IMPORTANTE: Asegúrate de que esta URL coincida con la de tu Ngrok actual
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
-    "https://overfaithfully-piquant-bryn.ngrok-free.dev",  # <--- TU NGROK ACTUAL
+    "https://overfaithfully-piquant-bryn.ngrok-free.dev", 
 ]
 
 # ==============================================================================
