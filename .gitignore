@@ -34,3 +34,8 @@ staticfiles/
 node_modules/
 build/
 dist/
+# Assets / media files
+*.jpg
+*.jpeg
+*.png
+*.webp
