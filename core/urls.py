@@ -22,6 +22,8 @@ router = DefaultRouter()
 # 1. Gestión de Personas y Grupos
 router.register(r'equipos', EquipoViewSet, basename='equipo')
 router.register(r'alumnos', AlumnoViewSet, basename='alumno')
+# Alias compat/UX: /api/athletes/ (mismo recurso que alumnos)
+router.register(r'athletes', AlumnoViewSet, basename='athlete')
 
 # 2. Gestión Operativa (Día a Día)
 router.register(r'entrenamientos', EntrenamientoViewSet, basename='entrenamiento')

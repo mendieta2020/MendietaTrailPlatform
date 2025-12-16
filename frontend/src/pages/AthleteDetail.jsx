@@ -14,12 +14,14 @@ import WeeklyCalendar from '../components/WeeklyCalendar';
 import StudentPerformanceChart from '../components/widgets/StudentPerformanceChart'; 
 import TemplateLibrary from '../components/TemplateLibrary'; 
 import ErrorBoundary from '../components/ErrorBoundary'; // <--- 1. IMPORTACIÓN DE SEGURIDAD
+import RiskBadge from '../components/RiskBadge';
 
 const AthleteDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [athlete, setAthlete] = useState(null);
   const [trainings, setTrainings] = useState([]);
+  const [injuryRisk, setInjuryRisk] = useState(null);
   const [loading, setLoading] = useState(true);
   
   // Estado para la Librería Lateral
@@ -32,6 +34,19 @@ const AthleteDetail = () => {
         // 1. Datos del Alumno
         const resAthlete = await client.get(`/api/alumnos/${id}/`);
         setAthlete(resAthlete.data);
+
+        // 1.1 Riesgo de lesión (snapshot materializado)
+        const resRisk = await client.get(`/api/alumnos/${id}/injury-risk/`);
+        // Normalizamos al formato del componente
+        if (resRisk?.data?.data_available) {
+          setInjuryRisk({
+            risk_level: resRisk.data.risk_level,
+            risk_score: resRisk.data.risk_score,
+            risk_reasons: resRisk.data.risk_reasons,
+          });
+        } else {
+          setInjuryRisk(null);
+        }
 
         // 2. Sus Entrenamientos
         const resTrainings = await client.get(`/api/entrenamientos/?alumno=${id}`);
@@ -71,6 +86,7 @@ const AthleteDetail = () => {
                 {athlete.nombre} {athlete.apellido}
               </Typography>
               <Chip label={athlete.estado_actual || "Activo"} color="success" size="small" sx={{ fontWeight: 600 }} />
+              <RiskBadge risk={injuryRisk} />
             </Box>
             
             <Stack direction="row" spacing={3} sx={{ color: '#64748B' }}>

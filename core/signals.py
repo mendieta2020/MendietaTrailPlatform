@@ -7,6 +7,14 @@ from .metrics import (
     calcular_ritmos_series # <--- IMPORTACIÓN CLAVE
 )
 
+def _has_field(obj, name: str) -> bool:
+    # Evita crashes si el modelo no tiene ciertos campos (compat/migraciones desalineadas)
+    return hasattr(obj, name)
+
+def _safe_set(obj, name: str, value):
+    if _has_field(obj, name):
+        setattr(obj, name, value)
+
 @receiver(post_save, sender=Alumno)
 def actualizar_pronosticos_alumno(sender, instance, created, **kwargs):
     """
@@ -25,9 +33,9 @@ def actualizar_pronosticos_alumno(sender, instance, created, **kwargs):
     # Si la VAM es 0 o nula, intentamos calcularla científicamente desde los tests
     if not vam_operativa or vam_operativa == 0:
         vam_calculada = calcular_vam_desde_tests(
-            cooper_km=instance.test_cooper_distancia,
-            tiempo_1k=instance.test_1k_tiempo,
-            tiempo_5k=instance.test_5k_tiempo
+            cooper_km=getattr(instance, "test_cooper_distancia", 0) or 0,
+            tiempo_1k=getattr(instance, "test_1k_tiempo", 0) or 0,
+            tiempo_5k=getattr(instance, "test_5k_tiempo", 0) or 0,
         )
         if vam_calculada > 0:
             print(f"🧪 [CIENCIA] VAM Calculada por Tests de Campo: {vam_calculada} km/h")
@@ -48,31 +56,31 @@ def actualizar_pronosticos_alumno(sender, instance, created, **kwargs):
          pt21, pt42, pt60, pt80, pt100, pt160) = generar_pronosticos_alumno(vam_operativa)
         
         # Asignar Calle
-        instance.prediccion_10k = p10
-        instance.prediccion_21k = p21
-        instance.prediccion_42k = p42
+        _safe_set(instance, "prediccion_10k", p10)
+        _safe_set(instance, "prediccion_21k", p21)
+        _safe_set(instance, "prediccion_42k", p42)
         
         # Asignar Trail
-        instance.prediccion_trail_21k = pt21
-        instance.prediccion_trail_42k = pt42
-        instance.prediccion_trail_60k = pt60
-        instance.prediccion_trail_80k = pt80
-        instance.prediccion_trail_100k = pt100
-        instance.prediccion_trail_160k = pt160
+        _safe_set(instance, "prediccion_trail_21k", pt21)
+        _safe_set(instance, "prediccion_trail_42k", pt42)
+        _safe_set(instance, "prediccion_trail_60k", pt60)
+        _safe_set(instance, "prediccion_trail_80k", pt80)
+        _safe_set(instance, "prediccion_trail_100k", pt100)
+        _safe_set(instance, "prediccion_trail_160k", pt160)
 
         # B. Ritmos de Series (NUEVO)
         series = calcular_ritmos_series(vam_operativa)
         if series:
-            instance.ritmo_serie_100m = series.get('100m', '-')
-            instance.ritmo_serie_200m = series.get('200m', '-')
-            instance.ritmo_serie_250m = series.get('250m', '-')
-            instance.ritmo_serie_400m = series.get('400m', '-')
-            instance.ritmo_serie_500m = series.get('500m', '-')
-            instance.ritmo_serie_800m = series.get('800m', '-')
-            instance.ritmo_serie_1000m = series.get('1000m', '-')
-            instance.ritmo_serie_1200m = series.get('1200m', '-')
-            instance.ritmo_serie_1600m = series.get('1600m', '-')
-            instance.ritmo_serie_2000m = series.get('2000m', '-')
+            _safe_set(instance, "ritmo_serie_100m", series.get('100m', '-'))
+            _safe_set(instance, "ritmo_serie_200m", series.get('200m', '-'))
+            _safe_set(instance, "ritmo_serie_250m", series.get('250m', '-'))
+            _safe_set(instance, "ritmo_serie_400m", series.get('400m', '-'))
+            _safe_set(instance, "ritmo_serie_500m", series.get('500m', '-'))
+            _safe_set(instance, "ritmo_serie_800m", series.get('800m', '-'))
+            _safe_set(instance, "ritmo_serie_1000m", series.get('1000m', '-'))
+            _safe_set(instance, "ritmo_serie_1200m", series.get('1200m', '-'))
+            _safe_set(instance, "ritmo_serie_1600m", series.get('1600m', '-'))
+            _safe_set(instance, "ritmo_serie_2000m", series.get('2000m', '-'))
         
         # Marcamos para saltar esta señal en el próximo guardado interno
         instance._skip_signal = True 
@@ -80,22 +88,22 @@ def actualizar_pronosticos_alumno(sender, instance, created, **kwargs):
         
     else:
         # Limpieza si se borran los datos (Reset)
-        if instance.prediccion_10k:
-             instance.prediccion_10k = ""
-             instance.prediccion_21k = ""
-             instance.prediccion_42k = ""
-             instance.prediccion_trail_21k = ""
-             instance.prediccion_trail_42k = ""
-             instance.prediccion_trail_60k = ""
-             instance.prediccion_trail_80k = ""
-             instance.prediccion_trail_100k = ""
-             instance.prediccion_trail_160k = ""
+        if getattr(instance, "prediccion_10k", ""):
+             _safe_set(instance, "prediccion_10k", "")
+             _safe_set(instance, "prediccion_21k", "")
+             _safe_set(instance, "prediccion_42k", "")
+             _safe_set(instance, "prediccion_trail_21k", "")
+             _safe_set(instance, "prediccion_trail_42k", "")
+             _safe_set(instance, "prediccion_trail_60k", "")
+             _safe_set(instance, "prediccion_trail_80k", "")
+             _safe_set(instance, "prediccion_trail_100k", "")
+             _safe_set(instance, "prediccion_trail_160k", "")
              
              # Limpiar series también
-             instance.ritmo_serie_100m = ""
-             instance.ritmo_serie_200m = ""
-             instance.ritmo_serie_400m = ""
-             instance.ritmo_serie_1000m = ""
+             _safe_set(instance, "ritmo_serie_100m", "")
+             _safe_set(instance, "ritmo_serie_200m", "")
+             _safe_set(instance, "ritmo_serie_400m", "")
+             _safe_set(instance, "ritmo_serie_1000m", "")
              # ... (el resto se limpiará al guardar vacío)
              
              instance._skip_signal = True

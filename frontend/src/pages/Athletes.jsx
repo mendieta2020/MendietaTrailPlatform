@@ -7,6 +7,7 @@ import {
 import { Search, Edit, Add, NavigateNext } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import client from '../api/client';
+import RiskBadge from '../components/RiskBadge';
 
 const Athletes = () => {
   const navigate = useNavigate(); // <--- Hook de navegación
@@ -16,7 +17,7 @@ const Athletes = () => {
   useEffect(() => {
     const fetchAthletes = async () => {
       try {
-        const res = await client.get('/api/alumnos/');
+        const res = await client.get('/api/alumnos/?include_injury_risk=1');
         setAthletes(res.data);
       } catch (err) {
         console.error(err);
@@ -77,6 +78,7 @@ const Athletes = () => {
               <TableCell sx={{ fontWeight: 600, color: '#475569' }}>ESTADO</TableCell>
               <TableCell sx={{ fontWeight: 600, color: '#475569' }}>PLAN</TableCell>
               <TableCell sx={{ fontWeight: 600, color: '#475569' }}>FITNESS</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: '#475569' }}>RIESGO</TableCell>
               <TableCell align="right" sx={{ fontWeight: 600, color: '#475569' }}>ACCIONES</TableCell>
             </TableRow>
           </TableHead>
@@ -102,11 +104,11 @@ const Athletes = () => {
                 </TableCell>
                 <TableCell>
                     <Chip 
-                        label={athlete.activo ? "Activo" : "Inactivo"} 
+                        label={(athlete.estado_actual || 'ACTIVO') === 'ACTIVO' ? "Activo" : "Inactivo"} 
                         size="small" 
                         sx={{ 
-                            bgcolor: athlete.activo ? '#ECFDF5' : '#F1F5F9', 
-                            color: athlete.activo ? '#059669' : '#64748B',
+                            bgcolor: (athlete.estado_actual || 'ACTIVO') === 'ACTIVO' ? '#ECFDF5' : '#F1F5F9', 
+                            color: (athlete.estado_actual || 'ACTIVO') === 'ACTIVO' ? '#059669' : '#64748B',
                             fontWeight: 600,
                             borderRadius: 1
                         }} 
@@ -122,6 +124,9 @@ const Athletes = () => {
                         {/* Dato simulado hasta tener real */}
                         {Math.floor(Math.random() * 50) + 40} CTL
                     </Typography>
+                </TableCell>
+                <TableCell>
+                  <RiskBadge risk={athlete.injury_risk} />
                 </TableCell>
                 <TableCell align="right">
                   <IconButton size="small" onClick={(e) => { e.stopPropagation(); /* Evita navegar al editar */ }}>
