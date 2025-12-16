@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework import viewsets, permissions, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -31,6 +33,8 @@ from .serializers import (
 
 from allauth.socialaccount.models import SocialToken
 from .services import sincronizar_actividades_strava
+
+logger = logging.getLogger(__name__)
 
 # ==============================================================================
 #  API REST (EL CEREBRO DE LA APP MÓVIL 📱)
@@ -142,6 +146,17 @@ class AlumnoViewSet(viewsets.ModelViewSet):
                 qs = InjuryRiskSnapshot.objects.filter(entrenador=request.user, alumno=alumno, fecha=target)
                 snap = qs.first()
                 if not snap:
+                    recalc_enqueued = False
+                    try:
+                        from analytics.tasks import recompute_injury_risk_for_athlete
+
+                        recompute_injury_risk_for_athlete.delay(alumno.id, target.isoformat())
+                        recalc_enqueued = True
+                    except Exception as e:
+                        logger.warning(
+                            "injury_risk.recalc_enqueue_failed",
+                            extra={"alumno_id": alumno.id, "entrenador_id": request.user.id, "fecha": target.isoformat()},
+                        )
                     # Respuesta estable (no 404) para UX: sin datos
                     return Response(
                         {
@@ -150,6 +165,7 @@ class AlumnoViewSet(viewsets.ModelViewSet):
                             "risk_level": "LOW",
                             "risk_score": 0,
                             "risk_reasons": ["Sin snapshot de riesgo para esa fecha"],
+                            "recalc_enqueued": recalc_enqueued,
                         }
                     )
                 data = InjuryRiskSnapshotSerializer(snap).data
@@ -173,6 +189,17 @@ class AlumnoViewSet(viewsets.ModelViewSet):
         # Default: último snapshot disponible
         snap = InjuryRiskSnapshot.objects.filter(entrenador=request.user, alumno=alumno).order_by("-fecha").first()
         if not snap:
+            recalc_enqueued = False
+            try:
+                from analytics.tasks import recompute_injury_risk_for_athlete
+
+                recompute_injury_risk_for_athlete.delay(alumno.id, timezone.localdate().isoformat())
+                recalc_enqueued = True
+            except Exception:
+                logger.warning(
+                    "injury_risk.recalc_enqueue_failed",
+                    extra={"alumno_id": alumno.id, "entrenador_id": request.user.id, "fecha": str(timezone.localdate())},
+                )
             return Response(
                 {
                     "data_available": False,
@@ -180,6 +207,7 @@ class AlumnoViewSet(viewsets.ModelViewSet):
                     "risk_level": "LOW",
                     "risk_score": 0,
                     "risk_reasons": ["Sin datos PMC / riesgo aún no calculado"],
+                    "recalc_enqueued": recalc_enqueued,
                 }
             )
 
