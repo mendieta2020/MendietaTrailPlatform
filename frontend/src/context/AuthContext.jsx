@@ -1,5 +1,5 @@
 import { createContext, useState, useEffect, useContext } from 'react';
-import api from '../api/axios'; // Usamos nuestra instancia configurada
+import client from '../api/client'; // Instancia única (baseURL + interceptores)
 
 const AuthContext = createContext();
 
@@ -23,9 +23,7 @@ export const AuthProvider = ({ children }) => {
     const login = async (username, password) => {
         try {
             // Hacemos POST a la ruta de token de Django
-            // IMPORTANTE: Esta ruta DEBE estar abierta (AllowAny) en el backend, 
-            // pero como es JWT predeterminada, suele estarlo.
-            const response = await api.post('token/', { username, password });
+            const response = await client.post('/api/token/', { username, password });
             
             // Guardamos las llaves
             localStorage.setItem('access_token', response.data.access);
