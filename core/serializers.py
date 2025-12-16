@@ -4,6 +4,7 @@ from .models import (
     PlantillaEntrenamiento, Entrenamiento, Actividad, Pago,
     Equipo, VideoEjercicio # <--- NUEVO MODELO IMPORTADO
 )
+from analytics.models import InjuryRiskSnapshot
 
 # ==============================================================================
 #  0. GESTIÓN DE EQUIPOS
@@ -71,11 +72,31 @@ class AlumnoSerializer(serializers.ModelSerializer):
     equipo_nombre = serializers.CharField(source='equipo.nombre', read_only=True)
     equipo = serializers.PrimaryKeyRelatedField(queryset=Equipo.objects.all(), allow_null=True)
     pagos = PagoSerializer(many=True, read_only=True)
+    injury_risk = serializers.SerializerMethodField()
 
     class Meta:
         model = Alumno
         fields = '__all__'
         read_only_fields = ['fecha_alta', 'entrenador', 'equipo_nombre']
+
+    def get_injury_risk(self, obj):
+        """
+        Devuelve el snapshot de riesgo del día (si fue prefetched).
+        Para evitar N+1, solo se completa cuando el queryset fue armado con prefetch.
+        """
+        # Prefetch convention: obj.injury_risk_today = [InjuryRiskSnapshot] o []
+        prefetched = getattr(obj, "injury_risk_today", None)
+        if prefetched is None:
+            return None
+        if not prefetched:
+            return None
+        snap: InjuryRiskSnapshot = prefetched[0]
+        return {
+            "date": snap.fecha.isoformat(),
+            "risk_level": snap.risk_level,
+            "risk_score": snap.risk_score,
+            "risk_reasons": snap.risk_reasons,
+        }
 
 # ==============================================================================
 #  4. CARRERAS

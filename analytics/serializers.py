@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from analytics.models import HistorialFitness  # Importación absoluta (más segura)
+from analytics.models import HistorialFitness, InjuryRiskSnapshot  # Importación absoluta (más segura)
 
 class HistorialFitnessSerializer(serializers.ModelSerializer):
     """
@@ -14,4 +14,15 @@ class HistorialFitnessSerializer(serializers.ModelSerializer):
             'atl',         # Fatiga (Línea Rosa)
             'tsb',         # Forma (Línea Amarilla)
             'tss_diario'   # Barras de carga (Opcional para gráficos mixtos)
+        ]
+
+
+class InjuryRiskSnapshotSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InjuryRiskSnapshot
+        fields = [
+            "fecha",
+            "risk_level",
+            "risk_score",
+            "risk_reasons",
         ]

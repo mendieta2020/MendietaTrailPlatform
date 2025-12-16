@@ -7,7 +7,9 @@ from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db import transaction 
-from datetime import datetime
+from datetime import datetime, date as date_type, timedelta
+from django.db.models import Prefetch
+from django.utils import timezone
 
 # Importamos Modelos
 from .models import (
@@ -16,6 +18,8 @@ from .models import (
     InscripcionCarrera, Pago,
     Equipo, VideoEjercicio # <--- NUEVO MODELO IMPORTADO
 )
+from analytics.models import InjuryRiskSnapshot
+from analytics.serializers import InjuryRiskSnapshotSerializer
 
 # Importamos Serializadores
 from .serializers import (
@@ -101,10 +105,86 @@ class AlumnoViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         # MULTI-TENANT: Solo mis alumnos
-        return Alumno.objects.filter(entrenador=self.request.user)
+        qs = Alumno.objects.filter(entrenador=self.request.user)
+
+        # Optimización opcional (sin N+1): incluir riesgo del día si lo piden
+        if self.request.query_params.get("include_injury_risk") in ("1", "true", "True"):
+            today = timezone.localdate()
+            qs = qs.prefetch_related(
+                Prefetch(
+                    "injury_risk_snapshots",
+                    queryset=InjuryRiskSnapshot.objects.filter(fecha=today, entrenador=self.request.user),
+                    to_attr="injury_risk_today",
+                )
+            )
+
+        return qs
 
     def perform_create(self, serializer):
         serializer.save(entrenador=self.request.user)
+
+    # Ruta: /api/alumnos/{id}/injury-risk/ (y también /api/athletes/{id}/injury-risk/ vía alias de router)
+    @action(detail=True, methods=["get"], url_path="injury-risk")
+    def injury_risk(self, request, pk=None):
+        alumno = self.get_object()  # ya está scopiado por entrenador
+
+        # Query params: date=YYYY-MM-DD o start/end para rango
+        date_q = request.query_params.get("date")
+        start_q = request.query_params.get("start")
+        end_q = request.query_params.get("end")
+
+        def parse_iso(d: str) -> date_type:
+            return date_type.fromisoformat(d)
+
+        try:
+            if date_q:
+                target = parse_iso(date_q)
+                qs = InjuryRiskSnapshot.objects.filter(entrenador=request.user, alumno=alumno, fecha=target)
+                snap = qs.first()
+                if not snap:
+                    # Respuesta estable (no 404) para UX: sin datos
+                    return Response(
+                        {
+                            "data_available": False,
+                            "fecha": target.isoformat(),
+                            "risk_level": "LOW",
+                            "risk_score": 0,
+                            "risk_reasons": ["Sin snapshot de riesgo para esa fecha"],
+                        }
+                    )
+                data = InjuryRiskSnapshotSerializer(snap).data
+                return Response({"data_available": True, **data})
+
+            if start_q or end_q:
+                start = parse_iso(start_q) if start_q else (timezone.localdate() - timedelta(days=30))
+                end = parse_iso(end_q) if end_q else timezone.localdate()
+                if start > end:
+                    return Response({"error": "start no puede ser mayor que end"}, status=status.HTTP_400_BAD_REQUEST)
+                if (end - start).days > 366:
+                    return Response({"error": "Rango máximo: 366 días"}, status=status.HTTP_400_BAD_REQUEST)
+
+                qs = InjuryRiskSnapshot.objects.filter(entrenador=request.user, alumno=alumno, fecha__range=[start, end]).order_by("fecha")
+                data = InjuryRiskSnapshotSerializer(qs, many=True).data
+                return Response({"data_available": bool(data), "results": data})
+
+        except ValueError:
+            return Response({"error": "Formato de fecha inválido. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Default: último snapshot disponible
+        snap = InjuryRiskSnapshot.objects.filter(entrenador=request.user, alumno=alumno).order_by("-fecha").first()
+        if not snap:
+            return Response(
+                {
+                    "data_available": False,
+                    "fecha": None,
+                    "risk_level": "LOW",
+                    "risk_score": 0,
+                    "risk_reasons": ["Sin datos PMC / riesgo aún no calculado"],
+                }
+            )
+
+        data = InjuryRiskSnapshotSerializer(snap).data
+        return Response({"data_available": True, **data})
 
 
 class EntrenamientoViewSet(viewsets.ModelViewSet):

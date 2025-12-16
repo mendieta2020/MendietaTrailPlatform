@@ -12,6 +12,9 @@ from datetime import timedelta # Importamos timedelta para JWT
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Detectar modo tests (para no exigir .env / Postgres)
+RUNNING_TESTS = 'test' in sys.argv
+
 # --- CARGA DE VARIABLES DE ENTORNO ---
 env_path = BASE_DIR / '.env'
 load_dotenv(env_path)
@@ -29,8 +32,8 @@ def get_env_variable(var_name, default=None, required=True):
         return default
 
 # Variables Críticas
-SECRET_KEY = get_env_variable("SECRET_KEY")
-DEBUG = get_env_variable("DEBUG", "False") == "True"
+SECRET_KEY = get_env_variable("SECRET_KEY", default="test-secret-key", required=not RUNNING_TESTS)
+DEBUG = get_env_variable("DEBUG", default=("True" if RUNNING_TESTS else "False"), required=not RUNNING_TESTS) == "True"
 
 # --- CONFIGURACIÓN DE HOSTS (Ngrok Ready) ---
 if DEBUG:
@@ -39,11 +42,11 @@ if DEBUG:
 else:
     ALLOWED_HOSTS = get_env_variable("ALLOWED_HOSTS", "localhost").split(",")
 
-# Strava (opcional en local, requerido solo si querés en prod)
-STRAVA_CLIENT_ID = get_env_variable("STRAVA_CLIENT_ID", default="", required=not DEBUG)
-STRAVA_CLIENT_SECRET = get_env_variable("STRAVA_CLIENT_SECRET", default="", required=not DEBUG)
+# Strava (opcional en local/tests, requerido solo si querés en prod)
+STRAVA_CLIENT_ID = get_env_variable("STRAVA_CLIENT_ID", default="", required=(not DEBUG and not RUNNING_TESTS))
+STRAVA_CLIENT_SECRET = get_env_variable("STRAVA_CLIENT_SECRET", default="", required=(not DEBUG and not RUNNING_TESTS))
 # Este es el token que definiste en tu .env (MENDIETA_SECRET_TOKEN_2025)
-STRAVA_WEBHOOK_VERIFY_TOKEN = get_env_variable("STRAVA_WEBHOOK_VERIFY_TOKEN", default="", required=not DEBUG)
+STRAVA_WEBHOOK_VERIFY_TOKEN = get_env_variable("STRAVA_WEBHOOK_VERIFY_TOKEN", default="", required=(not DEBUG and not RUNNING_TESTS))
 
 # OpenAI (opcional en local)
 OPENAI_API_KEY = get_env_variable("OPENAI_API_KEY", default="", required=False)
@@ -116,14 +119,21 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 #  BASE DE DATOS
 # ==============================================================================
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': get_env_variable("DB_NAME"),
-        'USER': get_env_variable("DB_USER"),
-        'PASSWORD': get_env_variable("DB_PASSWORD"),
-        'HOST': get_env_variable("DB_HOST", "localhost", required=False),
-        'PORT': get_env_variable("DB_PORT", "5432", required=False),
-    }
+    'default': (
+        {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:',
+        }
+        if RUNNING_TESTS
+        else {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': get_env_variable("DB_NAME"),
+            'USER': get_env_variable("DB_USER"),
+            'PASSWORD': get_env_variable("DB_PASSWORD"),
+            'HOST': get_env_variable("DB_HOST", "localhost", required=False),
+            'PORT': get_env_variable("DB_PORT", "5432", required=False),
+        }
+    )
 }
 
 

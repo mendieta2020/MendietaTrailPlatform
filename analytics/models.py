@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 from core.models import Alumno
 
 class HistorialFitness(models.Model):
@@ -45,3 +46,56 @@ class AlertaRendimiento(models.Model):
 
     def __str__(self):
         return f"{self.alumno} - {self.tipo}"
+
+
+class InjuryRiskSnapshot(models.Model):
+    """
+    Snapshot diario del riesgo de lesión por atleta (v1).
+
+    Multi-tenant: el "tenant" actual del sistema es el entrenador (User).
+    Guardamos entrenador explícitamente para scoping rápido y robusto.
+    """
+
+    class RiskLevel(models.TextChoices):
+        LOW = "LOW", "LOW"
+        MEDIUM = "MEDIUM", "MEDIUM"
+        HIGH = "HIGH", "HIGH"
+
+    entrenador = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="injury_risk_snapshots",
+        db_index=True,
+    )
+    alumno = models.ForeignKey(
+        Alumno,
+        on_delete=models.CASCADE,
+        related_name="injury_risk_snapshots",
+        db_index=True,
+    )
+    fecha = models.DateField(db_index=True)
+
+    risk_level = models.CharField(max_length=10, choices=RiskLevel.choices, default=RiskLevel.LOW)
+    risk_score = models.PositiveSmallIntegerField(default=0, help_text="0–100")
+    risk_reasons = models.JSONField(default=list, blank=True, help_text="Lista de strings explicables")
+
+    # Inputs del día (útiles para auditoría/QA)
+    ctl = models.FloatField(default=0)
+    atl = models.FloatField(default=0)
+    tsb = models.FloatField(default=0)
+
+    version = models.CharField(max_length=10, default="v1")
+    computed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("alumno", "fecha")
+        indexes = [
+            models.Index(fields=["entrenador", "fecha"]),
+            models.Index(fields=["alumno", "-fecha"]),
+        ]
+        ordering = ["-fecha"]
+        verbose_name = "🩺 Injury Risk Snapshot"
+        verbose_name_plural = "🩺 Injury Risk Snapshots"
+
+    def __str__(self):
+        return f"{self.fecha} - {self.alumno} ({self.risk_level} {self.risk_score})"
