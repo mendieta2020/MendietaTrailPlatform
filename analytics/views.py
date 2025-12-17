@@ -20,15 +20,24 @@ class PMCDataView(APIView):
             alumno_id = request.query_params.get('alumno_id')
             sport_filter = request.query_params.get('sport')
 
-            if hasattr(user, 'perfil_alumno'):
+            is_athlete = hasattr(user, "perfil_alumno")
+
+            # Atleta: siempre forzamos su propio alumno_id
+            if is_athlete:
                 alumno_id = user.perfil_alumno.id
-            elif hasattr(user, 'alumnos'):
+            else:
+                # Coach: si no elige alumno, usamos el primero de su tenant
                 if not alumno_id:
                     first_active = Entrenamiento.objects.filter(alumno__entrenador=user).first()
-                    if first_active: alumno_id = first_active.alumno_id
-                    else: return Response([], status=200)
-            else:
-                return Response({"error": "No autorizado"}, status=403)
+                    if first_active:
+                        alumno_id = first_active.alumno_id
+                    else:
+                        return Response([], status=200)
+
+                # 🔒 Validación anti fuga: el alumno_id debe pertenecer al coach autenticado
+                if not Alumno.objects.filter(id=alumno_id, entrenador=user).exists():
+                    # No devolvemos 403/404 para no romper UX existente: devolvemos vacío
+                    return Response([], status=200)
 
             # 2. QUERYSET
             filters = {'alumno_id': alumno_id}
@@ -38,14 +47,27 @@ class PMCDataView(APIView):
                 elif sport_filter == 'STRENGTH': filters['tipo_actividad'] = 'STRENGTH'
                 else: filters['tipo_actividad'] = sport_filter
 
-            qs = Entrenamiento.objects.filter(**filters).values(
+            # 🔒 Scoping por tenant: atleta ve solo lo suyo, coach solo de sus alumnos
+            base_qs = Entrenamiento.objects.all()
+            if is_athlete:
+                base_qs = base_qs.filter(alumno__usuario=user)
+            else:
+                base_qs = base_qs.filter(alumno__entrenador=user)
+
+            qs = base_qs.filter(**filters).values(
                 'fecha_asignada', 'tiempo_planificado_min', 'tiempo_real_min', 
                 'distancia_planificada_km', 'distancia_real_km',
                 'desnivel_planificado_m', 'desnivel_real_m',
                 'rpe', 'rpe_planificado', 'completado', 'tipo_actividad'
             )
 
-            objetivos_qs = InscripcionCarrera.objects.filter(alumno_id=alumno_id).select_related('carrera').values(
+            objetivos_base = InscripcionCarrera.objects.all()
+            if is_athlete:
+                objetivos_base = objetivos_base.filter(alumno__usuario=user)
+            else:
+                objetivos_base = objetivos_base.filter(alumno__entrenador=user)
+
+            objetivos_qs = objetivos_base.filter(alumno_id=alumno_id).select_related('carrera').values(
                 'carrera__fecha', 'carrera__nombre', 'carrera__distancia_km', 'carrera__desnivel_positivo_m'
             )
 

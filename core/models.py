@@ -54,6 +54,15 @@ TURNOS_DIA = [
 class VideoEjercicio(models.Model):
     titulo = models.CharField(max_length=100, blank=True, help_text="Ej: Sentadilla Técnica")
     archivo = models.FileField(upload_to='videos_ejercicios/', help_text="Soporta MP4, MOV, GIF")
+    # Multi-tenant (coach-scoped): el uploader define el tenant
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="videos_ejercicios",
+        null=True,
+        blank=True,
+        db_index=True,
+    )
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -68,6 +77,15 @@ class Equipo(models.Model):
     nombre = models.CharField(max_length=100, unique=True, help_text="Ej: Inicial Calle, Avanzado Montaña")
     descripcion = models.TextField(blank=True, null=True)
     color_identificador = models.CharField(max_length=7, default="#F57C00", help_text="Color Hexadecimal para el calendario")
+    # Multi-tenant (coach-scoped): un equipo pertenece a un entrenador (permite equipos vacíos seguros)
+    entrenador = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="equipos",
+        null=True,
+        blank=True,
+        db_index=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

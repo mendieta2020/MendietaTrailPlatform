@@ -12,8 +12,10 @@ from datetime import timedelta # Importamos timedelta para JWT
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Detectar modo tests (para no exigir .env / Postgres)
-RUNNING_TESTS = 'test' in sys.argv
+# Detectar comandos de management donde no queremos exigir .env / Postgres
+# (CI/agents suelen correr makemigrations/migrate sin variables de entorno)
+RUNNING_TESTS = "test" in sys.argv
+RUNNING_MGMT_COMMAND = any(cmd in sys.argv for cmd in ("test", "makemigrations", "migrate"))
 
 # --- CARGA DE VARIABLES DE ENTORNO ---
 env_path = BASE_DIR / '.env'
@@ -90,6 +92,8 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    # Multi-tenant context (tenant = coach_id). No bloquea, solo expone request.tenant_coach_id.
+    'core.middleware.TenantContextMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'allauth.account.middleware.AccountMiddleware', # ALLAUTH AL FINAL
@@ -119,19 +123,19 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 #  BASE DE DATOS
 # ==============================================================================
 DATABASES = {
-    'default': (
+    "default": (
         {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': ':memory:',
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": ":memory:" if RUNNING_TESTS else str(BASE_DIR / "db.sqlite3"),
         }
-        if RUNNING_TESTS
+        if RUNNING_MGMT_COMMAND
         else {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': get_env_variable("DB_NAME"),
-            'USER': get_env_variable("DB_USER"),
-            'PASSWORD': get_env_variable("DB_PASSWORD"),
-            'HOST': get_env_variable("DB_HOST", "localhost", required=False),
-            'PORT': get_env_variable("DB_PORT", "5432", required=False),
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": get_env_variable("DB_NAME"),
+            "USER": get_env_variable("DB_USER"),
+            "PASSWORD": get_env_variable("DB_PASSWORD"),
+            "HOST": get_env_variable("DB_HOST", "localhost", required=False),
+            "PORT": get_env_variable("DB_PORT", "5432", required=False),
         }
     )
 }

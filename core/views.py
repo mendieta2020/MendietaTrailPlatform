@@ -21,6 +21,9 @@ from .models import (
 from analytics.models import InjuryRiskSnapshot
 from analytics.serializers import InjuryRiskSnapshotSerializer
 
+# Permisos multi-tenant (coach-scoped)
+from .permissions import IsCoachUser
+
 # Importamos Serializadores
 from .serializers import (
     AlumnoSerializer, EntrenamientoSerializer,
@@ -45,13 +48,20 @@ class VideoUploadViewSet(viewsets.ModelViewSet):
     queryset = VideoEjercicio.objects.all()
     serializer_class = VideoEjercicioSerializer
     parser_classes = (MultiPartParser, FormParser) # Habilita subida de archivos
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsCoachUser]
+
+    def get_queryset(self):
+        # Multi-tenant: cada coach ve solo sus videos (staff puede ver todo)
+        user = self.request.user
+        if user.is_staff:
+            return VideoEjercicio.objects.all()
+        return VideoEjercicio.objects.filter(uploaded_by=user)
 
     def create(self, request, *args, **kwargs):
         # 1. Validar y Guardar
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        video = serializer.save()
+        video = serializer.save(uploaded_by=request.user)
         
         # 2. Construir URL Absoluta (Para que funcione en el reproductor)
         # Ej: http://localhost:8000/media/videos_ejercicios/sentadilla.mp4
@@ -72,7 +82,18 @@ class EquipoViewSet(viewsets.ModelViewSet):
     """
     queryset = Equipo.objects.all()
     serializer_class = EquipoSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsCoachUser]
+    def get_queryset(self):
+        # Multi-tenant: cada coach ve solo sus equipos (staff puede ver todo)
+        user = self.request.user
+        if user.is_staff:
+            return Equipo.objects.all()
+        return Equipo.objects.filter(entrenador=user)
+
+    def perform_create(self, serializer):
+        # Multi-tenant: el owner del equipo es el coach autenticado
+        serializer.save(entrenador=self.request.user)
+
     
     # Filtros
     filter_backends = [filters.SearchFilter]
@@ -83,8 +104,8 @@ class EquipoViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def alumnos(self, request, pk=None):
         equipo = self.get_object()
-        # Filtramos solo los alumnos que pertenecen a este equipo
-        alumnos = equipo.alumnos.all()
+        # Multi-tenant: solo alumnos del mismo entrenador
+        alumnos = equipo.alumnos.filter(entrenador=request.user)
         serializer = AlumnoSerializer(alumnos, many=True)
         return Response(serializer.data)
 
@@ -299,7 +320,8 @@ class PlantillaViewSet(viewsets.ModelViewSet):
             )
 
         try:
-            equipo = Equipo.objects.get(pk=equipo_id)
+            # Multi-tenant: el equipo debe pertenecer al coach autenticado
+            equipo = Equipo.objects.get(pk=equipo_id, entrenador=request.user)
             # Parseamos la fecha que viene del frontend (Drop event)
             fecha_inicio = datetime.strptime(fecha_inicio_str, '%Y-%m-%d').date()
         except Equipo.DoesNotExist:

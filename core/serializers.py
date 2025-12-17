@@ -53,6 +53,21 @@ class EntrenamientoSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['porcentaje_cumplimiento']
 
+    def validate_alumno(self, alumno: Alumno):
+        """
+        Multi-tenant: un coach no puede crear/editar entrenamientos de atletas ajenos.
+        """
+        request = self.context.get("request")
+        if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
+            return alumno
+        user = request.user
+        # Si es atleta, no permitimos setear alumno arbitrario (este endpoint es de coach)
+        if hasattr(user, "perfil_alumno") and not user.is_staff:
+            raise serializers.ValidationError("No autorizado.")
+        if alumno.entrenador_id and alumno.entrenador_id != user.id and not user.is_staff:
+            raise serializers.ValidationError("No autorizado.")
+        return alumno
+
 # ==============================================================================
 #  2. GESTIÓN FINANCIERA
 # ==============================================================================
@@ -70,7 +85,8 @@ class PagoSerializer(serializers.ModelSerializer):
 class AlumnoSerializer(serializers.ModelSerializer):
     # Usamos PrimaryKeyRelatedField para escritura y String para lectura si queremos
     equipo_nombre = serializers.CharField(source='equipo.nombre', read_only=True)
-    equipo = serializers.PrimaryKeyRelatedField(queryset=Equipo.objects.all(), allow_null=True)
+    # El queryset se scopea dinámicamente por request.user en __init__
+    equipo = serializers.PrimaryKeyRelatedField(queryset=Equipo.objects.none(), allow_null=True)
     pagos = PagoSerializer(many=True, read_only=True)
     injury_risk = serializers.SerializerMethodField()
 
@@ -78,6 +94,18 @@ class AlumnoSerializer(serializers.ModelSerializer):
         model = Alumno
         fields = '__all__'
         read_only_fields = ['fecha_alta', 'entrenador', 'equipo_nombre']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get("request")
+        if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
+            return
+        user = request.user
+        if user.is_staff:
+            self.fields["equipo"].queryset = Equipo.objects.all()
+        else:
+            # Multi-tenant: un coach solo puede asignar equipos propios
+            self.fields["equipo"].queryset = Equipo.objects.filter(entrenador=user)
 
     def get_injury_risk(self, obj):
         """
@@ -114,6 +142,20 @@ class InscripcionCarreraSerializer(serializers.ModelSerializer):
     class Meta:
         model = InscripcionCarrera
         fields = ['id', 'alumno', 'carrera', 'carrera_id', 'estado']
+
+    def validate_alumno(self, alumno: Alumno):
+        """
+        Multi-tenant: un coach no puede crear objetivos para atletas ajenos.
+        """
+        request = self.context.get("request")
+        if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
+            return alumno
+        user = request.user
+        if hasattr(user, "perfil_alumno") and not user.is_staff:
+            raise serializers.ValidationError("No autorizado.")
+        if alumno.entrenador_id and alumno.entrenador_id != user.id and not user.is_staff:
+            raise serializers.ValidationError("No autorizado.")
+        return alumno
 
 # ==============================================================================
 #  5. MULTIMEDIA (VIDEOS DE EJERCICIOS)
