@@ -214,7 +214,41 @@ def ejecutar_cruce_inteligente(actividad):
 #  4. SYNC STRAVA (INTACTO)
 # ==============================================================================
 
-def obtener_cliente_strava(user):
+def force_refresh_strava_token(user):
+    """
+    Fuerza refresh del token de Strava aunque `expires_at` no haya vencido.
+
+    Útil para casos 401 (token revocado/desincronizado) detectados en webhooks.
+    Devuelve True si refrescó, False si no pudo.
+    """
+    try:
+        social_token = SocialToken.objects.filter(account__user=user, account__provider="strava").first()
+        if not social_token:
+            return False
+
+        app_config = social_token.app or SocialApp.objects.filter(provider="strava").first()
+        if not app_config:
+            return False
+
+        client = Client()
+        refresh_response = client.refresh_access_token(
+            client_id=app_config.client_id,
+            client_secret=app_config.secret,
+            refresh_token=social_token.token_secret,
+        )
+        social_token.token = refresh_response["access_token"]
+        social_token.token_secret = refresh_response["refresh_token"]
+        social_token.expires_at = timezone.make_aware(
+            datetime.datetime.fromtimestamp(refresh_response["expires_at"])
+        )
+        social_token.app = app_config
+        social_token.save()
+        return True
+    except Exception:
+        return False
+
+
+def obtener_cliente_strava(user, force_refresh: bool = False):
     try:
         social_token = SocialToken.objects.filter(account__user=user, account__provider='strava').first()
         if not social_token: return None
@@ -223,7 +257,19 @@ def obtener_cliente_strava(user):
         client.access_token = social_token.token
         client.refresh_token = social_token.token_secret
         
-        token_expira_en = social_token.expires_at 
+        token_expira_en = social_token.expires_at
+        if force_refresh:
+            # Refresh forzado (p.ej. tras 401)
+            if not force_refresh_strava_token(user):
+                return None
+            # Re-leer token actualizado
+            social_token = SocialToken.objects.filter(account__user=user, account__provider="strava").first()
+            if not social_token:
+                return None
+            client.access_token = social_token.token
+            client.refresh_token = social_token.token_secret
+            return client
+
         if token_expira_en and timezone.now() > token_expira_en:
             app_config = social_token.app
             if not app_config:
