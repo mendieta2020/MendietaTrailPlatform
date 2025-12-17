@@ -39,12 +39,19 @@ class AlertaRendimiento(models.Model):
     Ej: Hizo 20 min a 300w pero su FTP es 250w.
     """
     alumno = models.ForeignKey(Alumno, on_delete=models.CASCADE)
-    fecha = models.DateField(auto_now_add=True)
+    fecha = models.DateField(auto_now_add=True, db_index=True)
     tipo = models.CharField(max_length=50, choices=[('FTP_UP', '📈 Posible Aumento de FTP'), ('HR_MAX', '❤️ Nueva FC Máxima')])
     valor_detectado = models.FloatField()
     valor_anterior = models.FloatField()
     mensaje = models.TextField()
     visto_por_coach = models.BooleanField(default=False)
+
+    class Meta:
+        indexes = [
+            # Listado del coach por atleta + orden estable para paginación
+            models.Index(fields=["alumno", "-fecha", "-id"]),
+        ]
+        ordering = ["-fecha", "-id"]
 
     def __str__(self):
         return f"{self.alumno} - {self.tipo}"

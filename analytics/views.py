@@ -4,7 +4,8 @@ from rest_framework import status, permissions, viewsets
 from rest_framework.permissions import IsAuthenticated
 from core.models import Entrenamiento, Alumno, InscripcionCarrera
 from django.utils import timezone
-from django.core.exceptions import FieldError
+from django.db.models import Q
+import logging
 import pandas as pd
 import numpy as np
 from datetime import date, timedelta
@@ -12,6 +13,8 @@ from datetime import date, timedelta
 from analytics.models import AlertaRendimiento
 from analytics.serializers import AlertaRendimientoSerializer
 from analytics.pagination import OptionalPageNumberPagination
+
+logger = logging.getLogger(__name__)
 
 class PMCDataView(APIView):
     """
@@ -195,45 +198,16 @@ class AlertaRendimientoViewSet(viewsets.ReadOnlyModelViewSet):
         user = self.request.user
         qs = super().get_queryset()
 
-        # 🔒 Multi-tenant fail-closed:
+        # 🔒 Multi-tenant fail-closed (sin romper compatibilidad):
         # - Superuser: ve todo
-        # - No superuser: intentamos scopear por coach/tenant; si no se puede, devolvemos vacío
-        if not user.is_superuser:
-            scoped = qs.none()
-            applied = False
-
-            # Estrategia: intentamos varios campos de tenant comunes.
-            # Capturamos FieldError (campo no existe) y ValueError (tipo incorrecto).
-            # Si alguno aplica, usamos ese filtro.
-
-            # Campo principal en este proyecto: alumno.entrenador
-            try:
-                scoped = scoped | qs.filter(alumno__entrenador=user)
-                applied = True
-            except (FieldError, ValueError):
-                pass
-
-            # Alternativa: alumno.equipo.entrenador
-            try:
-                scoped = scoped | qs.filter(alumno__equipo__entrenador=user)
-                applied = True
-            except (FieldError, ValueError):
-                pass
-
-            # Fallbacks genéricos para otros proyectos (coach en lugar de entrenador)
-            try:
-                scoped = scoped | qs.filter(alumno__coach=user)
-                applied = True
-            except (FieldError, ValueError):
-                pass
-
-            try:
-                scoped = scoped | qs.filter(alumno__equipo__coach=user)
-                applied = True
-            except (FieldError, ValueError):
-                pass
-
-            qs = scoped.distinct() if applied else qs.none()
+        # - Atleta (perfil_alumno): ve solo sus alertas
+        # - Coach: ve alertas de sus alumnos (alumno.entrenador) y/o de equipos a su nombre (alumno.equipo.entrenador)
+        if not getattr(user, "is_superuser", False):
+            if hasattr(user, "perfil_alumno") and getattr(user, "perfil_alumno", None):
+                qs = qs.filter(alumno__usuario=user)
+            else:
+                # En este proyecto el "tenant" es el coach (User)
+                qs = qs.filter(Q(alumno__entrenador=user) | Q(alumno__equipo__entrenador=user))
 
         # Filtros por querystring
         alumno_id = self.request.query_params.get("alumno_id")
@@ -241,6 +215,10 @@ class AlertaRendimientoViewSet(viewsets.ReadOnlyModelViewSet):
             try:
                 qs = qs.filter(alumno_id=int(alumno_id))
             except (TypeError, ValueError):
+                logger.warning(
+                    "analytics.alerts.invalid_param",
+                    extra={"param": "alumno_id", "value": str(alumno_id), "user_id": getattr(user, "id", None)},
+                )
                 pass
 
         visto = self.request.query_params.get("visto_por_coach")
@@ -256,6 +234,10 @@ class AlertaRendimientoViewSet(viewsets.ReadOnlyModelViewSet):
             try:
                 qs = qs.filter(fecha__gte=date.fromisoformat(fecha_gte))
             except ValueError:
+                logger.warning(
+                    "analytics.alerts.invalid_param",
+                    extra={"param": "fecha_gte", "value": str(fecha_gte), "user_id": getattr(user, "id", None)},
+                )
                 pass
 
         fecha_lte = self.request.query_params.get("fecha_lte")
@@ -263,6 +245,10 @@ class AlertaRendimientoViewSet(viewsets.ReadOnlyModelViewSet):
             try:
                 qs = qs.filter(fecha__lte=date.fromisoformat(fecha_lte))
             except ValueError:
+                logger.warning(
+                    "analytics.alerts.invalid_param",
+                    extra={"param": "fecha_lte", "value": str(fecha_lte), "user_id": getattr(user, "id", None)},
+                )
                 pass
 
         return qs

@@ -14,11 +14,12 @@ import AthleteDetail from './pages/AthleteDetail'; // <--- NUEVA IMPORTACIÓN (P
 import CalendarPage from './pages/Calendar';
 import Teams from './pages/Teams';
 import TeamDetail from './pages/TeamDetail';
+import { tokenStore } from './api/tokenStore';
 
 // --- COMPONENTE DE SEGURIDAD (GUARDIÁN) ---
 // Verifica si existe un token válido. Si no, redirige al Login.
 const ProtectedRoute = ({ children }) => {
-  const token = localStorage.getItem('access_token');
+  const token = tokenStore.getAccessToken();
   
   if (!token) {
     return <Navigate to="/" replace />;

@@ -11,7 +11,8 @@ import Layout from '../components/Layout';
 import client from '../api/client';
 import PaymentsWidget from '../components/widgets/PaymentsWidget';
 import ComplianceChart from '../components/widgets/ComplianceChart';
-import { format, subMonths, startOfYear, endOfYear, startOfMonth, endOfMonth, parseISO } from 'date-fns';
+import AlertsWidget from '../components/widgets/AlertsWidget';
+import { format, subMonths, startOfYear, startOfMonth, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 // --- COMPONENTE DE TARJETA KPI ---
@@ -231,6 +232,9 @@ const Dashboard = () => {
               </ResponsiveContainer>
           </Box>
       </Paper>
+
+      {/* ALERTS (PRUEBA DE FUEGO: JWT + PAGINACIÓN OPT-IN) */}
+      <AlertsWidget pageSize={20} />
 
     </Layout>
   );

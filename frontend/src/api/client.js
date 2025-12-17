@@ -1,11 +1,11 @@
 import axios from 'axios';
+import { tokenStore } from './tokenStore';
+import { emitLogout } from './authEvents';
 
 // 1. ESCALABILIDAD: Definimos la URL base dinámicamente.
 // Si existe una variable de entorno (Producción), la usa. Si no, usa localhost.
-const baseURL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
-
-const ACCESS_TOKEN_KEY = 'access_token';
-const REFRESH_TOKEN_KEY = 'refresh_token';
+// Back-compat: mantenemos soporte a VITE_API_URL, pero priorizamos VITE_API_BASE_URL.
+const baseURL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
 const client = axios.create({
     baseURL: baseURL, // Apuntamos a la raíz, no a /api/ (para evitar duplicados)
@@ -30,7 +30,7 @@ const refreshClient = axios.create({
 // Inyectamos el token automáticamente en cada petición
 client.interceptors.request.use(
     (config) => {
-        const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+        const token = tokenStore.getAccessToken();
         if (token) {
             config.headers = config.headers || {};
             config.headers.Authorization = `Bearer ${token}`;
@@ -54,10 +54,11 @@ function onRefreshed(newAccessToken) {
     refreshSubscribers = [];
 }
 
-function clearSessionAndRedirect() {
-    localStorage.removeItem(ACCESS_TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
-    if (window.location.pathname !== '/') window.location.href = '/';
+function clearSessionAndNotify(reason) {
+    tokenStore.clear();
+    emitLogout(reason);
+    // Fallback: si no hay subscriber (o el subscriber no navega), volvemos al login.
+    if (typeof window !== 'undefined' && window.location?.pathname !== '/') window.location.href = '/';
 }
 
 // --- INTERCEPTOR DE RESPONSE (LLEGADA) ---
@@ -82,9 +83,9 @@ client.interceptors.response.use(
 
         // Si el error es 401 y no es auth endpoint, intentamos refresh una sola vez
         if (status === 401 && !isAuthEndpoint && originalRequest && !originalRequest._retry) {
-            const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+            const refreshToken = tokenStore.getRefreshToken();
             if (!refreshToken) {
-                clearSessionAndRedirect();
+                clearSessionAndNotify('missing_refresh_token');
                 return Promise.reject(error);
             }
 
@@ -108,12 +109,14 @@ client.interceptors.response.use(
                 });
 
                 const newAccessToken = refreshResponse.data?.access;
+                const newRefreshToken = refreshResponse.data?.refresh;
                 if (!newAccessToken) {
-                    clearSessionAndRedirect();
+                    clearSessionAndNotify('refresh_missing_access');
                     return Promise.reject(error);
                 }
 
-                localStorage.setItem(ACCESS_TOKEN_KEY, newAccessToken);
+                // Importante: SIMPLE_JWT puede rotar refresh tokens (ROTATE_REFRESH_TOKENS=True)
+                tokenStore.setTokens({ access: newAccessToken, refresh: newRefreshToken });
                 isRefreshing = false;
                 onRefreshed(newAccessToken);
 
@@ -124,7 +127,7 @@ client.interceptors.response.use(
             } catch (refreshErr) {
                 isRefreshing = false;
                 refreshSubscribers = [];
-                clearSessionAndRedirect();
+                clearSessionAndNotify('refresh_failed');
                 return Promise.reject(refreshErr);
             }
         }
@@ -134,3 +137,4 @@ client.interceptors.response.use(
 );
 
 export default client;
+export const __internal = { refreshClient };

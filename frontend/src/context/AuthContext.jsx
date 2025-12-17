@@ -1,5 +1,8 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useState, useEffect, useContext } from 'react';
 import client from '../api/client'; // Instancia única (baseURL + interceptores)
+import { tokenStore } from '../api/tokenStore';
+import { subscribeOnLogout } from '../api/authEvents';
 
 const AuthContext = createContext();
 
@@ -10,7 +13,7 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         // Al cargar, verificamos si ya existe un token guardado
         const checkAuth = async () => {
-            const token = localStorage.getItem('access_token');
+            const token = tokenStore.getAccessToken();
             if (token) {
                 // Si hay token, asumimos que el usuario es válido (el interceptor lo borrará si no)
                 setUser({ username: 'Coach' }); 
@@ -18,6 +21,12 @@ export const AuthProvider = ({ children }) => {
             setLoading(false);
         };
         checkAuth();
+
+        // Si el cliente fuerza logout (refresh fallido), reflejarlo en estado.
+        const unsub = subscribeOnLogout(() => {
+            setUser(null);
+        });
+        return () => unsub();
     }, []);
 
     const login = async (username, password) => {
@@ -26,8 +35,7 @@ export const AuthProvider = ({ children }) => {
             const response = await client.post('/api/token/', { username, password });
             
             // Guardamos las llaves
-            localStorage.setItem('access_token', response.data.access);
-            localStorage.setItem('refresh_token', response.data.refresh);
+            tokenStore.setTokens({ access: response.data.access, refresh: response.data.refresh });
             
             setUser({ username });
             return { success: true };
@@ -38,8 +46,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     const logout = () => {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
+        tokenStore.clear();
         setUser(null);
         // Recargar la página para limpiar estados
         window.location.href = '/';

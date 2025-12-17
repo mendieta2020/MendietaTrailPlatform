@@ -365,7 +365,7 @@ const EditTrainingModal = ({ open, onClose, training, onUpdated }) => {
                       </Box>
                       <Box sx={{ p: 2 }}>
                           <Stack spacing={1.5}>
-                              {block.steps?.map((step, index) => (
+                              {block.steps?.map((step) => (
                                   <Box key={step.id} sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
                                       <Box sx={{ display: 'flex', width: 150, gap: 0.5 }}>
                                           <TextField size="small" type="number" value={step.duration_value} onChange={(e) => handleStepChange(block.id, step.id, 'duration_value', e.target.value)} placeholder="0" sx={{ flex: 1 }} />
@@ -425,7 +425,7 @@ const EditTrainingModal = ({ open, onClose, training, onUpdated }) => {
       
       await client.patch(`/api/entrenamientos/${training.id}/`, payload);
       onUpdated(); onClose();
-    } catch (err) { alert("Error al guardar."); } finally { setLoading(false); }
+    } catch { alert("Error al guardar."); } finally { setLoading(false); }
   };
 
   if (!training) return null;
