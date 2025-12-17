@@ -7,6 +7,7 @@ from django.dispatch import receiver
 from datetime import date, timedelta
 from django.db.models import Sum, Q
 from django.utils import timezone
+import uuid
 
 # ==============================================================================
 #  1. CONFIGURACIÓN Y CONSTANTES (GLOBALES)
@@ -355,8 +356,17 @@ class StravaWebhookEvent(models.Model):
         QUEUED = "queued", "queued"
         PROCESSING = "processing", "processing"
         PROCESSED = "processed", "processed"
+        DISCARDED = "discarded", "discarded"
         IGNORED = "ignored", "ignored"
         FAILED = "failed", "failed"
+
+    # Normalización multi-provider (hoy solo Strava, pero dejamos el shape SaaS)
+    provider = models.CharField(max_length=20, default="strava", db_index=True)
+    # Strava no envía event_id canónico; dejamos campo para futuros providers/compat.
+    provider_event_id = models.CharField(max_length=120, blank=True, default="", db_index=True)
+
+    # Correlación (uuid) para logging/tracing cross-systems
+    correlation_id = models.UUIDField(default=uuid.uuid4, db_index=True, editable=False)
 
     event_uid = models.CharField(max_length=80, unique=True, db_index=True)
 
@@ -372,6 +382,10 @@ class StravaWebhookEvent(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.RECEIVED, db_index=True)
     attempts = models.PositiveSmallIntegerField(default=0)
     last_error = models.TextField(blank=True, default="")
+    # Estado final requerido (por qué se descartó / mensaje de error “humano”)
+    discard_reason = models.CharField(max_length=160, blank=True, default="")
+    error_message = models.TextField(blank=True, default="")
+    last_attempt_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     processed_at = models.DateTimeField(null=True, blank=True)
 
@@ -380,12 +394,20 @@ class StravaWebhookEvent(models.Model):
             models.Index(fields=["owner_id", "-received_at"]),
             models.Index(fields=["status", "-received_at"]),
             models.Index(fields=["object_type", "aspect_type", "object_id"]),
+            models.Index(fields=["provider", "provider_event_id"]),
         ]
 
     def mark_processed(self):
         self.status = self.Status.PROCESSED
         self.processed_at = timezone.now()
         self.save(update_fields=["status", "processed_at"])
+
+    def mark_discarded(self, *, reason: str):
+        self.status = self.Status.DISCARDED
+        self.discard_reason = str(reason or "")
+        self.processed_at = timezone.now()
+        self.error_message = ""
+        self.save(update_fields=["status", "discard_reason", "processed_at", "error_message"])
 
 
 class StravaImportLog(models.Model):
