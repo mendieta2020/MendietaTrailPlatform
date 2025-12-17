@@ -11,6 +11,7 @@ from datetime import date, timedelta
 
 from analytics.models import AlertaRendimiento
 from analytics.serializers import AlertaRendimientoSerializer
+from analytics.pagination import OptionalPageNumberPagination
 
 class PMCDataView(APIView):
     """
@@ -165,7 +166,30 @@ class AlertaRendimientoViewSet(viewsets.ReadOnlyModelViewSet):
 
     permission_classes = [IsAuthenticated]
     serializer_class = AlertaRendimientoSerializer
-    queryset = AlertaRendimiento.objects.select_related("alumno").order_by("-id")
+    pagination_class = OptionalPageNumberPagination
+    queryset = AlertaRendimiento.objects.select_related("alumno").order_by("-fecha", "-id")
+
+    def list(self, request, *args, **kwargs):
+        """
+        Opt-in pagination:
+        - legacy: sin `page` ni `page_size` => lista JSON plana (compatibilidad)
+        - con `page` o `page_size` => respuesta paginada DRF estándar
+        """
+        qp = request.query_params
+        if "page" not in qp and "page_size" not in qp:
+            queryset = self.filter_queryset(self.get_queryset())
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
+
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        # Fallback defensivo (no debería ocurrir porque la paginación se activa con qp)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     def get_queryset(self):
         user = self.request.user
