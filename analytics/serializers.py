@@ -1,5 +1,10 @@
 from rest_framework import serializers
-from analytics.models import HistorialFitness, InjuryRiskSnapshot  # Importación absoluta (más segura)
+
+from analytics.models import (
+    AlertaRendimiento,
+    HistorialFitness,
+    InjuryRiskSnapshot,
+)
 
 class HistorialFitnessSerializer(serializers.ModelSerializer):
     """
@@ -25,4 +30,19 @@ class InjuryRiskSnapshotSerializer(serializers.ModelSerializer):
             "risk_level",
             "risk_score",
             "risk_reasons",
+        ]
+
+
+class AlertaRendimientoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AlertaRendimiento
+        fields = [
+            "id",
+            "fecha",
+            "alumno",
+            "tipo",
+            "mensaje",
+            "valor_anterior",
+            "valor_detectado",
+            "visto_por_coach",
         ]

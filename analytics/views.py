@@ -1,11 +1,16 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status, permissions
+from rest_framework import status, permissions, viewsets
+from rest_framework.permissions import IsAuthenticated
 from core.models import Entrenamiento, Alumno, InscripcionCarrera
 from django.utils import timezone
+from django.core.exceptions import FieldError
 import pandas as pd
 import numpy as np
-from datetime import timedelta
+from datetime import date, timedelta
+
+from analytics.models import AlertaRendimiento
+from analytics.serializers import AlertaRendimientoSerializer
 
 class PMCDataView(APIView):
     """
@@ -151,3 +156,84 @@ class PMCDataView(APIView):
             print(f"❌ Analytics Error: {str(e)}")
             # Devolvemos array vacío para NO ROMPER el frontend
             return Response([], status=status.HTTP_200_OK)
+
+
+class AlertaRendimientoViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    GET /api/analytics/alerts/
+    """
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = AlertaRendimientoSerializer
+    queryset = AlertaRendimiento.objects.select_related("alumno").order_by("-id")
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = super().get_queryset()
+
+        # 🔒 Multi-tenant fail-closed:
+        # - Superuser: ve todo
+        # - No superuser: intentamos scopear por coach/tenant; si no se puede, devolvemos vacío
+        if not user.is_superuser:
+            scoped = qs.none()
+            applied = False
+
+            # Intentos pedidos (no romper si los campos no existen)
+            try:
+                scoped = scoped | qs.filter(alumno__coach=user)
+                applied = True
+            except FieldError:
+                pass
+
+            try:
+                scoped = scoped | qs.filter(alumno__equipo__coach=user)
+                applied = True
+            except FieldError:
+                pass
+
+            # Fallback compatible con este repo (entrenador)
+            try:
+                scoped = scoped | qs.filter(alumno__entrenador=user)
+                applied = True
+            except FieldError:
+                pass
+
+            try:
+                scoped = scoped | qs.filter(alumno__equipo__entrenador=user)
+                applied = True
+            except FieldError:
+                pass
+
+            qs = scoped.distinct() if applied else qs.none()
+
+        # Filtros por querystring
+        alumno_id = self.request.query_params.get("alumno_id")
+        if alumno_id:
+            try:
+                qs = qs.filter(alumno_id=int(alumno_id))
+            except (TypeError, ValueError):
+                pass
+
+        visto = self.request.query_params.get("visto_por_coach")
+        if visto is not None:
+            visto_l = str(visto).strip().lower()
+            if visto_l in {"true", "1", "yes"}:
+                qs = qs.filter(visto_por_coach=True)
+            elif visto_l in {"false", "0", "no"}:
+                qs = qs.filter(visto_por_coach=False)
+
+        fecha_gte = self.request.query_params.get("fecha_gte")
+        if fecha_gte:
+            try:
+                qs = qs.filter(fecha__gte=date.fromisoformat(fecha_gte))
+            except ValueError:
+                pass
+
+        fecha_lte = self.request.query_params.get("fecha_lte")
+        if fecha_lte:
+            try:
+                qs = qs.filter(fecha__lte=date.fromisoformat(fecha_lte))
+            except ValueError:
+                pass
+
+        return qs

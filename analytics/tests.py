@@ -1,6 +1,8 @@
 from django.test import TestCase
 
 from analytics.injury_risk import compute_injury_risk
+from django.contrib.auth import get_user_model
+from rest_framework.test import APIClient
 
 
 class ComputeInjuryRiskTests(TestCase):
@@ -33,3 +35,24 @@ class ComputeInjuryRiskTests(TestCase):
         )
         self.assertEqual(r.risk_level, "HIGH")
         self.assertTrue(any("3+ días consecutivos" in s for s in r.risk_reasons))
+
+
+class AnalyticsAlertsEndpointTests(TestCase):
+    def setUp(self):
+        self.api_client = APIClient()
+        self.url = "/api/analytics/alerts/"
+
+    def test_alerts_requires_auth(self):
+        resp = self.api_client.get(self.url)
+        self.assertIn(resp.status_code, (401, 403))
+
+    def test_alerts_superuser_gets_200(self):
+        User = get_user_model()
+        su = User.objects.create_superuser(
+            username="admin",
+            email="admin@example.com",
+            password="pass12345",
+        )
+        self.api_client.force_authenticate(user=su)
+        resp = self.api_client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
