@@ -3,6 +3,8 @@ from django.test import TestCase
 from analytics.injury_risk import compute_injury_risk
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
+from core.models import Alumno
+from analytics.models import AlertaRendimiento
 
 
 class ComputeInjuryRiskTests(TestCase):
@@ -44,7 +46,7 @@ class AnalyticsAlertsEndpointTests(TestCase):
 
     def test_alerts_requires_auth(self):
         resp = self.api_client.get(self.url)
-        self.assertIn(resp.status_code, (401, 403))
+        self.assertEqual(resp.status_code, 401)
 
     def test_alerts_superuser_gets_200(self):
         User = get_user_model()
@@ -56,3 +58,68 @@ class AnalyticsAlertsEndpointTests(TestCase):
         self.api_client.force_authenticate(user=su)
         resp = self.api_client.get(self.url)
         self.assertEqual(resp.status_code, 200)
+
+    def test_alerts_legacy_without_page_returns_list(self):
+        User = get_user_model()
+        coach = User.objects.create_user(
+            username="coach",
+            email="coach@example.com",
+            password="pass12345",
+        )
+        alumno = Alumno.objects.create(
+            entrenador=coach,
+            nombre="A",
+            apellido="B",
+            email="alumno1@example.com",
+        )
+
+        for i in range(30):
+            AlertaRendimiento.objects.create(
+                alumno=alumno,
+                tipo="FTP_UP",
+                valor_detectado=260 + i,
+                valor_anterior=250,
+                mensaje=f"alert {i}",
+                visto_por_coach=False,
+            )
+
+        self.api_client.force_authenticate(user=coach)
+        resp = self.api_client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsInstance(resp.data, list)
+        # Compat: no envelope paginado
+        if resp.data:
+            self.assertNotIn("results", resp.data)
+
+    def test_alerts_with_page_and_page_size_returns_paginated_envelope(self):
+        User = get_user_model()
+        coach = User.objects.create_user(
+            username="coach2",
+            email="coach2@example.com",
+            password="pass12345",
+        )
+        alumno = Alumno.objects.create(
+            entrenador=coach,
+            nombre="C",
+            apellido="D",
+            email="alumno2@example.com",
+        )
+
+        for i in range(30):
+            AlertaRendimiento.objects.create(
+                alumno=alumno,
+                tipo="HR_MAX",
+                valor_detectado=190 + i,
+                valor_anterior=185,
+                mensaje=f"alert {i}",
+                visto_por_coach=False,
+            )
+
+        self.api_client.force_authenticate(user=coach)
+        resp = self.api_client.get(f"{self.url}?page=1&page_size=20")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsInstance(resp.data, dict)
+        self.assertIn("count", resp.data)
+        self.assertIn("results", resp.data)
+        self.assertEqual(resp.data["count"], 30)
+        self.assertLessEqual(len(resp.data["results"]), 20)
