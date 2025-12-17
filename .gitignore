@@ -39,3 +39,9 @@ dist/
 *.jpeg
 *.png
 *.webp
+
+
+# Celery beat runtime files
+celerybeat-schedule
+celerybeat-schedule-shm
+celerybeat-schedule-wal
