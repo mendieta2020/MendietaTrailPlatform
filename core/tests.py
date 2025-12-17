@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from analytics.models import HistorialFitness, InjuryRiskSnapshot
-from core.models import Alumno
+from core.models import Alumno, Equipo, Entrenamiento
 
 
 User = get_user_model()
@@ -69,4 +69,78 @@ class InjuryRiskAPITests(TestCase):
         item = next(x for x in res.data if x["id"] == self.alumno1.id)
         self.assertIsNotNone(item.get("injury_risk"))
         self.assertEqual(item["injury_risk"]["risk_level"], "MEDIUM")
+
+
+class TenantIsolationPMCTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.coach1 = User.objects.create_user(username="coach1_pmc", password="x")
+        self.coach2 = User.objects.create_user(username="coach2_pmc", password="x")
+
+        self.alumno1 = Alumno.objects.create(entrenador=self.coach1, nombre="Ana", apellido="PMC", email="ana_pmc@test.com")
+        self.alumno2 = Alumno.objects.create(entrenador=self.coach2, nombre="Beto", apellido="PMC", email="beto_pmc@test.com")
+
+        today = timezone.localdate()
+        Entrenamiento.objects.create(
+            alumno=self.alumno1,
+            fecha_asignada=today,
+            titulo="Plan A",
+            tipo_actividad="RUN",
+            tiempo_planificado_min=30,
+            completado=False,
+        )
+        Entrenamiento.objects.create(
+            alumno=self.alumno2,
+            fecha_asignada=today,
+            titulo="Plan B",
+            tipo_actividad="RUN",
+            tiempo_planificado_min=40,
+            completado=False,
+        )
+
+    def test_pmc_denies_cross_tenant_alumno_id(self):
+        self.client.force_authenticate(user=self.coach1)
+        res = self.client.get(f"/api/analytics/pmc/?alumno_id={self.alumno2.id}")
+        self.assertEqual(res.status_code, 200)
+        # anti-fuga: debe ocultar (respuesta vacía, sin 403 para no romper frontend)
+        self.assertEqual(res.data, [])
+
+    def test_pmc_allows_own_tenant(self):
+        self.client.force_authenticate(user=self.coach1)
+        res = self.client.get(f"/api/analytics/pmc/?alumno_id={self.alumno1.id}")
+        self.assertEqual(res.status_code, 200)
+        self.assertIsInstance(res.data, list)
+        # Con al menos 1 entrenamiento, debería devolver ventana de datos (no vacía)
+        self.assertGreater(len(res.data), 0)
+
+
+class TenantIsolationEquipoTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.coach1 = User.objects.create_user(username="coach1_team", password="x")
+        self.coach2 = User.objects.create_user(username="coach2_team", password="x")
+
+        self.team1 = Equipo.objects.create(nombre="Equipo A", entrenador=self.coach1)
+        self.team2 = Equipo.objects.create(nombre="Equipo B", entrenador=self.coach2)
+
+        self.alumno1 = Alumno.objects.create(entrenador=self.coach1, nombre="Ana", apellido="Team", email="ana_team@test.com", equipo=self.team1)
+        self.alumno2 = Alumno.objects.create(entrenador=self.coach2, nombre="Beto", apellido="Team", email="beto_team@test.com", equipo=self.team2)
+
+    def test_coach_cannot_get_other_team_detail(self):
+        self.client.force_authenticate(user=self.coach1)
+        res = self.client.get(f"/api/equipos/{self.team2.id}/")
+        self.assertEqual(res.status_code, 404)
+
+    def test_coach_list_teams_is_scoped(self):
+        self.client.force_authenticate(user=self.coach1)
+        res = self.client.get("/api/equipos/")
+        self.assertEqual(res.status_code, 200)
+        ids = [t["id"] for t in res.data]
+        self.assertIn(self.team1.id, ids)
+        self.assertNotIn(self.team2.id, ids)
+
+    def test_coach_cannot_assign_athlete_to_other_team(self):
+        self.client.force_authenticate(user=self.coach1)
+        res = self.client.patch(f"/api/alumnos/{self.alumno1.id}/", {"equipo": self.team2.id}, format="json")
+        self.assertEqual(res.status_code, 400)
 
