@@ -4,6 +4,7 @@ import {
 } from '@mui/material';
 import { styled } from '@mui/system';
 import client from '../api/client';
+import { tokenStore } from '../api/tokenStore';
 
 // Estilos personalizados
 const BackgroundBox = styled(Box)({
@@ -39,8 +40,7 @@ const Login = () => {
                 password: password
             });
 
-            localStorage.setItem('access_token', response.data.access);
-            localStorage.setItem('refresh_token', response.data.refresh);
+            tokenStore.setTokens({ access: response.data.access, refresh: response.data.refresh });
 
             // Redirigir al Dashboard
             window.location.href = '/dashboard';

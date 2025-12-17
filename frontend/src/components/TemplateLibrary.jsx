@@ -6,7 +6,7 @@ import {
 import { Search, FitnessCenter, DirectionsRun, PedalBike, Add } from '@mui/icons-material';
 import client from '../api/client';
 
-const TemplateLibrary = ({ onSelectTemplate }) => {
+const TemplateLibrary = () => {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');

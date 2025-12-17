@@ -122,7 +122,7 @@ const Athletes = () => {
                 <TableCell>
                     <Typography variant="body2" sx={{ fontWeight: 600, color: '#0F172A' }}>
                         {/* Dato simulado hasta tener real */}
-                        {Math.floor(Math.random() * 50) + 40} CTL
+                        {(((athlete.id || 1) * 7) % 50) + 40} CTL
                     </Typography>
                 </TableCell>
                 <TableCell>
