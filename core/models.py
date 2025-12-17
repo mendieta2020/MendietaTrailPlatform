@@ -5,7 +5,8 @@ from django.utils.html import format_html
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from datetime import date, timedelta
-from django.db.models import Sum
+from django.db.models import Sum, Q
+from django.utils import timezone
 
 # ==============================================================================
 #  1. CONFIGURACIÓN Y CONSTANTES (GLOBALES)
@@ -223,6 +224,15 @@ class Entrenamiento(models.Model):
 
     class Meta: 
         ordering = ['-fecha_asignada']
+        constraints = [
+            # Strava activity id es globalmente único, pero el campo permite NULL/blank.
+            # Este índice parcial previene duplicados reales sin romper registros legacy.
+            models.UniqueConstraint(
+                fields=["strava_id"],
+                condition=Q(strava_id__isnull=False) & ~Q(strava_id=""),
+                name="uniq_entrenamiento_strava_id_not_blank",
+            ),
+        ]
 
     def __str__(self): return f"{self.fecha_asignada} - {self.titulo}"
 
@@ -272,15 +282,142 @@ class InscripcionCarrera(models.Model):
     estado = models.CharField(max_length=20, default='INSCRITO')
 
 class Actividad(models.Model):
-    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='actividades_strava')
-    strava_id = models.BigIntegerField(unique=True)
+    """
+    Actividad importada desde Strava (fuente de verdad del "actual").
+
+    Nota: `strava_id` es globalmente único en Strava, por eso mantenemos unique=True.
+    Guardamos `datos_brutos` para auditoría y para cálculos futuros (IA/insights).
+    """
+
+    class Validity(models.TextChoices):
+        VALID = "VALID", "VALID"
+        DISCARDED = "DISCARDED", "DISCARDED"
+
+    # Coach propietario del token usado para importar (tenant)
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="actividades_strava",
+        db_index=True,
+    )
+    # Alumno/atleta dueño real de la actividad (multi-tenant correcto)
+    alumno = models.ForeignKey(
+        "Alumno",
+        on_delete=models.CASCADE,
+        related_name="actividades",
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+
+    strava_id = models.BigIntegerField(unique=True, db_index=True)
     nombre = models.CharField(max_length=255)
-    distancia = models.FloatField()
-    tiempo_movimiento = models.IntegerField()
+    distancia = models.FloatField(help_text="Distancia en metros", default=0.0)
+    tiempo_movimiento = models.IntegerField(help_text="Tiempo en segundos", default=0)
     fecha_inicio = models.DateTimeField()
     tipo_deporte = models.CharField(max_length=50)
     desnivel_positivo = models.FloatField(default=0.0)
-    def __str__(self): return self.nombre
+    ritmo_promedio = models.FloatField(blank=True, null=True, help_text="Metros por segundo")
+
+    # Auditoría / visualización
+    mapa_polilinea = models.TextField(blank=True, null=True)
+    datos_brutos = models.JSONField(default=dict, blank=True)
+
+    # Validación estricta para UI/insights futuros
+    validity = models.CharField(max_length=12, choices=Validity.choices, default=Validity.VALID)
+    invalid_reason = models.CharField(max_length=120, blank=True, default="")
+
+    # Nullables para poder reintroducirlos sin prompts de migración (backfill opcional).
+    creado_en = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    actualizado_en = models.DateTimeField(auto_now=True, null=True, blank=True)
+
+    class Meta:
+        ordering = ["-fecha_inicio"]
+        indexes = [
+            models.Index(fields=["usuario", "-fecha_inicio"]),
+            models.Index(fields=["alumno", "-fecha_inicio"]),
+        ]
+
+    def __str__(self):
+        return f"{self.nombre} ({self.strava_id})"
+
+
+class StravaWebhookEvent(models.Model):
+    """
+    Evento de Webhook Strava (idempotencia + auditoría).
+
+    El endpoint de webhook debe crear este registro y encolar el procesamiento.
+    Si el mismo evento llega dos veces, el UniqueConstraint en `event_uid` evita reprocesarlo.
+    """
+
+    class Status(models.TextChoices):
+        RECEIVED = "received", "received"
+        QUEUED = "queued", "queued"
+        PROCESSING = "processing", "processing"
+        PROCESSED = "processed", "processed"
+        IGNORED = "ignored", "ignored"
+        FAILED = "failed", "failed"
+
+    event_uid = models.CharField(max_length=80, unique=True, db_index=True)
+
+    object_type = models.CharField(max_length=40, db_index=True)
+    object_id = models.BigIntegerField(db_index=True)
+    aspect_type = models.CharField(max_length=20, db_index=True)
+    owner_id = models.BigIntegerField(db_index=True)
+    subscription_id = models.BigIntegerField(null=True, blank=True, db_index=True)
+
+    payload_raw = models.JSONField(default=dict, blank=True)
+    received_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.RECEIVED, db_index=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    last_error = models.TextField(blank=True, default="")
+
+    processed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["owner_id", "-received_at"]),
+            models.Index(fields=["status", "-received_at"]),
+            models.Index(fields=["object_type", "aspect_type", "object_id"]),
+        ]
+
+    def mark_processed(self):
+        self.status = self.Status.PROCESSED
+        self.processed_at = timezone.now()
+        self.save(update_fields=["status", "processed_at"])
+
+
+class StravaImportLog(models.Model):
+    """
+    Log de ingesta por actividad/evento (auditoría "perfecta" para debugging y UI futura).
+    """
+
+    class Status(models.TextChoices):
+        FETCHED = "fetched", "fetched"
+        SAVED = "saved", "saved"
+        DISCARDED = "discarded", "discarded"
+        FAILED = "failed", "failed"
+
+    event = models.ForeignKey(StravaWebhookEvent, on_delete=models.CASCADE, related_name="import_logs", db_index=True)
+    alumno = models.ForeignKey("Alumno", on_delete=models.SET_NULL, null=True, blank=True, related_name="strava_import_logs", db_index=True)
+    actividad = models.ForeignKey("Actividad", on_delete=models.SET_NULL, null=True, blank=True, related_name="strava_import_logs", db_index=True)
+
+    strava_activity_id = models.BigIntegerField(null=True, blank=True, db_index=True)
+    attempt = models.PositiveSmallIntegerField(default=0)
+
+    status = models.CharField(max_length=20, choices=Status.choices, db_index=True)
+    reason = models.CharField(max_length=160, blank=True, default="")
+    details = models.JSONField(default=dict, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["strava_activity_id", "-created_at"]),
+            models.Index(fields=["alumno", "-created_at"]),
+            models.Index(fields=["event", "-created_at"]),
+        ]
 
 @receiver(post_save, sender=Pago)
 def actualizar_pago_alumno(sender, instance, **kwargs):

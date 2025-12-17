@@ -1,6 +1,8 @@
 from django.db import models
 from django.conf import settings
-from core.models import Alumno
+from django.db.models import Q
+
+from core.models import Alumno, Equipo, Entrenamiento, Actividad
 
 class HistorialFitness(models.Model):
     """
@@ -99,3 +101,134 @@ class InjuryRiskSnapshot(models.Model):
 
     def __str__(self):
         return f"{self.fecha} - {self.alumno} ({self.risk_level} {self.risk_score})"
+
+
+class SessionComparison(models.Model):
+    """
+    Resultado persistido de "Plan vs Actual" por actividad importada.
+
+    Multi-tenant: guardamos `entrenador` (tenant) explícito para scoping rápido.
+    """
+
+    class Classification(models.TextChoices):
+        ON_TRACK = "on_track", "on_track"
+        UNDER = "under", "under"
+        OVER = "over", "over"
+        ANOMALY = "anomaly", "anomaly"
+
+    entrenador = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="session_comparisons",
+        db_index=True,
+    )
+    equipo = models.ForeignKey(
+        Equipo,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="session_comparisons",
+        db_index=True,
+    )
+    alumno = models.ForeignKey(
+        Alumno,
+        on_delete=models.CASCADE,
+        related_name="session_comparisons",
+        db_index=True,
+    )
+    fecha = models.DateField(db_index=True)
+
+    planned_session = models.ForeignKey(
+        Entrenamiento,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="comparisons",
+    )
+    activity = models.OneToOneField(
+        Actividad,
+        on_delete=models.CASCADE,
+        related_name="comparison",
+    )
+
+    metrics_json = models.JSONField(default=dict, blank=True)
+    compliance_score = models.PositiveSmallIntegerField(default=0, help_text="0–100")
+    classification = models.CharField(max_length=20, choices=Classification.choices, db_index=True)
+    explanation = models.TextField(blank=True, default="")
+    next_action = models.CharField(max_length=120, blank=True, default="")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["entrenador", "-fecha"]),
+            models.Index(fields=["alumno", "-fecha"]),
+            models.Index(fields=["classification", "-created_at"]),
+        ]
+
+
+class Alert(models.Model):
+    """
+    Alertas automáticas (MVP robusto) para coach + UI futura.
+    """
+
+    class Type(models.TextChoices):
+        OVERTRAINING_RISK = "overtraining_risk", "overtraining_risk"
+        LOW_COMPLIANCE = "low_compliance", "low_compliance"
+        ANOMALY = "anomaly", "anomaly"
+
+    class Severity(models.TextChoices):
+        LOW = "LOW", "LOW"
+        MEDIUM = "MEDIUM", "MEDIUM"
+        HIGH = "HIGH", "HIGH"
+
+    class Status(models.TextChoices):
+        OPEN = "open", "open"
+        CLOSED = "closed", "closed"
+
+    entrenador = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="alerts",
+        db_index=True,
+    )
+    equipo = models.ForeignKey(
+        Equipo,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="alerts",
+        db_index=True,
+    )
+    alumno = models.ForeignKey(
+        Alumno,
+        on_delete=models.CASCADE,
+        related_name="alerts",
+        db_index=True,
+    )
+
+    type = models.CharField(max_length=40, choices=Type.choices, db_index=True)
+    severity = models.CharField(max_length=10, choices=Severity.choices, default=Severity.LOW, db_index=True)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN, db_index=True)
+
+    message = models.TextField()
+    payload_json = models.JSONField(default=dict, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["entrenador", "status", "-created_at"]),
+            models.Index(fields=["alumno", "status", "-created_at"]),
+            models.Index(fields=["type", "status", "-created_at"]),
+        ]
+        constraints = [
+            # Evita spam: una alerta OPEN por (alumno,type)
+            models.UniqueConstraint(
+                fields=["alumno", "type"],
+                condition=Q(status="open"),
+                name="uniq_open_alert_per_type_alumno",
+            )
+        ]

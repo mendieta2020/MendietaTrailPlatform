@@ -2,10 +2,21 @@ from celery import shared_task
 from django.conf import settings
 from django.core.mail import send_mail
 from django.utils import timezone
+from django.db import transaction
+from django.db.models import F
 import openai
 import logging
 import traceback
-from .models import Entrenamiento, Alumno, InscripcionCarrera
+import random
+
+from .models import (
+    Entrenamiento,
+    Alumno,
+    InscripcionCarrera,
+    Actividad,
+    StravaWebhookEvent,
+    StravaImportLog,
+)
 from analytics.models import HistorialFitness 
 
 # Logger profesional para monitoreo (Sentry/Datadog ready)
@@ -192,83 +203,429 @@ def generar_feedback_ia(entrenamiento_id):
         return "FAIL IA"
 
 # ==============================================================================
-#  TAREA 3: INGESTA DE DATOS (STRAVA BLINDADO & SCALABLE)
+#  TAREA 3: INGESTA DE DATOS (STRAVA ROBUSTO: idempotente + dedupe + auditoría)
 # ==============================================================================
-@shared_task(bind=True, max_retries=3)
-def procesar_actividad_strava(self, object_id, owner_id):
+def _strava_retry_delays_seconds():
+    # Configurable en settings.py si querés ajustar agresividad.
+    return getattr(settings, "STRAVA_WEBHOOK_RETRY_DELAYS", [30, 120, 300, 900, 3600])
+
+
+def _retry_countdown_with_jitter(retry_index: int) -> int:
+    delays = _strava_retry_delays_seconds()
+    base = delays[min(retry_index, len(delays) - 1)]
+    # jitter 0–20% para evitar thundering herd
+    jitter = int(base * random.uniform(0.0, 0.2))
+    return base + jitter
+
+
+def _supported_strava_activity_type(strava_type: str) -> bool:
+    st = (strava_type or "").upper()
+    # Tipos soportados (estricto). Ajustable si querés más deportes.
+    return st in {"RUN", "TRAILRUN", "VIRTUALRUN", "WORKOUT"}
+
+
+def _normalize_strava_activity(activity) -> dict:
+    """
+    Convierte objeto stravalib Activity a dict estable (para tests/auditoría).
+    """
+    # Raw JSON (best-effort)
+    raw = {}
+    try:
+        if hasattr(activity, "to_dict"):
+            raw = activity.to_dict()
+        elif hasattr(activity, "model_dump"):
+            raw = activity.model_dump()
+    except Exception:
+        raw = {}
+
+    athlete_id = None
+    try:
+        athlete_id = int(getattr(getattr(activity, "athlete", None), "id", None))
+    except Exception:
+        athlete_id = None
+
+    start_dt = getattr(activity, "start_date_local", None) or getattr(activity, "start_date", None)
+    moving_time_s = 0
+    try:
+        mt = getattr(activity, "moving_time", None)
+        if mt is not None:
+            if hasattr(mt, "total_seconds"):
+                moving_time_s = int(mt.total_seconds())
+            elif hasattr(mt, "seconds"):
+                moving_time_s = int(mt.seconds)
+            else:
+                moving_time_s = int(mt)
+    except Exception:
+        moving_time_s = 0
+
+    elapsed_time_s = 0
+    try:
+        et = getattr(activity, "elapsed_time", None)
+        if et is not None:
+            if hasattr(et, "total_seconds"):
+                elapsed_time_s = int(et.total_seconds())
+            elif hasattr(et, "seconds"):
+                elapsed_time_s = int(et.seconds)
+            else:
+                elapsed_time_s = int(et)
+    except Exception:
+        elapsed_time_s = 0
+
+    distance_m = safe_float_value(getattr(activity, "distance", None))
+    elev_m = safe_float_value(getattr(activity, "total_elevation_gain", None))
+
+    avg_hr = getattr(activity, "average_heartrate", None)
+    max_hr = getattr(activity, "max_heartrate", None)
+    avg_watts = getattr(activity, "average_watts", None)
+
+    polyline = None
+    try:
+        polyline = getattr(getattr(activity, "map", None), "summary_polyline", None)
+    except Exception:
+        polyline = None
+
+    return {
+        "id": int(getattr(activity, "id")),
+        "athlete_id": athlete_id,
+        "name": str(getattr(activity, "name", "") or ""),
+        "type": str(getattr(activity, "type", "") or ""),
+        "start_date_local": start_dt,
+        "moving_time_s": int(moving_time_s),
+        "elapsed_time_s": int(elapsed_time_s),
+        "distance_m": float(distance_m or 0.0),
+        "elevation_m": float(elev_m or 0.0),
+        "avg_hr": float(avg_hr) if avg_hr is not None else None,
+        "max_hr": float(max_hr) if max_hr is not None else None,
+        "avg_watts": float(avg_watts) if avg_watts is not None else None,
+        "polyline": polyline,
+        "raw": raw,
+    }
+
+
+def _classify_transient_strava_error(exc: Exception) -> str:
+    msg = str(exc).lower()
+    if "429" in msg or "rate limit" in msg:
+        return "rate_limit"
+    if "timeout" in msg or "timed out" in msg:
+        return "timeout"
+    if "502" in msg or "503" in msg or "504" in msg or "server error" in msg or "bad gateway" in msg:
+        return "server_error"
+    if "connection" in msg or "temporar" in msg:
+        return "network"
+    if "401" in msg or "unauthorized" in msg:
+        return "unauthorized"
+    return ""
+
+
+def _map_strava_type_to_core(tipo: str) -> str:
+    """
+    Strava -> choices TIPO_ACTIVIDAD de Entrenamiento.
+    """
+    st = (tipo or "").upper()
+    if st in {"RUN", "TRAILRUN", "VIRTUALRUN"}:
+        return "RUN"
+    return "OTHER"
+
+
+@shared_task(bind=True, max_retries=10)
+def process_strava_event(self, event_id: int):
+    """
+    Procesa un StravaWebhookEvent:
+    - idempotente (event_uid único)
+    - dedupe (Actividad/Entrenamiento)
+    - retries con backoff+jitter para 429/5xx/timeouts
+    - auditoría en StravaImportLog
+    """
     from .services import obtener_cliente_strava
 
-    print(f"⚙️ [CELERY] Ingesta Strava ID: {object_id}")
-    
+    # Nota: retries en Celery se cuentan desde 0, por eso attempt = retries + 1.
+    attempt_no = int(getattr(self.request, "retries", 0)) + 1
+
+    with transaction.atomic():
+        event = StravaWebhookEvent.objects.select_for_update().get(pk=event_id)
+        correlation_id = event.event_uid
+
+        # Idempotencia fuerte: si ya está procesado/ignorado, no hacemos nada.
+        if event.status in {
+            StravaWebhookEvent.Status.PROCESSED,
+            StravaWebhookEvent.Status.IGNORED,
+        }:
+            return f"NOOP: {event.status}"
+
+        # Si falló antes pero sigue en cola, permitimos reintento.
+        event.status = StravaWebhookEvent.Status.PROCESSING
+        event.attempts = F("attempts") + 1
+        event.last_error = ""
+        event.save(update_fields=["status", "attempts", "last_error"])
+
+    logger.info(
+        "strava.process_event.start",
+        extra={"correlation_id": correlation_id, "event_id": event_id, "attempt": attempt_no},
+    )
+
+    # Validación básica del evento
+    if event.object_type != "activity":
+        StravaWebhookEvent.objects.filter(pk=event.pk).update(status=StravaWebhookEvent.Status.IGNORED)
+        return "IGNORED: non-activity"
+
+    if event.aspect_type == "delete":
+        StravaWebhookEvent.objects.filter(pk=event.pk).update(status=StravaWebhookEvent.Status.IGNORED)
+        return "IGNORED: delete"
+
+    alumno = Alumno.objects.filter(strava_athlete_id=str(event.owner_id)).select_related("entrenador", "equipo").first()
+    if not alumno:
+        StravaImportLog.objects.create(
+            event_id=event.pk,
+            alumno=None,
+            actividad=None,
+            strava_activity_id=event.object_id,
+            attempt=attempt_no,
+            status=StravaImportLog.Status.DISCARDED,
+            reason="unknown_athlete",
+            details={"owner_id": event.owner_id},
+        )
+        StravaWebhookEvent.objects.filter(pk=event.pk).update(status=StravaWebhookEvent.Status.IGNORED)
+        return "IGNORED: unknown athlete"
+
+    client = obtener_cliente_strava(alumno.entrenador)
+    if not client:
+        StravaImportLog.objects.create(
+            event_id=event.pk,
+            alumno=alumno,
+            actividad=None,
+            strava_activity_id=event.object_id,
+            attempt=attempt_no,
+            status=StravaImportLog.Status.FAILED,
+            reason="missing_strava_auth",
+            details={"coach_id": alumno.entrenador_id},
+        )
+        StravaWebhookEvent.objects.filter(pk=event.pk).update(
+            status=StravaWebhookEvent.Status.FAILED, last_error="missing_strava_auth"
+        )
+        return "FAIL: no strava auth"
+
+    # Fetch activity desde Strava (con refresh forzado ante 401)
+    activity = None
+    fetch_error = None
     try:
-        try:
-            alumno = Alumno.objects.get(strava_athlete_id=str(owner_id))
-        except Alumno.DoesNotExist:
-            print(f"⚠️ [SKIP] Atleta {owner_id} desconocido.")
-            return "SKIP: Unknown Athlete"
+        activity_obj = client.get_activity(int(event.object_id))
+        activity = _normalize_strava_activity(activity_obj)
+        StravaImportLog.objects.create(
+            event_id=event.pk,
+            alumno=alumno,
+            actividad=None,
+            strava_activity_id=activity["id"],
+            attempt=attempt_no,
+            status=StravaImportLog.Status.FETCHED,
+            reason="ok",
+            details={"type": activity.get("type")},
+        )
+    except Exception as exc:
+        fetch_error = exc
+        classification = _classify_transient_strava_error(exc) or "fetch_error"
 
-        client = obtener_cliente_strava(alumno.entrenador)
-        if not client: return "FAIL: Auth"
+        # Caso especial: 401 -> forzar refresh y reintentar UNA VEZ en el mismo intento
+        if classification == "unauthorized":
+            try:
+                refreshed = obtener_cliente_strava(alumno.entrenador, force_refresh=True)
+                if refreshed:
+                    activity_obj = refreshed.get_activity(int(event.object_id))
+                    activity = _normalize_strava_activity(activity_obj)
+                    StravaImportLog.objects.create(
+                        event_id=event.pk,
+                        alumno=alumno,
+                        actividad=None,
+                        strava_activity_id=activity["id"],
+                        attempt=attempt_no,
+                        status=StravaImportLog.Status.FETCHED,
+                        reason="ok_after_forced_refresh",
+                        details={"type": activity.get("type")},
+                    )
+                    fetch_error = None
+                else:
+                    fetch_error = exc
+            except Exception as exc2:
+                fetch_error = exc2
 
-        # Descarga con manejo de Rate Limits
-        try:
-            activity = client.get_activity(object_id)
-        except Exception as e:
-            error_str = str(e).lower()
-            if "404" in error_str or "not found" in error_str: return "SKIP: 404"
-            if "429" in error_str: raise self.retry(countdown=900)
-            raise e
+        if activity is None:
+            StravaImportLog.objects.create(
+                event_id=event.pk,
+                alumno=alumno,
+                actividad=None,
+                strava_activity_id=event.object_id,
+                attempt=attempt_no,
+                status=StravaImportLog.Status.FAILED,
+                reason=classification,
+                details={"error": str(fetch_error or exc)},
+            )
 
-        # --- EXTRACCIÓN SEGURA ---
-        tipo_act = map_strava_type_internal(activity.type)
-        tiempo_min = safe_duration_minutes(activity.moving_time)
-        dist_km = round(safe_float_value(activity.distance) / 1000, 2)
-        desnivel_m = int(safe_float_value(activity.total_elevation_gain))
-        hr_avg = int(activity.average_heartrate) if hasattr(activity, 'average_heartrate') and activity.average_heartrate else 0
-        watts_avg = int(activity.average_watts) if hasattr(activity, 'average_watts') and activity.average_watts else 0
-        fecha = activity.start_date_local.date()
+            # Retry inteligente
+            if classification in {"rate_limit", "timeout", "server_error", "network", "unauthorized"}:
+                countdown = _retry_countdown_with_jitter(int(getattr(self.request, "retries", 0)))
+                StravaWebhookEvent.objects.filter(pk=event.pk).update(
+                    status=StravaWebhookEvent.Status.QUEUED,
+                    last_error=f"{classification}: {fetch_error or exc}",
+                )
+                raise self.retry(countdown=countdown, exc=fetch_error or exc)
 
-        # --- SMART MATCHING (EL JUEZ) ---
-        entreno = Entrenamiento.objects.filter(strava_id=str(object_id)).first()
-        accion = "ACTUALIZADO"
+            StravaWebhookEvent.objects.filter(pk=event.pk).update(
+                status=StravaWebhookEvent.Status.FAILED,
+                last_error=str(fetch_error or exc),
+            )
+            return f"FAIL: {fetch_error or exc}"
 
+    # Reglas estrictas de aceptación
+    invalid_reason = ""
+    if not _supported_strava_activity_type(activity.get("type")):
+        invalid_reason = "unsupported_type"
+    elif not activity.get("start_date_local"):
+        invalid_reason = "missing_start_date"
+    elif (activity.get("elapsed_time_s") or 0) <= 0 or (activity.get("moving_time_s") or 0) <= 0:
+        invalid_reason = "invalid_duration"
+    elif (activity.get("distance_m") or 0) <= 0:
+        invalid_reason = "invalid_distance"
+    elif activity.get("athlete_id") and int(activity["athlete_id"]) != int(event.owner_id):
+        invalid_reason = "athlete_mismatch"
+
+    # Upsert Actividad (dedupe)
+    defaults = {
+        "usuario": alumno.entrenador,
+        "alumno": alumno,
+        "nombre": activity.get("name") or "",
+        "distancia": float(activity.get("distance_m") or 0.0),
+        "tiempo_movimiento": int(activity.get("moving_time_s") or 0),
+        "fecha_inicio": activity["start_date_local"],
+        "tipo_deporte": activity.get("type") or "",
+        "desnivel_positivo": float(activity.get("elevation_m") or 0.0),
+        "ritmo_promedio": (
+            (float(activity.get("distance_m") or 0.0) / float(activity.get("moving_time_s") or 1))
+            if (activity.get("distance_m") or 0) > 0 and (activity.get("moving_time_s") or 0) > 0
+            else None
+        ),
+        "mapa_polilinea": activity.get("polyline"),
+        "datos_brutos": activity.get("raw") or {},
+        "validity": Actividad.Validity.DISCARDED if invalid_reason else Actividad.Validity.VALID,
+        "invalid_reason": invalid_reason or "",
+    }
+    actividad_obj, _created = Actividad.objects.update_or_create(strava_id=activity["id"], defaults=defaults)
+
+    if invalid_reason:
+        StravaImportLog.objects.create(
+            event_id=event.pk,
+            alumno=alumno,
+            actividad=actividad_obj,
+            strava_activity_id=activity["id"],
+            attempt=attempt_no,
+            status=StravaImportLog.Status.DISCARDED,
+            reason=invalid_reason,
+            details={"type": activity.get("type")},
+        )
+        StravaWebhookEvent.objects.filter(pk=event.pk).update(status=StravaWebhookEvent.Status.IGNORED, last_error="")
+        return f"DISCARDED: {invalid_reason}"
+
+    # Upsert Entrenamiento (plan match / unplanned)
+    fecha = activity["start_date_local"].date()
+    with transaction.atomic():
+        entreno = Entrenamiento.objects.select_for_update().filter(strava_id=str(activity["id"])).first()
+        accion = "UPDATED"
         if not entreno:
-            # Buscamos si había algo planificado para hoy que coincida
-            entreno = Entrenamiento.objects.filter(alumno=alumno, fecha_asignada=fecha, completado=False).first()
-            if entreno: accion = "VINCULADO (MATCH)"
-
+            entreno = Entrenamiento.objects.select_for_update().filter(
+                alumno=alumno, fecha_asignada=fecha, completado=False
+            ).first()
+            if entreno:
+                accion = "MATCHED"
         if not entreno:
-            # LÓGICA DE "NO PLANIFICADO" (N/A)
-            print(f"✨ [NUEVO] Actividad no planificada detectada.")
-            entreno = Entrenamiento(alumno=alumno, fecha_asignada=fecha, titulo=activity.name)
-            accion = "CREADO (No Planificado)"
+            entreno = Entrenamiento(alumno=alumno, fecha_asignada=fecha, titulo=activity.get("name") or "Strava")
+            accion = "CREATED_UNPLANNED"
 
-        # --- GUARDAR DATOS REALES ---
-        entreno.strava_id = str(object_id)
+        entreno.strava_id = str(activity["id"])
         entreno.completado = True
-        entreno.tipo_actividad = tipo_act
-        entreno.distancia_real_km = dist_km
-        entreno.tiempo_real_min = tiempo_min
-        entreno.desnivel_real_m = desnivel_m
-        entreno.frecuencia_cardiaca_promedio = hr_avg
-        entreno.potencia_promedio = watts_avg
-        
-        # Si es nuevo o no tenía título, usamos el de Strava
-        if accion.startswith("CREADO") or entreno.titulo == "Entrenamiento":
-            entreno.titulo = activity.name
-
+        entreno.tipo_actividad = _map_strava_type_to_core(activity.get("type"))
+        entreno.distancia_real_km = round(float(activity.get("distance_m") or 0.0) / 1000.0, 2)
+        entreno.tiempo_real_min = int(round(float(activity.get("moving_time_s") or 0) / 60.0))
+        entreno.desnivel_real_m = int(round(float(activity.get("elevation_m") or 0.0)))
+        if accion.startswith("CREATED") or entreno.titulo == "Entrenamiento":
+            entreno.titulo = activity.get("name") or entreno.titulo
         entreno.save()
-        print(f"💾 [DB] {accion}: {entreno.titulo}")
 
-        # --- DISPARAR CASCADA CIENTÍFICA ---
-        # 1. Calcular TSS/GAP/TRIMP
-        procesar_metricas_entrenamiento.delay(entreno.id)
-        # 2. Generar Feedback IA
-        generar_feedback_ia.delay(entreno.id)
-        
-        return f"SUCCESS: {accion}"
+    StravaImportLog.objects.create(
+        event_id=event.pk,
+        alumno=alumno,
+        actividad=actividad_obj,
+        strava_activity_id=activity["id"],
+        attempt=attempt_no,
+        status=StravaImportLog.Status.SAVED,
+        reason=accion,
+        details={"entrenamiento_id": entreno.id},
+    )
 
-    except Exception as e:
-        print(f"❌ [CRITICAL TASK ERROR]: {str(e)}")
-        # No relanzamos para no matar al worker, pero logueamos fuerte
-        return f"FAIL: {str(e)}"
+    # Plan vs Actual + Alertas (recalculable ante updates)
+    try:
+        from analytics.models import SessionComparison
+        from analytics.plan_vs_actual import PlannedVsActualComparator
+        from analytics.alerts import run_alert_triggers_for_comparison
+
+        comparator = PlannedVsActualComparator()
+        planned_session = None if accion == "CREATED_UNPLANNED" else entreno
+        result = comparator.compare(planned_session, actividad_obj)
+
+        comparison, _ = SessionComparison.objects.update_or_create(
+            activity=actividad_obj,
+            defaults={
+                "entrenador_id": alumno.entrenador_id,
+                "equipo_id": alumno.equipo_id,
+                "alumno_id": alumno.id,
+                "fecha": fecha,
+                "planned_session": planned_session,
+                "metrics_json": result.metrics,
+                "compliance_score": int(result.compliance_score),
+                "classification": result.classification,
+                "explanation": result.explanation,
+                "next_action": result.next_action,
+            },
+        )
+        run_alert_triggers_for_comparison(comparison)
+    except Exception as exc:
+        # No bloquea la ingesta principal: queda en logs/import state.
+        logger.exception(
+            "strava.plan_vs_actual.error",
+            extra={"correlation_id": correlation_id, "event_id": event_id, "error": str(exc)},
+        )
+
+    StravaWebhookEvent.objects.filter(pk=event.pk).update(status=StravaWebhookEvent.Status.PROCESSED, processed_at=timezone.now())
+
+    logger.info(
+        "strava.process_event.done",
+        extra={
+            "correlation_id": correlation_id,
+            "event_id": event_id,
+            "attempt": attempt_no,
+            "strava_activity_id": activity["id"],
+            "alumno_id": alumno.id,
+            "entrenamiento_id": entreno.id,
+            "accion": accion,
+        },
+    )
+    return f"OK: {accion}"
+
+
+@shared_task(bind=True)
+def procesar_actividad_strava(self, object_id, owner_id):
+    """
+    Wrapper legacy (compat): crea un StravaWebhookEvent sintético y delega al pipeline robusto.
+    """
+    synthetic_uid = f"legacy:{owner_id}:{object_id}:create"
+    event, created = StravaWebhookEvent.objects.get_or_create(
+        event_uid=synthetic_uid,
+        defaults={
+            "object_type": "activity",
+            "object_id": int(object_id),
+            "aspect_type": "create",
+            "owner_id": int(owner_id),
+            "payload_raw": {"legacy": True, "object_id": object_id, "owner_id": owner_id},
+            "status": StravaWebhookEvent.Status.QUEUED,
+        },
+    )
+    if created:
+        process_strava_event.delay(event.pk)
+    return f"ENQUEUED: {event.pk}"

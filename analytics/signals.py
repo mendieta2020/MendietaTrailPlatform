@@ -19,10 +19,27 @@ def actualizar_fitness_atleta(sender, instance, created, **kwargs):
     """
     if not instance.completado: return
 
-    # Usamos TSS real (Potencia/GAP) o estimado
-    tss_nuevo = instance.tss if instance.tss else 0
-    
-    if tss_nuevo == 0: return # Sin carga no hay impacto fisiológico
+    def _load_score(entreno: Entrenamiento) -> float:
+        """
+        Fuente de carga robusta (compatible con modelos legacy/nuevos).
+
+        - Si existe `tss`, lo prioriza.
+        - Si no, usa heurística MVP: minutos * (1 + rpe/10).
+        """
+        tss = getattr(entreno, "tss", None)
+        if tss is not None:
+            try:
+                return float(tss or 0)
+            except Exception:
+                return 0.0
+        dur = float(getattr(entreno, "tiempo_real_min", 0) or 0)
+        rpe = float(getattr(entreno, "rpe", 0) or 0)
+        intensity = 1.0 + (max(0.0, min(10.0, rpe)) / 10.0)
+        return dur * intensity
+
+    tss_nuevo = _load_score(instance)
+    if tss_nuevo == 0:
+        return  # sin carga no hay impacto fisiológico
 
     alumno = instance.alumno
     fecha_entreno = instance.fecha_asignada
@@ -43,7 +60,7 @@ def actualizar_fitness_atleta(sender, instance, created, **kwargs):
             fecha_asignada=fecha_entreno, 
             completado=True
         )
-        total_tss_dia = sum(e.tss for e in entrenamientos_dia if e.tss)
+        total_tss_dia = sum(_load_score(e) for e in entrenamientos_dia)
         
         historial_hoy.tss_diario = total_tss_dia
         
@@ -78,19 +95,23 @@ def analizar_rendimiento_y_predicciones(sender, instance, created, **kwargs):
     alumno = instance.alumno
     
     # --- A. DETECCIÓN DE FTP/VAM (Mejora de Rendimiento) ---
-    # Usamos Potencia Normalizada (NP) o Promedio
-    watts_sesion = instance.normalized_power if instance.normalized_power else instance.potencia_promedio
-    
+    # Compat: estas columnas pueden no existir según migraciones/historia del repo.
+    watts_np = getattr(instance, "normalized_power", None)
+    watts_avg = getattr(instance, "potencia_promedio", None)
+    watts_sesion = watts_np or watts_avg
+    alumno_ftp = getattr(alumno, "ftp", 0) or 0
+
     # Umbral de Alerta: Si sostuvo el 95% de su FTP por más de 20 min, probablemente su FTP subió.
-    if watts_sesion and alumno.ftp > 0:
-        if watts_sesion >= (alumno.ftp * 0.95) and instance.tiempo_real_min > 20:
-            crear_alerta_si_no_existe(alumno, instance.fecha_asignada, 'FTP_UP', watts_sesion, alumno.ftp, instance.titulo)
+    if watts_sesion and alumno_ftp > 0:
+        if watts_sesion >= (alumno_ftp * 0.95) and (instance.tiempo_real_min or 0) > 20:
+            crear_alerta_si_no_existe(alumno, instance.fecha_asignada, 'FTP_UP', watts_sesion, alumno_ftp, instance.titulo)
 
     # --- B. DETECCIÓN DE FC MÁXIMA ---
-    if instance.frecuencia_cardiaca_promedio and alumno.fcm > 0:
+    hr_avg = getattr(instance, "frecuencia_cardiaca_promedio", None)
+    if hr_avg and getattr(alumno, "fcm", 0) > 0:
         # Si el promedio de la sesión fue > 98% del Max teórico, el Max está mal.
-        if instance.frecuencia_cardiaca_promedio > (alumno.fcm * 0.98):
-             crear_alerta_si_no_existe(alumno, instance.fecha_asignada, 'HR_MAX', instance.frecuencia_cardiaca_promedio, alumno.fcm, instance.titulo)
+        if hr_avg > (alumno.fcm * 0.98):
+             crear_alerta_si_no_existe(alumno, instance.fecha_asignada, 'HR_MAX', hr_avg, alumno.fcm, instance.titulo)
 
     # --- C. ACTUALIZACIÓN DE PRONÓSTICOS (RIEGEL) ---
     # Si detectamos una mejora significativa o si es una carrera, actualizamos el modelo predictivo
@@ -121,7 +142,11 @@ def disparar_analisis_ia(sender, instance, created, **kwargs):
     Solicita análisis cualitativo a la IA solo si hay datos reales.
     Usa on_commit para asegurar que el worker reciba el dato guardado.
     """
-    if instance.completado and not instance.feedback_ia:
+    # Si el modelo no tiene `feedback_ia` (migraciones modernas), no disparamos esta señal.
+    if not hasattr(instance, "feedback_ia"):
+        return
+
+    if instance.completado and not getattr(instance, "feedback_ia", None):
         has_data = (instance.tiempo_real_min and instance.tiempo_real_min > 0) or \
                    (instance.distancia_real_km and instance.distancia_real_km > 0)
 
