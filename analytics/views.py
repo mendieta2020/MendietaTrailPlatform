@@ -178,30 +178,35 @@ class AlertaRendimientoViewSet(viewsets.ReadOnlyModelViewSet):
             scoped = qs.none()
             applied = False
 
-            # Intentos pedidos (no romper si los campos no existen)
+            # Estrategia: intentamos varios campos de tenant comunes.
+            # Capturamos FieldError (campo no existe) y ValueError (tipo incorrecto).
+            # Si alguno aplica, usamos ese filtro.
+
+            # Campo principal en este proyecto: alumno.entrenador
+            try:
+                scoped = scoped | qs.filter(alumno__entrenador=user)
+                applied = True
+            except (FieldError, ValueError):
+                pass
+
+            # Alternativa: alumno.equipo.entrenador
+            try:
+                scoped = scoped | qs.filter(alumno__equipo__entrenador=user)
+                applied = True
+            except (FieldError, ValueError):
+                pass
+
+            # Fallbacks genéricos para otros proyectos (coach en lugar de entrenador)
             try:
                 scoped = scoped | qs.filter(alumno__coach=user)
                 applied = True
-            except FieldError:
+            except (FieldError, ValueError):
                 pass
 
             try:
                 scoped = scoped | qs.filter(alumno__equipo__coach=user)
                 applied = True
-            except FieldError:
-                pass
-
-            # Fallback compatible con este repo (entrenador)
-            try:
-                scoped = scoped | qs.filter(alumno__entrenador=user)
-                applied = True
-            except FieldError:
-                pass
-
-            try:
-                scoped = scoped | qs.filter(alumno__equipo__entrenador=user)
-                applied = True
-            except FieldError:
+            except (FieldError, ValueError):
                 pass
 
             qs = scoped.distinct() if applied else qs.none()
