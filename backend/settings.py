@@ -12,10 +12,8 @@ from datetime import timedelta # Importamos timedelta para JWT
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Detectar comandos de management donde no queremos exigir .env / Postgres
-# (CI/agents suelen correr makemigrations/migrate sin variables de entorno)
+# Detectar tests (y permitir fallback local si Postgres no está configurado).
 RUNNING_TESTS = "test" in sys.argv
-RUNNING_MGMT_COMMAND = any(cmd in sys.argv for cmd in ("test", "makemigrations", "migrate"))
 
 # --- CARGA DE VARIABLES DE ENTORNO ---
 env_path = BASE_DIR / '.env'
@@ -123,12 +121,15 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 #  BASE DE DATOS
 # ==============================================================================
 DATABASES = {
+    # Importante:
+    # - Si DB_NAME/DB_USER/DB_PASSWORD están configuradas, SIEMPRE usamos Postgres (también en migrate/showmigrations).
+    # - Si NO están configuradas (CI/entornos sin .env), caemos a SQLite para permitir comandos básicos.
     "default": (
         {
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": ":memory:" if RUNNING_TESTS else str(BASE_DIR / "db.sqlite3"),
         }
-        if RUNNING_MGMT_COMMAND
+        if not all(os.environ.get(k) for k in ("DB_NAME", "DB_USER", "DB_PASSWORD"))
         else {
             "ENGINE": "django.db.backends.postgresql",
             "NAME": get_env_variable("DB_NAME"),
@@ -137,7 +138,7 @@ DATABASES = {
             "HOST": get_env_variable("DB_HOST", "localhost", required=False),
             "PORT": get_env_variable("DB_PORT", "5432", required=False),
         }
-    )
+    ),
 }
 
 
