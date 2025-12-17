@@ -20,36 +20,55 @@ env_path = BASE_DIR / '.env'
 load_dotenv(env_path)
 
 # --- VALIDACIÓN ESTRICTA DE CONFIGURACIÓN ---
-def get_env_variable(var_name, default=None, required=True):
-    try:
-        return os.environ[var_name]
-    except KeyError:
-        if required:
-            error_msg = f"❌ ERROR CRÍTICO: La variable de entorno {var_name} no está configurada."
-            print(error_msg)
-            if not default:
-                raise Exception(error_msg)
-        return default
+# Nota: Para compatibilidad, aceptamos variables con prefijo DJANGO_* (legacy)
+# además de las estándar (SECRET_KEY/DEBUG/ALLOWED_HOSTS).
+def _parse_bool(value: str | None) -> bool:
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def get_env(*var_names: str, default=None, required: bool = True, allow_empty: bool = False):
+    """
+    Devuelve la primera variable de entorno presente en var_names.
+    - Si required=True y ninguna está configurada (o está vacía cuando allow_empty=False), levanta excepción.
+    - default solo aplica cuando required=False.
+    """
+    for name in var_names:
+        if name in os.environ:
+            val = os.environ.get(name)
+            if val == "" and not allow_empty:
+                continue
+            return val
+
+    if required:
+        joined = " / ".join(var_names)
+        error_msg = f"❌ ERROR CRÍTICO: No está configurada ninguna de estas variables: {joined}"
+        print(error_msg)
+        raise Exception(error_msg)
+
+    return default
+
 
 # Variables Críticas
-SECRET_KEY = get_env_variable("SECRET_KEY", default="test-secret-key", required=not RUNNING_TESTS)
-DEBUG = get_env_variable("DEBUG", default=("True" if RUNNING_TESTS else "False"), required=not RUNNING_TESTS) == "True"
+SECRET_KEY = get_env("SECRET_KEY", "DJANGO_SECRET_KEY", default="test-secret-key", required=not RUNNING_TESTS)
+DEBUG = _parse_bool(get_env("DEBUG", "DJANGO_DEBUG", default=("True" if RUNNING_TESTS else None), required=not RUNNING_TESTS))
 
 # --- CONFIGURACIÓN DE HOSTS (Ngrok Ready) ---
 if DEBUG:
     # Permitimos todo en desarrollo para evitar problemas con túneles dinámicos
     ALLOWED_HOSTS = ['*']
 else:
-    ALLOWED_HOSTS = get_env_variable("ALLOWED_HOSTS", "localhost").split(",")
+    ALLOWED_HOSTS = get_env("ALLOWED_HOSTS", "DJANGO_ALLOWED_HOSTS", default="localhost", required=not RUNNING_TESTS).split(",")
 
 # Strava (opcional en local/tests, requerido solo si querés en prod)
-STRAVA_CLIENT_ID = get_env_variable("STRAVA_CLIENT_ID", default="", required=(not DEBUG and not RUNNING_TESTS))
-STRAVA_CLIENT_SECRET = get_env_variable("STRAVA_CLIENT_SECRET", default="", required=(not DEBUG and not RUNNING_TESTS))
+STRAVA_CLIENT_ID = get_env("STRAVA_CLIENT_ID", default="", required=(not DEBUG and not RUNNING_TESTS))
+STRAVA_CLIENT_SECRET = get_env("STRAVA_CLIENT_SECRET", default="", required=(not DEBUG and not RUNNING_TESTS))
 # Este es el token que definiste en tu .env (MENDIETA_SECRET_TOKEN_2025)
-STRAVA_WEBHOOK_VERIFY_TOKEN = get_env_variable("STRAVA_WEBHOOK_VERIFY_TOKEN", default="", required=(not DEBUG and not RUNNING_TESTS))
+STRAVA_WEBHOOK_VERIFY_TOKEN = get_env("STRAVA_WEBHOOK_VERIFY_TOKEN", default="", required=(not DEBUG and not RUNNING_TESTS))
 
 # OpenAI (opcional en local)
-OPENAI_API_KEY = get_env_variable("OPENAI_API_KEY", default="", required=False)
+OPENAI_API_KEY = get_env("OPENAI_API_KEY", default="", required=False)
 
 
 # ==============================================================================
