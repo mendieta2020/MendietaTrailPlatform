@@ -14,6 +14,24 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Detectar tests (y permitir fallback local si Postgres no está configurado).
 RUNNING_TESTS = "test" in sys.argv
+PRIMARY_COMMAND = sys.argv[1] if len(sys.argv) > 1 else ""
+# Para comandos de management (migrate/makemigrations/etc) NO exigimos secretos runtime.
+# Esto evita que el repo sea "inmigrable" en CI/dev sin .env completo.
+NON_RUNTIME_COMMANDS = {
+    "makemigrations",
+    "migrate",
+    "showmigrations",
+    "sqlmigrate",
+    "check",
+    "shell",
+    "dbshell",
+    "collectstatic",
+    "createsuperuser",
+    "loaddata",
+    "dumpdata",
+    "test",
+}
+REQUIRE_RUNTIME_SECRETS = (not RUNNING_TESTS) and (PRIMARY_COMMAND not in NON_RUNTIME_COMMANDS)
 
 # --- CARGA DE VARIABLES DE ENTORNO ---
 env_path = BASE_DIR / '.env'
@@ -42,11 +60,17 @@ if DEBUG:
 else:
     ALLOWED_HOSTS = get_env_variable("ALLOWED_HOSTS", "localhost").split(",")
 
-# Strava (opcional en local/tests, requerido solo si querés en prod)
-STRAVA_CLIENT_ID = get_env_variable("STRAVA_CLIENT_ID", default="", required=(not DEBUG and not RUNNING_TESTS))
-STRAVA_CLIENT_SECRET = get_env_variable("STRAVA_CLIENT_SECRET", default="", required=(not DEBUG and not RUNNING_TESTS))
+# Strava:
+# - requerido en runtime "real" (prod) cuando DEBUG=False
+# - opcional para tests y para comandos de management (migrate/makemigrations/etc)
+STRAVA_CLIENT_ID = get_env_variable("STRAVA_CLIENT_ID", default="", required=(REQUIRE_RUNTIME_SECRETS and not DEBUG))
+STRAVA_CLIENT_SECRET = get_env_variable("STRAVA_CLIENT_SECRET", default="", required=(REQUIRE_RUNTIME_SECRETS and not DEBUG))
 # Este es el token que definiste en tu .env (MENDIETA_SECRET_TOKEN_2025)
-STRAVA_WEBHOOK_VERIFY_TOKEN = get_env_variable("STRAVA_WEBHOOK_VERIFY_TOKEN", default="", required=(not DEBUG and not RUNNING_TESTS))
+STRAVA_WEBHOOK_VERIFY_TOKEN = get_env_variable(
+    "STRAVA_WEBHOOK_VERIFY_TOKEN",
+    default="",
+    required=(REQUIRE_RUNTIME_SECRETS and not DEBUG),
+)
 
 # OpenAI (opcional en local)
 OPENAI_API_KEY = get_env_variable("OPENAI_API_KEY", default="", required=False)
