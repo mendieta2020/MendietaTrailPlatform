@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     'nested_admin',
     'rest_framework',
     'rest_framework_simplejwt', # <--- NUEVO: JWT
+    'rest_framework_simplejwt.token_blacklist',
     'django_filters',           # <--- FILTROS AVANZADOS API
     'drf_yasg',
     'corsheaders', 
@@ -189,21 +190,37 @@ SWAGGER_SETTINGS = {
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-        'rest_framework.authentication.SessionAuthentication',
+        #'rest_framework.authentication.SessionAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated', # 🔒 CERRADO POR DEFECTO
     ),
     'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend'],
+
+    # ✅ FASE 4: throttling global
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.ScopedRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '30/min',
+        'user': '300/min',
+        'login': '5/min',      # para /api/token/
+        'refresh': '20/min',   # para /api/token/refresh/
+    },
 }
 
 # --- CONFIGURACIÓN JWT (Simple JWT) ---
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60), # Token dura 1 hora
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),    # Refresh dura 7 días
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15), # 
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=14),    # Refresh dura 7 días
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
+    
+    # ✅ Recomendado
+    'UPDATE_LAST_LOGIN': True,
 }
 
 # ==============================================================================
