@@ -2,12 +2,20 @@ import json
 from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest.mock import patch
 
+from celery.exceptions import Retry
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from analytics.models import SessionComparison
-from core.models import Alumno, Entrenamiento, Actividad, StravaWebhookEvent, StravaImportLog
+from core.models import (
+    Alumno,
+    Entrenamiento,
+    Actividad,
+    StravaWebhookEvent,
+    StravaImportLog,
+    StravaActivitySyncState,
+)
 from core.tasks import process_strava_event
 
 
@@ -98,6 +106,29 @@ class StravaWebhookThinEndpointTests(TestCase):
         self.assertEqual(res2.status_code, 200)
         self.assertEqual(StravaWebhookEvent.objects.count(), 1)
         self.assertEqual(delay_mock.call_count, 1)
+
+    def test_webhook_discard_non_activity_does_not_enqueue(self):
+        payload = {
+            "object_type": "athlete",
+            "aspect_type": "update",
+            "object_id": 123,
+            "owner_id": 999,
+            "subscription_id": 1,
+            "event_time": 1700000001,
+        }
+        with patch("core.webhooks.process_strava_event.delay") as delay_mock:
+            res = self.client.post(
+                "/webhooks/strava/",
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
+
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(delay_mock.call_count, 0)
+        self.assertEqual(StravaWebhookEvent.objects.count(), 1)
+        ev = StravaWebhookEvent.objects.first()
+        self.assertEqual(ev.status, StravaWebhookEvent.Status.DISCARDED)
+        self.assertEqual(ev.discard_reason, "non_activity_event")
 
 
 @override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
@@ -196,6 +227,28 @@ class StravaIngestionRobustTests(TestCase):
         self.assertTrue(
             StravaImportLog.objects.filter(event=e, status=StravaImportLog.Status.DISCARDED).exists()
         )
+
+    def test_retry_on_rate_limit_429_raises_retry_and_marks_queued(self):
+        e = self._mk_event(uid="e_429", owner_id=111, object_id=999, aspect="create")
+
+        class _RateLimitClient:
+            def get_activity(self, _activity_id: int):
+                raise Exception("429 rate limit")
+
+        with patch("core.services.obtener_cliente_strava", return_value=_RateLimitClient()):
+            with self.assertRaises(Retry):
+                process_strava_event.delay(e.id)
+
+        e.refresh_from_db()
+        self.assertEqual(e.status, StravaWebhookEvent.Status.QUEUED)
+        self.assertIn("rate_limit", (e.last_error or "").lower())
+        self.assertTrue(
+            StravaImportLog.objects.filter(event=e, status=StravaImportLog.Status.FAILED, reason="rate_limit").exists()
+        )
+        # Lock lógico debe existir (se mantiene RUNNING mientras reintenta)
+        state = StravaActivitySyncState.objects.get(provider="strava", strava_activity_id=999)
+        self.assertEqual(state.status, StravaActivitySyncState.Status.RUNNING)
+        self.assertEqual(state.locked_by_event_uid, e.event_uid)
 
     def test_multi_tenant_processing_scoped_by_athlete_id(self):
         start = datetime.now(dt_timezone.utc)

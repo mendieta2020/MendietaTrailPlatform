@@ -375,6 +375,8 @@ class StravaWebhookEvent(models.Model):
     aspect_type = models.CharField(max_length=20, db_index=True)
     owner_id = models.BigIntegerField(db_index=True)
     subscription_id = models.BigIntegerField(null=True, blank=True, db_index=True)
+    # Strava canonical: unix epoch (segundos) del evento.
+    event_time = models.BigIntegerField(null=True, blank=True, db_index=True)
 
     payload_raw = models.JSONField(default=dict, blank=True)
     received_at = models.DateTimeField(default=timezone.now, db_index=True)
@@ -388,6 +390,9 @@ class StravaWebhookEvent(models.Model):
     last_attempt_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     processed_at = models.DateTimeField(null=True, blank=True)
+    # Métrica operativa: cuántas veces llegó el mismo evento (dedupe por constraint).
+    duplicate_count = models.PositiveIntegerField(default=0)
+    last_duplicate_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta:
         indexes = [
@@ -395,6 +400,10 @@ class StravaWebhookEvent(models.Model):
             models.Index(fields=["status", "-received_at"]),
             models.Index(fields=["object_type", "aspect_type", "object_id"]),
             models.Index(fields=["provider", "provider_event_id"]),
+        ]
+        constraints = [
+            # Requerimiento Fase 4: UniqueConstraint explícito para idempotencia y carreras.
+            models.UniqueConstraint(fields=["provider", "event_uid"], name="uniq_strava_provider_event_uid"),
         ]
 
     def mark_processed(self):
@@ -439,6 +448,49 @@ class StravaImportLog(models.Model):
             models.Index(fields=["strava_activity_id", "-created_at"]),
             models.Index(fields=["alumno", "-created_at"]),
             models.Index(fields=["event", "-created_at"]),
+        ]
+
+
+class StravaActivitySyncState(models.Model):
+    """
+    Lock/estado por actividad para evitar pipelines simultáneos (dedupe robusto).
+
+    Este modelo NO reemplaza `Actividad` (dato de negocio), solo coordina concurrencia
+    y guarda el resultado de la ingesta por `strava_activity_id`.
+    """
+
+    class Status(models.TextChoices):
+        RUNNING = "running", "running"
+        SUCCEEDED = "succeeded", "succeeded"
+        DISCARDED = "discarded", "discarded"
+        FAILED = "failed", "failed"
+
+    provider = models.CharField(max_length=20, default="strava", db_index=True)
+    athlete_id = models.BigIntegerField(null=True, blank=True, db_index=True)
+    strava_activity_id = models.BigIntegerField(db_index=True)
+
+    status = models.CharField(max_length=16, choices=Status.choices, db_index=True)
+    locked_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    locked_by_event_uid = models.CharField(max_length=80, blank=True, default="", db_index=True)
+
+    attempts = models.PositiveSmallIntegerField(default=0)
+    last_attempt_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    last_error = models.TextField(blank=True, default="")
+    discard_reason = models.CharField(max_length=160, blank=True, default="")
+
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True, db_index=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provider", "strava_activity_id"],
+                name="uniq_strava_provider_activity_id",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["athlete_id", "-updated_at"]),
+            models.Index(fields=["status", "-updated_at"]),
         ]
 
 @receiver(post_save, sender=Pago)
