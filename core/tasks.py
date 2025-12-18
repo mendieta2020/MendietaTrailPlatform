@@ -26,7 +26,6 @@ logger = logging.getLogger(__name__)
 try:
     from .metrics import (
         calcular_trimp, 
-        calcular_tss_estimado, # Legacy support
         calcular_load_rpe, 
         determinar_carga_final,
         # Fase 4: Trail Science
