@@ -204,6 +204,34 @@ class StravaIngestionRobustTests(TestCase):
         self.assertEqual(Entrenamiento.objects.filter(strava_id="555").count(), 1)
         self.assertEqual(SessionComparison.objects.filter(activity=act).count(), 1)
 
+    def test_unknown_athlete_is_ignored_with_discard_reason(self):
+        e = self._mk_event(uid="e_unknown", owner_id=999999, object_id=12345, aspect="create")
+        # No hay alumno con strava_athlete_id=999999
+        process_strava_event.delay(e.id)
+        e.refresh_from_db()
+        self.assertEqual(e.status, StravaWebhookEvent.Status.IGNORED)
+        self.assertEqual(e.discard_reason, "unknown_athlete")
+        self.assertTrue(
+            StravaImportLog.objects.filter(event=e, status=StravaImportLog.Status.DISCARDED, reason="unknown_athlete").exists()
+        )
+
+    def test_missing_auth_fails_with_discard_reason_and_message(self):
+        start = datetime.now(dt_timezone.utc)
+        e = self._mk_event(uid="e_noauth", owner_id=111, object_id=901, aspect="create")
+
+        # No hay SocialToken en tests, por lo que debe fallar antes de fetch.
+        # Patch por seguridad: aunque exista un cliente, el pipeline debe cortar por missing auth.
+        with patch("core.services.obtener_cliente_strava_para_alumno", return_value=None):
+            process_strava_event.delay(e.id)
+
+        e.refresh_from_db()
+        self.assertEqual(e.status, StravaWebhookEvent.Status.FAILED)
+        self.assertEqual(e.discard_reason, "missing_strava_auth")
+        self.assertTrue(e.error_message)
+        self.assertTrue(
+            StravaImportLog.objects.filter(event=e, status=StravaImportLog.Status.FAILED, reason="missing_strava_auth").exists()
+        )
+
     def test_discard_rules_invalid_activity_is_discarded(self):
         start = datetime.now(dt_timezone.utc)
         ride = _FakeStravaActivity(

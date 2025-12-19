@@ -15,9 +15,14 @@ from core.tasks import process_strava_event
 
 logger = logging.getLogger(__name__)
 
-# OBTENEMOS EL TOKEN DE MANERA SEGURA DESDE SETTINGS
-# Si no está en settings, usamos un fallback para que no crashee, pero avisamos.
-VERIFY_TOKEN = getattr(settings, 'STRAVA_WEBHOOK_VERIFY_TOKEN', "MENDIETA_SECRET_TOKEN_2025")
+# Token de verificación para el handshake (GET).
+# En prod debe venir desde settings/env; en dev permitimos un fallback para no romper local.
+_CONFIGURED_VERIFY_TOKEN = getattr(settings, "STRAVA_WEBHOOK_VERIFY_TOKEN", None)
+VERIFY_TOKEN = _CONFIGURED_VERIFY_TOKEN or ("MENDIETA_SECRET_TOKEN_2025" if getattr(settings, "DEBUG", False) else None)
+
+# Validación opcional de subscription_id en POST (hardening sin romper dev):
+# si se define `STRAVA_WEBHOOK_SUBSCRIPTION_ID`, solo aceptamos eventos de esa suscripción.
+EXPECTED_SUBSCRIPTION_ID = getattr(settings, "STRAVA_WEBHOOK_SUBSCRIPTION_ID", None)
 
 @csrf_exempt 
 @require_http_methods(["GET", "POST"])
@@ -38,11 +43,15 @@ def strava_webhook(request):
         challenge = request.GET.get('hub.challenge')
 
         if mode and token:
+            if VERIFY_TOKEN is None:
+                logger.error("strava_webhook.handshake_misconfigured_no_verify_token")
+                return HttpResponse("Webhook misconfigured", status=500)
             if mode == 'subscribe' and token == VERIFY_TOKEN:
                 logger.info("strava_webhook.handshake_ok")
                 return JsonResponse({"hub.challenge": challenge})
             else:
-                logger.warning("strava_webhook.handshake_invalid_token", extra={"received_token": token})
+                # No loggear tokens/secretos (seguridad).
+                logger.warning("strava_webhook.handshake_invalid_token")
                 return HttpResponse("Token de verificación inválido", status=403)
         
         # Si es GET pero no tiene los params correctos
@@ -67,6 +76,18 @@ def strava_webhook(request):
             owner_id = data.get('owner_id')        # ID del atleta
             subscription_id = data.get('subscription_id')
             event_time = data.get('event_time')
+
+            # Hardening opcional: si configuramos un subscription_id esperado, ignoramos el resto.
+            if EXPECTED_SUBSCRIPTION_ID is not None and str(subscription_id) != str(EXPECTED_SUBSCRIPTION_ID):
+                logger.warning(
+                    "strava_webhook.subscription_mismatch",
+                    extra={
+                        "status": "discarded",
+                        "reason": "subscription_mismatch",
+                        "subscription_id": subscription_id,
+                    },
+                )
+                return HttpResponse(status=200)
 
             # event_uid determinístico para idempotencia total.
             # Incluimos event_time si viene para diferenciar eventos legítimos sobre el mismo object_id.
@@ -114,6 +135,7 @@ def strava_webhook(request):
                     "strava_webhook.outcome",
                     extra={
                         "event_uid": event_uid,
+                        "correlation_id": str(getattr(event, "correlation_id", "") or ""),
                         "athlete_id": owner_id,
                         "activity_id": object_id,
                         "status": "duplicate",
@@ -135,6 +157,7 @@ def strava_webhook(request):
                     "strava_webhook.outcome",
                     extra={
                         "event_uid": event_uid,
+                        "correlation_id": str(event.correlation_id),
                         "athlete_id": owner_id,
                         "activity_id": object_id,
                         "status": "discarded",
@@ -155,6 +178,7 @@ def strava_webhook(request):
                     "strava_webhook.outcome",
                     extra={
                         "event_uid": event_uid,
+                        "correlation_id": str(event.correlation_id),
                         "athlete_id": owner_id,
                         "activity_id": object_id,
                         "status": "discarded",
@@ -172,6 +196,7 @@ def strava_webhook(request):
                 "strava_webhook.outcome",
                 extra={
                     "event_uid": event_uid,
+                    "correlation_id": str(event.correlation_id),
                     "athlete_id": owner_id,
                     "activity_id": object_id,
                     "status": "enqueued",

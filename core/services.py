@@ -296,6 +296,25 @@ def obtener_cliente_strava(user, force_refresh: bool = False):
         return client
     except: return None
 
+
+def obtener_cliente_strava_para_alumno(alumno: Alumno, *, force_refresh: bool = False):
+    """
+    Resuelve el token Strava correcto para importar actividades de un Alumno.
+
+    Preferencias (compat + SaaS):
+    - Si el alumno tiene `usuario` y ese usuario conectó Strava (SocialToken), usamos ese token.
+    - Si no, fallback al token del entrenador (compat con setups legacy).
+    """
+    # Preferir token del atleta (modelo recomendado)
+    if getattr(alumno, "usuario_id", None):
+        athlete_client = obtener_cliente_strava(alumno.usuario, force_refresh=force_refresh)
+        if athlete_client:
+            return athlete_client
+    # Fallback legacy: token del coach
+    if getattr(alumno, "entrenador_id", None):
+        return obtener_cliente_strava(alumno.entrenador, force_refresh=force_refresh)
+    return None
+
 def sincronizar_actividades_strava(user, dias_historial=None):
     client = obtener_cliente_strava(user)
     if not client: return 0, 0, "Token inválido."
