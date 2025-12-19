@@ -284,15 +284,25 @@ class InscripcionCarrera(models.Model):
 
 class Actividad(models.Model):
     """
-    Actividad importada desde Strava (fuente de verdad del "actual").
+    Actividad interna unificada (fuente de verdad del "actual").
 
-    Nota: `strava_id` es globalmente único en Strava, por eso mantenemos unique=True.
-    Guardamos `datos_brutos` para auditoría y para cálculos futuros (IA/insights).
+    Diseñada para soportar múltiples fuentes (Strava hoy, Garmin/Coros/Suunto después).
+    - Idempotencia: (source, source_object_id) evita duplicados multi-provider.
+    - `datos_brutos` (raw_json) se mantiene para auditoría y cálculos futuros.
+    - `strava_id` queda como campo legacy/compat (solo para source=strava).
     """
 
     class Validity(models.TextChoices):
         VALID = "VALID", "VALID"
         DISCARDED = "DISCARDED", "DISCARDED"
+
+    class Source(models.TextChoices):
+        STRAVA = "strava", "strava"
+        GARMIN = "garmin", "garmin"
+        COROS = "coros", "coros"
+        SUUNTO = "suunto", "suunto"
+        MANUAL = "manual", "manual"
+        OTHER = "other", "other"
 
     # Coach propietario del token usado para importar (tenant)
     usuario = models.ForeignKey(
@@ -311,7 +321,15 @@ class Actividad(models.Model):
         db_index=True,
     )
 
-    strava_id = models.BigIntegerField(unique=True, db_index=True)
+    # Multi-fuente (nuevo): clave idempotente de la actividad en su provider de origen.
+    # Ej: source=strava, source_object_id="123456789"
+    source = models.CharField(max_length=20, choices=Source.choices, default=Source.STRAVA, db_index=True)
+    source_object_id = models.CharField(max_length=120, blank=True, default="", db_index=True)
+    # Hash opcional para detectar cambios de payload sin comparar JSON completo.
+    source_hash = models.CharField(max_length=64, blank=True, default="", db_index=True)
+
+    # Legacy/compat: ID numérico Strava (solo para source=strava). No usar para otros providers.
+    strava_id = models.BigIntegerField(null=True, blank=True, db_index=True)
     nombre = models.CharField(max_length=255)
     distancia = models.FloatField(help_text="Distancia en metros", default=0.0)
     tiempo_movimiento = models.IntegerField(help_text="Tiempo en segundos", default=0)
@@ -338,9 +356,35 @@ class Actividad(models.Model):
             models.Index(fields=["usuario", "-fecha_inicio"]),
             models.Index(fields=["alumno", "-fecha_inicio"]),
         ]
+        constraints = [
+            # Idempotencia multi-fuente (evita duplicados si la actividad existe en el provider).
+            models.UniqueConstraint(
+                fields=["source", "source_object_id"],
+                condition=Q(source_object_id__isnull=False) & ~Q(source_object_id=""),
+                name="uniq_actividad_source_object_id_not_blank",
+            ),
+            # Compat: strava_id único solo cuando existe (permite futuras fuentes sin strava_id).
+            models.UniqueConstraint(
+                fields=["strava_id"],
+                condition=Q(strava_id__isnull=False),
+                name="uniq_actividad_strava_id_not_null",
+            ),
+        ]
 
     def __str__(self):
-        return f"{self.nombre} ({self.strava_id})"
+        if self.source == self.Source.STRAVA and self.strava_id is not None:
+            return f"{self.nombre} (strava:{self.strava_id})"
+        if self.source_object_id:
+            return f"{self.nombre} ({self.source}:{self.source_object_id})"
+        return f"{self.nombre} ({self.source})"
+
+    def save(self, *args, **kwargs):
+        # Backfill defensivo (compat): si es Strava y no está seteado source_object_id, lo derivamos.
+        if not self.source:
+            self.source = self.Source.STRAVA
+        if self.source == self.Source.STRAVA and (not self.source_object_id) and self.strava_id is not None:
+            self.source_object_id = str(self.strava_id)
+        super().save(*args, **kwargs)
 
 
 class StravaWebhookEvent(models.Model):
@@ -390,6 +434,15 @@ class StravaWebhookEvent(models.Model):
     last_attempt_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     processed_at = models.DateTimeField(null=True, blank=True)
+    # Referencia opcional al resultado del pipeline (Actividad interna).
+    actividad = models.ForeignKey(
+        "Actividad",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="strava_webhook_events",
+        db_index=True,
+    )
     # Métrica operativa: cuántas veces llegó el mismo evento (dedupe por constraint).
     duplicate_count = models.PositiveIntegerField(default=0)
     last_duplicate_at = models.DateTimeField(null=True, blank=True, db_index=True)
