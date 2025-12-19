@@ -4,6 +4,8 @@ from django.core.serializers.json import DjangoJSONEncoder
 from allauth.socialaccount.models import SocialToken, SocialApp
 from stravalib.client import Client
 from .models import Alumno, Entrenamiento, BloqueEntrenamiento, PasoEntrenamiento, Actividad
+from core.actividad_upsert import upsert_actividad
+from core.strava_mapper import normalize_strava_activity, map_strava_activity_to_actividad
 import json 
 import time
 import datetime
@@ -332,53 +334,39 @@ def sincronizar_actividades_strava(user, dias_historial=None):
         else:
             activities = client.get_activities(limit=10)
 
+        # Best-effort: si el user es atleta, asignamos su alumno; si es coach legacy, fallback por email.
+        alumno = getattr(user, "perfil_alumno", None)
+        if not alumno:
+            alumno = Alumno.objects.filter(usuario=user).first() or Alumno.objects.filter(email=user.email).first()
+
         for activity in activities:
-            tiempo_s = 0
-            raw_time = activity.moving_time
-            if raw_time:
-                try: 
-                    if hasattr(raw_time, 'total_seconds'): tiempo_s = int(raw_time.total_seconds())
-                    elif hasattr(raw_time, 'seconds'): tiempo_s = int(raw_time.seconds)
-                    else: tiempo_s = int(raw_time)
-                except: tiempo_s = 0
-            
-            distancia_m = 0.0
-            if activity.distance:
-                try:
-                    if hasattr(activity.distance, 'magnitude'): distancia_m = float(activity.distance.magnitude)
-                    else: distancia_m = float(activity.distance)
-                except: pass
+            normalized = normalize_strava_activity(activity)
+            mapped = map_strava_activity_to_actividad(normalized)
 
-            elevacion_m = 0.0
-            if activity.total_elevation_gain:
-                try:
-                    if hasattr(activity.total_elevation_gain, 'magnitude'): elevacion_m = float(activity.total_elevation_gain.magnitude)
-                    else: elevacion_m = float(activity.total_elevation_gain)
-                except: pass
-            
-            mapa_str = activity.map.summary_polyline if activity.map else None
+            source = mapped.pop("source")
+            source_object_id = mapped.pop("source_object_id")
 
-            datos_backup = {}
-            try:
-                if hasattr(activity, 'to_dict'): raw_data = activity.to_dict()
-                elif hasattr(activity, 'model_dump'): raw_data = activity.model_dump()
-                else: raw_data = {"info": str(activity)}
-                datos_backup = json.loads(json.dumps(raw_data, cls=DjangoJSONEncoder))
-            except: datos_backup = {}
+            # Reglas mínimas (sin romper compat): si falta duración/distancia/fecha, marcamos DISCARDED.
+            invalid_reason = ""
+            if not mapped.get("fecha_inicio"):
+                invalid_reason = "missing_start_date"
+            elif (mapped.get("tiempo_movimiento") or 0) <= 0:
+                invalid_reason = "invalid_duration"
+            elif (mapped.get("distancia") or 0) <= 0:
+                invalid_reason = "invalid_distance"
 
-            obj, created = Actividad.objects.update_or_create(
-                strava_id=activity.id, 
-                defaults={
-                    'usuario': user,
-                    'nombre': activity.name,
-                    'distancia': distancia_m,
-                    'tiempo_movimiento': tiempo_s,
-                    'fecha_inicio': activity.start_date_local,
-                    'tipo_deporte': activity.type,
-                    'desnivel_positivo': elevacion_m,
-                    'mapa_polilinea': mapa_str,
-                    'datos_brutos': datos_backup
-                }
+            defaults = {
+                **mapped,
+                "validity": Actividad.Validity.DISCARDED if invalid_reason else Actividad.Validity.VALID,
+                "invalid_reason": invalid_reason or "",
+            }
+
+            obj, created = upsert_actividad(
+                alumno=alumno,
+                usuario=user,
+                source=source,
+                source_object_id=source_object_id,
+                defaults=defaults,
             )
             
             ejecutar_cruce_inteligente(obj)

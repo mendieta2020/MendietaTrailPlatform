@@ -7,6 +7,7 @@ from django.utils import timezone
 from core.models import Alumno
 from analytics.models import HistorialFitness, InjuryRiskSnapshot
 from analytics.injury_risk import compute_injury_risk
+from analytics.pipeline import recompute_analytics_for_alumno_sync
 
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,21 @@ def _safe_localdate(d: str | None) -> date_type:
     if not d:
         return timezone.localdate()
     return date_type.fromisoformat(d)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=30)
+def recompute_analytics_for_alumno(self, alumno_id: int, start_date: str | None = None) -> str:
+    """
+    Recalcula analytics (distancia/tiempo + fitness/fatiga/forma) desde `Actividad`.
+    """
+    try:
+        # Validamos alumno existe (fail-fast)
+        Alumno.objects.get(pk=alumno_id)
+    except Alumno.DoesNotExist:
+        logger.warning("analytics.recompute.skip_unknown_athlete", extra={"alumno_id": alumno_id})
+        return "SKIP_UNKNOWN_ATHLETE"
+
+    return recompute_analytics_for_alumno_sync(alumno_id=alumno_id, start_date=start_date)
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=30)
