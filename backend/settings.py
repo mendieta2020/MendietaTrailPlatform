@@ -295,7 +295,18 @@ ACCOUNT_LOGOUT_ON_GET = True
 
 # --- RELAJAR REGLAS DE EMAIL ---
 ACCOUNT_EMAIL_VERIFICATION = 'none' 
-ACCOUNT_SIGNUP_FIELDS = ['email', 'username']
+#
+# allauth>=65 usa ACCOUNT_LOGIN_METHODS + ACCOUNT_SIGNUP_FIELDS (dict) y emite
+# (account.W001) si el/los login methods no están marcados como required en signup.
+# Para este proyecto (social login + soporte clásico), dejamos username como método
+# de login y lo marcamos como requerido en signup. Email queda opcional (Strava no
+# provee email).
+ACCOUNT_LOGIN_METHODS = {"username"}
+ACCOUNT_SIGNUP_FIELDS = [
+    "email",
+    "username*",
+    "password1*",
+]
 
 SOCIALACCOUNT_PROVIDERS = {
     'strava': {
@@ -308,3 +319,37 @@ SOCIALACCOUNT_PROVIDERS = {
         'verified_email': False,
     }
 }
+
+# ==============================================================================
+#  LOGGING (diagnóstico OAuth / allauth)
+# ==============================================================================
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+    },
+    "loggers": {
+        # Django request errors (incluye tracebacks de errores no manejados)
+        "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+        # allauth (en particular socialaccount + oauth2) para ver el motivo real del
+        # "Third-Party Login Failure".
+        "allauth": {"handlers": ["console"], "level": "DEBUG"},
+        "allauth.account": {"handlers": ["console"], "level": "DEBUG"},
+        "allauth.socialaccount": {"handlers": ["console"], "level": "DEBUG"},
+        "allauth.socialaccount.providers.oauth2": {"handlers": ["console"], "level": "DEBUG"},
+        # requests/urllib3: útil para ver handshake HTTP (sin bodies por defecto).
+        "urllib3": {"handlers": ["console"], "level": "DEBUG"},
+    },
+}
+
+# Logueo hardening del callback (traceback completo + contexto sanitizado)
+SOCIALACCOUNT_ADAPTER = "core.allauth_adapters.LoggingSocialAccountAdapter"
