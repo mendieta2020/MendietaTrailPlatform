@@ -7,6 +7,8 @@ from django.conf.urls.static import static
 
 # Importamos la vista del dashboard directamente (Vista Clásica)
 from core.views import dashboard_entrenador
+from core.strava_oauth_views import oauth2_callback as strava_oauth2_callback
+from core.strava_oauth_views import oauth2_login as strava_oauth2_login
 
 # --- Importamos el Webhook Listener ---
 from core.webhooks import strava_webhook
@@ -37,6 +39,10 @@ urlpatterns = [
     # 1. Panel de Administración de Django
     path('admin/', admin.site.urls),
     
+    # 1.5 LOGIN SOCIAL (STRAVA) - override con logging enriquecido (mismas URLs/names que allauth)
+    path('accounts/strava/login/', strava_oauth2_login, name='strava_login'),
+    path('accounts/strava/login/callback/', strava_oauth2_callback, name='strava_callback'),
+
     # 2. LOGIN SOCIAL (STRAVA/ALLAUTH)
     path('accounts/', include('allauth.urls')), 
 

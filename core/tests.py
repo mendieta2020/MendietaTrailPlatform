@@ -144,3 +144,44 @@ class TenantIsolationEquipoTests(TestCase):
         res = self.client.patch(f"/api/alumnos/{self.alumno1.id}/", {"equipo": self.team2.id}, format="json")
         self.assertEqual(res.status_code, 400)
 
+
+class StravaOAuthLoggingTests(TestCase):
+    def test_strava_oauth_urls_are_overridden(self):
+        # Asegura que nuestras URLs (con logging enriquecido) estén primero que allauth.urls
+        from django.urls import resolve
+
+        # Nota: allauth construye una función wrapper (module=allauth...), así que validamos
+        # que el adapter capturado en el closure sea el nuestro.
+        match = resolve("/accounts/strava/login/")
+        self.assertEqual(match.url_name, "strava_login")
+        freevars = getattr(match.func, "__code__").co_freevars
+        closure = match.func.__closure__ or ()
+        self.assertIn("adapter", freevars)
+        adapter_cell = dict(zip(freevars, closure))["adapter"].cell_contents
+        self.assertEqual(adapter_cell.__module__, "core.strava_oauth_views")
+        self.assertEqual(adapter_cell.__name__, "LoggedStravaOAuth2Adapter")
+
+        match = resolve("/accounts/strava/login/callback/")
+        self.assertEqual(match.url_name, "strava_callback")
+        freevars = getattr(match.func, "__code__").co_freevars
+        closure = match.func.__closure__ or ()
+        self.assertIn("adapter", freevars)
+        adapter_cell = dict(zip(freevars, closure))["adapter"].cell_contents
+        self.assertEqual(adapter_cell.__module__, "core.strava_oauth_views")
+        self.assertEqual(adapter_cell.__name__, "LoggedStravaOAuth2Adapter")
+
+    def test_sanitize_oauth_payload_redacts_tokens(self):
+        from core.strava_oauth_views import sanitize_oauth_payload
+
+        raw = {
+            "access_token": "secret-access",
+            "refresh_token": "secret-refresh",
+            "expires_at": 123,
+            "athlete": {"id": 1, "username": "x"},
+        }
+        sanitized = sanitize_oauth_payload(raw)
+        self.assertEqual(sanitized["access_token"], "<redacted>")
+        self.assertEqual(sanitized["refresh_token"], "<redacted>")
+        self.assertEqual(sanitized["expires_at"], "<redacted>")
+        self.assertEqual(sanitized["athlete"]["id"], 1)
+

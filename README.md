@@ -31,6 +31,31 @@ python3 manage.py migrate
 python3 manage.py runserver
 ```
 
+## Strava OAuth (login social) - Local
+
+### Requisitos
+- **Strava App** (en `https://www.strava.com/settings/api`):
+  - **Authorization Callback Domain**: `127.0.0.1` (sin puerto) o `localhost` (pero elegí uno y usalo siempre).
+  - **Redirect URI (callback)** esperado por allauth en este proyecto:
+    - `http://127.0.0.1:8000/accounts/strava/login/callback/`
+
+### Checklist de configuración (Django Admin)
+- **Sites**:
+  - `Site.domain` debe ser **sin puerto** (ej: `127.0.0.1`, no `127.0.0.1:8000`).
+- **SocialApp** (provider `strava`):
+  - `client_id` y `secret` correctos.
+  - Asociada al **Site** actual.
+
+Podés validar/auto-fijar esto con:
+
+```bash
+python3 manage.py strava_oauth_doctor --domain 127.0.0.1 --port 8000 --fix-site-domain --fix-socialapp-site
+```
+
+### Diagnóstico de “Third-Party Login Failure”
+Este repo sube logging de `allauth`/OAuth2 a consola y loguea traceback completo del callback.
+Si falla el intercambio `code→token`, vas a ver el `status` y un `body` sanitizado en logs.
+
 ### Celery + Redis (Strava Webhooks / tareas async)
 
 ```bash
