@@ -204,6 +204,38 @@ class StravaIngestionRobustTests(TestCase):
         self.assertEqual(Entrenamiento.objects.filter(strava_id="555").count(), 1)
         self.assertEqual(SessionComparison.objects.filter(activity=act).count(), 1)
 
+    def test_raw_json_datetime_is_sanitized_before_saving(self):
+        """
+        Repro del bug: Strava raw payload puede traer datetime (ej: start_date).
+        Debe persistirse en JSONField como string ISO sin explotar.
+        """
+        start = datetime.now(dt_timezone.utc)
+        a = _FakeStravaActivity(
+            activity_id=556,
+            athlete_id=111,
+            name="Datetime Raw Run",
+            type_="Run",
+            start=start,
+            distance_m=5000,
+            moving_time_s=1500,
+        )
+        original_to_dict = a.to_dict
+
+        def _to_dict_with_datetime():
+            d = original_to_dict()
+            d["start_date"] = start
+            return d
+
+        a.to_dict = _to_dict_with_datetime  # type: ignore[method-assign]
+
+        e = self._mk_event(uid="e_raw_datetime", owner_id=111, object_id=556, aspect="create")
+        with patch("core.services.obtener_cliente_strava", return_value=_FakeStravaClient(a)):
+            process_strava_event.delay(e.id)
+
+        act = Actividad.objects.get(strava_id=556)
+        self.assertIsInstance(act.datos_brutos.get("start_date"), str)
+        self.assertEqual(act.datos_brutos.get("start_date"), start.isoformat())
+
     def test_unknown_athlete_is_ignored_with_discard_reason(self):
         e = self._mk_event(uid="e_unknown", owner_id=999999, object_id=12345, aspect="create")
         # No hay alumno con strava_athlete_id=999999
