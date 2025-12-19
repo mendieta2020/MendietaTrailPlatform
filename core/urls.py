@@ -9,6 +9,7 @@ from .views import (
     PagoViewSet,
     EquipoViewSet, 
     VideoUploadViewSet, # <--- 1. IMPORTANTE: Importamos el Gestor de Videos
+    ActividadViewSet,
     dashboard_entrenador
 )
 
@@ -37,6 +38,9 @@ router.register(r'inscripciones', InscripcionViewSet, basename='inscripcion')
 
 # 5. Finanzas y Negocio
 router.register(r'pagos', PagoViewSet, basename='pago')
+
+# 5.5. Actividades importadas (Strava → Actividad)
+router.register(r'activities', ActividadViewSet, basename='activities')
 
 # 6. Multimedia y Herramientas (Gimnasio Pro)
 # Esta es la ruta que usa el botón de la cámara en el Frontend

@@ -169,3 +169,36 @@ class VideoEjercicioSerializer(serializers.ModelSerializer):
         model = VideoEjercicio
         fields = ['id', 'titulo', 'archivo', 'uploaded_at']
         read_only_fields = ['uploaded_at']
+
+
+# ==============================================================================
+#  6. ACTIVIDADES (STRAVA → ACTIVIDAD INTERNA)
+# ==============================================================================
+class ActividadSerializer(serializers.ModelSerializer):
+    alumno_nombre = serializers.CharField(source="alumno.nombre", read_only=True)
+    alumno_apellido = serializers.CharField(source="alumno.apellido", read_only=True)
+
+    class Meta:
+        model = Actividad
+        fields = [
+            "id",
+            "usuario",
+            "alumno",
+            "alumno_nombre",
+            "alumno_apellido",
+            "strava_id",
+            "nombre",
+            "tipo_deporte",
+            "fecha_inicio",
+            "distancia",
+            "tiempo_movimiento",
+            "desnivel_positivo",
+            "ritmo_promedio",
+            "mapa_polilinea",
+            "validity",
+            "invalid_reason",
+            "creado_en",
+            "actualizado_en",
+            "datos_brutos",
+        ]
+        read_only_fields = fields

@@ -331,15 +331,20 @@ def _log_strava_ingest(
     *,
     msg: str,
     event_uid: str,
+    correlation_id=None,
     athlete_id: int | None,
     activity_id: int | None,
     status: str,
     reason: str = "",
     attempt: int = 0,
     duration_ms: int | None = None,
+    metric_processed: int = 0,
+    metric_ignored: int = 0,
+    metric_failed: int = 0,
 ):
     extra = {
         "event_uid": event_uid,
+        "correlation_id": str(correlation_id) if correlation_id else "",
         "athlete_id": athlete_id,
         "activity_id": activity_id,
         "status": status,
@@ -348,6 +353,13 @@ def _log_strava_ingest(
     }
     if duration_ms is not None:
         extra["duration_ms"] = duration_ms
+    # Métricas mínimas (para agregación por logs)
+    if metric_processed:
+        extra["metric_processed"] = int(metric_processed)
+    if metric_ignored:
+        extra["metric_ignored"] = int(metric_ignored)
+    if metric_failed:
+        extra["metric_failed"] = int(metric_failed)
     logger.info(msg, extra=extra)
 
 
@@ -377,7 +389,7 @@ def process_strava_event(self, event_id: int):
     - retries con backoff+jitter para 429/5xx/timeouts
     - auditoría en StravaImportLog
     """
-    from .services import obtener_cliente_strava
+    from .services import obtener_cliente_strava_para_alumno
 
     # Nota: retries en Celery se cuentan desde 0, por eso attempt = retries + 1.
     attempt_no = int(getattr(self.request, "retries", 0)) + 1
@@ -386,6 +398,7 @@ def process_strava_event(self, event_id: int):
     with transaction.atomic():
         event = StravaWebhookEvent.objects.select_for_update().get(pk=event_id)
         event_uid = event.event_uid
+        correlation_id = event.correlation_id
         event.last_attempt_at = timezone.now()
 
         # Idempotencia fuerte: si ya está procesado/ignorado, no hacemos nada.
@@ -405,6 +418,7 @@ def process_strava_event(self, event_id: int):
     _log_strava_ingest(
         msg="strava.process_event.start",
         event_uid=event_uid,
+        correlation_id=correlation_id,
         athlete_id=int(event.owner_id) if event.owner_id is not None else None,
         activity_id=int(event.object_id) if event.object_id is not None else None,
         status="processing",
@@ -414,11 +428,19 @@ def process_strava_event(self, event_id: int):
 
     # Validación básica del evento
     if event.object_type != "activity":
-        StravaWebhookEvent.objects.filter(pk=event.pk).update(status=StravaWebhookEvent.Status.IGNORED)
+        StravaWebhookEvent.objects.filter(pk=event.pk).update(
+            status=StravaWebhookEvent.Status.IGNORED,
+            discard_reason="non_activity_event",
+            processed_at=timezone.now(),
+        )
         return "IGNORED: non-activity"
 
     if event.aspect_type == "delete":
-        StravaWebhookEvent.objects.filter(pk=event.pk).update(status=StravaWebhookEvent.Status.IGNORED)
+        StravaWebhookEvent.objects.filter(pk=event.pk).update(
+            status=StravaWebhookEvent.Status.IGNORED,
+            discard_reason="delete_event_ignored",
+            processed_at=timezone.now(),
+        )
         return "IGNORED: delete"
 
     # Lock lógico por actividad (evita pipelines simultáneos para la misma activity_id).
@@ -498,7 +520,11 @@ def process_strava_event(self, event_id: int):
             reason="unknown_athlete",
             details={"owner_id": event.owner_id},
         )
-        StravaWebhookEvent.objects.filter(pk=event.pk).update(status=StravaWebhookEvent.Status.IGNORED)
+        StravaWebhookEvent.objects.filter(pk=event.pk).update(
+            status=StravaWebhookEvent.Status.IGNORED,
+            discard_reason="unknown_athlete",
+            processed_at=timezone.now(),
+        )
         StravaActivitySyncState.objects.filter(provider=event.provider, strava_activity_id=int(event.object_id)).update(
             status=StravaActivitySyncState.Status.DISCARDED,
             discard_reason="unknown_athlete",
@@ -509,8 +535,13 @@ def process_strava_event(self, event_id: int):
         )
         return "IGNORED: unknown athlete"
 
-    client = obtener_cliente_strava(alumno.entrenador)
+    client = obtener_cliente_strava_para_alumno(alumno)
     if not client:
+        instruction = (
+            "Strava no conectado para este atleta. "
+            "Acción: el atleta debe conectar Strava vía /accounts/ (Allauth) "
+            "o el entrenador debe conectar la integración si el setup es legacy."
+        )
         StravaImportLog.objects.create(
             event_id=event.pk,
             alumno=alumno,
@@ -519,14 +550,19 @@ def process_strava_event(self, event_id: int):
             attempt=attempt_no,
             status=StravaImportLog.Status.FAILED,
             reason="missing_strava_auth",
-            details={"coach_id": alumno.entrenador_id},
+            details={"coach_id": alumno.entrenador_id, "alumno_user_id": alumno.usuario_id},
         )
         StravaWebhookEvent.objects.filter(pk=event.pk).update(
-            status=StravaWebhookEvent.Status.FAILED, last_error="missing_strava_auth"
+            status=StravaWebhookEvent.Status.FAILED,
+            discard_reason="missing_strava_auth",
+            last_error="missing_strava_auth",
+            error_message=instruction,
+            processed_at=timezone.now(),
         )
         StravaActivitySyncState.objects.filter(provider=event.provider, strava_activity_id=int(event.object_id)).update(
             status=StravaActivitySyncState.Status.FAILED,
             last_error="missing_strava_auth",
+            discard_reason="missing_strava_auth",
             locked_at=None,
             locked_by_event_uid="",
             last_attempt_at=timezone.now(),
@@ -556,7 +592,7 @@ def process_strava_event(self, event_id: int):
         # Caso especial: 401 -> forzar refresh y reintentar UNA VEZ en el mismo intento
         if classification == "unauthorized":
             try:
-                refreshed = obtener_cliente_strava(alumno.entrenador, force_refresh=True)
+                refreshed = obtener_cliente_strava_para_alumno(alumno, force_refresh=True)
                 if refreshed:
                     activity_obj = refreshed.get_activity(int(event.object_id))
                     activity = _normalize_strava_activity(activity_obj)
@@ -609,12 +645,14 @@ def process_strava_event(self, event_id: int):
                     _log_strava_ingest(
                         msg="strava.process_event.failed",
                         event_uid=event_uid,
+                        correlation_id=correlation_id,
                         athlete_id=int(event.owner_id),
                         activity_id=int(event.object_id),
                         status="failed",
                         reason="max_retries_exceeded",
                         attempt=attempt_no,
                         duration_ms=duration_ms,
+                        metric_failed=1,
                     )
                     return "FAILED: max_retries_exceeded"
 
@@ -708,12 +746,14 @@ def process_strava_event(self, event_id: int):
         _log_strava_ingest(
             msg="strava.process_event.discarded",
             event_uid=event_uid,
+            correlation_id=correlation_id,
             athlete_id=int(event.owner_id),
             activity_id=int(activity["id"]),
             status="discarded",
             reason=invalid_reason,
             attempt=attempt_no,
             duration_ms=duration_ms,
+            metric_ignored=1,
         )
         return f"DISCARDED: {invalid_reason}"
 
@@ -800,12 +840,14 @@ def process_strava_event(self, event_id: int):
     _log_strava_ingest(
         msg="strava.process_event.done",
         event_uid=event_uid,
+        correlation_id=correlation_id,
         athlete_id=int(event.owner_id),
         activity_id=int(activity["id"]),
         status="succeeded",
         reason=accion,
         attempt=attempt_no,
         duration_ms=duration_ms,
+        metric_processed=1,
     )
     return f"OK: {accion}"
 

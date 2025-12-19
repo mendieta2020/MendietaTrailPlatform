@@ -29,7 +29,7 @@ from .serializers import (
     AlumnoSerializer, EntrenamientoSerializer,
     PlantillaEntrenamientoSerializer, CarreraSerializer,
     InscripcionCarreraSerializer, PagoSerializer,
-    EquipoSerializer, VideoEjercicioSerializer # <--- NUEVO SERIALIZER IMPORTADO
+    EquipoSerializer, VideoEjercicioSerializer, ActividadSerializer # <--- NUEVO SERIALIZER IMPORTADO
 )
 
 from allauth.socialaccount.models import SocialToken
@@ -410,6 +410,39 @@ class PagoViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         # Solo veo los pagos de mis alumnos
         return Pago.objects.filter(alumno__entrenador=self.request.user).order_by('-fecha_pago')
+
+
+class ActividadViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Listado de actividades importadas (Strava → Actividad).
+
+    Multi-tenant:
+    - Coach: ve actividades de sus alumnos.
+    - Alumno: ve solo sus actividades.
+    - Staff: ve todo.
+    """
+    serializer_class = ActividadSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ["alumno", "tipo_deporte", "validity"]
+    search_fields = ["nombre"]
+    ordering_fields = ["fecha_inicio", "distancia", "tiempo_movimiento"]
+    ordering = ["-fecha_inicio"]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = Actividad.objects.select_related("alumno").all()
+
+        if user.is_staff:
+            return qs
+
+        # Alumno autenticado
+        if hasattr(user, "perfil_alumno"):
+            return qs.filter(alumno__usuario=user)
+
+        # Coach
+        return qs.filter(alumno__entrenador=user)
 
 # ==============================================================================
 #  DASHBOARD LEGACY (Vista de Gestión / Admin - NO TOCAR)
