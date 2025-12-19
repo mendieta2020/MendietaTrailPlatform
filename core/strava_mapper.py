@@ -4,6 +4,8 @@ from typing import Any
 
 from django.core.serializers.json import DjangoJSONEncoder
 
+from core.utils.jsonable import to_jsonable
+
 
 def compute_source_hash(raw_json: dict | None) -> str:
     """Hash estable (sha256) de un payload raw_json (best-effort)."""
@@ -32,6 +34,15 @@ def normalize_strava_activity(activity: Any) -> dict:
             raw = activity.model_dump()
     except Exception:
         raw = {}
+
+    # IMPORTANT: JSONFields/Celery serializer requieren payload JSON-serializable.
+    # Strava/stravalib puede incluir datetime/Decimal/etc.
+    raw_sanitized = False
+    try:
+        json.dumps(raw, sort_keys=True, separators=(",", ":"))
+    except Exception:
+        raw_sanitized = True
+    raw = to_jsonable(raw) or {}
 
     athlete_id = None
     try:
@@ -93,6 +104,7 @@ def normalize_strava_activity(activity: Any) -> dict:
         "avg_watts": float(avg_watts) if avg_watts is not None else None,
         "polyline": polyline,
         "raw": raw,
+        "raw_sanitized": bool(raw_sanitized),
     }
 
 
@@ -103,11 +115,12 @@ def map_strava_activity_to_actividad(strava_activity_json: dict) -> dict:
 
     distance_m = float(strava_activity_json.get("distance_m") or 0.0)
     moving_s = int(strava_activity_json.get("moving_time_s") or 0)
+    raw = to_jsonable(strava_activity_json.get("raw") or {}) or {}
 
     return {
         "source": "strava",
         "source_object_id": source_object_id,
-        "source_hash": compute_source_hash(strava_activity_json.get("raw") or {}),
+        "source_hash": compute_source_hash(raw),
         # compat
         "strava_id": int(activity_id) if activity_id is not None else None,
         # negocio
@@ -119,5 +132,5 @@ def map_strava_activity_to_actividad(strava_activity_json: dict) -> dict:
         "desnivel_positivo": float(strava_activity_json.get("elevation_m") or 0.0),
         "ritmo_promedio": (distance_m / moving_s) if (distance_m > 0 and moving_s > 0) else None,
         "mapa_polilinea": strava_activity_json.get("polyline"),
-        "datos_brutos": strava_activity_json.get("raw") or {},
+        "datos_brutos": raw,
     }

@@ -389,7 +389,13 @@ def process_strava_event(self, event_id: int):
     - retries con backoff+jitter para 429/5xx/timeouts
     - auditoría en StravaImportLog
     """
+    from .actividad_upsert import upsert_actividad
     from .services import obtener_cliente_strava_para_alumno
+    from .strava_mapper import (
+        map_strava_activity_to_actividad,
+        normalize_strava_activity,
+        supported_strava_activity_type,
+    )
 
     # Nota: retries en Celery se cuentan desde 0, por eso attempt = retries + 1.
     attempt_no = int(getattr(self.request, "retries", 0)) + 1
@@ -574,7 +580,7 @@ def process_strava_event(self, event_id: int):
     fetch_error = None
     try:
         activity_obj = client.get_activity(int(event.object_id))
-        activity = _normalize_strava_activity(activity_obj)
+        activity = normalize_strava_activity(activity_obj)
         StravaImportLog.objects.create(
             event_id=event.pk,
             alumno=alumno,
@@ -595,7 +601,7 @@ def process_strava_event(self, event_id: int):
                 refreshed = obtener_cliente_strava_para_alumno(alumno, force_refresh=True)
                 if refreshed:
                     activity_obj = refreshed.get_activity(int(event.object_id))
-                    activity = _normalize_strava_activity(activity_obj)
+                    activity = normalize_strava_activity(activity_obj)
                     StravaImportLog.objects.create(
                         event_id=event.pk,
                         alumno=alumno,
@@ -689,7 +695,7 @@ def process_strava_event(self, event_id: int):
 
     # Reglas estrictas de aceptación
     invalid_reason = ""
-    if not _supported_strava_activity_type(activity.get("type")):
+    if not supported_strava_activity_type(activity.get("type")):
         invalid_reason = "unsupported_type"
     elif not activity.get("start_date_local"):
         invalid_reason = "missing_start_date"
@@ -700,27 +706,36 @@ def process_strava_event(self, event_id: int):
     elif activity.get("athlete_id") and int(activity["athlete_id"]) != int(event.owner_id):
         invalid_reason = "athlete_mismatch"
 
-    # Upsert Actividad (dedupe)
+    # Upsert Actividad (dedupe) - identidad canónica: (source, source_object_id)
+    mapped = map_strava_activity_to_actividad(activity)
+    source = mapped.pop("source")
+    source_object_id = mapped.pop("source_object_id")
+    payload_sanitized = bool(activity.get("raw_sanitized"))
+
     defaults = {
-        "usuario": alumno.entrenador,
-        "alumno": alumno,
-        "nombre": activity.get("name") or "",
-        "distancia": float(activity.get("distance_m") or 0.0),
-        "tiempo_movimiento": int(activity.get("moving_time_s") or 0),
-        "fecha_inicio": activity["start_date_local"],
-        "tipo_deporte": activity.get("type") or "",
-        "desnivel_positivo": float(activity.get("elevation_m") or 0.0),
-        "ritmo_promedio": (
-            (float(activity.get("distance_m") or 0.0) / float(activity.get("moving_time_s") or 1))
-            if (activity.get("distance_m") or 0) > 0 and (activity.get("moving_time_s") or 0) > 0
-            else None
-        ),
-        "mapa_polilinea": activity.get("polyline"),
-        "datos_brutos": activity.get("raw") or {},
+        **mapped,
         "validity": Actividad.Validity.DISCARDED if invalid_reason else Actividad.Validity.VALID,
         "invalid_reason": invalid_reason or "",
     }
-    actividad_obj, _created = Actividad.objects.update_or_create(strava_id=activity["id"], defaults=defaults)
+
+    actividad_obj, created = upsert_actividad(
+        alumno=alumno,
+        usuario=alumno.entrenador,
+        source=source,
+        source_object_id=source_object_id,
+        defaults=defaults,
+    )
+
+    logger.info(
+        "strava.activity.upserted",
+        extra={
+            "alumno_id": alumno.id,
+            "source": source,
+            "source_object_id": source_object_id,
+            "created": bool(created),
+            "payload_sanitized": bool(payload_sanitized),
+        },
+    )
 
     if invalid_reason:
         StravaImportLog.objects.create(
