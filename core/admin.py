@@ -3,7 +3,8 @@ from django.utils.html import format_html
 from .models import (
     Equipo, Alumno, Pago, 
     PlantillaEntrenamiento, Entrenamiento, 
-    Carrera, InscripcionCarrera, Actividad
+    Carrera, InscripcionCarrera, Actividad,
+    ExternalIdentity,
 )
 
 # ==============================================================================
@@ -50,6 +51,14 @@ class AlumnoAdmin(admin.ModelAdmin):
     def ultimo_pago_status(self, obj):
         return obj.situacion_financiera if hasattr(obj, 'situacion_financiera') else "-"
     ultimo_pago_status.short_description = "Estado Pago"
+
+
+@admin.register(ExternalIdentity)
+class ExternalIdentityAdmin(admin.ModelAdmin):
+    list_display = ("provider", "external_user_id", "status", "alumno", "linked_at", "updated_at")
+    list_filter = ("provider", "status")
+    search_fields = ("external_user_id", "alumno__nombre", "alumno__apellido", "alumno__email")
+    readonly_fields = ("created_at", "updated_at", "linked_at")
 
 
 @admin.register(Pago)

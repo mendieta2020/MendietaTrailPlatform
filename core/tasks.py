@@ -18,11 +18,44 @@ from .models import (
     StravaWebhookEvent,
     StravaImportLog,
     StravaActivitySyncState,
+    ExternalIdentity,
 )
 from analytics.models import HistorialFitness 
 
 # Logger profesional para monitoreo (Sentry/Datadog ready)
 logger = logging.getLogger(__name__)
+
+# ------------------------------------------------------------------------------
+# Linking / draining helpers
+# ------------------------------------------------------------------------------
+
+@shared_task
+def drain_strava_events_for_athlete(*, provider: str = "strava", owner_id: int, limit: int = 250):
+    """
+    Re-encola eventos en estado LINK_REQUIRED para un atleta externo.
+
+    Se usa al completar linking (OAuth/admin) para evitar pérdida de datos:
+    - selecciona eventos pendientes
+    - los marca QUEUED y los re-encola
+    """
+    owner_key = str(int(owner_id))
+    qs = (
+        StravaWebhookEvent.objects.filter(provider=provider, owner_id=int(owner_id), status=StravaWebhookEvent.Status.LINK_REQUIRED)
+        .order_by("received_at")
+        .values_list("id", flat=True)[: int(limit)]
+    )
+    ids = list(qs)
+    if not ids:
+        return 0
+
+    # Marcar queued en bulk para que sea visible en UI/ops.
+    StravaWebhookEvent.objects.filter(id__in=ids).update(status=StravaWebhookEvent.Status.QUEUED, last_error="", error_message="")
+
+    # Spread leve para evitar thundering herd (el lock por actividad ya cubre concurrencia).
+    for i, event_id in enumerate(ids):
+        process_strava_event.apply_async(args=[event_id], countdown=min(i, 15))
+    logger.info("strava.drain.link_required.requeued", extra={"provider": provider, "owner_id": owner_key, "count": len(ids)})
+    return len(ids)
 
 # Importación segura de métricas (Fail-safe architecture)
 try:
@@ -514,32 +547,100 @@ def process_strava_event(self, event_id: int):
                 last_attempt_at=now,
             )
 
-    alumno = Alumno.objects.filter(strava_athlete_id=str(event.owner_id)).select_related("entrenador", "equipo").first()
+    # ------------------------------------------------------------------------------
+    # Canonical identity resolution (multi-provider, future-proof)
+    # ------------------------------------------------------------------------------
+    alumno = None
+    identity = None
+    owner_key = str(int(event.owner_id)) if event.owner_id is not None else ""
+
+    if owner_key:
+        # Preferimos la identidad canónica (ExternalIdentity) para desacoplar Strava->Alumno.
+        identity = (
+            ExternalIdentity.objects.select_related("alumno")
+            .filter(provider=event.provider, external_user_id=owner_key)
+            .first()
+        )
+        if identity and identity.alumno_id:
+            alumno = identity.alumno
+        else:
+            # Fallback de compat: viejos registros linkeados por `Alumno.strava_athlete_id`.
+            alumno = (
+                Alumno.objects.filter(strava_athlete_id=owner_key)
+                .select_related("entrenador", "equipo")
+                .first()
+            )
+            if alumno:
+                # Backfill automático: si existía Alumno pero no ExternalIdentity, lo creamos/linkeamos.
+                defaults = {
+                    "status": ExternalIdentity.Status.LINKED,
+                    "alumno": alumno,
+                    "linked_at": timezone.now(),
+                }
+                try:
+                    identity, created = ExternalIdentity.objects.get_or_create(
+                        provider=event.provider,
+                        external_user_id=owner_key,
+                        defaults=defaults,
+                    )
+                    if not created and identity.alumno_id != alumno.id:
+                        # Caso raro: ya existía identidad, la re-vinculamos (auditable por DB constraints).
+                        ExternalIdentity.objects.filter(pk=identity.pk).update(
+                            alumno=alumno,
+                            status=ExternalIdentity.Status.LINKED,
+                            linked_at=timezone.now(),
+                        )
+                except Exception:
+                    logger.exception(
+                        "strava.identity.backfill_failed",
+                        extra={"provider": event.provider, "external_user_id": owner_key, "event_uid": event_uid},
+                    )
+            else:
+                # Seed defensivo: que exista la identidad UNLINKED aunque no haya Alumno todavía.
+                if identity is None:
+                    try:
+                        identity, _ = ExternalIdentity.objects.get_or_create(
+                            provider=event.provider,
+                            external_user_id=owner_key,
+                            defaults={"status": ExternalIdentity.Status.UNLINKED},
+                        )
+                    except Exception:
+                        logger.exception(
+                            "strava.identity.seed_failed",
+                            extra={"provider": event.provider, "external_user_id": owner_key, "event_uid": event_uid},
+                        )
+
     if not alumno:
+        instruction = (
+            "Webhook recibido para atleta aún no vinculado. "
+            "Acción: el atleta debe conectar Strava (OAuth) o un admin debe vincular el athlete_id al Alumno. "
+            "Este evento quedará pendiente y se reprocesará automáticamente al vincular."
+        )
         StravaImportLog.objects.create(
             event_id=event.pk,
             alumno=None,
             actividad=None,
             strava_activity_id=event.object_id,
             attempt=attempt_no,
-            status=StravaImportLog.Status.DISCARDED,
-            reason="unknown_athlete",
-            details={"owner_id": event.owner_id},
+            status=StravaImportLog.Status.DEFERRED,
+            reason="link_required",
+            details={"owner_id": event.owner_id, "external_user_id": owner_key, "provider": event.provider},
         )
         StravaWebhookEvent.objects.filter(pk=event.pk).update(
-            status=StravaWebhookEvent.Status.IGNORED,
-            discard_reason="unknown_athlete",
-            processed_at=timezone.now(),
+            status=StravaWebhookEvent.Status.LINK_REQUIRED,
+            discard_reason="link_required",
+            error_message=instruction,
+            processed_at=None,
         )
         StravaActivitySyncState.objects.filter(provider=event.provider, strava_activity_id=int(event.object_id)).update(
-            status=StravaActivitySyncState.Status.DISCARDED,
-            discard_reason="unknown_athlete",
+            status=StravaActivitySyncState.Status.BLOCKED,
+            discard_reason="link_required",
             locked_at=None,
             locked_by_event_uid="",
             last_error="",
             last_attempt_at=timezone.now(),
         )
-        return "IGNORED: unknown athlete"
+        return "DEFERRED: link_required"
 
     client = obtener_cliente_strava_para_alumno(alumno)
     if not client:

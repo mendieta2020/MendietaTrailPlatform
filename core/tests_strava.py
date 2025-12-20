@@ -236,16 +236,20 @@ class StravaIngestionRobustTests(TestCase):
         self.assertIsInstance(act.datos_brutos.get("start_date"), str)
         self.assertEqual(act.datos_brutos.get("start_date"), start.isoformat())
 
-    def test_unknown_athlete_is_ignored_with_discard_reason(self):
+    def test_unknown_athlete_is_deferred_link_required(self):
         e = self._mk_event(uid="e_unknown", owner_id=999999, object_id=12345, aspect="create")
         # No hay alumno con strava_athlete_id=999999
         process_strava_event.delay(e.id)
         e.refresh_from_db()
-        self.assertEqual(e.status, StravaWebhookEvent.Status.IGNORED)
-        self.assertEqual(e.discard_reason, "unknown_athlete")
+        self.assertEqual(e.status, StravaWebhookEvent.Status.LINK_REQUIRED)
+        self.assertEqual(e.discard_reason, "link_required")
         self.assertTrue(
-            StravaImportLog.objects.filter(event=e, status=StravaImportLog.Status.DISCARDED, reason="unknown_athlete").exists()
+            StravaImportLog.objects.filter(event=e, status=StravaImportLog.Status.DEFERRED, reason="link_required").exists()
         )
+        # Lock state queda BLOCKED para permitir re-procesar al linkear (no se "quema" como discarded).
+        state = StravaActivitySyncState.objects.get(provider="strava", strava_activity_id=12345)
+        self.assertEqual(state.status, StravaActivitySyncState.Status.BLOCKED)
+        self.assertEqual(state.discard_reason, "link_required")
 
     def test_missing_auth_fails_with_discard_reason_and_message(self):
         start = datetime.now(dt_timezone.utc)

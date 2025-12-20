@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from core.models import StravaWebhookEvent
 from core.tasks import process_strava_event
+from core.models import ExternalIdentity
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +146,19 @@ def strava_webhook(request):
                     },
                 )
                 return HttpResponse(status=200)
+
+            # Canonical identity seed: siempre creamos/actualizamos la identidad externa,
+            # aunque todavía no exista `Alumno` (evita pérdida de eventos y habilita linking posterior).
+            try:
+                if owner_id is not None:
+                    ExternalIdentity.objects.get_or_create(
+                        provider="strava",
+                        external_user_id=str(int(owner_id)),
+                        defaults={"status": ExternalIdentity.Status.UNLINKED},
+                    )
+            except Exception:
+                # No bloquear el webhook endpoint por problemas internos de identidad.
+                logger.exception("strava_webhook.external_identity_seed_failed", extra={"owner_id": owner_id})
 
             # Thin endpoint: validar rápido lo obvio y evitar encolar basura.
             if object_type != "activity":

@@ -400,6 +400,8 @@ class StravaWebhookEvent(models.Model):
         QUEUED = "queued", "queued"
         PROCESSING = "processing", "processing"
         PROCESSED = "processed", "processed"
+        # Evento válido pero sin identidad interna vinculada (se re-procesa al vincular).
+        LINK_REQUIRED = "link_required", "link_required"
         DISCARDED = "discarded", "discarded"
         IGNORED = "ignored", "ignored"
         FAILED = "failed", "failed"
@@ -480,6 +482,7 @@ class StravaImportLog(models.Model):
     class Status(models.TextChoices):
         FETCHED = "fetched", "fetched"
         SAVED = "saved", "saved"
+        DEFERRED = "deferred", "deferred"
         DISCARDED = "discarded", "discarded"
         FAILED = "failed", "failed"
 
@@ -515,6 +518,8 @@ class StravaActivitySyncState(models.Model):
     class Status(models.TextChoices):
         RUNNING = "running", "running"
         SUCCEEDED = "succeeded", "succeeded"
+        # Bloqueado por dependencia externa (ej: atleta todavía no vinculado).
+        BLOCKED = "blocked", "blocked"
         DISCARDED = "discarded", "discarded"
         FAILED = "failed", "failed"
 
@@ -545,6 +550,67 @@ class StravaActivitySyncState(models.Model):
             models.Index(fields=["athlete_id", "-updated_at"]),
             models.Index(fields=["status", "-updated_at"]),
         ]
+
+
+class ExternalIdentity(models.Model):
+    """
+    Identidad canónica externa (multi-provider), independiente de `Alumno`.
+
+    - Permite recibir webhooks antes del onboarding: se crea UNLINKED.
+    - Al vincularse (OAuth/admin), se enlaza a `Alumno` y se drenan eventos pendientes.
+    - Shape SaaS: soporta multi-proveedor (Strava/Garmin/Coros/...) y multi-tenant por `Alumno`.
+    """
+
+    class Provider(models.TextChoices):
+        STRAVA = "strava", "strava"
+        # Futuros providers:
+        # GARMIN = "garmin", "garmin"
+        # COROS = "coros", "coros"
+        # SUUNTO = "suunto", "suunto"
+
+    class Status(models.TextChoices):
+        UNLINKED = "unlinked", "unlinked"
+        LINKED = "linked", "linked"
+        DISABLED = "disabled", "disabled"
+
+    provider = models.CharField(max_length=20, choices=Provider.choices, db_index=True)
+    # `owner_id` en Strava es numérico, pero lo persistimos como string para compat multi-proveedor.
+    external_user_id = models.CharField(max_length=80, db_index=True)
+
+    alumno = models.ForeignKey(
+        "Alumno",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="external_identities",
+        db_index=True,
+    )
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.UNLINKED, db_index=True)
+    linked_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
+    profile = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True, db_index=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["provider", "external_user_id"], name="uniq_external_identity_provider_user"),
+            # Un Alumno no debe tener 2 identidades del mismo provider (cuando está linkeado).
+            models.UniqueConstraint(
+                fields=["provider", "alumno"],
+                condition=Q(alumno__isnull=False),
+                name="uniq_external_identity_provider_alumno_not_null",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status", "-updated_at"]),
+            models.Index(fields=["provider", "status", "-updated_at"]),
+        ]
+
+    def __str__(self):
+        if self.alumno_id:
+            return f"{self.provider}:{self.external_user_id} -> alumno:{self.alumno_id}"
+        return f"{self.provider}:{self.external_user_id} (unlinked)"
 
 @receiver(post_save, sender=Pago)
 def actualizar_pago_alumno(sender, instance, **kwargs):

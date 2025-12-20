@@ -1,6 +1,13 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from .models import Alumno
+from django.db import transaction
+from django.utils import timezone
+
+from allauth.socialaccount.signals import social_account_added, social_account_updated
+
+from .models import ExternalIdentity
+from .tasks import drain_strava_events_for_athlete
 from .metrics import (
     generar_pronosticos_alumno, 
     calcular_vam_desde_tests, 
@@ -108,3 +115,132 @@ def actualizar_pronosticos_alumno(sender, instance, created, **kwargs):
              
              instance._skip_signal = True
              instance.save()
+
+
+@receiver(post_save, sender=Alumno)
+def ensure_external_identity_link(sender, instance: Alumno, created: bool, **kwargs):
+    """
+    Linking canónico (admin/manual):
+    Si un `Alumno` tiene `strava_athlete_id`, garantizamos que exista `ExternalIdentity(strava, athlete_id)`
+    y que quede linkeada a este Alumno. Si el link se creó/actualizó, drenamos eventos pendientes.
+
+    Importante: es idempotente y no re-encola en cada save (solo si hubo cambio real de link).
+    """
+    if hasattr(instance, "_skip_signal"):
+        return
+
+    athlete_id = (instance.strava_athlete_id or "").strip()
+    if not athlete_id:
+        return
+
+    def _on_commit_drain():
+        try:
+            drain_strava_events_for_athlete.delay(provider="strava", owner_id=int(athlete_id))
+        except Exception:
+            # Nunca bloquear saves por encolado.
+            pass
+
+    # Crear o vincular identidad canónica.
+    try:
+        identity, created_identity = ExternalIdentity.objects.get_or_create(
+            provider=ExternalIdentity.Provider.STRAVA,
+            external_user_id=str(int(athlete_id)),
+            defaults={
+                "alumno": instance,
+                "status": ExternalIdentity.Status.LINKED,
+                "linked_at": timezone.now(),
+            },
+        )
+        # Si ya existía pero estaba unlinked o linkeada a otro alumno, corregimos.
+        if (not created_identity) and identity.alumno_id != instance.id:
+            ExternalIdentity.objects.filter(pk=identity.pk).update(
+                alumno=instance,
+                status=ExternalIdentity.Status.LINKED,
+                linked_at=timezone.now(),
+            )
+            transaction.on_commit(_on_commit_drain)
+        elif created_identity:
+            transaction.on_commit(_on_commit_drain)
+        else:
+            # Ya estaba linkeado a este alumno: no drenar (idempotencia).
+            pass
+    except Exception:
+        # No romper el guardado del alumno por un problema auxiliar.
+        return
+
+
+def _extract_strava_athlete_id_from_sociallogin(sociallogin) -> str:
+    """
+    allauth/Strava: el `uid` suele ser el athlete_id.
+    Fallback: intentar leer del extra_data si existe.
+    """
+    try:
+        uid = getattr(getattr(sociallogin, "account", None), "uid", None)
+        if uid:
+            return str(uid).strip()
+    except Exception:
+        pass
+
+    try:
+        extra = getattr(getattr(sociallogin, "account", None), "extra_data", None) or {}
+        athlete = extra.get("athlete") or {}
+        if isinstance(athlete, dict) and athlete.get("id"):
+            return str(athlete["id"]).strip()
+    except Exception:
+        pass
+    return ""
+
+
+@receiver(social_account_added)
+@receiver(social_account_updated)
+def link_strava_on_oauth(sender, request, sociallogin, **kwargs):
+    """
+    Linking por OAuth:
+    Cuando el usuario conecta Strava, linkeamos su `Alumno` (si existe) a la identidad externa
+    y drenamos eventos pendientes.
+    """
+    try:
+        account = getattr(sociallogin, "account", None)
+        if not account or getattr(account, "provider", None) != "strava":
+            return
+        user = getattr(sociallogin, "user", None)
+        if not user:
+            return
+
+        athlete_id = _extract_strava_athlete_id_from_sociallogin(sociallogin)
+        if not athlete_id:
+            return
+
+        alumno = Alumno.objects.filter(usuario=user).first()
+        if not alumno:
+            # Usuario sin perfil Alumno todavía: el webhook igual queda en LINK_REQUIRED.
+            return
+
+        # 1) Backfill compat: setear strava_athlete_id si faltaba (admin-friendly).
+        if not (alumno.strava_athlete_id or "").strip():
+            alumno._skip_signal = True  # evita que se dispare el cerebro de pronósticos en este save
+            alumno.strava_athlete_id = str(int(athlete_id))
+            alumno.save(update_fields=["strava_athlete_id"])
+
+        # 2) Link canónico + drain (idempotente).
+        identity, created_identity = ExternalIdentity.objects.get_or_create(
+            provider=ExternalIdentity.Provider.STRAVA,
+            external_user_id=str(int(athlete_id)),
+            defaults={
+                "alumno": alumno,
+                "status": ExternalIdentity.Status.LINKED,
+                "linked_at": timezone.now(),
+                "profile": getattr(account, "extra_data", None) or {},
+            },
+        )
+        if (not created_identity) and identity.alumno_id != alumno.id:
+            ExternalIdentity.objects.filter(pk=identity.pk).update(
+                alumno=alumno,
+                status=ExternalIdentity.Status.LINKED,
+                linked_at=timezone.now(),
+                profile=getattr(account, "extra_data", None) or {},
+            )
+
+        transaction.on_commit(lambda: drain_strava_events_for_athlete.delay(provider="strava", owner_id=int(athlete_id)))
+    except Exception:
+        return
