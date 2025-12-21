@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest.mock import patch
 
@@ -16,7 +17,8 @@ from core.models import (
     StravaImportLog,
     StravaActivitySyncState,
 )
-from core.tasks import process_strava_event
+from core.tasks import process_strava_event, _build_strava_activity_upserted_extra, _log_strava_activity_upserted
+from core.utils.logging import RESERVED_LOGRECORD_ATTRS
 
 
 User = get_user_model()
@@ -409,3 +411,54 @@ class PlannedVsActualComparatorTests(TestCase):
         act = self._mk_activity(strava_id=3, distance_m=16000, moving_s=5400)
         res = PlannedVsActualComparator().compare(planned, act)
         self.assertEqual(res.classification, "over")
+
+
+class LoggingExtraSafetyTests(TestCase):
+    def test_strava_activity_upserted_extra_uses_no_reserved_logrecord_keys(self):
+        extra = _build_strava_activity_upserted_extra(
+            alumno_id=7,  # explicit: do not use athlete 138463792; keep to admin athlete id=7
+            source="strava",
+            source_object_id="123",
+            upsert_created=True,
+            payload_sanitized=False,
+        )
+        self.assertTrue(RESERVED_LOGRECORD_ATTRS.isdisjoint(extra.keys()))
+        # Contract: preserve meaning of upsert result
+        self.assertIn("upsert_created", extra)
+        self.assertEqual(extra["upsert_created"], True)
+
+    def test_strava_activity_upserted_logger_does_not_raise_keyerror_and_includes_upsert_created(self):
+        class _Capture(logging.Handler):
+            def __init__(self):
+                super().__init__()
+                self.records = []
+
+            def emit(self, record):
+                self.records.append(record)
+
+        capture = _Capture()
+        from core import tasks as tasks_module
+
+        tasks_logger = tasks_module.logger
+        prev_level = tasks_logger.level
+        prev_propagate = tasks_logger.propagate
+        tasks_logger.setLevel(logging.INFO)
+        tasks_logger.propagate = False
+        tasks_logger.addHandler(capture)
+        try:
+            # This must not raise (KeyError would crash Celery).
+            _log_strava_activity_upserted(
+                alumno_id=7,
+                source="strava",
+                source_object_id="123",
+                upsert_created=True,
+                payload_sanitized=False,
+            )
+        finally:
+            tasks_logger.removeHandler(capture)
+            tasks_logger.setLevel(prev_level)
+            tasks_logger.propagate = prev_propagate
+
+        rec = next(r for r in capture.records if r.msg == "strava.activity.upserted")
+        self.assertTrue(hasattr(rec, "upsert_created"))
+        self.assertEqual(rec.upsert_created, True)
