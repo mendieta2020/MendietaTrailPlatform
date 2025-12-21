@@ -10,6 +10,8 @@ import traceback
 import random
 import time
 
+from .utils.logging import safe_extra
+
 from .models import (
     Entrenamiento,
     Alumno,
@@ -394,6 +396,46 @@ def _log_strava_ingest(
     if metric_failed:
         extra["metric_failed"] = int(metric_failed)
     logger.info(msg, extra=extra)
+
+
+def _build_strava_activity_upserted_extra(
+    *,
+    alumno_id: int,
+    source: str,
+    source_object_id: str,
+    upsert_created: bool,
+    payload_sanitized: bool,
+) -> dict:
+    # Keep keys LogRecord-safe (no reserved names like `created`, `name`, `message`, etc.)
+    return {
+        "alumno_id": int(alumno_id),
+        "source": str(source),
+        "source_object_id": str(source_object_id),
+        "upsert_created": bool(upsert_created),
+        "payload_sanitized": bool(payload_sanitized),
+    }
+
+
+def _log_strava_activity_upserted(
+    *,
+    alumno_id: int,
+    source: str,
+    source_object_id: str,
+    upsert_created: bool,
+    payload_sanitized: bool,
+):
+    logger.info(
+        "strava.activity.upserted",
+        extra=safe_extra(
+            _build_strava_activity_upserted_extra(
+                alumno_id=alumno_id,
+                source=source,
+                source_object_id=source_object_id,
+                upsert_created=upsert_created,
+                payload_sanitized=payload_sanitized,
+            )
+        ),
+    )
 
 
 def _map_strava_type_to_core(tipo: str) -> str:
@@ -827,15 +869,12 @@ def process_strava_event(self, event_id: int):
         defaults=defaults,
     )
 
-    logger.info(
-        "strava.activity.upserted",
-        extra={
-            "alumno_id": alumno.id,
-            "source": source,
-            "source_object_id": source_object_id,
-            "created": bool(created),
-            "payload_sanitized": bool(payload_sanitized),
-        },
+    _log_strava_activity_upserted(
+        alumno_id=alumno.id,
+        source=source,
+        source_object_id=source_object_id,
+        upsert_created=bool(created),
+        payload_sanitized=bool(payload_sanitized),
     )
 
     if invalid_reason:
