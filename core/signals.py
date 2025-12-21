@@ -129,13 +129,35 @@ def ensure_external_identity_link(sender, instance: Alumno, created: bool, **kwa
     if hasattr(instance, "_skip_signal"):
         return
 
-    athlete_id = (instance.strava_athlete_id or "").strip()
-    if not athlete_id:
+    # `Alumno.strava_athlete_id` puede ser int/str/None (p.ej. admin/manual o imports).
+    # Normalizamos defensivamente para evitar `.strip()` sobre ints y castear a `int` una sola vez.
+    athlete_id_raw = instance.strava_athlete_id
+    if athlete_id_raw is None:
         return
+
+    athlete_id_str = ""
+    athlete_id_int = None
+    if isinstance(athlete_id_raw, int):
+        athlete_id_int = athlete_id_raw
+        athlete_id_str = str(athlete_id_int)
+    elif isinstance(athlete_id_raw, str):
+        athlete_id_str = athlete_id_raw.strip()
+        if not athlete_id_str:
+            return
+        try:
+            athlete_id_int = int(athlete_id_str)
+        except (TypeError, ValueError):
+            return
+    else:
+        # Tipo inesperado: fail-safe, no bloquear el save().
+        return
+
+    # En este punto siempre tenemos un int válido para usar en Celery y una forma canónica stringificada.
+    external_user_id = str(athlete_id_int)
 
     def _on_commit_drain():
         try:
-            drain_strava_events_for_athlete.delay(provider="strava", owner_id=int(athlete_id))
+            drain_strava_events_for_athlete.delay(provider="strava", owner_id=athlete_id_int)
         except Exception:
             # Nunca bloquear saves por encolado.
             pass
@@ -144,7 +166,7 @@ def ensure_external_identity_link(sender, instance: Alumno, created: bool, **kwa
     try:
         identity, created_identity = ExternalIdentity.objects.get_or_create(
             provider=ExternalIdentity.Provider.STRAVA,
-            external_user_id=str(int(athlete_id)),
+            external_user_id=external_user_id,
             defaults={
                 "alumno": instance,
                 "status": ExternalIdentity.Status.LINKED,
