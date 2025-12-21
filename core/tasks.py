@@ -458,6 +458,92 @@ def _map_strava_type_to_core(tipo: str) -> str:
 )
 def process_strava_event(self, event_id: int):
     """
+    Wrapper de robustez de ciclo de vida.
+
+    WHY:
+    - Un crash inesperado (excepción no controlada) podía dejar el evento en PROCESSING con processed_at=NULL
+      y el lock de StravaActivitySyncState tomado indefinidamente.
+    - Los errores definitivos deben cerrar el ciclo (processed_at=now) y liberar lock.
+    - Los errores transitorios (StravaTransientError) NO deben cerrar processed_at porque Celery reintenta.
+    """
+    attempt_no = int(getattr(self.request, "retries", 0)) + 1
+    t0 = time.monotonic()
+
+    def _truncate_err(msg: str, limit: int = 512) -> str:
+        return (msg or "")[:limit]
+
+    try:
+        return _process_strava_event_body(self, event_id=event_id, attempt_no=attempt_no, t0=t0)
+    except StravaTransientError:
+        # Mantener comportamiento existente: retry transitorio -> NO cerrar el evento.
+        raise
+    except Exception as exc:
+        # Crash inesperado: cerrar evento y liberar lock (best-effort), sin romper idempotencia.
+        now = timezone.now()
+        last_error = _truncate_err(str(exc), 512)
+        error_message = _truncate_err(f"{exc.__class__.__name__}: {str(exc)}", 1024)
+
+        # Best-effort: obtener contexto mínimo sin leer payloads (evitar datos sensibles).
+        ctx = (
+            StravaWebhookEvent.objects.filter(pk=event_id)
+            .values("event_uid", "provider", "owner_id", "object_id", "status")
+            .first()
+        ) or {}
+        event_uid = ctx.get("event_uid", "") or ""
+        provider = ctx.get("provider", "") or ""
+        owner_id = ctx.get("owner_id", None)
+        object_id = ctx.get("object_id", None)
+        status = ctx.get("status", None)
+
+        logger.exception(
+            "strava.process_event.unhandled_exception",
+            extra=safe_extra(
+                {
+                    "event_uid": event_uid,
+                    "event_id": event_id,
+                    "owner_id": owner_id,
+                    "object_id": object_id,
+                    "status": status,
+                }
+            ),
+        )
+
+        # No romper idempotencia: si ya está PROCESSED/IGNORED/DISCARDED, no lo tocamos.
+        StravaWebhookEvent.objects.filter(pk=event_id).exclude(
+            status__in=[
+                StravaWebhookEvent.Status.PROCESSED,
+                StravaWebhookEvent.Status.IGNORED,
+                StravaWebhookEvent.Status.DISCARDED,
+            ]
+        ).update(
+            status=StravaWebhookEvent.Status.FAILED,
+            last_error=last_error,
+            error_message=error_message,
+            processed_at=now,
+        )
+
+        # Liberar lock por actividad (best-effort).
+        try:
+            if provider and object_id is not None:
+                StravaActivitySyncState.objects.filter(
+                    provider=provider, strava_activity_id=int(object_id)
+                ).update(
+                    status=StravaActivitySyncState.Status.FAILED,
+                    last_error=last_error,
+                    locked_at=None,
+                    locked_by_event_uid="",
+                    last_attempt_at=now,
+                )
+        except Exception:
+            logger.exception(
+                "strava.process_event.unhandled_exception.unlock_failed",
+                extra=safe_extra({"event_uid": event_uid, "event_id": event_id, "owner_id": owner_id, "object_id": object_id}),
+            )
+        raise
+
+
+def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: float):
+    """
     Procesa un StravaWebhookEvent:
     - idempotente (event_uid único)
     - dedupe (Actividad/Entrenamiento)
@@ -471,10 +557,6 @@ def process_strava_event(self, event_id: int):
         normalize_strava_activity,
         supported_strava_activity_type,
     )
-
-    # Nota: retries en Celery se cuentan desde 0, por eso attempt = retries + 1.
-    attempt_no = int(getattr(self.request, "retries", 0)) + 1
-    t0 = time.monotonic()
 
     with transaction.atomic():
         event = StravaWebhookEvent.objects.select_for_update().get(pk=event_id)
@@ -780,6 +862,7 @@ def process_strava_event(self, event_id: int):
                     StravaWebhookEvent.objects.filter(pk=event.pk).update(
                         status=StravaWebhookEvent.Status.FAILED,
                         last_error=f"max_retries_exceeded:{classification}: {fetch_error or exc}",
+                        processed_at=timezone.now(),
                     )
                     StravaActivitySyncState.objects.filter(
                         provider=event.provider, strava_activity_id=int(event.object_id)
@@ -824,6 +907,7 @@ def process_strava_event(self, event_id: int):
             StravaWebhookEvent.objects.filter(pk=event.pk).update(
                 status=StravaWebhookEvent.Status.FAILED,
                 last_error=str(fetch_error or exc),
+                processed_at=timezone.now(),
             )
             StravaActivitySyncState.objects.filter(
                 provider=event.provider, strava_activity_id=int(event.object_id)
