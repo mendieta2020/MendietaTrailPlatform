@@ -11,10 +11,135 @@ import numpy as np
 from datetime import date, timedelta
 
 from analytics.models import AlertaRendimiento
+from analytics.models import HistorialFitness
+from analytics.pipeline import recompute_analytics_for_alumno_sync
 from analytics.serializers import AlertaRendimientoSerializer
 from analytics.pagination import OptionalPageNumberPagination
 
 logger = logging.getLogger(__name__)
+
+class DashboardAnalyticsView(APIView):
+    """
+    GET /api/analytics/dashboard/?alumno_id=<id>&days=90
+
+    Devuelve series para el dashboard React basadas en Actividad (Strava):
+    - dates[]
+    - distance_m[]
+    - moving_time_s[]
+    - fatigue[] (ATL)
+    - fitness[] (CTL)
+    - form[] (TSB)
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        qp = request.query_params
+
+        # Params
+        alumno_id = qp.get("alumno_id")
+        try:
+            days = int(qp.get("days") or 90)
+        except Exception:
+            days = 90
+        days = max(1, min(365, days))
+
+        is_athlete = hasattr(user, "perfil_alumno")
+        if is_athlete:
+            alumno_id = getattr(user.perfil_alumno, "id", None)
+        else:
+            if not alumno_id:
+                first = Alumno.objects.filter(entrenador=user).first()
+                if not first:
+                    return Response(
+                        {
+                            "dates": [],
+                            "distance_m": [],
+                            "moving_time_s": [],
+                            "fatigue": [],
+                            "fitness": [],
+                            "form": [],
+                        },
+                        status=200,
+                    )
+                alumno_id = first.id
+
+            # 🔒 Validación anti fuga: el alumno_id debe pertenecer al coach autenticado
+            if not Alumno.objects.filter(id=alumno_id, entrenador=user).exists():
+                return Response(
+                    {
+                        "dates": [],
+                        "distance_m": [],
+                        "moving_time_s": [],
+                        "fatigue": [],
+                        "fitness": [],
+                        "form": [],
+                    },
+                    status=200,
+                )
+
+        try:
+            alumno_id = int(alumno_id)
+        except Exception:
+            return Response(
+                {
+                    "dates": [],
+                    "distance_m": [],
+                    "moving_time_s": [],
+                    "fatigue": [],
+                    "fitness": [],
+                    "form": [],
+                },
+                status=200,
+            )
+
+        end = timezone.localdate()
+        start = end - timedelta(days=days - 1)
+
+        # Aseguramos que exista historial para el rango (idempotente).
+        try:
+            recompute_analytics_for_alumno_sync(alumno_id=alumno_id, start_date=start)
+        except Exception as exc:
+            logger.warning("analytics.dashboard.recompute_failed", extra={"alumno_id": alumno_id, "error": str(exc)})
+
+        rows = (
+            HistorialFitness.objects.filter(alumno_id=alumno_id, fecha__range=[start, end])
+            .values("fecha", "distance_m", "moving_time_s", "ctl", "atl", "tsb")
+            .order_by("fecha")
+        )
+        by_date = {r["fecha"]: r for r in rows}
+
+        dates = []
+        distance_m = []
+        moving_time_s = []
+        fatigue = []
+        fitness = []
+        form = []
+
+        d = start
+        while d <= end:
+            r = by_date.get(d) or {}
+            dates.append(d.isoformat())
+            distance_m.append(float(r.get("distance_m") or 0.0))
+            moving_time_s.append(int(r.get("moving_time_s") or 0))
+            fitness.append(round(float(r.get("ctl") or 0.0), 2))
+            fatigue.append(round(float(r.get("atl") or 0.0), 2))
+            form.append(round(float(r.get("tsb") or 0.0), 2))
+            d += timedelta(days=1)
+
+        return Response(
+            {
+                "dates": dates,
+                "distance_m": distance_m,
+                "moving_time_s": moving_time_s,
+                "fatigue": fatigue,
+                "fitness": fitness,
+                "form": form,
+            },
+            status=200,
+        )
+
 
 class PMCDataView(APIView):
     """

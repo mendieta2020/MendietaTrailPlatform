@@ -3,6 +3,8 @@ import json
 from typing import Any
 
 from django.core.serializers.json import DjangoJSONEncoder
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from core.utils.jsonable import to_jsonable
 
@@ -21,6 +23,127 @@ def supported_strava_activity_type(strava_type: str) -> bool:
     """Tipos soportados para ingesta (ajustable)."""
     st = (strava_type or "").upper()
     return st in {"RUN", "TRAILRUN", "VIRTUALRUN", "WORKOUT"}
+
+
+def _parse_strava_datetime(value: Any):
+    """
+    Parse robusto de datetime Strava (string ISO / datetime).
+
+    - Strava suele enviar ISO8601 con Z/offset (UTC).
+    - Si viene naive, lo marcamos como UTC para evitar crashes.
+    """
+    if not value:
+        return None
+    # datetime-like
+    if hasattr(value, "tzinfo"):
+        try:
+            if value.tzinfo is None:
+                return timezone.make_aware(value, timezone=timezone.utc)
+            return value
+        except Exception:
+            return None
+    if isinstance(value, str):
+        try:
+            dt = parse_datetime(value)
+            if not dt:
+                return None
+            if dt.tzinfo is None:
+                return timezone.make_aware(dt, timezone=timezone.utc)
+            return dt
+        except Exception:
+            return None
+    return None
+
+
+def normalize_strava_activity_json(raw_activity_json: dict) -> dict:
+    """
+    Normaliza un payload raw JSON (Strava API / stravalib.to_dict()) a un shape estable.
+
+    Unidades:
+    - distance_m: metros
+    - moving_time_s / elapsed_time_s: segundos
+    """
+    raw = to_jsonable(raw_activity_json or {}) or {}
+
+    activity_id = raw.get("id")
+    athlete_id = None
+    try:
+        athlete_id = int((raw.get("athlete") or {}).get("id"))
+    except Exception:
+        athlete_id = None
+
+    # Preferimos sport_type si existe (Strava moderno), fallback a type (legacy).
+    strava_type = raw.get("sport_type") or raw.get("type") or ""
+
+    start_dt = _parse_strava_datetime(raw.get("start_date_local")) or _parse_strava_datetime(raw.get("start_date"))
+
+    def _to_int(v: Any) -> int:
+        try:
+            return int(v or 0)
+        except Exception:
+            return 0
+
+    def _to_float(v: Any) -> float:
+        try:
+            return float(v or 0.0)
+        except Exception:
+            return 0.0
+
+    # Strava raw: distance (m), moving_time (s), elapsed_time (s), total_elevation_gain (m).
+    distance_m = _to_float(raw.get("distance"))
+    moving_time_s = _to_int(raw.get("moving_time"))
+    elapsed_time_s = _to_int(raw.get("elapsed_time"))
+    elev_m = _to_float(raw.get("total_elevation_gain"))
+
+    polyline = None
+    try:
+        polyline = (raw.get("map") or {}).get("summary_polyline")
+    except Exception:
+        polyline = None
+
+    avg_hr = raw.get("average_heartrate")
+    max_hr = raw.get("max_heartrate")
+    avg_watts = raw.get("average_watts")
+
+    return {
+        "id": int(activity_id) if activity_id is not None else None,
+        "athlete_id": athlete_id,
+        "name": str(raw.get("name") or ""),
+        "type": str(strava_type or ""),
+        "start_date_local": start_dt,
+        "moving_time_s": int(moving_time_s),
+        "elapsed_time_s": int(elapsed_time_s),
+        "distance_m": float(distance_m or 0.0),
+        "elevation_m": float(elev_m or 0.0),
+        "avg_hr": float(avg_hr) if avg_hr is not None else None,
+        "max_hr": float(max_hr) if max_hr is not None else None,
+        "avg_watts": float(avg_watts) if avg_watts is not None else None,
+        "polyline": polyline,
+        "raw": raw,
+        "raw_sanitized": False,
+    }
+
+
+def _normalized_payload_for_hash(normalized: dict) -> dict:
+    """
+    Payload determinístico para `source_hash`.
+
+    Importante: NO incluimos el raw completo (puede variar sin cambiar métricas).
+    """
+    return {
+        "id": normalized.get("id"),
+        "name": normalized.get("name"),
+        "type": normalized.get("type"),
+        "start_date_local": normalized.get("start_date_local"),
+        "moving_time_s": normalized.get("moving_time_s"),
+        "elapsed_time_s": normalized.get("elapsed_time_s"),
+        "distance_m": normalized.get("distance_m"),
+        "elevation_m": normalized.get("elevation_m"),
+        "avg_hr": normalized.get("avg_hr"),
+        "max_hr": normalized.get("max_hr"),
+        "avg_watts": normalized.get("avg_watts"),
+        "polyline": normalized.get("polyline"),
+    }
 
 
 def normalize_strava_activity(activity: Any) -> dict:
@@ -120,7 +243,8 @@ def map_strava_activity_to_actividad(strava_activity_json: dict) -> dict:
     return {
         "source": "strava",
         "source_object_id": source_object_id,
-        "source_hash": compute_source_hash(raw),
+        # Hash determinístico del payload normalizado (no del raw completo).
+        "source_hash": compute_source_hash(_normalized_payload_for_hash(strava_activity_json or {})),
         # compat
         "strava_id": int(activity_id) if activity_id is not None else None,
         # negocio
@@ -134,3 +258,15 @@ def map_strava_activity_to_actividad(strava_activity_json: dict) -> dict:
         "mapa_polilinea": strava_activity_json.get("polyline"),
         "datos_brutos": raw,
     }
+
+
+def map_strava_raw_activity_to_actividad_defaults(raw_activity_json: dict) -> dict:
+    """
+    Mapper canónico: Strava raw JSON activity -> defaults normalizados para `Actividad`.
+
+    Útil para:
+    - backfill de actividades existentes que solo tienen `datos_brutos`
+    - flujos que reciben JSON Strava directo (sin stravalib)
+    """
+    normalized = normalize_strava_activity_json(raw_activity_json or {})
+    return map_strava_activity_to_actividad(normalized)

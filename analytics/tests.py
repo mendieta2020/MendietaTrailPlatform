@@ -3,8 +3,11 @@ from django.test import TestCase
 from analytics.injury_risk import compute_injury_risk
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
+from django.utils import timezone
+from datetime import timedelta
 from core.models import Alumno
 from analytics.models import AlertaRendimiento
+from core.models import Actividad
 
 
 class ComputeInjuryRiskTests(TestCase):
@@ -189,3 +192,70 @@ class AnalyticsAlertsEndpointTests(TestCase):
         self.assertEqual(resp_pag.status_code, 200)
         self.assertEqual(resp_pag.data["count"], 5)
         self.assertTrue(all("coach1 alert" in a["mensaje"] for a in resp_pag.data["results"]))
+
+
+class AnalyticsDashboardEndpointTests(TestCase):
+    def setUp(self):
+        self.api_client = APIClient()
+        self.url = "/api/analytics/dashboard/"
+
+    def _obtain_jwt(self, username: str, password: str) -> dict:
+        self.api_client.credentials()
+        resp = self.api_client.post(
+            "/api/token/",
+            {"username": username, "password": password},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.data)
+        return {"access": resp.data["access"], "refresh": resp.data["refresh"]}
+
+    def test_dashboard_returns_series_when_there_are_actividades(self):
+        User = get_user_model()
+        coach = User.objects.create_user(username="coach_dash", email="coach_dash@example.com", password="pass12345")
+        alumno = Alumno.objects.create(entrenador=coach, nombre="A", apellido="B", email="alumno_dash@example.com")
+
+        now = timezone.now()
+        Actividad.objects.create(
+            usuario=coach,
+            alumno=alumno,
+            source="strava",
+            source_object_id="1",
+            strava_id=1,
+            nombre="Run 1",
+            distancia=5000.0,
+            tiempo_movimiento=1500,
+            fecha_inicio=now - timedelta(days=2),
+            tipo_deporte="Run",
+            desnivel_positivo=10.0,
+            datos_brutos={"id": 1},
+            validity=Actividad.Validity.VALID,
+        )
+        Actividad.objects.create(
+            usuario=coach,
+            alumno=alumno,
+            source="strava",
+            source_object_id="2",
+            strava_id=2,
+            nombre="Run 2",
+            distancia=10000.0,
+            tiempo_movimiento=3000,
+            fecha_inicio=now - timedelta(days=1),
+            tipo_deporte="Run",
+            desnivel_positivo=20.0,
+            datos_brutos={"id": 2},
+            validity=Actividad.Validity.VALID,
+        )
+
+        tokens = self._obtain_jwt("coach_dash", "pass12345")
+        self.api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {tokens['access']}")
+
+        resp = self.api_client.get(f"{self.url}?alumno_id={alumno.id}&days=7")
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+        self.assertIsInstance(resp.data, dict)
+        for k in ["dates", "distance_m", "moving_time_s", "fatigue", "fitness", "form"]:
+            self.assertIn(k, resp.data)
+            self.assertEqual(len(resp.data[k]), 7)
+
+        self.assertGreater(sum(resp.data["distance_m"]), 0.0)
+        self.assertGreater(sum(resp.data["moving_time_s"]), 0)

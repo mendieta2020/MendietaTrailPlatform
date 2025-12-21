@@ -942,6 +942,17 @@ def process_strava_event(self, event_id: int):
             extra={"event_uid": event_uid, "event_id": event_id, "error": str(exc)},
         )
 
+    # Analytics dashboard (Actividad-based): recompute incremental desde la fecha de esta actividad.
+    try:
+        from analytics.tasks import recompute_analytics_for_alumno
+
+        recompute_analytics_for_alumno.delay(alumno.id, fecha.isoformat())
+    except Exception as exc:
+        logger.warning(
+            "analytics.recompute.enqueue_failed",
+            extra={"alumno_id": alumno.id, "fecha": str(fecha), "error": str(exc)},
+        )
+
     StravaWebhookEvent.objects.filter(pk=event.pk).update(status=StravaWebhookEvent.Status.PROCESSED, processed_at=timezone.now())
     StravaActivitySyncState.objects.filter(provider=event.provider, strava_activity_id=int(activity["id"])).update(
         status=StravaActivitySyncState.Status.SUCCEEDED,

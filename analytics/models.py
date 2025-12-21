@@ -17,6 +17,10 @@ class HistorialFitness(models.Model):
     
     # Métricas del día
     tss_diario = models.FloatField(default=0, help_text="Suma de TSS de todos los entrenamientos del día")
+
+    # Agregados diarios básicos (para dashboard basado en Actividad/Strava)
+    distance_m = models.FloatField(default=0, help_text="Distancia total del día (m)")
+    moving_time_s = models.IntegerField(default=0, help_text="Tiempo total en movimiento del día (s)")
     
     # Métricas Acumuladas (Estado de Forma)
     ctl = models.FloatField(default=0, help_text="Fitness (Carga Crónica)")

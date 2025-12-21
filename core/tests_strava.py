@@ -17,9 +17,40 @@ from core.models import (
     StravaActivitySyncState,
 )
 from core.tasks import process_strava_event
+from core.strava_mapper import map_strava_raw_activity_to_actividad_defaults
 
 
 User = get_user_model()
+
+
+class StravaRawJsonMapperTests(TestCase):
+    def test_map_raw_json_maps_required_fields_safely(self):
+        raw = {
+            "id": 123456,
+            "name": "Test Run",
+            "distance": 5000.0,
+            "moving_time": 1500,
+            "elapsed_time": 1550,
+            "start_date": "2025-12-19T10:00:00Z",
+            "sport_type": "Run",
+            "total_elevation_gain": 42.5,
+            "map": {"summary_polyline": "xyz"},
+        }
+
+        mapped = map_strava_raw_activity_to_actividad_defaults(raw)
+
+        self.assertEqual(mapped["source"], "strava")
+        self.assertEqual(mapped["source_object_id"], "123456")
+        self.assertEqual(mapped["strava_id"], 123456)
+        self.assertEqual(mapped["nombre"], "Test Run")
+        self.assertEqual(mapped["tipo_deporte"], "Run")
+        self.assertEqual(mapped["distancia"], 5000.0)
+        self.assertEqual(mapped["tiempo_movimiento"], 1500)
+        self.assertEqual(mapped["desnivel_positivo"], 42.5)
+        self.assertEqual(mapped["mapa_polilinea"], "xyz")
+        self.assertTrue(mapped["source_hash"])
+        # fecha_inicio parseada (datetime aware o naive aceptable por el modelo)
+        self.assertIsNotNone(mapped["fecha_inicio"])
 
 
 class _FakeAthlete:
