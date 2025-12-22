@@ -524,9 +524,23 @@ def process_strava_event(self, event_id: int):
 
         # Liberar lock por actividad (best-effort).
         try:
+            # 1) Compat: unlock por (provider, strava_activity_id=object_id) como hoy.
             if provider and object_id is not None:
                 StravaActivitySyncState.objects.filter(
                     provider=provider, strava_activity_id=int(object_id)
+                ).update(
+                    status=StravaActivitySyncState.Status.FAILED,
+                    last_error=last_error,
+                    locked_at=None,
+                    locked_by_event_uid="",
+                    last_attempt_at=now,
+                )
+            # 2) Endurecer: unlock por locked_by_event_uid, no requiere conocer activity_id real.
+            # WHY: ante inconsistencias de object_id o eventos legacy, el lock puede haberse tomado
+            # para otra actividad; liberar por event_uid cierra el ciclo en crashes.
+            if provider and event_uid:
+                StravaActivitySyncState.objects.filter(
+                    provider=provider, locked_by_event_uid=event_uid
                 ).update(
                     status=StravaActivitySyncState.Status.FAILED,
                     last_error=last_error,
