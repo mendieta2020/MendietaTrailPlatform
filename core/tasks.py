@@ -442,9 +442,15 @@ def _map_strava_type_to_core(tipo: str) -> str:
     """
     Strava -> choices TIPO_ACTIVIDAD de Entrenamiento.
     """
+    # Nota: `tipo` aquí es el tipo de negocio normalizado (RUN/TRAIL/BIKE/...)
     st = (tipo or "").upper()
-    if st in {"RUN", "TRAILRUN", "VIRTUALRUN"}:
+    if st == "RUN":
         return "RUN"
+    if st == "TRAIL":
+        return "TRAIL"
+    if st == "BIKE":
+        # Mapeo conservador al choice existente en Entrenamiento
+        return "CYCLING"
     return "OTHER"
 
 
@@ -566,10 +572,10 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
     """
     from .actividad_upsert import upsert_actividad
     from .services import obtener_cliente_strava_para_alumno
+    from .strava_activity_normalizer import decide_activity_creation, normalize_strava_activity_payload
     from .strava_mapper import (
         map_strava_activity_to_actividad,
         normalize_strava_activity,
-        supported_strava_activity_type,
     )
 
     with transaction.atomic():
@@ -820,6 +826,19 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
     try:
         activity_obj = client.get_activity(int(event.object_id))
         activity = normalize_strava_activity(activity_obj)
+        logger.info(
+            "strava.activity.decision",
+            extra=safe_extra(
+                {
+                    "decision": "INGESTED",
+                    "event_uid": event_uid,
+                    "correlation_id": str(correlation_id),
+                    "athlete_id": int(event.owner_id),
+                    "activity_id": int(event.object_id),
+                    "payload_sanitized": bool(activity.get("raw_sanitized")),
+                }
+            ),
+        )
         StravaImportLog.objects.create(
             event_id=event.pk,
             alumno=alumno,
@@ -936,16 +955,43 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
 
     # Reglas estrictas de aceptación
     invalid_reason = ""
-    if not supported_strava_activity_type(activity.get("type")):
-        invalid_reason = "unsupported_type"
-    elif not activity.get("start_date_local"):
+
+    # Capa SaaS de normalización (producto): Strava raw -> actividad de negocio.
+    start_dt_raw = activity.get("start_date_local")
+    normalized = normalize_strava_activity_payload(activity)
+    # Inyectar campos normalizados al payload que usa el mapper (sin perder el `raw` original)
+    activity["tipo_deporte"] = normalized["tipo_deporte"]
+    activity["distance_m"] = normalized["distancia"]
+    activity["moving_time_s"] = normalized["duracion"]
+    activity["start_date_local"] = normalized["fecha_inicio"]
+
+    logger.info(
+        "strava.activity.decision",
+        extra=safe_extra(
+            {
+                "decision": "NORMALIZED",
+                "event_uid": event_uid,
+                "correlation_id": str(correlation_id),
+                "athlete_id": int(event.owner_id),
+                "activity_id": int(activity.get("id") or event.object_id),
+                "tipo_deporte": normalized["tipo_deporte"],
+                "distancia_m": float(normalized["distancia"]),
+                "duracion_s": int(normalized["duracion"]),
+            }
+        ),
+    )
+
+    # Validaciones de integridad (no producto)
+    if not start_dt_raw:
         invalid_reason = "missing_start_date"
-    elif (activity.get("elapsed_time_s") or 0) <= 0 or (activity.get("moving_time_s") or 0) <= 0:
-        invalid_reason = "invalid_duration"
-    elif (activity.get("distance_m") or 0) <= 0:
-        invalid_reason = "invalid_distance"
+    elif int(normalized.get("duracion") or 0) <= 0:
+        invalid_reason = "duration_non_positive"
     elif activity.get("athlete_id") and int(activity["athlete_id"]) != int(event.owner_id):
         invalid_reason = "athlete_mismatch"
+    else:
+        decision = decide_activity_creation(normalized=normalized)
+        if not decision.should_create:
+            invalid_reason = decision.reason
 
     # Upsert Actividad (dedupe) - identidad canónica: (source, source_object_id)
     mapped = map_strava_activity_to_actividad(activity)
@@ -986,7 +1032,13 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
             reason=invalid_reason,
             details={"type": activity.get("type")},
         )
-        StravaWebhookEvent.objects.filter(pk=event.pk).update(status=StravaWebhookEvent.Status.IGNORED, last_error="")
+        StravaWebhookEvent.objects.filter(pk=event.pk).update(
+            status=StravaWebhookEvent.Status.DISCARDED,
+            discard_reason=invalid_reason,
+            last_error="",
+            error_message="",
+            processed_at=timezone.now(),
+        )
         StravaActivitySyncState.objects.filter(provider=event.provider, strava_activity_id=int(event.object_id)).update(
             status=StravaActivitySyncState.Status.DISCARDED,
             discard_reason=invalid_reason,
@@ -1008,7 +1060,35 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
             duration_ms=duration_ms,
             metric_ignored=1,
         )
+        logger.info(
+            "strava.activity.decision",
+            extra=safe_extra(
+                {
+                    "decision": "DISCARDED",
+                    "event_uid": event_uid,
+                    "correlation_id": str(correlation_id),
+                    "athlete_id": int(event.owner_id),
+                    "activity_id": int(activity["id"]),
+                    "reason": invalid_reason,
+                }
+            ),
+        )
         return f"DISCARDED: {invalid_reason}"
+
+    logger.info(
+        "strava.activity.decision",
+        extra=safe_extra(
+            {
+                "decision": "CREATED",
+                "event_uid": event_uid,
+                "correlation_id": str(correlation_id),
+                "athlete_id": int(event.owner_id),
+                "activity_id": int(activity["id"]),
+                "upsert_created": bool(created),
+                "tipo_deporte": activity.get("tipo_deporte") or "",
+            }
+        ),
+    )
 
     # Upsert Entrenamiento (plan match / unplanned)
     fecha = activity["start_date_local"].date()
@@ -1027,7 +1107,7 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
 
         entreno.strava_id = str(activity["id"])
         entreno.completado = True
-        entreno.tipo_actividad = _map_strava_type_to_core(activity.get("type"))
+        entreno.tipo_actividad = _map_strava_type_to_core(activity.get("tipo_deporte") or activity.get("type"))
         entreno.distancia_real_km = round(float(activity.get("distance_m") or 0.0) / 1000.0, 2)
         entreno.tiempo_real_min = int(round(float(activity.get("moving_time_s") or 0) / 60.0))
         entreno.desnivel_real_m = int(round(float(activity.get("elevation_m") or 0.0)))
@@ -1125,3 +1205,87 @@ def procesar_actividad_strava(self, object_id, owner_id):
     if created:
         process_strava_event.delay(event.pk)
     return f"ENQUEUED: {event.pk}"
+
+
+@shared_task(bind=True)
+def backfill_strava_activities(self, alumno_id: int, limit: int = 200):
+    """
+    Backfill SaaS: trae las últimas N actividades de Strava y las pasa por el MISMO pipeline
+    que el webhook (StravaWebhookEvent + process_strava_event).
+
+    Requerimientos:
+    - idempotente (event_uid estable; Actividad upsert por (source, source_object_id))
+    - sin tocar locks/estados del pipeline principal
+    """
+    from core.models import Alumno, ExternalIdentity, StravaWebhookEvent
+    from core.services import obtener_cliente_strava_para_alumno
+
+    limit = int(limit or 200)
+    if limit <= 0:
+        limit = 200
+
+    alumno = Alumno.objects.filter(pk=int(alumno_id)).select_related("usuario", "entrenador").first()
+    if not alumno:
+        logger.warning("strava.backfill.skip_missing_alumno", extra=safe_extra({"alumno_id": alumno_id}))
+        return {"status": "skipped", "reason": "missing_alumno", "enqueued": 0}
+
+    client = obtener_cliente_strava_para_alumno(alumno)
+    if not client:
+        logger.warning(
+            "strava.backfill.skip_missing_strava_auth",
+            extra=safe_extra({"alumno_id": alumno.id, "coach_id": alumno.entrenador_id}),
+        )
+        return {"status": "skipped", "reason": "missing_strava_auth", "enqueued": 0}
+
+    # owner_id debe ser consistente con el pipeline (resolución por ExternalIdentity/Alumno.strava_athlete_id)
+    owner_id = None
+    identity = ExternalIdentity.objects.filter(provider="strava", alumno=alumno).first()
+    if identity and identity.external_user_id:
+        owner_id = int(identity.external_user_id)
+    elif getattr(alumno, "strava_athlete_id", None):
+        try:
+            owner_id = int(alumno.strava_athlete_id)
+        except Exception:
+            owner_id = None
+
+    if owner_id is None:
+        logger.warning(
+            "strava.backfill.skip_missing_owner_id",
+            extra=safe_extra({"alumno_id": alumno.id, "identity_found": bool(identity)}),
+        )
+        return {"status": "skipped", "reason": "missing_owner_id", "enqueued": 0}
+
+    activities = list(client.get_activities(limit=limit))
+    enqueued = 0
+    for a in activities:
+        try:
+            activity_id = int(getattr(a, "id"))
+        except Exception:
+            continue
+
+        # event_uid estable: backfill:v1:{alumno_id}:{activity_id}
+        # (<= 80 chars, idempotente cross-runs)
+        event_uid = f"backfill:v1:{int(alumno.id)}:{activity_id}"
+
+        ev, created = StravaWebhookEvent.objects.get_or_create(
+            provider="strava",
+            event_uid=event_uid,
+            defaults={
+                "object_type": "activity",
+                "object_id": activity_id,
+                "aspect_type": "create",
+                "owner_id": int(owner_id),
+                "event_time": int(timezone.now().timestamp()),
+                "payload_raw": {"backfill": True, "alumno_id": alumno.id, "limit": limit},
+                "status": StravaWebhookEvent.Status.QUEUED,
+            },
+        )
+        if created:
+            process_strava_event.delay(ev.pk)
+            enqueued += 1
+
+    logger.info(
+        "strava.backfill.done",
+        extra=safe_extra({"alumno_id": alumno.id, "owner_id": owner_id, "requested_limit": limit, "fetched": len(activities), "enqueued": enqueued}),
+    )
+    return {"status": "ok", "fetched": len(activities), "enqueued": enqueued}

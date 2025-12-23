@@ -207,6 +207,21 @@ class AlumnoViewSet(viewsets.ModelViewSet):
         data = InjuryRiskSnapshotSerializer(snap).data
         return Response({"data_available": True, **data})
 
+    # Ruta: /api/alumnos/{id}/actividades/ (y también /api/athletes/{id}/actividades/)
+    @action(detail=True, methods=["get"], url_path="actividades")
+    def actividades(self, request, pk=None):
+        """
+        Listado de Actividad (negocio) para un alumno.
+
+        WHY:
+        - UX del frontend: endpoint nested por alumno (SaaS fitness típico).
+        - Evita que el frontend tenga que filtrar /api/activities por su cuenta.
+        """
+        alumno = self.get_object()  # scopiado por entrenador (multi-tenant)
+        qs = Actividad.objects.filter(alumno=alumno).order_by("-fecha_inicio")
+        data = ActividadSerializer(qs, many=True, context={"request": request}).data
+        return Response(data)
+
 
 class EntrenamientoViewSet(viewsets.ModelViewSet):
     """

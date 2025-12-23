@@ -270,7 +270,7 @@ class StravaIngestionRobustTests(TestCase):
             StravaImportLog.objects.filter(event=e, status=StravaImportLog.Status.FAILED, reason="missing_strava_auth").exists()
         )
 
-    def test_discard_rules_invalid_activity_is_discarded(self):
+    def test_bike_activity_is_normalized_and_created(self):
         start = datetime.now(dt_timezone.utc)
         ride = _FakeStravaActivity(
             activity_id=777,
@@ -287,11 +287,36 @@ class StravaIngestionRobustTests(TestCase):
             process_strava_event.delay(e.id)
 
         act = Actividad.objects.get(strava_id=777)
-        self.assertEqual(act.validity, Actividad.Validity.DISCARDED)
-        self.assertEqual(act.invalid_reason, "unsupported_type")
-        self.assertEqual(Entrenamiento.objects.filter(strava_id="777").count(), 0)
+        self.assertEqual(act.validity, Actividad.Validity.VALID)
+        self.assertEqual(act.invalid_reason, "")
+        self.assertEqual(act.tipo_deporte, "BIKE")
+        self.assertEqual(Entrenamiento.objects.filter(strava_id="777").count(), 1)
         self.assertTrue(
-            StravaImportLog.objects.filter(event=e, status=StravaImportLog.Status.DISCARDED).exists()
+            StravaImportLog.objects.filter(event=e, status=StravaImportLog.Status.SAVED).exists()
+        )
+
+    def test_walk_activity_is_discarded_with_explicit_reason(self):
+        start = datetime.now(dt_timezone.utc)
+        walk = _FakeStravaActivity(
+            activity_id=778,
+            athlete_id=111,
+            name="Walk",
+            type_="Walk",
+            start=start,
+            distance_m=1500,
+            moving_time_s=900,
+        )
+        e = self._mk_event(uid="e_walk", owner_id=111, object_id=778, aspect="create")
+
+        with patch("core.services.obtener_cliente_strava", return_value=_FakeStravaClient(walk)):
+            process_strava_event.delay(e.id)
+
+        act = Actividad.objects.get(strava_id=778)
+        self.assertEqual(act.validity, Actividad.Validity.DISCARDED)
+        self.assertEqual(act.invalid_reason, "sport_type_not_allowed:WALK")
+        self.assertEqual(Entrenamiento.objects.filter(strava_id="778").count(), 0)
+        self.assertTrue(
+            StravaImportLog.objects.filter(event=e, status=StravaImportLog.Status.DISCARDED, reason="sport_type_not_allowed:WALK").exists()
         )
 
     def test_retry_on_rate_limit_429_raises_retry_and_marks_queued(self):
