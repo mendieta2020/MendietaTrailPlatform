@@ -338,7 +338,15 @@ class Actividad(models.Model):
     tiempo_movimiento = models.IntegerField(help_text="Tiempo en segundos", default=0)
     fecha_inicio = models.DateTimeField()
     tipo_deporte = models.CharField(max_length=50)
-    desnivel_positivo = models.FloatField(default=0.0)
+    # `None` representa "dato faltante". NO usar 0 como faltante (kcal/elev/etc).
+    desnivel_positivo = models.FloatField(null=True, blank=True)
+    elev_loss_m = models.FloatField(null=True, blank=True, help_text="Sumatoria de descenso (metros). NULL si faltante.")
+    calories_kcal = models.FloatField(null=True, blank=True, help_text="Calorías (kcal). NULL si faltante.")
+    effort = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Esfuerzo (Strava relative_effort / suffer_score). NULL si faltante.",
+    )
     ritmo_promedio = models.FloatField(blank=True, null=True, help_text="Metros por segundo")
 
     # Auditoría / visualización

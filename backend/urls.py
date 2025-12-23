@@ -67,6 +67,9 @@ urlpatterns = [
     # Rutas de Analytics (Ciencia de Datos, PMC, Widgets)
     path('api/analytics/', include('analytics.urls')),
 
+    # Coach Decision Layer v1 (coach-first)
+    path('api/coach/', include('analytics.coach_urls')),
+
     # ==============================================================
 
     # 7. Autenticación (Tokens JWT)

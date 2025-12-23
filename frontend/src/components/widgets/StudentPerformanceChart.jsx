@@ -73,9 +73,10 @@ const StudentPerformanceChart = ({ alumnoId } = {}) => {
                             dist: Number(item.dist) || 0,
                             time: Number(item.time) || 0,
                             elev_gain: Number(item.elev_gain) || 0,
-                            elev_loss_plot: (Number(item.elev_loss) || 0) * -1, 
-                            elev_loss_raw: Number(item.elev_loss) || 0,
-                            calories: Number(item.calories) || 0,
+                            elev_loss_plot: item.elev_loss != null ? (Number(item.elev_loss) * -1) : null,
+                            elev_loss_raw: item.elev_loss != null ? Number(item.elev_loss) : null,
+                            calories: item.calories != null ? Number(item.calories) : null,
+                            effort: item.effort != null ? Number(item.effort) : null,
                             ctl: Number(item.ctl) || 0,
                             atl: Number(item.atl) || 0,
                             tsb: Number(item.tsb) || 0,
@@ -164,9 +165,35 @@ const StudentPerformanceChart = ({ alumnoId } = {}) => {
                            <><DataRow color={COLORS.FITNESS} label="Fitness" value={dayData.ctl} /><DataRow color={COLORS.FATIGUE} label="Fatiga" value={dayData.atl} /><DataRow color={COLORS.FORM} label="Forma" value={dayData.tsb} /></>
                         ) : (<DataRow color="#fff" label="Valor Principal" value={payload[0].value} />)}
                         <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.1)' }} />
-                        {metric === 'TIME' && dayData.calories > 0 && <DataRow icon={<LocalFireDepartment fontSize="inherit"/>} label="Calorías" value={`${dayData.calories} kcal`} color={COLORS.CALORIES} />}
-                        {(dayData.elev_gain > 0 || dayData.elev_loss_raw > 0) && (
-                            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'space-between' }}><Typography variant="caption" sx={{ color: '#A78BFA' }}>▲ {dayData.elev_gain}m</Typography><Typography variant="caption" sx={{ color: '#F87171' }}>▼ {dayData.elev_loss_raw}m</Typography></Box>
+                        {metric === 'TIME' && dayData.calories != null && (
+                          <DataRow
+                            icon={<LocalFireDepartment fontSize="inherit"/>}
+                            label="Calorías"
+                            value={`${dayData.calories} kcal`}
+                            color={COLORS.CALORIES}
+                          />
+                        )}
+                        {metric === 'TIME' && dayData.effort != null && (
+                          <DataRow
+                            icon={<Layers fontSize="inherit" />}
+                            label="Esfuerzo"
+                            value={dayData.effort}
+                            color="#22C55E"
+                          />
+                        )}
+                        {(dayData.elev_gain > 0 || dayData.elev_loss_raw != null) && (
+                          <Box sx={{ display: 'flex', gap: 2, justifyContent: 'space-between' }}>
+                            {dayData.elev_gain > 0 && (
+                              <Typography variant="caption" sx={{ color: '#A78BFA' }}>
+                                ▲ {dayData.elev_gain}m
+                              </Typography>
+                            )}
+                            {dayData.elev_loss_raw != null && (
+                              <Typography variant="caption" sx={{ color: '#F87171' }}>
+                                ▼ {dayData.elev_loss_raw}m
+                              </Typography>
+                            )}
+                          </Box>
                         )}
                     </Stack>
                 </Paper>

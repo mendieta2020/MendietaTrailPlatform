@@ -44,6 +44,18 @@ class StravaSportTypeMappingTests(TestCase):
         self.assertEqual(normalized["tipo_deporte"], "TRAIL")
         self.assertEqual(normalized["strava_sport_type"], "TRAILRUN")
 
+    def test_sport_type_normalization_mapping_virtualride_to_bike(self):
+        from core.strava_activity_normalizer import normalize_strava_activity_payload
+
+        payload = {
+            "sport_type": "VirtualRide",
+            "distance_m": 1234,
+            "moving_time_s": 600,
+            "start_date_local": timezone.now(),
+        }
+        normalized = normalize_strava_activity_payload(payload)
+        self.assertEqual(normalized["tipo_deporte"], "BIKE")
+
 
 class _FakeAthlete:
     def __init__(self, athlete_id: int):
@@ -68,6 +80,8 @@ class _FakeStravaActivity:
         moving_time_s: int,
         elapsed_time_s: int | None = None,
         elev_m: float = 0.0,
+        calories_kcal: float | None = None,
+        relative_effort: float | None = None,
         polyline: str | None = "abc",
     ):
         self.id = activity_id
@@ -80,6 +94,9 @@ class _FakeStravaActivity:
         self.moving_time = moving_time_s
         self.elapsed_time = elapsed_time_s if elapsed_time_s is not None else moving_time_s
         self.total_elevation_gain = elev_m
+        # Opcionales (pueden faltar y deben quedar NULL, no 0)
+        self.calories = calories_kcal
+        self.relative_effort = relative_effort
         self.map = _FakeMap(polyline)
 
     def to_dict(self):
@@ -100,6 +117,16 @@ class _FakeStravaClient:
     def get_activity(self, activity_id: int):
         assert int(activity_id) == int(self._activity.id)
         return self._activity
+
+
+class _FakeStravaClientWithStreams(_FakeStravaClient):
+    def __init__(self, activity: _FakeStravaActivity, *, altitude_stream: list[float]):
+        super().__init__(activity)
+        self._altitude_stream = altitude_stream
+
+    def get_activity_streams(self, activity_id: int, types=None, *args, **kwargs):
+        assert int(activity_id) == int(self._activity.id)
+        return {"altitude": {"data": list(self._altitude_stream)}}
 
 
 class StravaWebhookThinEndpointTests(TestCase):
@@ -226,6 +253,56 @@ class StravaIngestionRobustTests(TestCase):
         self.assertEqual(act.nombre, "Morning Run (edited)")
         self.assertEqual(Entrenamiento.objects.filter(strava_id="555").count(), 1)
         self.assertEqual(SessionComparison.objects.filter(activity=act).count(), 1)
+
+    def test_missing_calories_keeps_none(self):
+        """
+        Requisito: NO guardar 0 como faltante. Si Strava no trae calories => NULL/None.
+        """
+        start = datetime.now(dt_timezone.utc)
+        a = _FakeStravaActivity(
+            activity_id=7001,
+            athlete_id=111,
+            name="No Calories Run",
+            type_="Run",
+            start=start,
+            distance_m=5000,
+            moving_time_s=1500,
+            elev_m=10,
+            calories_kcal=None,
+        )
+        e = self._mk_event(uid="e_cal_none", owner_id=111, object_id=7001, aspect="create")
+        with patch("core.services.obtener_cliente_strava", return_value=_FakeStravaClient(a)):
+            process_strava_event.delay(e.id)
+
+        act = Actividad.objects.get(strava_id=7001)
+        self.assertIsNone(act.calories_kcal)
+
+    def test_elev_loss_computed_when_alt_stream_present(self):
+        """
+        Si Strava no trae elev_loss, lo calculamos desde stream de altitud (best-effort).
+        """
+        start = datetime.now(dt_timezone.utc)
+        a = _FakeStravaActivity(
+            activity_id=7002,
+            athlete_id=111,
+            name="Alt Stream Run",
+            type_="Run",
+            start=start,
+            distance_m=8000,
+            moving_time_s=2400,
+            elev_m=200,
+        )
+        altitude = [100, 110, 105, 90, 95]
+        e = self._mk_event(uid="e_alt", owner_id=111, object_id=7002, aspect="create")
+        with patch(
+            "core.services.obtener_cliente_strava",
+            return_value=_FakeStravaClientWithStreams(a, altitude_stream=altitude),
+        ):
+            process_strava_event.delay(e.id)
+
+        act = Actividad.objects.get(strava_id=7002)
+        self.assertIsNotNone(act.elev_loss_m)
+        self.assertAlmostEqual(float(act.elev_loss_m), 12.5, places=1)
 
     def test_raw_json_datetime_is_sanitized_before_saving(self):
         """

@@ -82,7 +82,7 @@ def normalize_strava_activity(activity: Any) -> dict:
         except Exception:
             return 0
 
-    def _to_float(v: Any) -> float:
+    def _to_float_or_zero(v: Any) -> float:
         if v is None:
             return 0.0
         try:
@@ -92,10 +92,29 @@ def normalize_strava_activity(activity: Any) -> dict:
         except Exception:
             return 0.0
 
+    def _to_float_or_none(v: Any) -> float | None:
+        if v is None:
+            return None
+        try:
+            if hasattr(v, "magnitude"):
+                return float(v.magnitude)
+            return float(v)
+        except Exception:
+            return None
+
     moving_time_s = _to_seconds(getattr(activity, "moving_time", None))
     elapsed_time_s = _to_seconds(getattr(activity, "elapsed_time", None))
-    distance_m = _to_float(getattr(activity, "distance", None))
-    elev_m = _to_float(getattr(activity, "total_elevation_gain", None))
+    distance_m = _to_float_or_zero(getattr(activity, "distance", None))
+    elev_m = _to_float_or_none(getattr(activity, "total_elevation_gain", None))
+
+    # Métricas opcionales: NO usar 0 como faltante; si no existen, quedan NULL/None
+    calories_kcal = _to_float_or_none(getattr(activity, "calories", None))
+    relative_effort = _to_float_or_none(
+        getattr(activity, "relative_effort", None)
+        or getattr(activity, "relativeEffort", None)
+        or getattr(activity, "suffer_score", None)
+        or getattr(activity, "sufferScore", None)
+    )
 
     avg_hr = getattr(activity, "average_heartrate", None)
     max_hr = getattr(activity, "max_heartrate", None)
@@ -116,7 +135,11 @@ def normalize_strava_activity(activity: Any) -> dict:
         "moving_time_s": int(moving_time_s),
         "elapsed_time_s": int(elapsed_time_s),
         "distance_m": float(distance_m or 0.0),
-        "elevation_m": float(elev_m or 0.0),
+        "elevation_m": float(elev_m) if elev_m is not None else None,
+        "calories_kcal": float(calories_kcal) if calories_kcal is not None else None,
+        "effort": float(relative_effort) if relative_effort is not None else None,
+        # elev_loss se calcula best-effort desde streams (si existen)
+        "elev_loss_m": None,
         "avg_hr": float(avg_hr) if avg_hr is not None else None,
         "max_hr": float(max_hr) if max_hr is not None else None,
         "avg_watts": float(avg_watts) if avg_watts is not None else None,
@@ -140,6 +163,31 @@ def map_strava_activity_to_actividad(strava_activity_json: dict) -> dict:
         or str(raw.get("sport_type") or raw.get("type") or "").strip()
     )
 
+    def _to_float_or_none(v: Any) -> float | None:
+        if v is None:
+            return None
+        try:
+            if hasattr(v, "magnitude"):
+                return float(v.magnitude)
+            return float(v)
+        except Exception:
+            return None
+
+    # Fallbacks desde raw (por compat con distintos shapes de Strava/stravalib)
+    calories_kcal = _to_float_or_none(strava_activity_json.get("calories_kcal"))
+    if calories_kcal is None:
+        calories_kcal = _to_float_or_none(raw.get("calories"))
+
+    effort = _to_float_or_none(strava_activity_json.get("effort"))
+    if effort is None:
+        for k in ("relative_effort", "suffer_score", "sufferScore"):
+            effort = _to_float_or_none(raw.get(k))
+            if effort is not None:
+                break
+
+    elev_loss_m = _to_float_or_none(strava_activity_json.get("elev_loss_m"))
+    elev_gain_m = _to_float_or_none(strava_activity_json.get("elevation_m"))
+
     return {
         "source": "strava",
         "source_object_id": source_object_id,
@@ -155,7 +203,10 @@ def map_strava_activity_to_actividad(strava_activity_json: dict) -> dict:
         # para UX consistente; si no viene, usamos type crudo por compat.
         "tipo_deporte": strava_activity_json.get("tipo_deporte") or (strava_activity_json.get("type") or ""),
         "strava_sport_type": raw_sport_type,
-        "desnivel_positivo": float(strava_activity_json.get("elevation_m") or 0.0),
+        "desnivel_positivo": float(elev_gain_m) if elev_gain_m is not None else None,
+        "elev_loss_m": float(elev_loss_m) if elev_loss_m is not None else None,
+        "calories_kcal": float(calories_kcal) if calories_kcal is not None else None,
+        "effort": float(effort) if effort is not None else None,
         "ritmo_promedio": (distance_m / moving_s) if (distance_m > 0 and moving_s > 0) else None,
         "mapa_polilinea": strava_activity_json.get("polyline"),
         "datos_brutos": raw,
