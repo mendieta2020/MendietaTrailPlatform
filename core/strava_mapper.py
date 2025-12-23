@@ -20,7 +20,25 @@ def compute_source_hash(raw_json: dict | None) -> str:
 def supported_strava_activity_type(strava_type: str) -> bool:
     """Tipos soportados para ingesta (ajustable)."""
     st = (strava_type or "").upper()
-    return st in {"RUN", "TRAILRUN", "VIRTUALRUN", "WORKOUT"}
+    # Nota: esta función queda por compat; la validación de producto vive en
+    # `core.strava_activity_normalizer.decide_activity_creation`.
+    return st in {
+        "RUN",
+        "TRAILRUN",
+        "VIRTUALRUN",
+        # Bike
+        "RIDE",
+        "VIRTUALRIDE",
+        "EBIKERIDE",
+        "MOUNTAINBIKERIDE",
+        "GRAVELRIDE",
+        "ROADBIKERIDE",
+        # Walk-ish
+        "WALK",
+        "HIKE",
+        # Otros
+        "WORKOUT",
+    }
 
 
 def normalize_strava_activity(activity: Any) -> dict:
@@ -128,7 +146,9 @@ def map_strava_activity_to_actividad(strava_activity_json: dict) -> dict:
         "distancia": distance_m,
         "tiempo_movimiento": moving_s,
         "fecha_inicio": strava_activity_json.get("start_date_local"),
-        "tipo_deporte": strava_activity_json.get("type") or "",
+        # `tipo_deporte` debe ser el tipo de negocio normalizado (RUN/TRAIL/BIKE/...)
+        # para UX consistente; si no viene, usamos type crudo por compat.
+        "tipo_deporte": strava_activity_json.get("tipo_deporte") or (strava_activity_json.get("type") or ""),
         "desnivel_positivo": float(strava_activity_json.get("elevation_m") or 0.0),
         "ritmo_promedio": (distance_m / moving_s) if (distance_m > 0 and moving_s > 0) else None,
         "mapa_polilinea": strava_activity_json.get("polyline"),
