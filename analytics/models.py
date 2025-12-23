@@ -33,6 +33,74 @@ class HistorialFitness(models.Model):
 
     def __str__(self):
         return f"{self.fecha} - {self.alumno} (Forma: {self.tsb:.1f})"
+
+
+class DailyActivityAgg(models.Model):
+    """
+    Agregación diaria por atleta y tipo (derivada de `core.Actividad`).
+
+    - Idempotente: unique (alumno, fecha, sport)
+    - Fuente para métricas (PMC) y summaries rápidos.
+    """
+
+    class Sport(models.TextChoices):
+        RUN = "RUN", "RUN"
+        TRAIL = "TRAIL", "TRAIL"
+        BIKE = "BIKE", "BIKE"
+        WALK = "WALK", "WALK"
+        OTHER = "OTHER", "OTHER"
+
+    alumno = models.ForeignKey(Alumno, on_delete=models.CASCADE, related_name="daily_activity_aggs", db_index=True)
+    fecha = models.DateField(db_index=True)
+    sport = models.CharField(max_length=10, choices=Sport.choices, db_index=True)
+
+    # Sumas del día (MVP)
+    load = models.FloatField(default=0, help_text="Carga/Esfuerzo del día (TSS/Relative Effort proxy)")
+    distance_m = models.FloatField(default=0)
+    elev_gain_m = models.FloatField(default=0)
+    duration_s = models.PositiveIntegerField(default=0)
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("alumno", "fecha", "sport")
+        indexes = [
+            models.Index(fields=["alumno", "sport", "-fecha"]),
+        ]
+        ordering = ["-fecha"]
+
+
+class PMCHistory(models.Model):
+    """
+    Serie diaria PMC (Banister/Coggan) calculada desde `DailyActivityAgg`.
+    Soporta filtros por deporte agregados:
+    - ALL: RUN+TRAIL+BIKE
+    - RUN: RUN+TRAIL
+    - BIKE: BIKE
+    """
+
+    class Sport(models.TextChoices):
+        ALL = "ALL", "ALL"
+        RUN = "RUN", "RUN"
+        BIKE = "BIKE", "BIKE"
+
+    alumno = models.ForeignKey(Alumno, on_delete=models.CASCADE, related_name="pmc_history", db_index=True)
+    fecha = models.DateField(db_index=True)
+    sport = models.CharField(max_length=10, choices=Sport.choices, db_index=True)
+
+    tss_diario = models.FloatField(default=0)
+    ctl = models.FloatField(default=0)
+    atl = models.FloatField(default=0)
+    tsb = models.FloatField(default=0)
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("alumno", "fecha", "sport")
+        indexes = [
+            models.Index(fields=["alumno", "sport", "-fecha"]),
+        ]
+        ordering = ["-fecha"]
 class AlertaRendimiento(models.Model):
     """
     Guarda eventos donde el atleta superó sus métricas teóricas.

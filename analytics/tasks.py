@@ -2,11 +2,13 @@ import logging
 from datetime import date as date_type, timedelta
 
 from celery import shared_task
+from django.db import transaction
 from django.utils import timezone
 
 from core.models import Alumno
 from analytics.models import HistorialFitness, InjuryRiskSnapshot
 from analytics.injury_risk import compute_injury_risk
+from core.models import AthleteSyncState
 
 
 logger = logging.getLogger(__name__)
@@ -148,4 +150,81 @@ def recompute_injury_risk_daily(self, fecha_iso: str | None = None) -> str:
 
     logger.info("injury_risk.daily_enqueued", extra={"fecha": str(fecha), "coaches": enqueued})
     return f"ENQUEUED_COACHES_{enqueued}"
+
+
+@shared_task(bind=True, max_retries=1, default_retry_delay=30)
+def recompute_pmc_from_activities(self, alumno_id: int, affected_date_iso: str | None = None) -> dict:
+    """
+    Recalcula PMC desde `core.Actividad` de forma incremental e idempotente.
+
+    Concurrency control:
+    - usa `core.AthleteSyncState` como lock/coalescing store por atleta.
+    - múltiples eventos pueden encolar esta task; se "colapsan" vía metrics_pending_from.
+    """
+    from analytics.pmc_engine import build_daily_aggs_for_alumno, recompute_pmc_for_alumno
+
+    alumno_id = int(alumno_id)
+    now = timezone.now()
+    affected_date = None
+    if affected_date_iso:
+        try:
+            affected_date = date_type.fromisoformat(str(affected_date_iso))
+        except Exception:
+            affected_date = None
+
+    # Coalescing + lock (DB)
+    with transaction.atomic():
+        state, _ = AthleteSyncState.objects.select_for_update().get_or_create(
+            alumno_id=alumno_id,
+            defaults={"provider": "strava"},
+        )
+
+        # Registrar la mínima fecha afectada
+        if affected_date:
+            if state.metrics_pending_from is None or affected_date < state.metrics_pending_from:
+                state.metrics_pending_from = affected_date
+
+        # Si ya hay un recompute corriendo (con TTL corto), salimos
+        if state.metrics_status == AthleteSyncState.Status.RUNNING and state.metrics_last_run_at:
+            if (now - state.metrics_last_run_at).total_seconds() < 60:
+                state.save(update_fields=["metrics_pending_from"])
+                return {"status": "SKIP_RUNNING", "alumno_id": alumno_id}
+
+        start_date = state.metrics_pending_from or affected_date or timezone.localdate()
+
+        state.metrics_status = AthleteSyncState.Status.RUNNING
+        state.metrics_last_error = ""
+        # usamos metrics_last_run_at como "started_at" para TTL simple
+        state.metrics_last_run_at = now
+        state.metrics_pending_from = None
+        state.save(
+            update_fields=[
+                "metrics_status",
+                "metrics_last_error",
+                "metrics_last_run_at",
+                "metrics_pending_from",
+            ]
+        )
+
+    try:
+        aggs = build_daily_aggs_for_alumno(alumno_id=alumno_id, start_date=start_date)
+        pmc = recompute_pmc_for_alumno(alumno_id=alumno_id, start_date=start_date)
+        with transaction.atomic():
+            AthleteSyncState.objects.filter(alumno_id=alumno_id).update(metrics_status=AthleteSyncState.Status.DONE)
+        logger.info(
+            "analytics.pmc.recompute.done",
+            extra={"alumno_id": alumno_id, "start_date": str(start_date), "daily_aggs": aggs, **pmc},
+        )
+        return {"status": "OK", "alumno_id": alumno_id, "start_date": str(start_date), "daily_aggs": aggs, **pmc}
+    except Exception as exc:
+        with transaction.atomic():
+            AthleteSyncState.objects.filter(alumno_id=alumno_id).update(
+                metrics_status=AthleteSyncState.Status.FAILED,
+                metrics_last_error=str(exc),
+            )
+        logger.exception(
+            "analytics.pmc.recompute.failed",
+            extra={"alumno_id": alumno_id, "start_date": str(start_date), "error": str(exc)},
+        )
+        raise
 

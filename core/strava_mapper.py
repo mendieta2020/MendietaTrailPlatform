@@ -134,6 +134,11 @@ def map_strava_activity_to_actividad(strava_activity_json: dict) -> dict:
     distance_m = float(strava_activity_json.get("distance_m") or 0.0)
     moving_s = int(strava_activity_json.get("moving_time_s") or 0)
     raw = to_jsonable(strava_activity_json.get("raw") or {}) or {}
+    # Persistimos el string original (audit/debug). Preferimos `sport_type` si existe.
+    raw_sport_type = (
+        str(strava_activity_json.get("strava_sport_type") or "").strip()
+        or str(raw.get("sport_type") or raw.get("type") or "").strip()
+    )
 
     return {
         "source": "strava",
@@ -149,6 +154,7 @@ def map_strava_activity_to_actividad(strava_activity_json: dict) -> dict:
         # `tipo_deporte` debe ser el tipo de negocio normalizado (RUN/TRAIL/BIKE/...)
         # para UX consistente; si no viene, usamos type crudo por compat.
         "tipo_deporte": strava_activity_json.get("tipo_deporte") or (strava_activity_json.get("type") or ""),
+        "strava_sport_type": raw_sport_type,
         "desnivel_positivo": float(strava_activity_json.get("elevation_m") or 0.0),
         "ritmo_promedio": (distance_m / moving_s) if (distance_m > 0 and moving_s > 0) else None,
         "mapa_polilinea": strava_activity_json.get("polyline"),

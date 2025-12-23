@@ -12,6 +12,9 @@ SportType = Literal["RUN", "TRAIL", "BIKE", "WALK", "OTHER"]
 
 class NormalizedStravaBusinessActivity(TypedDict):
     tipo_deporte: SportType
+    # Raw (audit/debug): el string original de Strava (sport_type/type), uppercased/trimmed.
+    # Ej: "TRAILRUN", "RUN", "RIDE"
+    strava_sport_type: str
     distancia: float
     duracion: int
     fecha_inicio: datetime
@@ -61,6 +64,27 @@ def _ensure_tz_aware(dt: Any) -> datetime | None:
     return timezone.make_aware(dt, timezone.get_current_timezone())
 
 
+def extract_strava_sport_type(raw: dict) -> str:
+    """
+    Extrae el sport_type/type original de Strava de forma robusta.
+
+    El pipeline actual pasa a veces un dict "normalizado" (con keys top-level)
+    y otras veces el dict crudo bajo `raw`.
+    """
+    raw = raw or {}
+    nested = raw.get("raw") if isinstance(raw.get("raw"), dict) else {}
+
+    st = _coalesce(
+        raw.get("sport_type"),
+        raw.get("sportType"),
+        raw.get("type"),
+        nested.get("sport_type"),
+        nested.get("sportType"),
+        nested.get("type"),
+    )
+    return str(st or "").strip().upper()
+
+
 def _normalize_strava_sport_type(raw: dict) -> SportType:
     """
     Normaliza tipos Strava a tipos de negocio.
@@ -68,18 +92,19 @@ def _normalize_strava_sport_type(raw: dict) -> SportType:
     Nota de producto:
     - Strava puede mandar `type` (legacy) y/o `sport_type` (más granular). Preferimos sport_type si existe.
     """
-    st = str(_coalesce(raw.get("sport_type"), raw.get("type"), "") or "").strip().upper()
+    st = extract_strava_sport_type(raw)
 
     # Running
-    if st in {"RUN", "VIRTUALRUN"}:
+    if st in {"RUN", "VIRTUALRUN", "VIRTUAL_RUN"}:
         return "RUN"
-    if st in {"TRAILRUN"}:
+    if st in {"TRAILRUN", "TRAIL_RUN"}:
         return "TRAIL"
 
     # Bike
     if st in {
         "RIDE",
         "VIRTUALRIDE",
+        "VIRTUAL_RIDE",
         "EBIKERIDE",
         "MOUNTAINBIKERIDE",
         "GRAVELRIDE",
@@ -108,6 +133,7 @@ def normalize_strava_activity_payload(raw: dict) -> NormalizedStravaBusinessActi
     - fecha_inicio (timezone aware)
     - source = "strava"
     """
+    raw_sport = extract_strava_sport_type(raw or {})
     tipo = _normalize_strava_sport_type(raw or {})
 
     # Distancia: ya normalizada en `distance_m`, fallback a keys Strava API
@@ -127,6 +153,7 @@ def normalize_strava_activity_payload(raw: dict) -> NormalizedStravaBusinessActi
 
     return {
         "tipo_deporte": tipo,
+        "strava_sport_type": raw_sport,
         "distancia": float(distancia or 0.0),
         "duracion": int(duracion or 0),
         "fecha_inicio": fecha,

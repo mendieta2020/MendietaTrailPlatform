@@ -126,7 +126,7 @@ class AlumnoViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         # MULTI-TENANT: Solo mis alumnos
-        qs = Alumno.objects.filter(entrenador=self.request.user)
+        qs = Alumno.objects.filter(entrenador=self.request.user).select_related("sync_state")
 
         # Optimización opcional (sin N+1): incluir riesgo del día si lo piden
         if self.request.query_params.get("include_injury_risk") in ("1", "true", "True"):

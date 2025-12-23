@@ -89,6 +89,7 @@ class AlumnoSerializer(serializers.ModelSerializer):
     equipo = serializers.PrimaryKeyRelatedField(queryset=Equipo.objects.none(), allow_null=True)
     pagos = PagoSerializer(many=True, read_only=True)
     injury_risk = serializers.SerializerMethodField()
+    sync_state = serializers.SerializerMethodField()
 
     class Meta:
         model = Alumno
@@ -124,6 +125,28 @@ class AlumnoSerializer(serializers.ModelSerializer):
             "risk_level": snap.risk_level,
             "risk_score": snap.risk_score,
             "risk_reasons": snap.risk_reasons,
+        }
+
+    def get_sync_state(self, obj):
+        """
+        Estado de sync/import (Strava) para UX (progreso, errores, timestamps).
+        """
+        try:
+            st = getattr(obj, "sync_state", None)
+        except Exception:
+            st = None
+        if not st:
+            return None
+        return {
+            "provider": st.provider,
+            "sync_status": st.sync_status,
+            "started_at": st.started_at.isoformat() if st.started_at else None,
+            "finished_at": st.finished_at.isoformat() if st.finished_at else None,
+            "last_sync_at": st.last_sync_at.isoformat() if st.last_sync_at else None,
+            "processed_count": int(st.processed_count or 0),
+            "target_count": int(st.target_count or 0),
+            "last_backfill_count": int(st.last_backfill_count or 0),
+            "last_error": st.last_error or "",
         }
 
 # ==============================================================================
@@ -187,6 +210,7 @@ class ActividadSerializer(serializers.ModelSerializer):
             "alumno_nombre",
             "alumno_apellido",
             "strava_id",
+            "strava_sport_type",
             "nombre",
             "tipo_deporte",
             "fecha_inicio",

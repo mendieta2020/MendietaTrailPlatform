@@ -961,6 +961,7 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
     normalized = normalize_strava_activity_payload(activity)
     # Inyectar campos normalizados al payload que usa el mapper (sin perder el `raw` original)
     activity["tipo_deporte"] = normalized["tipo_deporte"]
+    activity["strava_sport_type"] = normalized.get("strava_sport_type") or ""
     activity["distance_m"] = normalized["distancia"]
     activity["moving_time_s"] = normalized["duracion"]
     activity["start_date_local"] = normalized["fecha_inicio"]
@@ -1073,6 +1074,24 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
                 }
             ),
         )
+        # Progreso backfill (UX): contamos el evento como procesado (terminal).
+        try:
+            if isinstance(getattr(event, "payload_raw", None), dict) and event.payload_raw.get("backfill"):
+                from core.models import AthleteSyncState
+
+                now = timezone.now()
+                with transaction.atomic():
+                    st, _ = AthleteSyncState.objects.select_for_update().get_or_create(
+                        alumno_id=alumno.id, defaults={"provider": "strava"}
+                    )
+                    st.processed_count = int(st.processed_count or 0) + 1
+                    st.last_sync_at = now
+                    if int(st.target_count or 0) > 0 and st.processed_count >= int(st.target_count):
+                        st.sync_status = AthleteSyncState.Status.DONE
+                        st.finished_at = now
+                    st.save(update_fields=["processed_count", "last_sync_at", "sync_status", "finished_at"])
+        except Exception:
+            logger.exception("strava.backfill.progress_update_failed", extra=safe_extra({"alumno_id": alumno.id}))
         return f"DISCARDED: {invalid_reason}"
 
     logger.info(
@@ -1125,6 +1144,14 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
         reason=accion,
         details={"entrenamiento_id": entreno.id},
     )
+
+    # Recompute PMC desde actividades (incremental, coalesced via AthleteSyncState).
+    try:
+        from analytics.tasks import recompute_pmc_from_activities
+
+        recompute_pmc_from_activities.delay(alumno.id, fecha.isoformat())
+    except Exception:
+        logger.exception("analytics.pmc.enqueue_failed", extra=safe_extra({"alumno_id": alumno.id, "fecha": str(fecha)}))
 
     # Plan vs Actual + Alertas (recalculable ante updates)
     try:
@@ -1182,6 +1209,24 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
         duration_ms=duration_ms,
         metric_processed=1,
     )
+    # Progreso backfill (UX): contamos el evento como procesado (terminal).
+    try:
+        if isinstance(getattr(event, "payload_raw", None), dict) and event.payload_raw.get("backfill"):
+            from core.models import AthleteSyncState
+
+            now = timezone.now()
+            with transaction.atomic():
+                st, _ = AthleteSyncState.objects.select_for_update().get_or_create(
+                    alumno_id=alumno.id, defaults={"provider": "strava"}
+                )
+                st.processed_count = int(st.processed_count or 0) + 1
+                st.last_sync_at = now
+                if int(st.target_count or 0) > 0 and st.processed_count >= int(st.target_count):
+                    st.sync_status = AthleteSyncState.Status.DONE
+                    st.finished_at = now
+                st.save(update_fields=["processed_count", "last_sync_at", "sync_status", "finished_at"])
+    except Exception:
+        logger.exception("strava.backfill.progress_update_failed", extra=safe_extra({"alumno_id": alumno.id}))
     return f"OK: {accion}"
 
 
@@ -1217,7 +1262,7 @@ def backfill_strava_activities(self, alumno_id: int, limit: int = 200):
     - idempotente (event_uid estable; Actividad upsert por (source, source_object_id))
     - sin tocar locks/estados del pipeline principal
     """
-    from core.models import Alumno, ExternalIdentity, StravaWebhookEvent
+    from core.models import Alumno, AthleteSyncState, ExternalIdentity, StravaWebhookEvent
     from core.services import obtener_cliente_strava_para_alumno
 
     limit = int(limit or 200)
@@ -1229,11 +1274,30 @@ def backfill_strava_activities(self, alumno_id: int, limit: int = 200):
         logger.warning("strava.backfill.skip_missing_alumno", extra=safe_extra({"alumno_id": alumno_id}))
         return {"status": "skipped", "reason": "missing_alumno", "enqueued": 0}
 
+    # Estado observable (para UX en frontend)
+    AthleteSyncState.objects.update_or_create(
+        alumno=alumno,
+        defaults={
+            "provider": "strava",
+            "sync_status": AthleteSyncState.Status.RUNNING,
+            "started_at": timezone.now(),
+            "finished_at": None,
+            "last_error": "",
+            "target_count": 0,  # se setea al final (enqueued)
+            "processed_count": 0,
+        },
+    )
+
     client = obtener_cliente_strava_para_alumno(alumno)
     if not client:
         logger.warning(
             "strava.backfill.skip_missing_strava_auth",
             extra=safe_extra({"alumno_id": alumno.id, "coach_id": alumno.entrenador_id}),
+        )
+        AthleteSyncState.objects.filter(alumno=alumno, provider="strava").update(
+            sync_status=AthleteSyncState.Status.FAILED,
+            finished_at=timezone.now(),
+            last_error="missing_strava_auth",
         )
         return {"status": "skipped", "reason": "missing_strava_auth", "enqueued": 0}
 
@@ -1252,6 +1316,11 @@ def backfill_strava_activities(self, alumno_id: int, limit: int = 200):
         logger.warning(
             "strava.backfill.skip_missing_owner_id",
             extra=safe_extra({"alumno_id": alumno.id, "identity_found": bool(identity)}),
+        )
+        AthleteSyncState.objects.filter(alumno=alumno, provider="strava").update(
+            sync_status=AthleteSyncState.Status.FAILED,
+            finished_at=timezone.now(),
+            last_error="missing_owner_id",
         )
         return {"status": "skipped", "reason": "missing_owner_id", "enqueued": 0}
 
@@ -1284,8 +1353,100 @@ def backfill_strava_activities(self, alumno_id: int, limit: int = 200):
             process_strava_event.delay(ev.pk)
             enqueued += 1
 
+    now = timezone.now()
+    AthleteSyncState.objects.filter(alumno=alumno, provider="strava").update(
+        # target_count = enqueued, y processed_count se va incrementando por evento procesado.
+        target_count=enqueued,
+        processed_count=0,
+        last_backfill_count=enqueued,
+        last_sync_at=now,
+        sync_status=AthleteSyncState.Status.DONE if enqueued == 0 else AthleteSyncState.Status.RUNNING,
+        finished_at=now if enqueued == 0 else None,
+        last_error="",
+    )
+
     logger.info(
         "strava.backfill.done",
         extra=safe_extra({"alumno_id": alumno.id, "owner_id": owner_id, "requested_limit": limit, "fetched": len(activities), "enqueued": enqueued}),
     )
     return {"status": "ok", "fetched": len(activities), "enqueued": enqueued}
+
+
+@shared_task(bind=True)
+def reclassify_activities_for_alumno(self, alumno_id: int) -> dict:
+    """
+    Recalcula `Actividad.tipo_deporte` para actividades existentes usando `strava_sport_type`
+    (o fallback en `datos_brutos`), y re-habilita actividades descartadas por OTHER si ahora
+    clasifican a RUN/TRAIL/BIKE.
+
+    Luego dispara recalculo incremental de métricas (PMC) desde la mínima fecha afectada.
+    """
+    from datetime import date as date_type
+
+    from analytics.tasks import recompute_pmc_from_activities
+    from core.models import Actividad
+    from core.strava_activity_normalizer import _normalize_strava_sport_type
+
+    alumno_id = int(alumno_id)
+
+    qs = Actividad.objects.filter(alumno_id=alumno_id, source=Actividad.Source.STRAVA).only(
+        "id",
+        "fecha_inicio",
+        "tipo_deporte",
+        "validity",
+        "invalid_reason",
+        "distancia",
+        "tiempo_movimiento",
+        "datos_brutos",
+        "strava_sport_type",
+    )
+
+    changed: list[Actividad] = []
+    min_date: date_type | None = None
+    for act in qs.iterator(chunk_size=500):
+        raw = (act.strava_sport_type or "").strip()
+        if not raw:
+            db = act.datos_brutos or {}
+            raw = str(db.get("sport_type") or db.get("type") or "").strip()
+
+        # Normalize -> negocio
+        normalized = _normalize_strava_sport_type({"type": raw})
+        new_tipo = str(normalized or "").strip().upper()
+
+        updated = False
+        if raw and (act.strava_sport_type or "") != raw:
+            act.strava_sport_type = raw
+            updated = True
+
+        if new_tipo and (act.tipo_deporte or "").strip().upper() != new_tipo:
+            act.tipo_deporte = new_tipo
+            updated = True
+
+        # Re-habilitar descartes por sport_type_not_allowed:OTHER cuando ahora clasifica a deporte soportado.
+        if act.validity == Actividad.Validity.DISCARDED and (act.invalid_reason or "").startswith("sport_type_not_allowed:"):
+            if new_tipo in {"RUN", "TRAIL", "BIKE"} and float(act.distancia or 0.0) > 0 and int(act.tiempo_movimiento or 0) > 0:
+                act.validity = Actividad.Validity.VALID
+                act.invalid_reason = ""
+                updated = True
+
+        if updated:
+            changed.append(act)
+            d = timezone.localtime(act.fecha_inicio).date() if act.fecha_inicio else timezone.localdate()
+            if min_date is None or d < min_date:
+                min_date = d
+
+    if changed:
+        Actividad.objects.bulk_update(
+            changed,
+            ["strava_sport_type", "tipo_deporte", "validity", "invalid_reason"],
+            batch_size=1000,
+        )
+
+    if min_date is not None:
+        recompute_pmc_from_activities.delay(alumno_id, min_date.isoformat())
+
+    logger.info(
+        "strava.reclassify.done",
+        extra=safe_extra({"alumno_id": alumno_id, "changed": len(changed), "min_date": str(min_date) if min_date else None}),
+    )
+    return {"status": "OK", "alumno_id": alumno_id, "changed": len(changed), "min_date": str(min_date) if min_date else None}
