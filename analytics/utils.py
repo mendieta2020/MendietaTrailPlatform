@@ -2,6 +2,9 @@
 from core.models import Entrenamiento
 from analytics.models import HistorialFitness
 from django.db import transaction
+from django.db.models import Q
+
+from analytics.load import compute_training_load
 
 def recalcular_historial_completo(alumno):
     """
@@ -13,12 +16,13 @@ def recalcular_historial_completo(alumno):
     # 1. Borrar historial corrupto/viejo
     HistorialFitness.objects.filter(alumno=alumno).delete()
     
-    # 2. Obtener TODOS los entrenamientos con carga (TSS), ordenados por fecha
-    entrenamientos = Entrenamiento.objects.filter(
-        alumno=alumno, 
-        completado=True,
-        tss__gt=0 # Solo los que tienen carga
-    ).order_by('fecha_asignada')
+    # 2. Obtener TODOS los entrenamientos con potencial de carga, ordenados por fecha.
+    # NOTE: fuerza puede no tener `tss` y aun así suma carga por tiempo.
+    entrenamientos = (
+        Entrenamiento.objects.filter(alumno=alumno, completado=True)
+        .filter(Q(tss__gt=0) | Q(tiempo_real_min__gt=0))
+        .order_by("fecha_asignada")
+    )
     
     if not entrenamientos.exists():
         print("⚠️ No hay entrenamientos con TSS para calcular.")
@@ -38,8 +42,16 @@ def recalcular_historial_completo(alumno):
     # Agrupar por fecha
     for fecha, grupo in groupby(lista_entrenos, key=lambda x: x.fecha_asignada):
         
-        # Sumar TSS del día
-        tss_dia = sum(e.tss for e in grupo)
+        # Sumar carga del día (incluye STRENGTH por tiempo)
+        tss_dia = sum(
+            compute_training_load(
+                tipo_actividad=getattr(e, "tipo_actividad", None),
+                tiempo_real_min=getattr(e, "tiempo_real_min", None),
+                rpe=getattr(e, "rpe", None),
+                tss=getattr(e, "tss", None),
+            )
+            for e in grupo
+        )
         
         # Fórmulas de Coggan
         # CTL Hoy = CTL Ayer + (TSS Día - CTL Ayer) / 42

@@ -295,6 +295,33 @@ class StravaIngestionRobustTests(TestCase):
             StravaImportLog.objects.filter(event=e, status=StravaImportLog.Status.SAVED).exists()
         )
 
+    def test_strength_weight_training_is_normalized_and_created_without_distance(self):
+        start = datetime.now(dt_timezone.utc)
+        wt = _FakeStravaActivity(
+            activity_id=779,
+            athlete_id=111,
+            name="Gym Strength",
+            type_="WeightTraining",
+            start=start,
+            distance_m=0.0,
+            moving_time_s=45 * 60,
+        )
+        e = self._mk_event(uid="e_strength", owner_id=111, object_id=779, aspect="create")
+
+        with patch("core.services.obtener_cliente_strava", return_value=_FakeStravaClient(wt)):
+            process_strava_event.delay(e.id)
+
+        act = Actividad.objects.get(strava_id=779)
+        self.assertEqual(act.validity, Actividad.Validity.VALID)
+        self.assertEqual(act.invalid_reason, "")
+        self.assertEqual(act.tipo_deporte, "STRENGTH")
+
+        ent = Entrenamiento.objects.get(strava_id="779")
+        self.assertEqual(ent.tipo_actividad, "STRENGTH")
+        self.assertEqual(ent.tiempo_real_min, 45)
+        # Distancia no requerida para fuerza (puede ser 0)
+        self.assertEqual(float(ent.distancia_real_km or 0.0), 0.0)
+
     def test_walk_activity_is_discarded_with_explicit_reason(self):
         start = datetime.now(dt_timezone.utc)
         walk = _FakeStravaActivity(

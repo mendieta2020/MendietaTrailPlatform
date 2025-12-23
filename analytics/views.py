@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from core.models import Entrenamiento, Alumno, InscripcionCarrera
 from django.utils import timezone
 from django.db.models import Q
+from django.conf import settings
 import logging
 import pandas as pd
 import numpy as np
@@ -85,6 +86,8 @@ class PMCDataView(APIView):
             # 3. PANDAS ENGINE
             df = pd.DataFrame(list(qs))
             df['fecha_asignada'] = pd.to_datetime(df['fecha_asignada'])
+            if 'tipo_actividad' in df.columns:
+                df['tipo_actividad'] = df['tipo_actividad'].fillna("")
 
             # Limpieza Inicial (NaN -> 0)
             cols_num = ['tiempo_planificado_min', 'tiempo_real_min', 'distancia_planificada_km', 'distancia_real_km', 'desnivel_planificado_m', 'desnivel_real_m', 'rpe', 'rpe_planificado']
@@ -93,9 +96,22 @@ class PMCDataView(APIView):
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
             # --- CÁLCULOS ---
+            strength_factor = float(getattr(settings, "STRENGTH_LOAD_FACTOR", 4.0) or 4.0)
             df['rpe_real'] = np.where(df['rpe'] > 0, df['rpe'], 4.0)
-            df['real_load'] = np.where(df['completado'], df['tiempo_real_min'] * df['rpe_real'], 0.0)
-            df['plan_load'] = df['tiempo_planificado_min'] * np.where(df['rpe_planificado'] > 0, df['rpe_planificado'], 6.0)
+            df['real_load'] = np.where(
+                df['completado'],
+                np.where(
+                    df['tipo_actividad'].eq('STRENGTH'),
+                    df['tiempo_real_min'] * strength_factor,
+                    df['tiempo_real_min'] * df['rpe_real'],
+                ),
+                0.0,
+            )
+            df['plan_load'] = np.where(
+                df['tipo_actividad'].eq('STRENGTH'),
+                df['tiempo_planificado_min'] * strength_factor,
+                df['tiempo_planificado_min'] * np.where(df['rpe_planificado'] > 0, df['rpe_planificado'], 6.0),
+            )
 
             df['real_dist'] = np.where(df['completado'], df['distancia_real_km'], 0.0)
             df['plan_dist'] = df['distancia_planificada_km']

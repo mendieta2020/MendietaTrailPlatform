@@ -451,6 +451,8 @@ def _map_strava_type_to_core(tipo: str) -> str:
     if st == "BIKE":
         # Mapeo conservador al choice existente en Entrenamiento
         return "CYCLING"
+    if st == "STRENGTH":
+        return "STRENGTH"
     return "OTHER"
 
 

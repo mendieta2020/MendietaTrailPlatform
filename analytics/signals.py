@@ -4,6 +4,7 @@ from django.db import transaction
 from datetime import timedelta
 from core.models import Entrenamiento, Alumno
 from .models import HistorialFitness, AlertaRendimiento
+from analytics.load import compute_training_load
 from core.tasks import generar_feedback_ia
 from core.metrics import generar_pronosticos_alumno # Importamos la lógica Riegel
 
@@ -24,18 +25,16 @@ def actualizar_fitness_atleta(sender, instance, created, **kwargs):
         Fuente de carga robusta (compatible con modelos legacy/nuevos).
 
         - Si existe `tss`, lo prioriza.
-        - Si no, usa heurística MVP: minutos * (1 + rpe/10).
+        - Si no:
+          - STRENGTH: minutos * factor configurable
+          - Otros: heurística MVP: minutos * (1 + rpe/10).
         """
-        tss = getattr(entreno, "tss", None)
-        if tss is not None:
-            try:
-                return float(tss or 0)
-            except Exception:
-                return 0.0
-        dur = float(getattr(entreno, "tiempo_real_min", 0) or 0)
-        rpe = float(getattr(entreno, "rpe", 0) or 0)
-        intensity = 1.0 + (max(0.0, min(10.0, rpe)) / 10.0)
-        return dur * intensity
+        return compute_training_load(
+            tipo_actividad=getattr(entreno, "tipo_actividad", None),
+            tiempo_real_min=getattr(entreno, "tiempo_real_min", None),
+            rpe=getattr(entreno, "rpe", None),
+            tss=getattr(entreno, "tss", None),
+        )
 
     tss_nuevo = _load_score(instance)
     if tss_nuevo == 0:

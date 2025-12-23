@@ -113,6 +113,50 @@ class TenantIsolationPMCTests(TestCase):
         # Con al menos 1 entrenamiento, debería devolver ventana de datos (no vacía)
         self.assertGreater(len(res.data), 0)
 
+    def test_pmc_all_includes_strength_in_load_calculation(self):
+        """
+        Requerimiento: STRENGTH suma carga fisiológica aunque no tenga distancia,
+        y el PMC (sport=ALL) debe incluirla.
+        """
+        from django.test import override_settings
+
+        today = timezone.localdate()
+
+        # Endurance (usa RPE)
+        Entrenamiento.objects.create(
+            alumno=self.alumno1,
+            fecha_asignada=today,
+            titulo="Run",
+            tipo_actividad="RUN",
+            completado=True,
+            tiempo_real_min=30,
+            rpe=5,
+        )
+
+        # Strength (usa factor, no RPE)
+        Entrenamiento.objects.create(
+            alumno=self.alumno1,
+            fecha_asignada=today,
+            titulo="Gym",
+            tipo_actividad="STRENGTH",
+            completado=True,
+            tiempo_real_min=30,
+            rpe=9,  # debe ignorarse en carga de fuerza
+            distancia_real_km=0,
+        )
+
+        with override_settings(STRENGTH_LOAD_FACTOR=3.0):
+            self.client.force_authenticate(user=self.coach1)
+            res = self.client.get(f"/api/analytics/pmc/?alumno_id={self.alumno1.id}&sport=ALL")
+            self.assertEqual(res.status_code, 200)
+            self.assertIsInstance(res.data, list)
+
+            row = next((x for x in res.data if x.get("fecha") == today.isoformat()), None)
+            self.assertIsNotNone(row, "Debe existir fila para el día de los entrenamientos")
+
+            expected = int(30 * 5 + 30 * 3.0)
+            self.assertEqual(row["load"], expected)
+
 
 class TenantIsolationEquipoTests(TestCase):
     def setUp(self):
