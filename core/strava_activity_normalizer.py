@@ -7,7 +7,7 @@ from typing import Any, Literal, TypedDict
 from django.utils import timezone
 
 
-SportType = Literal["RUN", "TRAIL", "BIKE", "WALK", "OTHER"]
+SportType = Literal["RUN", "TRAIL", "BIKE", "STRENGTH", "WALK", "OTHER"]
 
 
 class NormalizedStravaBusinessActivity(TypedDict):
@@ -87,6 +87,11 @@ def _normalize_strava_sport_type(raw: dict) -> SportType:
     }:
         return "BIKE"
 
+    # Strength (no distance required)
+    # Strava: `sport_type` suele venir como WEIGHTTRAINING / WORKOUT / CROSSFIT.
+    if st in {"WEIGHTTRAINING", "WORKOUT", "CROSSFIT"}:
+        return "STRENGTH"
+
     # Walk-ish
     if st in {"WALK", "HIKE"}:
         return "WALK"
@@ -143,13 +148,19 @@ class ProductDecision:
 def decide_activity_creation(*, normalized: NormalizedStravaBusinessActivity) -> ProductDecision:
     """
     Reglas de producto (SaaS):
-    - SOLO crear actividad "válida" si tipo_deporte ∈ [RUN, TRAIL, BIKE] y distancia > 0
+    - Crear actividad "válida" si:
+      - tipo_deporte ∈ [RUN, TRAIL, BIKE] y distancia > 0
+      - tipo_deporte == STRENGTH y duracion > 0 (no requiere distancia)
     - Si no, reason explícita (no genérica)
     """
     sport = normalized.get("tipo_deporte")
-    if sport not in {"RUN", "TRAIL", "BIKE"}:
+    if sport not in {"RUN", "TRAIL", "BIKE", "STRENGTH"}:
         return ProductDecision(False, f"sport_type_not_allowed:{sport}")
-    if float(normalized.get("distancia") or 0.0) <= 0:
-        return ProductDecision(False, "distance_non_positive")
+    if sport != "STRENGTH":
+        if float(normalized.get("distancia") or 0.0) <= 0:
+            return ProductDecision(False, "distance_non_positive")
+    else:
+        if int(normalized.get("duracion") or 0) <= 0:
+            return ProductDecision(False, "duration_non_positive")
     return ProductDecision(True, "")
 

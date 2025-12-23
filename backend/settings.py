@@ -353,3 +353,15 @@ LOGGING = {
 
 # Logueo hardening del callback (traceback completo + contexto sanitizado)
 SOCIALACCOUNT_ADAPTER = "core.allauth_adapters.LoggingSocialAccountAdapter"
+
+# ==============================================================================
+#  FITNESS DOMAIN: FACTORES DE CARGA (configurable)
+# ==============================================================================
+# Carga heurística para sesiones de fuerza cuando no hay distancia/elevación.
+# Unidad: "puntos de carga" por minuto.
+#
+# Default 4.0 para alinear con el PMC (RPE default=4) cuando no se captura RPE.
+try:
+    STRENGTH_LOAD_FACTOR = float(os.environ.get("STRENGTH_LOAD_FACTOR", "4.0"))
+except Exception:
+    STRENGTH_LOAD_FACTOR = 4.0
