@@ -330,6 +330,9 @@ class Actividad(models.Model):
 
     # Legacy/compat: ID numérico Strava (solo para source=strava). No usar para otros providers.
     strava_id = models.BigIntegerField(null=True, blank=True, db_index=True)
+    # Raw audit/debug: string original de Strava (sport_type/type).
+    # Ej: "Run", "TrailRun", "Ride", "VirtualRide" (se guarda tal cual llegue, pero normalizado a string).
+    strava_sport_type = models.CharField(max_length=50, blank=True, default="", db_index=True)
     nombre = models.CharField(max_length=255)
     distancia = models.FloatField(help_text="Distancia en metros", default=0.0)
     tiempo_movimiento = models.IntegerField(help_text="Tiempo en segundos", default=0)
@@ -385,6 +388,56 @@ class Actividad(models.Model):
         if self.source == self.Source.STRAVA and (not self.source_object_id) and self.strava_id is not None:
             self.source_object_id = str(self.strava_id)
         super().save(*args, **kwargs)
+
+
+class AthleteSyncState(models.Model):
+    """
+    Estado simple (y observable) del sync/import por atleta.
+
+    MVP:
+    - Permite al frontend mostrar progreso (processed/target)
+    - Permite auditoría: last_error, last_sync_at, último backfill count
+    - Sirve como "coalescing" para recomputes de métricas (min fecha afectada)
+    """
+
+    class Status(models.TextChoices):
+        IDLE = "IDLE", "IDLE"
+        RUNNING = "RUNNING", "RUNNING"
+        DONE = "DONE", "DONE"
+        FAILED = "FAILED", "FAILED"
+
+    alumno = models.OneToOneField(
+        "Alumno",
+        on_delete=models.CASCADE,
+        related_name="sync_state",
+        db_index=True,
+    )
+    provider = models.CharField(max_length=20, default="strava", db_index=True)
+
+    sync_status = models.CharField(max_length=12, choices=Status.choices, default=Status.IDLE, db_index=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+
+    # Progreso (ej: backfill de 200 actividades)
+    target_count = models.PositiveIntegerField(default=0)
+    processed_count = models.PositiveIntegerField(default=0)
+    last_backfill_count = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(blank=True, default="")
+
+    # Coalescing para métricas: si varias actividades cambian, guardamos la mínima fecha afectada.
+    metrics_pending_from = models.DateField(null=True, blank=True, db_index=True)
+    metrics_status = models.CharField(max_length=12, choices=Status.choices, default=Status.IDLE, db_index=True)
+    metrics_last_run_at = models.DateTimeField(null=True, blank=True)
+    metrics_last_error = models.TextField(blank=True, default="")
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["provider", "sync_status"]),
+            models.Index(fields=["provider", "metrics_status"]),
+        ]
 
 
 class StravaWebhookEvent(models.Model):

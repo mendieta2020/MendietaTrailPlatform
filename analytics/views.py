@@ -1,14 +1,16 @@
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status, permissions, viewsets
-from rest_framework.permissions import IsAuthenticated
-from core.models import Entrenamiento, Alumno, InscripcionCarrera
-from django.utils import timezone
-from django.db.models import Q
 import logging
-import pandas as pd
-import numpy as np
 from datetime import date, timedelta
+
+from django.db.models import Q
+from django.utils import timezone
+from rest_framework import permissions, status, viewsets
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from analytics.models import DailyActivityAgg, PMCHistory
+from analytics.pmc_engine import PMC_SPORT_GROUPS, ensure_pmc_materialized
+from core.models import Actividad, Alumno, Entrenamiento, InscripcionCarrera
 
 from analytics.models import AlertaRendimiento
 from analytics.serializers import AlertaRendimientoSerializer
@@ -24,51 +26,62 @@ class PMCDataView(APIView):
 
     def get(self, request):
         try:
-            # 1. IDENTIFICACIÓN
             user = request.user
-            alumno_id = request.query_params.get('alumno_id')
-            sport_filter = request.query_params.get('sport')
+            alumno_id = request.query_params.get("alumno_id")
+            sport_filter = (request.query_params.get("sport") or "ALL").upper().strip()
+            sport_filter = sport_filter if sport_filter in {"ALL", "RUN", "BIKE"} else "ALL"
 
             is_athlete = hasattr(user, "perfil_alumno")
 
-            # Atleta: siempre forzamos su propio alumno_id
             if is_athlete:
                 alumno_id = user.perfil_alumno.id
             else:
-                # Coach: si no elige alumno, usamos el primero de su tenant
                 if not alumno_id:
-                    first_active = Entrenamiento.objects.filter(alumno__entrenador=user).first()
-                    if first_active:
-                        alumno_id = first_active.alumno_id
-                    else:
+                    alumno_id = (
+                        Actividad.objects.filter(alumno__entrenador=user)
+                        .values_list("alumno_id", flat=True)
+                        .order_by("-fecha_inicio")
+                        .first()
+                        or Entrenamiento.objects.filter(alumno__entrenador=user).values_list("alumno_id", flat=True).first()
+                    )
+                    if not alumno_id:
                         return Response([], status=200)
 
-                # 🔒 Validación anti fuga: el alumno_id debe pertenecer al coach autenticado
+                # 🔒 Validación anti fuga
                 if not Alumno.objects.filter(id=alumno_id, entrenador=user).exists():
-                    # No devolvemos 403/404 para no romper UX existente: devolvemos vacío
                     return Response([], status=200)
 
-            # 2. QUERYSET
-            filters = {'alumno_id': alumno_id}
-            if sport_filter and sport_filter != 'ALL':
-                if sport_filter == 'RUN': filters['tipo_actividad__in'] = ['RUN', 'TRAIL']
-                elif sport_filter == 'BIKE': filters['tipo_actividad__in'] = ['BIKE', 'MTB', 'INDOOR_BIKE', 'CYCLING']
-                elif sport_filter == 'STRENGTH': filters['tipo_actividad'] = 'STRENGTH'
-                else: filters['tipo_actividad'] = sport_filter
+            alumno_id = int(alumno_id)
 
-            # 🔒 Scoping por tenant: atleta ve solo lo suyo, coach solo de sus alumnos
-            base_qs = Entrenamiento.objects.all()
-            if is_athlete:
-                base_qs = base_qs.filter(alumno__usuario=user)
-            else:
-                base_qs = base_qs.filter(alumno__entrenador=user)
+            # Best-effort: materializar PMC si aún no existe (evita "Sin datos" post-backfill).
+            ensure_pmc_materialized(alumno_id=alumno_id)
 
-            qs = base_qs.filter(**filters).values(
-                'fecha_asignada', 'tiempo_planificado_min', 'tiempo_real_min', 
-                'distancia_planificada_km', 'distancia_real_km',
-                'desnivel_planificado_m', 'desnivel_real_m',
-                'rpe', 'rpe_planificado', 'completado', 'tipo_actividad'
+            end_date = timezone.localdate()
+            start_date = end_date - timedelta(days=365)
+
+            pmc_rows = list(
+                PMCHistory.objects.filter(alumno_id=alumno_id, sport=sport_filter, fecha__range=[start_date, end_date])
+                .order_by("fecha")
+                .values("fecha", "tss_diario", "ctl", "atl", "tsb")
             )
+            if not pmc_rows:
+                return Response([], status=200)
+
+            included_sports = PMC_SPORT_GROUPS[sport_filter]
+            agg_rows = DailyActivityAgg.objects.filter(
+                alumno_id=alumno_id,
+                fecha__range=[start_date, end_date],
+                sport__in=list(included_sports),
+            ).values("fecha", "distance_m", "elev_gain_m", "duration_s")
+
+            by_date = {}
+            for r in agg_rows.iterator(chunk_size=1000):
+                d = r["fecha"]
+                prev = by_date.get(d) or {"distance_m": 0.0, "elev_gain_m": 0.0, "duration_s": 0}
+                prev["distance_m"] += float(r.get("distance_m") or 0.0)
+                prev["elev_gain_m"] += float(r.get("elev_gain_m") or 0.0)
+                prev["duration_s"] += int(r.get("duration_s") or 0)
+                by_date[d] = prev
 
             objetivos_base = InscripcionCarrera.objects.all()
             if is_athlete:
@@ -76,90 +89,135 @@ class PMCDataView(APIView):
             else:
                 objetivos_base = objetivos_base.filter(alumno__entrenador=user)
 
-            objetivos_qs = objetivos_base.filter(alumno_id=alumno_id).select_related('carrera').values(
-                'carrera__fecha', 'carrera__nombre', 'carrera__distancia_km', 'carrera__desnivel_positivo_m'
+            objetivos_qs = objetivos_base.filter(alumno_id=alumno_id).select_related("carrera").values(
+                "carrera__fecha", "carrera__nombre", "carrera__distancia_km", "carrera__desnivel_positivo_m"
             )
-
-            if not qs.exists(): return Response([], status=200)
-
-            # 3. PANDAS ENGINE
-            df = pd.DataFrame(list(qs))
-            df['fecha_asignada'] = pd.to_datetime(df['fecha_asignada'])
-
-            # Limpieza Inicial (NaN -> 0)
-            cols_num = ['tiempo_planificado_min', 'tiempo_real_min', 'distancia_planificada_km', 'distancia_real_km', 'desnivel_planificado_m', 'desnivel_real_m', 'rpe', 'rpe_planificado']
-            for col in cols_num:
-                if col not in df.columns: df[col] = 0.0
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
-
-            # --- CÁLCULOS ---
-            df['rpe_real'] = np.where(df['rpe'] > 0, df['rpe'], 4.0)
-            df['real_load'] = np.where(df['completado'], df['tiempo_real_min'] * df['rpe_real'], 0.0)
-            df['plan_load'] = df['tiempo_planificado_min'] * np.where(df['rpe_planificado'] > 0, df['rpe_planificado'], 6.0)
-
-            df['real_dist'] = np.where(df['completado'], df['distancia_real_km'], 0.0)
-            df['plan_dist'] = df['distancia_planificada_km']
-            df['real_time'] = np.where(df['completado'], df['tiempo_real_min'], 0.0)
-            df['plan_time'] = df['tiempo_planificado_min']
-            
-            df['real_elev'] = np.where(df['completado'], df['desnivel_real_m'], 0.0)
-            df['plan_elev'] = df['desnivel_planificado_m']
-            
-            # Desnivel Negativo (Estimado)
-            df['elev_loss'] = np.where((df['tipo_actividad'].isin(['TRAIL', 'RUN'])) & df['completado'], df['real_elev'], 0.0)
-            
-            # Calorías
-            df['calories'] = np.where(df['completado'], (df['tiempo_real_min'] * df['rpe_real'] * 1.5), 0.0)
-
-            # Agrupación
-            df_daily = df.groupby('fecha_asignada').sum(numeric_only=True).reset_index()
-            df_daily.set_index('fecha_asignada', inplace=True)
-
-            # Reindexado
-            start_date = timezone.now().date() - timedelta(days=365)
-            end_date = timezone.now().date() + timedelta(days=180)
-            idx = pd.date_range(start=start_date, end=end_date)
-            df_daily = df_daily.reindex(idx, fill_value=0.0)
-
-            # Banister
-            df_daily['ctl'] = df_daily['real_load'].ewm(span=42, adjust=False).mean()
-            df_daily['atl'] = df_daily['real_load'].ewm(span=7, adjust=False).mean()
-            df_daily['tsb'] = df_daily['ctl'] - df_daily['atl']
-
-            # Serialización
-            objetivos_map = {obj['carrera__fecha'].strftime('%Y-%m-%d'): {"nombre": obj['carrera__nombre'], "km": obj['carrera__distancia_km'], "elev": obj['carrera__desnivel_positivo_m']} for obj in objetivos_qs}
-            
-            cutoff_date = pd.Timestamp(timezone.now().date() - timedelta(days=365))
-            df_final = df_daily[df_daily.index >= cutoff_date]
+            objetivos_map = {
+                obj["carrera__fecha"].strftime("%Y-%m-%d"): {
+                    "nombre": obj["carrera__nombre"],
+                    "km": obj["carrera__distancia_km"],
+                    "elev": obj["carrera__desnivel_positivo_m"],
+                }
+                for obj in objetivos_qs
+            }
 
             data = []
-            today = timezone.now().date()
-
-            for fecha, row in df_final.iterrows():
-                f_str = fecha.strftime('%Y-%m-%d')
-                is_future = fecha.date() > today
-                
-                data.append({
-                    "fecha": f_str,
-                    "is_future": is_future,
-                    "ctl": round(float(row['ctl']), 1) if not is_future else 0,
-                    "atl": round(float(row['atl']), 1) if not is_future else 0,
-                    "tsb": round(float(row['tsb']), 1) if not is_future else 0,
-                    "load": int(row['plan_load']) if is_future else int(row['real_load']),
-                    "dist": round(float(row['plan_dist']), 1) if is_future else round(float(row['real_dist']), 1),
-                    "time": int(row['plan_time']) if is_future else int(row['real_time']),
-                    "elev_gain": int(row['plan_elev']) if is_future else int(row['real_elev']),
-                    "elev_loss": int(row['elev_loss']), 
-                    "calories": int(row['calories']),
-                    "race": objetivos_map.get(f_str, None)
-                })
+            for row in pmc_rows:
+                d = row["fecha"]
+                f_str = d.isoformat()
+                agg = by_date.get(d) or {"distance_m": 0.0, "elev_gain_m": 0.0, "duration_s": 0}
+                data.append(
+                    {
+                        "fecha": f_str,
+                        "is_future": False,
+                        "ctl": round(float(row["ctl"] or 0.0), 1),
+                        "atl": round(float(row["atl"] or 0.0), 1),
+                        "tsb": round(float(row["tsb"] or 0.0), 1),
+                        "load": int(float(row["tss_diario"] or 0.0)),
+                        "dist": round(float(agg["distance_m"] or 0.0) / 1000.0, 2),
+                        "time": int(round(float(agg["duration_s"] or 0) / 60.0)),
+                        "elev_gain": int(round(float(agg["elev_gain_m"] or 0.0))),
+                        "elev_loss": 0,
+                        "calories": 0,
+                        "race": objetivos_map.get(f_str, None),
+                    }
+                )
 
             return Response(data, status=status.HTTP_200_OK)
 
         except Exception as e:
-            print(f"❌ Analytics Error: {str(e)}")
+            logger.exception("analytics.pmc.error", extra={"error": str(e)})
             # Devolvemos array vacío para NO ROMPER el frontend
             return Response([], status=status.HTTP_200_OK)
+
+
+class AnalyticsSummaryView(APIView):
+    """
+    GET /api/analytics/summary/?alumno_id=<id>
+    Resumen rápido (km/desnivel) 7d/28d + últimos días (para widgets).
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        alumno_id = request.query_params.get("alumno_id")
+        is_athlete = hasattr(user, "perfil_alumno")
+
+        if is_athlete:
+            alumno_id = user.perfil_alumno.id
+        else:
+            if not alumno_id:
+                alumno_id = (
+                    Actividad.objects.filter(alumno__entrenador=user)
+                    .values_list("alumno_id", flat=True)
+                    .order_by("-fecha_inicio")
+                    .first()
+                )
+                if not alumno_id:
+                    return Response({"alumno_id": None, "ranges": {}, "last_days": []}, status=200)
+            if not Alumno.objects.filter(id=alumno_id, entrenador=user).exists():
+                return Response({"alumno_id": None, "ranges": {}, "last_days": []}, status=200)
+
+        alumno_id = int(alumno_id)
+        ensure_pmc_materialized(alumno_id=alumno_id)
+
+        today = timezone.localdate()
+        start_28 = today - timedelta(days=27)
+        start_7 = today - timedelta(days=6)
+
+        base = DailyActivityAgg.objects.filter(
+            alumno_id=alumno_id,
+            fecha__range=[start_28, today],
+            sport__in=list(PMC_SPORT_GROUPS["ALL"]),
+        ).values("fecha", "distance_m", "elev_gain_m", "duration_s", "load")
+
+        by_day = {}
+        for r in base.iterator(chunk_size=1000):
+            d = r["fecha"]
+            prev = by_day.get(d) or {"distance_m": 0.0, "elev_gain_m": 0.0, "duration_s": 0, "load": 0.0}
+            prev["distance_m"] += float(r.get("distance_m") or 0.0)
+            prev["elev_gain_m"] += float(r.get("elev_gain_m") or 0.0)
+            prev["duration_s"] += int(r.get("duration_s") or 0)
+            prev["load"] += float(r.get("load") or 0.0)
+            by_day[d] = prev
+
+        def rollup(start_d: date) -> dict:
+            days = [start_d + timedelta(days=i) for i in range((today - start_d).days + 1)]
+            dist_m = sum((by_day.get(d) or {}).get("distance_m", 0.0) for d in days)
+            elev_m = sum((by_day.get(d) or {}).get("elev_gain_m", 0.0) for d in days)
+            dur_s = sum((by_day.get(d) or {}).get("duration_s", 0) for d in days)
+            load = sum((by_day.get(d) or {}).get("load", 0.0) for d in days)
+            return {
+                "km": round(float(dist_m) / 1000.0, 2),
+                "elev_gain_m": int(round(float(elev_m))),
+                "time_min": int(round(float(dur_s) / 60.0)),
+                "load": int(round(float(load))),
+            }
+
+        last_days = []
+        for i in range(14):  # últimos 14 días para widgets
+            d = today - timedelta(days=i)
+            v = by_day.get(d) or {"distance_m": 0.0, "elev_gain_m": 0.0, "duration_s": 0, "load": 0.0}
+            last_days.append(
+                {
+                    "fecha": d.isoformat(),
+                    "km": round(float(v["distance_m"]) / 1000.0, 2),
+                    "elev_gain_m": int(round(float(v["elev_gain_m"]))),
+                    "time_min": int(round(float(v["duration_s"]) / 60.0)),
+                    "load": int(round(float(v["load"]))),
+                }
+            )
+        last_days.reverse()
+
+        return Response(
+            {
+                "alumno_id": alumno_id,
+                "ranges": {"7d": rollup(start_7), "28d": rollup(start_28)},
+                "last_days": last_days,
+            },
+            status=200,
+        )
 
 
 class AlertaRendimientoViewSet(viewsets.ReadOnlyModelViewSet):

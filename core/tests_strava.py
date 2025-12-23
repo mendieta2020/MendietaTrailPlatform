@@ -24,6 +24,27 @@ from core.utils.logging import RESERVED_LOGRECORD_ATTRS
 User = get_user_model()
 
 
+class StravaSportTypeMappingTests(TestCase):
+    def test_normalizer_prefers_nested_raw_sport_type_and_maps_trailrun(self):
+        """
+        Regresión: el pipeline pasa a veces sport_type dentro de `raw`.
+        No debe terminar como OTHER si es TrailRun/Run/Ride.
+        """
+        from core.strava_activity_normalizer import normalize_strava_activity_payload
+
+        payload = {
+            # legacy type puede venir ruidoso; debe preferir raw.sport_type
+            "type": "Other",
+            "raw": {"sport_type": "TrailRun"},
+            "distance_m": 1234,
+            "moving_time_s": 600,
+            "start_date_local": timezone.now(),
+        }
+        normalized = normalize_strava_activity_payload(payload)
+        self.assertEqual(normalized["tipo_deporte"], "TRAIL")
+        self.assertEqual(normalized["strava_sport_type"], "TRAILRUN")
+
+
 class _FakeAthlete:
     def __init__(self, athlete_id: int):
         self.id = athlete_id
