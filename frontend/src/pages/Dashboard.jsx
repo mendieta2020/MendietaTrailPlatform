@@ -234,7 +234,7 @@ const Dashboard = () => {
       </Paper>
 
       {/* ALERTS (PRUEBA DE FUEGO: JWT + PAGINACIÓN OPT-IN) */}
-      <AlertsWidget pageSize={20} />
+      <AlertsWidget pageSize={5} />
 
     </Layout>
   );

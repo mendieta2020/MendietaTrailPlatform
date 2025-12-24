@@ -16,6 +16,7 @@ import TemplateLibrary from '../components/TemplateLibrary';
 import ErrorBoundary from '../components/ErrorBoundary'; // <--- 1. IMPORTACIÓN DE SEGURIDAD
 import RiskBadge from '../components/RiskBadge';
 import CoachDecisionsPanel from '../components/CoachDecisionsPanel';
+import AlertsWidget from '../components/widgets/AlertsWidget';
 
 const AthleteDetail = () => {
   const { id } = useParams();
@@ -109,6 +110,11 @@ const AthleteDetail = () => {
 
       {/* COACH DECISION LAYER (v1) */}
       <CoachDecisionsPanel athleteId={id} />
+
+      {/* ALERTAS (filtradas por atleta) */}
+      <Box sx={{ mb: 4 }}>
+        <AlertsWidget alumnoId={id} pageSize={5} />
+      </Box>
 
       {/* --- SECCIÓN DE ANALYTICS (BLINDADA) --- */}
       <Box sx={{ mb: 4 }}>

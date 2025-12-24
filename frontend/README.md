@@ -1,16 +1,35 @@
-# React + Vite
+# Frontend (React + Vite)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+UI de coach/atleta para MendietaTrailPlatform. Este frontend consume el backend Django/DRF vía la capa HTTP en `src/api/client.js` (JWT + refresh automático).
 
-Currently, two official plugins are available:
+## Configuración local (.env)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+El frontend **siempre** usa `VITE_API_BASE_URL` como base URL para todas las llamadas al backend.
 
-## React Compiler
+1) Crear un `.env` dentro de `frontend/`:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+cp .env.example .env
+```
 
-## Expanding the ESLint configuration
+2) Editar `frontend/.env`:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+VITE_API_BASE_URL=http://127.0.0.1:8000
+```
+
+Notas:
+- También existe soporte legado para `VITE_API_URL`, pero `VITE_API_BASE_URL` tiene prioridad.
+- El `baseURL` apunta a la raíz (no a `/api/`) para evitar duplicaciones en rutas.
+
+## Correr el proyecto
+
+```bash
+npm install
+npm run dev
+```
+
+## Troubleshooting (CORS/CSRF)
+
+- Si ves errores de red/CORS en el navegador, verificá que el backend permita el origen del frontend (ej: `http://127.0.0.1:5173`).
+- Este frontend usa **Authorization: Bearer** para JWT en cada request cuando hay token en `localStorage`.
