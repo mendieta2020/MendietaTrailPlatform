@@ -14,6 +14,7 @@ import AthleteDetail from './pages/AthleteDetail'; // <--- NUEVA IMPORTACIÓN (P
 import CalendarPage from './pages/Calendar';
 import Teams from './pages/Teams';
 import TeamDetail from './pages/TeamDetail';
+import AlertsPage from './pages/Alerts';
 import { tokenStore } from './api/tokenStore';
 
 // --- COMPONENTE DE SEGURIDAD (GUARDIÁN) ---
@@ -100,6 +101,16 @@ function App() {
                 <AthleteDetail />
               </ProtectedRoute>
             } 
+          />
+
+          {/* 6.1 Alertas (Listado con filtros) */}
+          <Route
+            path="/alerts"
+            element={
+              <ProtectedRoute>
+                <AlertsPage />
+              </ProtectedRoute>
+            }
           />
 
           {/* 7. Finanzas (Placeholder para el futuro inmediato) */}

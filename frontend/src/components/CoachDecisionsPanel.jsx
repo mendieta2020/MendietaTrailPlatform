@@ -61,7 +61,7 @@ export default function CoachDecisionsPanel({ athleteId }) {
         const resp = await client.get(`/api/coach/athletes/${athleteId}/week-summary/`, { params: { week } });
         if (cancelled) return;
         setData(resp.data);
-      } catch (e) {
+      } catch {
         if (cancelled) return;
         setError('No se pudo cargar “Coach Decisions”.');
         setData(null);
