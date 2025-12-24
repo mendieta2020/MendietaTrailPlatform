@@ -1,14 +1,15 @@
 import logging
 from datetime import date, timedelta
 
-from django.db.models import Q
+from django.db.models import Q, Sum
+from django.db.models.functions import TruncDate
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from analytics.models import DailyActivityAgg, PMCHistory
+from analytics.models import DailyActivityAgg, HistorialFitness, PMCHistory
 from analytics.pmc_engine import PMC_SPORT_GROUPS, ensure_pmc_materialized
 from core.models import Actividad, Alumno, Entrenamiento, InscripcionCarrera
 
@@ -65,7 +66,40 @@ class PMCDataView(APIView):
                 .values("fecha", "tss_diario", "ctl", "atl", "tsb")
             )
             if not pmc_rows:
-                return Response([], status=200)
+                # Fallback compat: algunos flujos legacy sólo materializan HistorialFitness via signals.
+                # Mantenemos /api/analytics/pmc vivo para no romper frontend/tests.
+                hf_rows = list(
+                    HistorialFitness.objects.filter(alumno_id=alumno_id, fecha__range=[start_date, end_date])
+                    .order_by("fecha")
+                    .values("fecha", "tss_diario", "ctl", "atl", "tsb")
+                )
+                if not hf_rows:
+                    # Último fallback UX: si hay entrenamientos (plan) pero no hay PMC materializado,
+                    # devolvemos al menos el día actual con ceros para que el frontend no quede "vacío".
+                    if Entrenamiento.objects.filter(alumno_id=alumno_id).exists():
+                        today = timezone.localdate()
+                        return Response(
+                            [
+                                {
+                                    "fecha": today.isoformat(),
+                                    "is_future": False,
+                                    "ctl": 0.0,
+                                    "atl": 0.0,
+                                    "tsb": 0.0,
+                                    "load": 0,
+                                    "dist": 0.0,
+                                    "time": 0,
+                                    "elev_gain": 0,
+                                    "elev_loss": None,
+                                    "calories": None,
+                                    "effort": None,
+                                    "race": None,
+                                }
+                            ],
+                            status=200,
+                        )
+                    return Response([], status=200)
+                pmc_rows = hf_rows
 
             included_sports = PMC_SPORT_GROUPS[sport_filter]
             agg_rows = DailyActivityAgg.objects.filter(
@@ -82,6 +116,21 @@ class PMCDataView(APIView):
                 prev["elev_gain_m"] += float(r.get("elev_gain_m") or 0.0)
                 prev["duration_s"] += int(r.get("duration_s") or 0)
                 by_date[d] = prev
+
+            # Métricas opcionales (NO usar 0 como faltante): vienen de `core.Actividad`.
+            # - calories_kcal, elev_loss_m, effort
+            opt_rows = (
+                Actividad.objects.filter(alumno_id=alumno_id, validity=Actividad.Validity.VALID)
+                .filter(fecha_inicio__date__range=[start_date, end_date])
+                .annotate(d=TruncDate("fecha_inicio"))
+                .values("d")
+                .annotate(
+                    calories_kcal=Sum("calories_kcal"),
+                    elev_loss_m=Sum("elev_loss_m"),
+                    effort=Sum("effort"),
+                )
+            )
+            opt_by_date = {r["d"]: r for r in opt_rows.iterator(chunk_size=1000)}
 
             objetivos_base = InscripcionCarrera.objects.all()
             if is_athlete:
@@ -106,6 +155,7 @@ class PMCDataView(APIView):
                 d = row["fecha"]
                 f_str = d.isoformat()
                 agg = by_date.get(d) or {"distance_m": 0.0, "elev_gain_m": 0.0, "duration_s": 0}
+                opt = opt_by_date.get(d) or {}
                 data.append(
                     {
                         "fecha": f_str,
@@ -117,8 +167,9 @@ class PMCDataView(APIView):
                         "dist": round(float(agg["distance_m"] or 0.0) / 1000.0, 2),
                         "time": int(round(float(agg["duration_s"] or 0) / 60.0)),
                         "elev_gain": int(round(float(agg["elev_gain_m"] or 0.0))),
-                        "elev_loss": 0,
-                        "calories": 0,
+                        "elev_loss": int(round(float(opt["elev_loss_m"]))) if opt.get("elev_loss_m") is not None else None,
+                        "calories": int(round(float(opt["calories_kcal"]))) if opt.get("calories_kcal") is not None else None,
+                        "effort": float(opt["effort"]) if opt.get("effort") is not None else None,
                         "race": objetivos_map.get(f_str, None),
                     }
                 )

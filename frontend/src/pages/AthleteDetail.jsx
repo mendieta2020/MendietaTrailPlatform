@@ -15,6 +15,7 @@ import StudentPerformanceChart from '../components/widgets/StudentPerformanceCha
 import TemplateLibrary from '../components/TemplateLibrary'; 
 import ErrorBoundary from '../components/ErrorBoundary'; // <--- 1. IMPORTACIÓN DE SEGURIDAD
 import RiskBadge from '../components/RiskBadge';
+import CoachDecisionsPanel from '../components/CoachDecisionsPanel';
 
 const AthleteDetail = () => {
   const { id } = useParams();
@@ -105,6 +106,9 @@ const AthleteDetail = () => {
           </Grid>
         </Grid>
       </Paper>
+
+      {/* COACH DECISION LAYER (v1) */}
+      <CoachDecisionsPanel athleteId={id} />
 
       {/* --- SECCIÓN DE ANALYTICS (BLINDADA) --- */}
       <Box sx={{ mb: 4 }}>

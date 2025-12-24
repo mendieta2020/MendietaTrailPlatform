@@ -826,6 +826,59 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
     try:
         activity_obj = client.get_activity(int(event.object_id))
         activity = normalize_strava_activity(activity_obj)
+
+        # Best-effort: elev_loss desde streams de altitud (si existen).
+        # Requisito producto: si falta, debe quedar NULL (no 0).
+        try:
+            if activity.get("elev_loss_m") is None:
+                altitude = None
+
+                def _extract_altitude_from_streams(streams):
+                    # Stravalib puede devolver StreamSet (dict-like) o dict plano.
+                    if streams is None:
+                        return None
+                    # dict-like
+                    try:
+                        if isinstance(streams, dict):
+                            alt = streams.get("altitude")
+                            if isinstance(alt, dict):
+                                return alt.get("data")
+                            if hasattr(alt, "data"):
+                                return getattr(alt, "data")
+                            return alt
+                    except Exception:
+                        pass
+
+                    # list-like fallback: buscamos item con type/name altitude
+                    try:
+                        for item in list(streams):
+                            if isinstance(item, dict) and (item.get("type") == "altitude" or item.get("name") == "altitude"):
+                                return item.get("data")
+                            if hasattr(item, "type") and getattr(item, "type") == "altitude":
+                                return getattr(item, "data", None)
+                    except Exception:
+                        return None
+                    return None
+
+                # Llamada defensiva: soporta firmas distintas según stravalib versión.
+                streams = None
+                if hasattr(client, "get_activity_streams"):
+                    try:
+                        streams = client.get_activity_streams(int(event.object_id), types=["altitude"])
+                    except TypeError:
+                        streams = client.get_activity_streams(int(event.object_id), ["altitude"])
+                altitude = _extract_altitude_from_streams(streams)
+
+                if altitude is not None:
+                    from core.strava_elevation import compute_elevation_loss_m
+
+                    computed = compute_elevation_loss_m(altitude)
+                    if computed is not None:
+                        activity["elev_loss_m"] = float(computed)
+        except Exception:
+            # No bloquear ingesta si streams fallan (scopes / rate limits / etc)
+            pass
+
         logger.info(
             "strava.activity.decision",
             extra=safe_extra(

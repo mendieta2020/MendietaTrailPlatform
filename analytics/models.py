@@ -249,11 +249,24 @@ class Alert(models.Model):
     """
 
     class Type(models.TextChoices):
+        # Coach Decision Layer v1 (accionables)
+        INJURY_RISK_UP_AND_FATIGUE_HIGH = "injury_risk_up_and_fatigue_high", "injury_risk_up_and_fatigue_high"
+        COMPLIANCE_DROP_WEEK = "compliance_drop_week", "compliance_drop_week"
+        ACUTE_LOAD_SPIKE = "acute_load_spike", "acute_load_spike"
+        FORM_TOO_NEGATIVE_SUSTAINED = "form_too_negative_sustained", "form_too_negative_sustained"
+        MISSED_SESSIONS_VS_PLAN = "missed_sessions_vs_plan", "missed_sessions_vs_plan"
+
+        # Legacy/MVP (se mantienen por compat)
         OVERTRAINING_RISK = "overtraining_risk", "overtraining_risk"
         LOW_COMPLIANCE = "low_compliance", "low_compliance"
         ANOMALY = "anomaly", "anomaly"
 
     class Severity(models.TextChoices):
+        # v1 contract (coach-first)
+        INFO = "info", "info"
+        WARN = "warn", "warn"
+        CRITICAL = "critical", "critical"
+        # Legacy
         LOW = "LOW", "LOW"
         MEDIUM = "MEDIUM", "MEDIUM"
         HIGH = "HIGH", "HIGH"
@@ -288,7 +301,9 @@ class Alert(models.Model):
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN, db_index=True)
 
     message = models.TextField()
-    payload_json = models.JSONField(default=dict, blank=True)
+    recommended_action = models.TextField(blank=True, default="")
+    evidence_json = models.JSONField(default=dict, blank=True)
+    visto_por_coach = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     closed_at = models.DateTimeField(null=True, blank=True)

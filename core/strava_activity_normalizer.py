@@ -77,9 +77,10 @@ def extract_strava_sport_type(raw: dict) -> str:
     st = _coalesce(
         raw.get("sport_type"),
         raw.get("sportType"),
-        raw.get("type"),
         nested.get("sport_type"),
         nested.get("sportType"),
+        # `type` legacy (menos granular). Lo dejamos al final para que NO pise nested sport_type.
+        raw.get("type"),
         nested.get("type"),
     )
     return str(st or "").strip().upper()
