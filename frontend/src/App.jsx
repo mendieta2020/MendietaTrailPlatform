@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 
@@ -14,15 +14,17 @@ import AthleteDetail from './pages/AthleteDetail'; // <--- NUEVA IMPORTACIÓN (P
 import CalendarPage from './pages/Calendar';
 import Teams from './pages/Teams';
 import TeamDetail from './pages/TeamDetail';
+import Alerts from './pages/Alerts';
 import { tokenStore } from './api/tokenStore';
 
 // --- COMPONENTE DE SEGURIDAD (GUARDIÁN) ---
 // Verifica si existe un token válido. Si no, redirige al Login.
 const ProtectedRoute = ({ children }) => {
   const token = tokenStore.getAccessToken();
+  const location = useLocation();
   
   if (!token) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
   
   return children;
@@ -39,6 +41,7 @@ function App() {
           
           {/* RUTA PÚBLICA: Login */}
           <Route path="/" element={<Login />} />
+          <Route path="/login" element={<Login />} />
 
           {/* --- RUTAS PRIVADAS (ÁREA SEGURA) --- */}
           
@@ -102,6 +105,16 @@ function App() {
             } 
           />
 
+          {/* 7. Alertas */}
+          <Route
+            path="/alerts"
+            element={
+              <ProtectedRoute>
+                <Alerts />
+              </ProtectedRoute>
+            }
+          />
+
           {/* 7. Finanzas (Placeholder para el futuro inmediato) */}
           <Route 
             path="/finance" 
@@ -114,7 +127,7 @@ function App() {
           />
 
           {/* RUTA COMODÍN: Cualquier dirección desconocida redirige al Login */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
 
         </Routes>
       </BrowserRouter>
