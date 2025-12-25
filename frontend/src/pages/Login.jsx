@@ -3,6 +3,7 @@ import {
     Box, Button, TextField, Typography, Paper, Alert 
 } from '@mui/material';
 import { styled } from '@mui/system';
+import { useLocation, useNavigate } from 'react-router-dom';
 import client from '../api/client';
 import { tokenStore } from '../api/tokenStore';
 
@@ -29,6 +30,8 @@ const Login = () => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const navigate = useNavigate();
+    const location = useLocation();
 
     const handleLogin = async (e) => {
         e.preventDefault();
@@ -42,8 +45,10 @@ const Login = () => {
 
             tokenStore.setTokens({ access: response.data.access, refresh: response.data.refresh });
 
-            // Redirigir al Dashboard
-            window.location.href = '/dashboard';
+            // Redirigir a la ruta original (si venía de ProtectedRoute)
+            const from = location.state?.from;
+            const dest = from?.pathname ? `${from.pathname}${from.search || ''}` : '/dashboard';
+            navigate(dest, { replace: true });
 
         } catch (err) {
             console.error(err);
