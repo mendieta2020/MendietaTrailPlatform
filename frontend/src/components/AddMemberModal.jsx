@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Dialog, DialogTitle, DialogContent, DialogActions, 
   Button, List, ListItem, ListItemText, ListItemAvatar, 
@@ -6,6 +6,7 @@ import {
 } from '@mui/material';
 import { Search, PersonAdd } from '@mui/icons-material';
 import client from '../api/client';
+
 
 const AddMemberModal = ({ open, onClose, teamId, onMembersAdded }) => {
   const [athletes, setAthletes] = useState([]); // Todos los alumnos
@@ -20,9 +21,9 @@ const AddMemberModal = ({ open, onClose, teamId, onMembersAdded }) => {
       setSelected([]); // Resetear selección
       setSearchTerm('');
     }
-  }, [open]);
+  }, [open, fetchAvailableAthletes]);
 
-  const fetchAvailableAthletes = async () => {
+  const fetchAvailableAthletes = useCallback (async () => {
     try {
       // Traemos TODOS los alumnos
       const res = await client.get('/api/alumnos/');
@@ -31,9 +32,9 @@ const AddMemberModal = ({ open, onClose, teamId, onMembersAdded }) => {
       const available = res.data.filter(a => a.equipo !== parseInt(teamId));
       setAthletes(available);
     } catch (err) {
-      console.error("Error cargando atletas:", err);
+      console.error("AddMemberModal fetchAvailableAthletes error:", err);
     }
-  };
+  }, [teamId]);
 
   // 2. Manejar Selección (Checkbox)
   const handleToggle = (value) => () => {
