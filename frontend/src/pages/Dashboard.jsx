@@ -14,6 +14,7 @@ import ComplianceChart from '../components/widgets/ComplianceChart';
 import AlertsWidget from '../components/widgets/AlertsWidget';
 import { format, subMonths, startOfYear, startOfMonth, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { unpackResults } from '../api/unpackResults';
 
 // --- COMPONENTE DE TARJETA KPI ---
 const StatCard = ({ title, value, sub, color, icon: Icon, loading }) => (
@@ -58,12 +59,14 @@ const Dashboard = () => {
           client.get('/api/pagos/')
         ]);
 
-        const totalIngresos = resPagos.data.reduce((acc, pago) => acc + parseFloat(pago.monto), 0);
+        const alumnosArr = unpackResults(resAlumnos);
+        const pagosArr = unpackResults(resPagos);
+        const totalIngresos = pagosArr.reduce((acc, pago) => acc + parseFloat(pago.monto), 0);
         setKpiData({ 
-            alumnos: resAlumnos.data.length, 
+            alumnos: alumnosArr.length, 
             ingresos: totalIngresos 
         });
-        setPagosData(resPagos.data);
+        setPagosData(pagosArr);
 
         // 2. Cargar Datos Científicos (PMC) - Opcional: Pasar fechas en query params
         // Por ahora traemos todo y filtramos en frontend (para MVP es rápido)

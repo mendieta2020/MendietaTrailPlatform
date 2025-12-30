@@ -1,10 +1,15 @@
 from rest_framework import serializers
+from django.db.models import Sum, Value
+from django.db.models.functions import Coalesce
+from django.utils import timezone
 from .models import (
     Alumno, Carrera, InscripcionCarrera, 
     PlantillaEntrenamiento, Entrenamiento, Actividad, Pago,
     Equipo, VideoEjercicio # <--- NUEVO MODELO IMPORTADO
 )
 from analytics.models import InjuryRiskSnapshot
+from analytics.models import DailyActivityAgg, PMCHistory
+from analytics.pmc_engine import ensure_pmc_materialized
 
 # ==============================================================================
 #  0. GESTIÓN DE EQUIPOS
@@ -148,6 +153,113 @@ class AlumnoSerializer(serializers.ModelSerializer):
             "last_backfill_count": int(st.last_backfill_count or 0),
             "last_error": st.last_error or "",
         }
+
+
+class AlumnoDetailSerializer(AlumnoSerializer):
+    """
+    Serializer de detalle (GET /api/alumnos/:id/).
+
+    Objetivo:
+    - Back-compat: exponer métricas legacy que el frontend consumía.
+    - Integración PMC: servir CTL/ATL/TSB sin recalcular si ya existe el día.
+    - Rendimiento: evitar N+1 en el listado usando este serializer SOLO en retrieve.
+    """
+
+    # Métricas legacy (totales "actuales"/históricos según disponibilidad)
+    distancia_total = serializers.SerializerMethodField()
+    horas_entrenamiento = serializers.SerializerMethodField()
+    desnivel_acumulado = serializers.SerializerMethodField()
+    calorias = serializers.SerializerMethodField()
+
+    # Snapshot PMC (último o del día)
+    pmc = serializers.SerializerMethodField()
+    ctl = serializers.SerializerMethodField()
+    atl = serializers.SerializerMethodField()
+    tsb = serializers.SerializerMethodField()
+
+    def _pmc_row(self, obj):
+        """
+        Carga una sola vez el PMC del alumno para este serializer.
+        """
+        cached = getattr(obj, "_pmc_row_cache", None)
+        if cached is not None:
+            return cached
+
+        today = timezone.localdate()
+        row = (
+            PMCHistory.objects.filter(alumno_id=obj.id, sport="ALL", fecha=today)
+            .values("fecha", "ctl", "atl", "tsb")
+            .first()
+        )
+
+        # Si no existe para hoy, usamos el último disponible (NO recalculamos).
+        if not row:
+            row = (
+                PMCHistory.objects.filter(alumno_id=obj.id, sport="ALL")
+                .order_by("-fecha")
+                .values("fecha", "ctl", "atl", "tsb")
+                .first()
+            )
+
+        # Si no hay nada materializado, best-effort: materializar una vez.
+        if not row:
+            ensure_pmc_materialized(alumno_id=obj.id)
+            row = (
+                PMCHistory.objects.filter(alumno_id=obj.id, sport="ALL")
+                .order_by("-fecha")
+                .values("fecha", "ctl", "atl", "tsb")
+                .first()
+            )
+
+        setattr(obj, "_pmc_row_cache", row or {})
+        return getattr(obj, "_pmc_row_cache", {})
+
+    def get_pmc(self, obj):
+        row = self._pmc_row(obj) or {}
+        f = row.get("fecha")
+        return {
+            "fecha": f.isoformat() if f else None,
+            "ctl": round(float(row.get("ctl") or 0.0), 1),
+            "atl": round(float(row.get("atl") or 0.0), 1),
+            "tsb": round(float(row.get("tsb") or 0.0), 1),
+        }
+
+    def get_ctl(self, obj):
+        return self.get_pmc(obj).get("ctl", 0.0)
+
+    def get_atl(self, obj):
+        return self.get_pmc(obj).get("atl", 0.0)
+
+    def get_tsb(self, obj):
+        return self.get_pmc(obj).get("tsb", 0.0)
+
+    def get_distancia_total(self, obj):
+        # Preferimos la tabla agregada diaria (más liviana que Actividad).
+        agg = DailyActivityAgg.objects.filter(alumno_id=obj.id).aggregate(
+            distance_m=Coalesce(Sum("distance_m"), Value(0.0)),
+        )
+        return round(float(agg["distance_m"] or 0.0) / 1000.0, 2)
+
+    def get_horas_entrenamiento(self, obj):
+        agg = DailyActivityAgg.objects.filter(alumno_id=obj.id).aggregate(
+            duration_s=Coalesce(Sum("duration_s"), Value(0)),
+        )
+        return round(float(agg["duration_s"] or 0) / 3600.0, 2)
+
+    def get_desnivel_acumulado(self, obj):
+        agg = DailyActivityAgg.objects.filter(alumno_id=obj.id).aggregate(
+            elev_gain_m=Coalesce(Sum("elev_gain_m"), Value(0.0)),
+        )
+        return int(round(float(agg["elev_gain_m"] or 0.0)))
+
+    def get_calorias(self, obj):
+        # Calorías es un campo opcional en Actividad (puede ser NULL); sumamos solo válidas.
+        agg = (
+            Actividad.objects.filter(alumno_id=obj.id, validity=Actividad.Validity.VALID)
+            .aggregate(calories_kcal=Sum("calories_kcal"))
+        )
+        v = agg.get("calories_kcal")
+        return int(round(float(v))) if v is not None else 0
 
 # ==============================================================================
 #  4. CARRERAS
