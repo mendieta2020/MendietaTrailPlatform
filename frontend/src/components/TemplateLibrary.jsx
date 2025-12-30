@@ -5,6 +5,7 @@ import {
 } from '@mui/material';
 import { Search, FitnessCenter, DirectionsRun, PedalBike, Add } from '@mui/icons-material';
 import client from '../api/client';
+import { unpackResults } from '../api/pagination';
 
 const TemplateLibrary = () => {
   const [templates, setTemplates] = useState([]);
@@ -19,7 +20,7 @@ const TemplateLibrary = () => {
     try {
       setLoading(true);
       const res = await client.get('/api/plantillas/');
-      setTemplates(res.data);
+      setTemplates(unpackResults(res.data));
     } catch (err) {
       console.error("Error cargando librería:", err);
     } finally {

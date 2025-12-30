@@ -32,8 +32,13 @@ client.interceptors.request.use(
     (config) => {
         const token = tokenStore.getAccessToken();
         if (token) {
-            config.headers = config.headers || {};
-            config.headers.Authorization = `Bearer ${token}`;
+            // Axios v1 puede usar AxiosHeaders (con .set)
+            if (config.headers && typeof config.headers.set === 'function') {
+                config.headers.set('Authorization', `Bearer ${token}`);
+            } else {
+                config.headers = config.headers || {};
+                config.headers.Authorization = `Bearer ${token}`;
+            }
         }
         return config;
     },
@@ -94,8 +99,12 @@ client.interceptors.response.use(
                 return new Promise((resolve) => {
                     subscribeTokenRefresh((newAccessToken) => {
                         originalRequest._retry = true;
-                        originalRequest.headers = originalRequest.headers || {};
-                        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+                        if (originalRequest.headers && typeof originalRequest.headers.set === 'function') {
+                            originalRequest.headers.set('Authorization', `Bearer ${newAccessToken}`);
+                        } else {
+                            originalRequest.headers = originalRequest.headers || {};
+                            originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+                        }
                         resolve(client(originalRequest));
                     });
                 });
@@ -121,8 +130,12 @@ client.interceptors.response.use(
                 onRefreshed(newAccessToken);
 
                 originalRequest._retry = true;
-                originalRequest.headers = originalRequest.headers || {};
-                originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+                if (originalRequest.headers && typeof originalRequest.headers.set === 'function') {
+                    originalRequest.headers.set('Authorization', `Bearer ${newAccessToken}`);
+                } else {
+                    originalRequest.headers = originalRequest.headers || {};
+                    originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+                }
                 return client(originalRequest);
             } catch (refreshErr) {
                 isRefreshing = false;

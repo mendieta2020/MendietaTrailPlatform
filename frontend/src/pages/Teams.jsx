@@ -8,6 +8,7 @@ import {
 import { Add, Groups, MoreVert, CalendarMonth } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import client from '../api/client';
+import { unpackResults } from '../api/pagination';
 
 const Teams = () => {
   const navigate = useNavigate(); // Hook de navegación
@@ -22,7 +23,7 @@ const Teams = () => {
     try {
       setLoading(true);
       const res = await client.get('/api/equipos/');
-      setTeams(res.data);
+      setTeams(unpackResults(res.data));
     } catch (err) {
       console.error("Error cargando equipos:", err);
     } finally {

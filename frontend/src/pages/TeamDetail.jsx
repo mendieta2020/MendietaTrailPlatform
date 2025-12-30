@@ -12,6 +12,7 @@ import Layout from '../components/Layout';
 import client from '../api/client';
 import AddMemberModal from '../components/AddMemberModal'; 
 import TemplateLibrary from '../components/TemplateLibrary'; 
+import { unpackResults } from '../api/pagination';
 
 // Componente TabPanel (Lógica para cambiar pestañas)
 function TabPanel(props) {
@@ -40,7 +41,7 @@ const TeamDetail = () => {
       setTeam(resTeam.data);
 
       const resAthletes = await client.get(`/api/equipos/${id}/alumnos/`);
-      setAthletes(resAthletes.data);
+      setAthletes(unpackResults(resAthletes.data));
     } catch (err) {
       console.error("Error cargando equipo:", err);
     }

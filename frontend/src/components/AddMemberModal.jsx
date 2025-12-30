@@ -6,6 +6,7 @@ import {
 } from '@mui/material';
 import { Search, PersonAdd } from '@mui/icons-material';
 import client from '../api/client';
+import { unpackResults } from '../api/pagination';
 
 const AddMemberModal = ({ open, onClose, teamId, onMembersAdded }) => {
   const [athletes, setAthletes] = useState([]); // Todos los alumnos
@@ -26,9 +27,10 @@ const AddMemberModal = ({ open, onClose, teamId, onMembersAdded }) => {
     try {
       // Traemos TODOS los alumnos
       const res = await client.get('/api/alumnos/');
+      const allAthletes = unpackResults(res.data);
       // Filtramos: Solo mostramos los que NO están ya en este equipo
       // (Asumiendo que res.data trae el objeto completo, verificamos su equipo actual)
-      const available = res.data.filter(a => a.equipo !== parseInt(teamId));
+      const available = allAthletes.filter(a => a.equipo !== parseInt(teamId));
       setAthletes(available);
     } catch (err) {
       console.error("Error cargando atletas:", err);
