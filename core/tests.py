@@ -65,8 +65,9 @@ class InjuryRiskAPITests(TestCase):
         self.client.force_authenticate(user=self.coach1)
         res = self.client.get("/api/alumnos/?include_injury_risk=1")
         self.assertEqual(res.status_code, 200)
+        data = res.data.get("results", res.data)
         # alumno1 debería traer injury_risk embebido
-        item = next(x for x in res.data if x["id"] == self.alumno1.id)
+        item = next(x for x in data if x["id"] == self.alumno1.id)
         self.assertIsNotNone(item.get("injury_risk"))
         self.assertEqual(item["injury_risk"]["risk_level"], "MEDIUM")
 
@@ -135,7 +136,8 @@ class TenantIsolationEquipoTests(TestCase):
         self.client.force_authenticate(user=self.coach1)
         res = self.client.get("/api/equipos/")
         self.assertEqual(res.status_code, 200)
-        ids = [t["id"] for t in res.data]
+        data = res.data.get("results", res.data)
+        ids = [t["id"] for t in data]
         self.assertIn(self.team1.id, ids)
         self.assertNotIn(self.team2.id, ids)
 
