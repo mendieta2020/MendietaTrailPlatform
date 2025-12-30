@@ -9,6 +9,7 @@ from django.contrib import messages
 from django.db import transaction 
 from datetime import datetime, date as date_type, timedelta
 from django.db.models import Prefetch
+from django.db.models import Q
 from django.utils import timezone
 
 # Importamos Modelos
@@ -39,8 +40,62 @@ from .services import sincronizar_actividades_strava
 #  API REST (EL CEREBRO DE LA APP MÓVIL 📱)
 # ==============================================================================
 
+# ==============================================================================
+#  MULTI-TENANT BASE (Semana 1 - Hardening)
+# ==============================================================================
+class TenantModelViewSet(viewsets.ModelViewSet):
+    """
+    Base ViewSet con aislamiento multi-tenant automático.
+
+    Reglas:
+    - Staff: ve todo.
+    - Alumno (User con `perfil_alumno`): filtra por `usuario=user` o `alumno__usuario=user`.
+    - Coach (resto): filtra por `entrenador=user`, `uploaded_by=user`, `alumno__entrenador=user`
+      (y `usuario=user` cuando aplique).
+
+    Nota:
+    - Si el modelo no expone campos tenant, devolvemos queryset sin filtrar
+      (ej: catálogos globales como Carreras).
+    """
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = getattr(self.request, "user", None)
+        if not user or not getattr(user, "is_authenticated", False):
+            return qs.none()
+
+        if getattr(user, "is_staff", False):
+            return qs
+
+        model = qs.model
+        field_names = {f.name for f in model._meta.fields}
+
+        # Alumno (atleta)
+        if hasattr(user, "perfil_alumno"):
+            if "usuario" in field_names:
+                return qs.filter(usuario=user)
+            if "alumno" in field_names:
+                return qs.filter(alumno__usuario=user)
+            return qs.none()
+
+        # Coach (por defecto)
+        tenant_q = Q()
+        if "entrenador" in field_names:
+            tenant_q |= Q(entrenador=user)
+        if "uploaded_by" in field_names:
+            tenant_q |= Q(uploaded_by=user)
+        if "alumno" in field_names:
+            tenant_q |= Q(alumno__entrenador=user)
+        if "usuario" in field_names:
+            tenant_q |= Q(usuario=user)
+
+        if tenant_q:
+            return qs.filter(tenant_q)
+        return qs
+
+
 # --- 🚀 NUEVO ENDPOINT: SUBIDA DE VIDEOS (GIMNASIO PRO) ---
-class VideoUploadViewSet(viewsets.ModelViewSet):
+class VideoUploadViewSet(TenantModelViewSet):
     """
     Endpoint dedicado para subir videos cortos de ejercicios.
     Recibe un archivo, lo guarda y devuelve la URL.
@@ -49,13 +104,6 @@ class VideoUploadViewSet(viewsets.ModelViewSet):
     serializer_class = VideoEjercicioSerializer
     parser_classes = (MultiPartParser, FormParser) # Habilita subida de archivos
     permission_classes = [permissions.IsAuthenticated, IsCoachUser]
-
-    def get_queryset(self):
-        # Multi-tenant: cada coach ve solo sus videos (staff puede ver todo)
-        user = self.request.user
-        if user.is_staff:
-            return VideoEjercicio.objects.all()
-        return VideoEjercicio.objects.filter(uploaded_by=user)
 
     def create(self, request, *args, **kwargs):
         # 1. Validar y Guardar
@@ -74,7 +122,7 @@ class VideoUploadViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_201_CREATED)
 
 
-class EquipoViewSet(viewsets.ModelViewSet):
+class EquipoViewSet(TenantModelViewSet):
     """
     Gestión de Grupos de Entrenamiento (Clusters).
     Ej: "Inicial Montaña", "Avanzado Calle".
@@ -83,12 +131,6 @@ class EquipoViewSet(viewsets.ModelViewSet):
     queryset = Equipo.objects.all()
     serializer_class = EquipoSerializer
     permission_classes = [permissions.IsAuthenticated, IsCoachUser]
-    def get_queryset(self):
-        # Multi-tenant: cada coach ve solo sus equipos (staff puede ver todo)
-        user = self.request.user
-        if user.is_staff:
-            return Equipo.objects.all()
-        return Equipo.objects.filter(entrenador=user)
 
     def perform_create(self, serializer):
         # Multi-tenant: el owner del equipo es el coach autenticado
@@ -104,19 +146,19 @@ class EquipoViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def alumnos(self, request, pk=None):
         equipo = self.get_object()
-        # Multi-tenant: solo alumnos del mismo entrenador
-        alumnos = equipo.alumnos.filter(entrenador=request.user)
+        alumnos = equipo.alumnos.all()
         serializer = AlumnoSerializer(alumnos, many=True)
         return Response(serializer.data)
 
 
-class AlumnoViewSet(viewsets.ModelViewSet):
+class AlumnoViewSet(TenantModelViewSet):
     """
     Gestión de Atletas.
     Permite buscar, filtrar por estado y ver detalles financieros.
     """
     serializer_class = AlumnoSerializer
     permission_classes = [permissions.IsAuthenticated] 
+    queryset = Alumno.objects.all()
     
     # Potenciadores de Búsqueda
     filter_backends = [filters.SearchFilter, DjangoFilterBackend, filters.OrderingFilter]
@@ -125,16 +167,24 @@ class AlumnoViewSet(viewsets.ModelViewSet):
     ordering_fields = ['nombre', 'fecha_ultimo_pago']
 
     def get_queryset(self):
-        # MULTI-TENANT: Solo mis alumnos
-        qs = Alumno.objects.filter(entrenador=self.request.user).select_related("sync_state")
+        qs = super().get_queryset().select_related("sync_state")
+
+        # Contexto coach (para filtrar snapshots por tenant cuando aplique)
+        user = self.request.user
+        coach_user = user
+        if hasattr(user, "perfil_alumno"):
+            coach_user = getattr(user.perfil_alumno, "entrenador", None)
 
         # Optimización opcional (sin N+1): incluir riesgo del día si lo piden
         if self.request.query_params.get("include_injury_risk") in ("1", "true", "True"):
             today = timezone.localdate()
+            snapshot_qs = InjuryRiskSnapshot.objects.filter(fecha=today)
+            if coach_user is not None:
+                snapshot_qs = snapshot_qs.filter(entrenador=coach_user)
             qs = qs.prefetch_related(
                 Prefetch(
                     "injury_risk_snapshots",
-                    queryset=InjuryRiskSnapshot.objects.filter(fecha=today, entrenador=self.request.user),
+                    queryset=snapshot_qs,
                     to_attr="injury_risk_today",
                 )
             )
@@ -223,44 +273,18 @@ class AlumnoViewSet(viewsets.ModelViewSet):
         return Response(data)
 
 
-class EntrenamientoViewSet(viewsets.ModelViewSet):
+class EntrenamientoViewSet(TenantModelViewSet):
     """
     Calendario de Entrenamientos.
     Soporta filtrado por fechas (vista mensual/semanal).
     """
+    queryset = Entrenamiento.objects.select_related("alumno", "plantilla_origen").all()
     serializer_class = EntrenamientoSerializer
     permission_classes = [permissions.IsAuthenticated]
     
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['alumno', 'fecha_asignada', 'completado']
     ordering_fields = ['fecha_asignada']
-
-    def get_queryset(self):
-        # Lógica inteligente:
-        # 1. Si soy Entrenador: Veo los de mis alumnos.
-        # 2. Si soy Alumno: Veo SOLO los míos (Seguridad).
-        user = self.request.user
-        
-        # Caso A: Soy Entrenador (tengo alumnos asociados)
-        if hasattr(user, 'alumnos') and user.alumnos.exists(): 
-             return Entrenamiento.objects.select_related('alumno', 'plantilla_origen').filter(
-                alumno__entrenador=user
-            ).order_by('-fecha_asignada')
-        
-        # Caso B: Soy Alumno (tengo un perfil de alumno)
-        elif hasattr(user, 'perfil_alumno'):
-             return Entrenamiento.objects.select_related('alumno', 'plantilla_origen').filter(
-                alumno__usuario=user
-            ).order_by('-fecha_asignada')
-            
-        # Caso C: Admin / Fallback (o entrenador sin alumnos aún)
-        # Intentamos ver si es entrenador aunque no tenga alumnos asignados
-        if user.is_staff or (hasattr(user, 'alumnos')): # Asumiendo staff o entrenador
-             return Entrenamiento.objects.select_related('alumno', 'plantilla_origen').filter(
-                alumno__entrenador=user
-            ).order_by('-fecha_asignada')
-
-        return Entrenamiento.objects.none()
 
     # ======================================================================
     #  🔥 ACCIÓN ESPECIAL: FEEDBACK DEL ALUMNO (TÚNEL SEGURO)
@@ -299,7 +323,7 @@ class EntrenamientoViewSet(viewsets.ModelViewSet):
         })
 
 
-class PlantillaViewSet(viewsets.ModelViewSet):
+class PlantillaViewSet(TenantModelViewSet):
     """
     Librería de Entrenamientos (Recetas).
     Incluye motor de asignación masiva a equipos.
@@ -313,6 +337,9 @@ class PlantillaViewSet(viewsets.ModelViewSet):
     filterset_fields = ['deporte', 'etiqueta_dificultad']
     ordering_fields = ['titulo', 'created_at']
     ordering = ['-created_at']
+
+    def perform_create(self, serializer):
+        serializer.save(entrenador=self.request.user)
 
     # ==========================================================================
     #  ⚡ MOTOR DE CLONACIÓN MASIVA (DROP & ASSIGN) - VERSIÓN JSON PRO
@@ -387,7 +414,7 @@ class PlantillaViewSet(viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-class CarreraViewSet(viewsets.ModelViewSet):
+class CarreraViewSet(TenantModelViewSet):
     """
     Base de datos de Carreras (Eventos).
     """
@@ -398,23 +425,22 @@ class CarreraViewSet(viewsets.ModelViewSet):
     search_fields = ['nombre', 'lugar']
 
 
-class InscripcionViewSet(viewsets.ModelViewSet):
+class InscripcionViewSet(TenantModelViewSet):
     """
     Gestión de Objetivos (Quién corre qué).
     """
+    queryset = InscripcionCarrera.objects.select_related("alumno", "carrera").all()
     serializer_class = InscripcionCarreraSerializer
     permission_classes = [permissions.IsAuthenticated]
     filterset_fields = ['alumno', 'estado']
 
-    def get_queryset(self):
-        return InscripcionCarrera.objects.filter(alumno__entrenador=self.request.user)
 
-
-class PagoViewSet(viewsets.ModelViewSet):
+class PagoViewSet(TenantModelViewSet):
     """
     Gestión Financiera.
     Permite al entrenador ver quién pagó y validar comprobantes.
     """
+    queryset = Pago.objects.select_related("alumno").all()
     serializer_class = PagoSerializer
     permission_classes = [permissions.IsAuthenticated]
     
@@ -422,12 +448,8 @@ class PagoViewSet(viewsets.ModelViewSet):
     filterset_fields = ['alumno', 'es_valido', 'metodo']
     ordering_fields = ['fecha_pago', 'monto']
 
-    def get_queryset(self):
-        # Solo veo los pagos de mis alumnos
-        return Pago.objects.filter(alumno__entrenador=self.request.user).order_by('-fecha_pago')
 
-
-class ActividadViewSet(viewsets.ReadOnlyModelViewSet):
+class ActividadViewSet(TenantModelViewSet):
     """
     Listado de actividades importadas (Strava → Actividad).
 
@@ -436,28 +458,16 @@ class ActividadViewSet(viewsets.ReadOnlyModelViewSet):
     - Alumno: ve solo sus actividades.
     - Staff: ve todo.
     """
+    queryset = Actividad.objects.select_related("alumno").all()
     serializer_class = ActividadSerializer
     permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ["get", "head", "options"]
 
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["alumno", "tipo_deporte", "validity"]
     search_fields = ["nombre"]
     ordering_fields = ["fecha_inicio", "distancia", "tiempo_movimiento"]
     ordering = ["-fecha_inicio"]
-
-    def get_queryset(self):
-        user = self.request.user
-        qs = Actividad.objects.select_related("alumno").all()
-
-        if user.is_staff:
-            return qs
-
-        # Alumno autenticado
-        if hasattr(user, "perfil_alumno"):
-            return qs.filter(alumno__usuario=user)
-
-        # Coach
-        return qs.filter(alumno__entrenador=user)
 
 # ==============================================================================
 #  DASHBOARD LEGACY (Vista de Gestión / Admin - NO TOCAR)

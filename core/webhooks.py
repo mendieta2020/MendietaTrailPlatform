@@ -122,6 +122,21 @@ def strava_webhook(request):
             except IntegrityError:
                 created = False
                 event = StravaWebhookEvent.objects.filter(provider="strava", event_uid=event_uid).first()
+                # Si falló por integridad pero no pudimos recuperar el evento, tratamos como fallo de persistencia
+                # y devolvemos 500 para que Strava reintente (hardening Semana 1).
+                if event is None:
+                    logger.exception(
+                        "strava_webhook.event_persist_failed_integrity_no_event",
+                        extra={"event_uid": event_uid, "athlete_id": owner_id, "activity_id": object_id},
+                    )
+                    return HttpResponse(status=500)
+            except Exception:
+                # Falla de persistencia inicial (DB down/timeout/etc): devolvemos 500 para forzar retry de Strava.
+                logger.exception(
+                    "strava_webhook.event_persist_failed",
+                    extra={"event_uid": event_uid, "athlete_id": owner_id, "activity_id": object_id},
+                )
+                return HttpResponse(status=500)
 
             duration_ms = int((time.monotonic() - t0) * 1000)
 

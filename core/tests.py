@@ -11,6 +11,15 @@ from core.models import Alumno, Equipo, Entrenamiento
 
 User = get_user_model()
 
+def _api_list_results(res):
+    """
+    Helper para endpoints list que pueden venir paginados.
+    Si hay paginación, DRF devuelve {"count","next","previous","results"}.
+    """
+    if isinstance(res.data, dict) and "results" in res.data:
+        return res.data["results"]
+    return res.data
+
 
 class InjuryRiskAPITests(TestCase):
     def setUp(self):
@@ -66,7 +75,8 @@ class InjuryRiskAPITests(TestCase):
         res = self.client.get("/api/alumnos/?include_injury_risk=1")
         self.assertEqual(res.status_code, 200)
         # alumno1 debería traer injury_risk embebido
-        item = next(x for x in res.data if x["id"] == self.alumno1.id)
+        results = _api_list_results(res)
+        item = next(x for x in results if x["id"] == self.alumno1.id)
         self.assertIsNotNone(item.get("injury_risk"))
         self.assertEqual(item["injury_risk"]["risk_level"], "MEDIUM")
 
@@ -135,7 +145,8 @@ class TenantIsolationEquipoTests(TestCase):
         self.client.force_authenticate(user=self.coach1)
         res = self.client.get("/api/equipos/")
         self.assertEqual(res.status_code, 200)
-        ids = [t["id"] for t in res.data]
+        results = _api_list_results(res)
+        ids = [t["id"] for t in results]
         self.assertIn(self.team1.id, ids)
         self.assertNotIn(self.team2.id, ids)
 
