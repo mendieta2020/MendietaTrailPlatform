@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.utils import timezone
 from .models import (
     Alumno, Carrera, InscripcionCarrera, 
     PlantillaEntrenamiento, Entrenamiento, Actividad, Pago,
@@ -116,7 +117,36 @@ class AlumnoSerializer(serializers.ModelSerializer):
         # Prefetch convention: obj.injury_risk_today = [InjuryRiskSnapshot] o []
         prefetched = getattr(obj, "injury_risk_today", None)
         if prefetched is None:
-            return None
+            # En listados evitamos N+1: si no viene prefetched, no consultamos.
+            if isinstance(getattr(self, "parent", None), serializers.ListSerializer):
+                return None
+
+            # En detail (un solo alumno), hacemos fallback al snapshot pre-calculado del día.
+            today = timezone.localdate()
+            qs = InjuryRiskSnapshot.objects.filter(alumno=obj, fecha=today)
+
+            request = self.context.get("request")
+            if request and getattr(request, "user", None) and request.user.is_authenticated and not request.user.is_staff:
+                user = request.user
+                coach_user = user
+                if hasattr(user, "perfil_alumno"):
+                    coach_user = getattr(user.perfil_alumno, "entrenador", None)
+                if coach_user is not None:
+                    qs = qs.filter(entrenador=coach_user)
+            else:
+                # Staff: acotamos al entrenador del alumno si existe, para evitar cross-tenant accidental.
+                if getattr(obj, "entrenador_id", None):
+                    qs = qs.filter(entrenador=obj.entrenador)
+
+            snap = qs.first()
+            if not snap:
+                return None
+            return {
+                "date": snap.fecha.isoformat(),
+                "risk_level": snap.risk_level,
+                "risk_score": snap.risk_score,
+                "risk_reasons": snap.risk_reasons,
+            }
         if not prefetched:
             return None
         snap: InjuryRiskSnapshot = prefetched[0]
