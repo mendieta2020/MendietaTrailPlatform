@@ -14,6 +14,7 @@ import {
 import client from '../../api/client';
 import { format, parseISO, addMonths, subMonths, isValid, differenceInWeeks } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { unpackResults } from '../../api/pagination';
 
 // --- COLORES PROFESIONALES ---
 const COLORS = {
@@ -66,8 +67,9 @@ const StudentPerformanceChart = ({ alumnoId } = {}) => {
                 const qs = params.toString();
                 const res = await client.get(qs ? `/api/analytics/pmc/?${qs}` : `/api/analytics/pmc/`);
                 if (isMounted) {
-                    if (Array.isArray(res.data)) {
-                        const sanitizedData = res.data.map(item => ({
+                    const rows = unpackResults(res.data);
+                    if (rows.length > 0) {
+                        const sanitizedData = rows.map(item => ({
                             ...item,
                             load: Number(item.load) || 0,
                             dist: Number(item.dist) || 0,
