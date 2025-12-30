@@ -10,6 +10,7 @@ import {
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import client from '../api/client';
+import { unpackResults } from '../api/unpackResults';
 import WeeklyCalendar from '../components/WeeklyCalendar'; 
 import StudentPerformanceChart from '../components/widgets/StudentPerformanceChart'; 
 import TemplateLibrary from '../components/TemplateLibrary'; 
@@ -51,7 +52,7 @@ const AthleteDetail = () => {
 
         // 2. Sus Entrenamientos
         const resTrainings = await client.get(`/api/entrenamientos/?alumno=${id}`);
-        setTrainings(resTrainings.data);
+        setTrainings(unpackResults(resTrainings));
       } catch (err) {
         console.error("Error cargando perfil:", err);
       } finally {

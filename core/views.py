@@ -27,7 +27,7 @@ from .permissions import IsCoachUser
 
 # Importamos Serializadores
 from .serializers import (
-    AlumnoSerializer, EntrenamientoSerializer,
+    AlumnoSerializer, AlumnoDetailSerializer, EntrenamientoSerializer,
     PlantillaEntrenamientoSerializer, CarreraSerializer,
     InscripcionCarreraSerializer, PagoSerializer,
     EquipoSerializer, VideoEjercicioSerializer, ActividadSerializer # <--- NUEVO SERIALIZER IMPORTADO
@@ -190,6 +190,12 @@ class AlumnoViewSet(TenantModelViewSet):
             )
 
         return qs
+
+    def get_serializer_class(self):
+        # Detalle enriquecido (evita N+1 en list al dejar el serializer "liviano")
+        if getattr(self, "action", None) == "retrieve":
+            return AlumnoDetailSerializer
+        return super().get_serializer_class()
 
     def perform_create(self, serializer):
         serializer.save(entrenador=self.request.user)

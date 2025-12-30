@@ -8,6 +8,7 @@ import { Search, Edit, Add, NavigateNext } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import client from '../api/client';
 import RiskBadge from '../components/RiskBadge';
+import { unpackResults } from '../api/unpackResults';
 
 const Athletes = () => {
   const navigate = useNavigate(); // <--- Hook de navegación
@@ -18,7 +19,7 @@ const Athletes = () => {
     const fetchAthletes = async () => {
       try {
         const res = await client.get('/api/alumnos/?include_injury_risk=1');
-        setAthletes(res.data);
+        setAthletes(unpackResults(res));
       } catch (err) {
         console.error(err);
       }
