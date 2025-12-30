@@ -104,24 +104,30 @@ def strava_webhook(request):
             event_uid = hashlib.sha256(uid_raw.encode("utf-8")).hexdigest()[:80]
 
             # Idempotencia (cero duplicados): si ya existe el evento, respondemos OK sin reprocesar.
+            # HARDENING: si NO podemos crear/persistir el evento (DB caído, schema roto, etc),
+            # devolvemos 500 para que Strava reintente.
             try:
-                event, created = StravaWebhookEvent.objects.get_or_create(
-                    provider="strava",
-                    event_uid=event_uid,
-                    defaults={
-                        "object_type": str(object_type or ""),
-                        "object_id": int(object_id or 0),
-                        "aspect_type": str(aspect_type or ""),
-                        "owner_id": int(owner_id or 0),
-                        "subscription_id": int(subscription_id) if subscription_id is not None else None,
-                        "event_time": int(event_time) if event_time is not None else None,
-                        "payload_raw": data,
-                        "status": StravaWebhookEvent.Status.RECEIVED,
-                    },
-                )
-            except IntegrityError:
-                created = False
-                event = StravaWebhookEvent.objects.filter(provider="strava", event_uid=event_uid).first()
+                try:
+                    event, created = StravaWebhookEvent.objects.get_or_create(
+                        provider="strava",
+                        event_uid=event_uid,
+                        defaults={
+                            "object_type": str(object_type or ""),
+                            "object_id": int(object_id or 0),
+                            "aspect_type": str(aspect_type or ""),
+                            "owner_id": int(owner_id or 0),
+                            "subscription_id": int(subscription_id) if subscription_id is not None else None,
+                            "event_time": int(event_time) if event_time is not None else None,
+                            "payload_raw": data,
+                            "status": StravaWebhookEvent.Status.RECEIVED,
+                        },
+                    )
+                except IntegrityError:
+                    created = False
+                    event = StravaWebhookEvent.objects.filter(provider="strava", event_uid=event_uid).first()
+            except Exception:
+                logger.exception("strava_webhook.event_create_failed", extra={"event_uid": event_uid})
+                return HttpResponse(status=500)
 
             duration_ms = int((time.monotonic() - t0) * 1000)
 

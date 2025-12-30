@@ -76,7 +76,7 @@ class VideoEjercicio(models.Model):
 
 # --- EQUIPOS (CLUSTERS DE ENTRENAMIENTO) ---
 class Equipo(models.Model):
-    nombre = models.CharField(max_length=100, unique=True, help_text="Ej: Inicial Calle, Avanzado Montaña")
+    nombre = models.CharField(max_length=100, help_text="Ej: Inicial Calle, Avanzado Montaña")
     descripcion = models.TextField(blank=True, null=True)
     color_identificador = models.CharField(max_length=7, default="#F57C00", help_text="Color Hexadecimal para el calendario")
     # Multi-tenant (coach-scoped): un equipo pertenece a un entrenador (permite equipos vacíos seguros)
@@ -93,6 +93,11 @@ class Equipo(models.Model):
     class Meta:
         verbose_name = "🏆 Equipo / Grupo"
         verbose_name_plural = "🏆 Equipos"
+        constraints = [
+            # SaaS multi-tenant: mismo nombre permitido entre coaches distintos,
+            # pero no repetido dentro del mismo coach.
+            models.UniqueConstraint(fields=["nombre", "entrenador"], name="unique_equipo_per_coach"),
+        ]
 
     def __str__(self):
         return self.nombre
@@ -119,7 +124,7 @@ class Alumno(models.Model):
     # --- DATOS PERSONALES ---
     nombre = models.CharField(max_length=100)
     apellido = models.CharField(max_length=100)
-    email = models.EmailField(unique=True, null=True, blank=True)
+    email = models.EmailField(null=True, blank=True)
     telefono = models.CharField(max_length=20, null=True, blank=True)
     instagram = models.CharField(max_length=50, blank=True, help_text="Usuario sin @")
     ciudad = models.CharField(max_length=50, null=True, blank=True)
@@ -154,6 +159,17 @@ class Alumno(models.Model):
 
     def __str__(self): return f"{self.nombre} {self.apellido}"
 
+    class Meta:
+        constraints = [
+            # SaaS multi-tenant: el mismo email puede existir con entrenadores distintos.
+            # Condición defensiva: permitimos múltiples atletas sin email (NULL) o email vacío ("").
+            models.UniqueConstraint(
+                fields=["email", "entrenador"],
+                condition=Q(email__isnull=False) & ~Q(email=""),
+                name="unique_alumno_email_per_coach",
+            ),
+        ]
+
 # --- MODELO PAGOS ---
 class Pago(models.Model):
     alumno = models.ForeignKey(Alumno, on_delete=models.CASCADE, related_name='pagos')
@@ -168,6 +184,15 @@ class Pago(models.Model):
 
 # --- PLANTILLAS DE ENTRENAMIENTO (LIBRERÍA) ---
 class PlantillaEntrenamiento(models.Model):
+    # SaaS multi-tenant: dueño de la plantilla (coach).
+    entrenador = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="plantillas_entrenamiento",
+        null=True,
+        blank=True,
+        db_index=True,
+    )
     titulo = models.CharField(max_length=200)
     deporte = models.CharField(max_length=20, choices=TIPO_ACTIVIDAD, default='RUN')
     descripcion_global = models.TextField(blank=True) # Resumen visual

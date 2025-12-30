@@ -219,6 +219,9 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated', # 🔒 CERRADO POR DEFECTO
     ),
     'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend'],
+    # SaaS: paginación global por defecto (evita payloads gigantes con 10k+ alumnos).
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 50,
 }
 
 # --- CONFIGURACIÓN JWT (Simple JWT) ---
