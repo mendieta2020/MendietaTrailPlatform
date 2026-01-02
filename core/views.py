@@ -27,7 +27,7 @@ from .permissions import IsCoachUser
 
 # Importamos Serializadores
 from .serializers import (
-    AlumnoSerializer, EntrenamientoSerializer,
+    AlumnoSerializer, AlumnoDetailSerializer, EntrenamientoSerializer,
     PlantillaEntrenamientoSerializer, CarreraSerializer,
     InscripcionCarreraSerializer, PagoSerializer,
     EquipoSerializer, VideoEjercicioSerializer, ActividadSerializer # <--- NUEVO SERIALIZER IMPORTADO
@@ -165,6 +165,12 @@ class AlumnoViewSet(TenantModelViewSet):
     search_fields = ['nombre', 'apellido', 'email', 'ciudad'] 
     filterset_fields = ['estado_actual', 'categoria', 'apto_medico_al_dia', 'equipo'] 
     ordering_fields = ['nombre', 'fecha_ultimo_pago']
+
+    def get_serializer_class(self):
+        # Detalle: incluye métricas agregadas (Semana 2)
+        if getattr(self, "action", None) == "retrieve":
+            return AlumnoDetailSerializer
+        return AlumnoSerializer
 
     def get_queryset(self):
         qs = super().get_queryset().select_related("sync_state")

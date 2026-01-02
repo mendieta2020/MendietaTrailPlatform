@@ -51,7 +51,8 @@ const AthleteDetail = () => {
 
         // 2. Sus Entrenamientos
         const resTrainings = await client.get(`/api/entrenamientos/?alumno=${id}`);
-        setTrainings(resTrainings.data);
+        const data = resTrainings.data.results ? resTrainings.data.results : resTrainings.data;
+        setTrainings(Array.isArray(data) ? data : []);
       } catch (err) {
         console.error("Error cargando perfil:", err);
       } finally {
@@ -114,7 +115,9 @@ const AthleteDetail = () => {
       <Box sx={{ mb: 4 }}>
           {/* El ErrorBoundary atrapa cualquier crash dentro del gráfico y evita la pantalla blanca */}
           <ErrorBoundary height={550}>
-              <StudentPerformanceChart alumnoId={id} />
+              {athlete && athlete.stats_semanales && (
+                <StudentPerformanceChart alumnoId={id} />
+              )}
           </ErrorBoundary>
       </Box>
 
