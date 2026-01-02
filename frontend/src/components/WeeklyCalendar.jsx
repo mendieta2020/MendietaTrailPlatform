@@ -7,7 +7,7 @@ import {
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { 
-    DirectionsRun, PedalBike, Terrain, AccessTime, 
+    DirectionsRun, PedalBike, Terrain, AccessTime, Straighten, LocalFireDepartment, Timer,
     ArrowBackIos, ArrowForwardIos, Today, EmojiEvents
 } from '@mui/icons-material';
 import client from '../api/client';
@@ -16,7 +16,7 @@ import TrainingCardPro from './widgets/TrainingCardPro';
 import EditTrainingModal from './EditTrainingModal';
 import TrainingDetailModal from './TrainingDetailModal'; // <--- IMPORTACIÓN CRÍTICA
 
-const WeeklyCalendar = ({ trainings: initialTrainings }) => {
+const WeeklyCalendar = ({ trainings: initialTrainings, weeklyStats = [] }) => {
   const [trainings, setTrainings] = useState([]); 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [overallCompliance, setOverallCompliance] = useState(0);
@@ -32,6 +32,13 @@ const WeeklyCalendar = ({ trainings: initialTrainings }) => {
     distBike: { planned: 0, actual: 0 },
     elevation: { planned: 0, actual: 0 },
     hours: { planned: 0, actual: 0 },
+  });
+
+  const [activityTotals, setActivityTotals] = useState({
+    km: 0,
+    elev: 0,
+    durMin: 0,
+    kcal: 0,
   });
 
   useEffect(() => {
@@ -79,6 +86,18 @@ const WeeklyCalendar = ({ trainings: initialTrainings }) => {
     setOverallCompliance(globalScore);
 
   }, [currentDate, trainings]);
+
+  // --- TOTALES REALES (ACTIVIDADES) PARA LA SEMANA VISIBLE ---
+  useEffect(() => {
+    const weekKey = format(startOfVisibleWeek, 'yyyy-MM-dd');
+    const row = Array.isArray(weeklyStats) ? weeklyStats.find(w => w.semana_inicio === weekKey) : null;
+    setActivityTotals({
+      km: Number(row?.distancia_total_semana) || 0,
+      elev: Number(row?.desnivel_total_semana) || 0,
+      durMin: Number(row?.duracion_total_semana) || 0,
+      kcal: Number(row?.calorias_totales_semana) || 0,
+    });
+  }, [currentDate, weeklyStats]);
 
   // --- MANEJADORES DE INTERACCIÓN ---
 
@@ -175,6 +194,27 @@ const WeeklyCalendar = ({ trainings: initialTrainings }) => {
         </Grid>
         <Grid item xs={6} md={2.4}>
             <StatGauge title="Desnivel (+)" value={stats.elevation.actual} target={stats.elevation.planned} unit="m" icon={Terrain} color="#10B981" />
+        </Grid>
+      </Grid>
+
+      {/* TOTALES DE ACTIVIDAD (SEMANA SELECCIONADA) */}
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="caption" sx={{ fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          Totales reales (Semana visible)
+        </Typography>
+      </Box>
+      <Grid container spacing={2} sx={{ mb: 4 }}>
+        <Grid item xs={6} md={3}>
+          <StatGauge title="Km" value={activityTotals.km} target={Math.max(1, activityTotals.km)} unit="km" icon={Straighten} color="#06B6D4" />
+        </Grid>
+        <Grid item xs={6} md={3}>
+          <StatGauge title="Desnivel" value={activityTotals.elev} target={Math.max(1, activityTotals.elev)} unit="m" icon={Terrain} color="#7C3AED" />
+        </Grid>
+        <Grid item xs={6} md={3}>
+          <StatGauge title="Duración" value={activityTotals.durMin / 60} target={Math.max(1, activityTotals.durMin / 60)} unit="h" icon={Timer} color="#F59E0B" />
+        </Grid>
+        <Grid item xs={6} md={3}>
+          <StatGauge title="Calorías" value={activityTotals.kcal} target={Math.max(1, activityTotals.kcal)} unit="kcal" icon={LocalFireDepartment} color="#F97316" />
         </Grid>
       </Grid>
 

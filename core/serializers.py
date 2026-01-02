@@ -5,6 +5,13 @@ from .models import (
     Equipo, VideoEjercicio # <--- NUEVO MODELO IMPORTADO
 )
 from analytics.models import InjuryRiskSnapshot
+from analytics.models import DailyActivityAgg
+
+from datetime import timedelta
+
+from django.db.models import Sum, DateField
+from django.db.models.functions import TruncWeek
+from django.utils import timezone
 
 # ==============================================================================
 #  0. GESTIÓN DE EQUIPOS
@@ -148,6 +155,88 @@ class AlumnoSerializer(serializers.ModelSerializer):
             "last_backfill_count": int(st.last_backfill_count or 0),
             "last_error": st.last_error or "",
         }
+
+
+class AlumnoDetailSerializer(AlumnoSerializer):
+    """
+    Serializer de detalle del alumno.
+
+    Incluye series agregadas por semana (Lunes → Domingo) para UX tipo Strava/TrainingPeaks.
+    """
+
+    stats_semanales = serializers.SerializerMethodField()
+
+    def get_stats_semanales(self, obj: Alumno):
+        """
+        Devuelve totales por semana (últimos 8 bloques).
+
+        Campos:
+        - semana_inicio: YYYY-MM-DD (lunes)
+        - semana_fin: YYYY-MM-DD (domingo)
+        - distancia_total_semana: km
+        - desnivel_total_semana: m
+        - duracion_total_semana: min
+        - calorias_totales_semana: kcal
+        """
+        today = timezone.localdate()
+        weeks = int(self.context.get("weeks") or 8)
+        weeks = max(4, min(weeks, 8))  # hard-limit: 4–8
+
+        # Semana ISO: lunes=0 ... domingo=6
+        this_week_start = today - timedelta(days=today.weekday())
+        start_date = this_week_start - timedelta(weeks=weeks - 1)
+
+        # 1) Distancia/Desnivel/Duración vienen del agregado diario materializado (rápido)
+        weekly_aggs = (
+            DailyActivityAgg.objects.filter(alumno_id=obj.id, fecha__gte=start_date, fecha__lte=today)
+            .annotate(week=TruncWeek("fecha", output_field=DateField()))
+            .values("week")
+            .annotate(
+                distance_m=Sum("distance_m"),
+                elev_gain_m=Sum("elev_gain_m"),
+                duration_s=Sum("duration_s"),
+            )
+        )
+        by_week = {r["week"]: r for r in weekly_aggs}
+
+        # 2) Calorías vienen de `Actividad` (nullable) agrupadas por semana
+        weekly_kcal = (
+            Actividad.objects.filter(
+                alumno_id=obj.id,
+                validity=Actividad.Validity.VALID,
+                fecha_inicio__date__gte=start_date,
+                fecha_inicio__date__lte=today,
+            )
+            .annotate(week=TruncWeek("fecha_inicio", output_field=DateField()))
+            .values("week")
+            .annotate(calories_kcal=Sum("calories_kcal"))
+        )
+        kcal_by_week = {r["week"]: r for r in weekly_kcal}
+
+        out = []
+        for i in range(weeks):
+            week_start = start_date + timedelta(weeks=i)
+            week_end = week_start + timedelta(days=6)
+
+            agg = by_week.get(week_start) or {}
+            kcal = kcal_by_week.get(week_start) or {}
+
+            distance_km = float(agg.get("distance_m") or 0.0) / 1000.0
+            elev_m = float(agg.get("elev_gain_m") or 0.0)
+            dur_min = float(agg.get("duration_s") or 0.0) / 60.0
+
+            out.append(
+                {
+                    "semana_inicio": week_start.isoformat(),
+                    "semana_fin": week_end.isoformat(),
+                    "distancia_total_semana": round(distance_km, 2),
+                    "desnivel_total_semana": int(round(elev_m)),
+                    "duracion_total_semana": int(round(dur_min)),
+                    "calorias_totales_semana": int(round(float(kcal.get("calories_kcal") or 0.0))),
+                }
+            )
+
+        return out
 
 # ==============================================================================
 #  4. CARRERAS

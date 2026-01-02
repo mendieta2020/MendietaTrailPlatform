@@ -25,6 +25,8 @@ NON_RUNTIME_COMMANDS = {
     "check",
     "shell",
     "dbshell",
+    # Maintenance / diagnostics (no secrets required)
+    "audit_django_migrations",
     "collectstatic",
     "createsuperuser",
     "loaddata",
