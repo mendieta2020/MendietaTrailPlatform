@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Box, Typography, Paper, Grid, Avatar, Chip, Button, 
-  CircularProgress, Stack, Fab, Drawer 
+  CircularProgress, Stack, Fab, Drawer, ToggleButton, ToggleButtonGroup
 } from '@mui/material';
 import { 
   ArrowBack, Edit, Email, LocationOn, CalendarMonth, FitnessCenter,
@@ -24,6 +24,7 @@ const AthleteDetail = () => {
   const [trainings, setTrainings] = useState([]);
   const [injuryRisk, setInjuryRisk] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [granularity, setGranularity] = useState('DAILY'); // DAILY | WEEKLY
   
   // Estado para la Librería Lateral
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
@@ -112,9 +113,29 @@ const AthleteDetail = () => {
 
       {/* --- SECCIÓN DE ANALYTICS (BLINDADA) --- */}
       <Box sx={{ mb: 4 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+            <ToggleButtonGroup
+              value={granularity}
+              exclusive
+              size="small"
+              onChange={(e, val) => val && setGranularity(val)}
+              sx={{ bgcolor: '#F8FAFC' }}
+            >
+              <ToggleButton value="DAILY" sx={{ textTransform: 'none', fontWeight: 700 }}>
+                Vista: Diaria
+              </ToggleButton>
+              <ToggleButton value="WEEKLY" sx={{ textTransform: 'none', fontWeight: 700 }}>
+                Vista: Semanal
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
           {/* El ErrorBoundary atrapa cualquier crash dentro del gráfico y evita la pantalla blanca */}
           <ErrorBoundary height={550}>
-              <StudentPerformanceChart alumnoId={id} />
+              <StudentPerformanceChart
+                alumnoId={id}
+                granularity={granularity}
+                weeklyStats={athlete?.stats_semanales || []}
+              />
           </ErrorBoundary>
       </Box>
 
@@ -133,7 +154,7 @@ const AthleteDetail = () => {
                 <Typography variant="caption" color="textSecondary">Asigna plantillas desde la librería o crea una sesión individual.</Typography>
             </Paper>
         ) : (
-            <WeeklyCalendar trainings={trainings} />
+            <WeeklyCalendar trainings={trainings} weeklyStats={athlete?.stats_semanales || []} />
         )}
       </Box>
 

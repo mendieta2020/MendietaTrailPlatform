@@ -30,7 +30,7 @@ from .serializers import (
     AlumnoSerializer, EntrenamientoSerializer,
     PlantillaEntrenamientoSerializer, CarreraSerializer,
     InscripcionCarreraSerializer, PagoSerializer,
-    EquipoSerializer, VideoEjercicioSerializer, ActividadSerializer # <--- NUEVO SERIALIZER IMPORTADO
+    EquipoSerializer, VideoEjercicioSerializer, ActividadSerializer, AlumnoDetailSerializer # <--- NUEVO SERIALIZER IMPORTADO
 )
 
 from allauth.socialaccount.models import SocialToken
@@ -190,6 +190,12 @@ class AlumnoViewSet(TenantModelViewSet):
             )
 
         return qs
+
+    def get_serializer_class(self):
+        # Detalle: incluye stats agregadas por semana (compat: lista sigue liviana)
+        if getattr(self, "action", None) == "retrieve":
+            return AlumnoDetailSerializer
+        return super().get_serializer_class()
 
     def perform_create(self, serializer):
         serializer.save(entrenador=self.request.user)
