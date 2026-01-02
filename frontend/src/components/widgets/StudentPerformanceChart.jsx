@@ -99,7 +99,7 @@ const StudentPerformanceChart = ({ alumnoId, granularity = 'DAILY', weeklyStats 
     }, [sport, alumnoId]);
 
     const filterByRange = (rows = []) => {
-        if (!rows.length) return [];
+        if (!Array.isArray(rows) || !rows.length) return [];
         const today = new Date();
         let startDate, endDate;
 
@@ -111,8 +111,14 @@ const StudentPerformanceChart = ({ alumnoId, granularity = 'DAILY', weeklyStats 
         }
 
         return rows.filter(d => {
-            const dDate = parseISO(d.fecha);
-            return isValid(dDate) && dDate >= startDate && dDate <= endDate;
+            const fecha = d?.fecha;
+            if (typeof fecha !== 'string' || !fecha) return false;
+            try {
+                const dDate = parseISO(fecha);
+                return isValid(dDate) && dDate >= startDate && dDate <= endDate;
+            } catch {
+                return false;
+            }
         });
     };
 
@@ -120,10 +126,12 @@ const StudentPerformanceChart = ({ alumnoId, granularity = 'DAILY', weeklyStats 
     const todayStr = new Date().toISOString().split('T')[0];
 
     const weeklyData = Array.isArray(weeklyStats)
-      ? weeklyStats.map(w => ({
-          fecha: w.semana_inicio,
-          semana_inicio: w.semana_inicio,
-          semana_fin: w.semana_fin,
+      ? weeklyStats
+        .filter(w => w && typeof w.semana_inicio === 'string' && w.semana_inicio)
+        .map(w => ({
+          fecha: String(w.semana_inicio || ''),
+          semana_inicio: String(w.semana_inicio || ''),
+          semana_fin: typeof w.semana_fin === 'string' ? w.semana_fin : null,
           is_week: true,
           is_future: false,
           dist: Number(w.distancia_total_semana) || 0,

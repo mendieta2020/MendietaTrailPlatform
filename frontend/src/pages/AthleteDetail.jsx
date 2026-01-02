@@ -35,7 +35,10 @@ const AthleteDetail = () => {
         setLoading(true);
         // 1. Datos del Alumno
         const resAthlete = await client.get(`/api/alumnos/${id}/`);
-        setAthlete(resAthlete.data);
+        const rawAthlete = resAthlete?.data || null;
+        // Blindaje: stats_semanales siempre como array (evita crashes en parseISO/map)
+        const statsSemanales = Array.isArray(rawAthlete?.stats_semanales) ? rawAthlete.stats_semanales : [];
+        setAthlete(rawAthlete ? { ...rawAthlete, stats_semanales: statsSemanales } : null);
 
         // 1.1 Riesgo de lesión (snapshot materializado)
         const resRisk = await client.get(`/api/alumnos/${id}/injury-risk/`);
@@ -55,6 +58,7 @@ const AthleteDetail = () => {
         setTrainings(resTrainings.data);
       } catch (err) {
         console.error("Error cargando perfil:", err);
+        setAthlete(null);
       } finally {
         setLoading(false);
       }
@@ -154,7 +158,9 @@ const AthleteDetail = () => {
                 <Typography variant="caption" color="textSecondary">Asigna plantillas desde la librería o crea una sesión individual.</Typography>
             </Paper>
         ) : (
-            <WeeklyCalendar trainings={trainings} weeklyStats={athlete?.stats_semanales || []} />
+            <ErrorBoundary height={650}>
+              <WeeklyCalendar trainings={trainings} weeklyStats={athlete?.stats_semanales || []} />
+            </ErrorBoundary>
         )}
       </Box>
 
