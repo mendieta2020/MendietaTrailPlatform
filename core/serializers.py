@@ -1,10 +1,14 @@
 from rest_framework import serializers
+from datetime import timedelta
+from django.db.models import Sum, FloatField, IntegerField
+from django.db.models.functions import Coalesce
+from django.utils import timezone
 from .models import (
     Alumno, Carrera, InscripcionCarrera, 
     PlantillaEntrenamiento, Entrenamiento, Actividad, Pago,
     Equipo, VideoEjercicio # <--- NUEVO MODELO IMPORTADO
 )
-from analytics.models import InjuryRiskSnapshot
+from analytics.models import InjuryRiskSnapshot, DailyActivityAgg
 
 # ==============================================================================
 #  0. GESTIÓN DE EQUIPOS
@@ -148,6 +152,76 @@ class AlumnoSerializer(serializers.ModelSerializer):
             "last_backfill_count": int(st.last_backfill_count or 0),
             "last_error": st.last_error or "",
         }
+
+
+class AlumnoDetailSerializer(AlumnoSerializer):
+    """
+    Serializer de detalle (Semana 2): agrega métricas agregadas y series semanales.
+    Blindado contra NULLs / datasets vacíos.
+    """
+
+    stats_semanales = serializers.SerializerMethodField()
+    distancia_total = serializers.SerializerMethodField()
+    desnivel_acumulado = serializers.SerializerMethodField()
+    calorias = serializers.SerializerMethodField()
+
+    def _activity_totals(self, obj):
+        cached = getattr(obj, "_activity_totals_cache", None)
+        if cached is not None:
+            return cached
+
+        totals = Actividad.objects.filter(alumno=obj).aggregate(
+            distancia_m=Coalesce(Sum("distancia"), 0.0, output_field=FloatField()),
+            desnivel_m=Coalesce(Sum("desnivel_positivo"), 0.0, output_field=FloatField()),
+            calorias_kcal=Coalesce(Sum("calories_kcal"), 0.0, output_field=FloatField()),
+        )
+        setattr(obj, "_activity_totals_cache", totals)
+        return totals
+
+    def get_stats_semanales(self, obj):
+        """
+        Serie diaria (últimos 7 días) para gráficos/UX.
+        Devuelve siempre una lista (puede ser vacía).
+        """
+        end = timezone.localdate()
+        start = end - timedelta(days=6)
+
+        qs = (
+            DailyActivityAgg.objects.filter(alumno=obj, fecha__range=[start, end])
+            .values("fecha")
+            .annotate(
+                distance_m=Coalesce(Sum("distance_m"), 0.0, output_field=FloatField()),
+                elev_gain_m=Coalesce(Sum("elev_gain_m"), 0.0, output_field=FloatField()),
+                duration_s=Coalesce(Sum("duration_s"), 0, output_field=IntegerField()),
+                load=Coalesce(Sum("load"), 0.0, output_field=FloatField()),
+            )
+            .order_by("fecha")
+        )
+
+        out = []
+        for row in qs:
+            out.append(
+                {
+                    "fecha": row["fecha"].isoformat(),
+                    "distancia_km": float(row.get("distance_m", 0) or 0) / 1000.0,
+                    "desnivel_m": float(row.get("elev_gain_m", 0) or 0),
+                    "duracion_min": float(row.get("duration_s", 0) or 0) / 60.0,
+                    "carga": float(row.get("load", 0) or 0),
+                }
+            )
+        return out
+
+    def get_distancia_total(self, obj):
+        totals = self._activity_totals(obj) or {}
+        return float(totals.get("distancia_m", 0) or 0) / 1000.0
+
+    def get_desnivel_acumulado(self, obj):
+        totals = self._activity_totals(obj) or {}
+        return float(totals.get("desnivel_m", 0) or 0)
+
+    def get_calorias(self, obj):
+        totals = self._activity_totals(obj) or {}
+        return float(totals.get("calorias_kcal", 0) or 0)
 
 # ==============================================================================
 #  4. CARRERAS
