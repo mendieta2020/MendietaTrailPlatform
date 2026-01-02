@@ -51,7 +51,8 @@ const AthleteDetail = () => {
 
         // 2. Sus Entrenamientos
         const resTrainings = await client.get(`/api/entrenamientos/?alumno=${id}`);
-        setTrainings(resTrainings.data);
+        const trainingsPayload = resTrainings?.data?.results ?? resTrainings?.data;
+        setTrainings(Array.isArray(trainingsPayload) ? trainingsPayload : []);
       } catch (err) {
         console.error("Error cargando perfil:", err);
       } finally {
@@ -63,6 +64,7 @@ const AthleteDetail = () => {
 
   if (loading) return <Layout><Box sx={{ p: 5, textAlign: 'center' }}><CircularProgress /></Box></Layout>;
   if (!athlete) return <Layout><Typography>Atleta no encontrado</Typography></Layout>;
+  if (!athlete?.stats_semanales) return <Layout><Box sx={{ p: 5, textAlign: 'center' }}><CircularProgress /></Box></Layout>;
 
   return (
     <Layout>

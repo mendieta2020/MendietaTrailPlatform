@@ -5,6 +5,8 @@ from datetime import date, timedelta
 from typing import Iterable
 
 from django.db import transaction
+from django.db.models import Sum
+from django.db.models.functions import ExtractIsoWeek, ExtractIsoYear, TruncDate
 from django.utils import timezone
 
 from analytics.models import DailyActivityAgg, HistorialFitness, PMCHistory
@@ -258,4 +260,88 @@ def ensure_pmc_materialized(*, alumno_id: int) -> bool:
     build_daily_aggs_for_alumno(alumno_id=alumno_id, start_date=start)
     recompute_pmc_for_alumno(alumno_id=alumno_id, start_date=start)
     return True
+
+
+def weekly_activity_stats_for_alumno(
+    *,
+    alumno_id: int,
+    weeks: int = 26,
+    end_date: date | None = None,
+    sport_group: str = "ALL",
+) -> list[dict]:
+    """
+    Agrega métricas por semana ISO (YYYY-WW) para UX (vista semanal).
+
+    Contracto estable (frontend-safe):
+    - Siempre devuelve lista (nunca None).
+    - Si no hay datos: [].
+    - Valores numéricos normalizados: km (float), elev_gain_m (int), calories_kcal (int).
+    """
+    try:
+        weeks = int(weeks or 0)
+    except Exception:
+        weeks = 0
+    if weeks <= 0:
+        return []
+
+    end = end_date or timezone.localdate()
+    # Ventana cerrada por semanas completas hacia atrás (aprox), pero agrupamos por ISO week real.
+    start = end - timedelta(days=(weeks * 7) - 1)
+
+    sport_group = str(sport_group or "ALL").upper().strip()
+    if sport_group not in PMC_SPORT_GROUPS:
+        sport_group = "ALL"
+    included_sports = list(PMC_SPORT_GROUPS[sport_group])
+
+    # Sumas por ISO week desde DailyActivityAgg (distancia y desnivel)
+    weekly_aggs = (
+        DailyActivityAgg.objects.filter(
+            alumno_id=int(alumno_id),
+            fecha__range=[start, end],
+            sport__in=included_sports,
+        )
+        .annotate(iso_year=ExtractIsoYear("fecha"), iso_week=ExtractIsoWeek("fecha"))
+        .values("iso_year", "iso_week")
+        .annotate(distance_m=Sum("distance_m"), elev_gain_m=Sum("elev_gain_m"))
+        .order_by("iso_year", "iso_week")
+    )
+
+    # Calorías por ISO week desde Actividad (opcional; algunos atletas no lo tienen)
+    weekly_cals = (
+        Actividad.objects.filter(
+            alumno_id=int(alumno_id),
+            validity=Actividad.Validity.VALID,
+            fecha_inicio__date__range=[start, end],
+        )
+        .annotate(d=TruncDate("fecha_inicio"))
+        .annotate(iso_year=ExtractIsoYear("d"), iso_week=ExtractIsoWeek("d"))
+        .values("iso_year", "iso_week")
+        .annotate(calories_kcal=Sum("calories_kcal"))
+        .order_by("iso_year", "iso_week")
+    )
+    cals_by_week = {(int(r["iso_year"]), int(r["iso_week"])): r.get("calories_kcal") for r in weekly_cals}
+
+    out: list[dict] = []
+    for r in weekly_aggs:
+        y = int(r["iso_year"])
+        w = int(r["iso_week"])
+        week_start = date.fromisocalendar(y, w, 1)
+        week_end = week_start + timedelta(days=6)
+
+        dist_m = float(r.get("distance_m") or 0.0)
+        elev_m = float(r.get("elev_gain_m") or 0.0)
+        calories = cals_by_week.get((y, w), 0)  # None si la suma es NULL
+
+        out.append(
+            {
+                "week": f"{y}-{w:02d}",
+                "range": {"start": week_start.isoformat(), "end": week_end.isoformat()},
+                "km": round(dist_m / 1000.0, 2),
+                "elev_gain_m": int(round(elev_m)),
+                "calories_kcal": int(round(float(calories or 0.0))),
+            }
+        )
+
+    # Si no hay filas de DailyActivityAgg, igual devolvemos [] (no inventamos semanas)
+    return out
 
