@@ -30,16 +30,27 @@ const AthleteDetail = () => {
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
 
   useEffect(() => {
-    const fetchData = async () => {
+    let cancelled = false;
+
+    const fetchAthlete = async () => {
       try {
         setLoading(true);
-        // 1. Datos del Alumno
         const resAthlete = await client.get(`/api/alumnos/${id}/`);
-        setAthlete(resAthlete.data);
+        if (!cancelled) setAthlete(resAthlete.data);
+      } catch (err) {
+        console.error("Error cargando alumno:", err);
+        if (!cancelled) setAthlete(null);
+      } finally {
+        // IMPORTANTE: loading depende SOLO de la carga inicial del alumno
+        if (!cancelled) setLoading(false);
+      }
+    };
 
-        // 1.1 Riesgo de lesión (snapshot materializado)
+    const fetchExtras = async () => {
+      try {
+        // Riesgo de lesión (best-effort, no bloquea pantalla)
         const resRisk = await client.get(`/api/alumnos/${id}/injury-risk/`);
-        // Normalizamos al formato del componente
+        if (cancelled) return;
         if (resRisk?.data?.data_available) {
           setInjuryRisk({
             risk_level: resRisk.data.risk_level,
@@ -49,27 +60,38 @@ const AthleteDetail = () => {
         } else {
           setInjuryRisk(null);
         }
+      } catch (err) {
+        console.error("Error cargando injury risk:", err);
+        if (!cancelled) setInjuryRisk(null);
+      }
 
-        // 2. Sus Entrenamientos
+      try {
+        // Entrenamientos (best-effort, no bloquea pantalla)
         const resTrainings = await client.get(`/api/entrenamientos/?alumno=${id}`);
         const data = resTrainings.data.results || resTrainings.data || [];
-        setTrainings(Array.isArray(data) ? data : []);
+        if (!cancelled) setTrainings(Array.isArray(data) ? data : []);
       } catch (err) {
-        console.error("Error cargando perfil:", err);
-      } finally {
-        setLoading(false);
+        console.error("Error cargando entrenamientos:", err);
+        if (!cancelled) setTrainings([]);
       }
     };
-    fetchData();
+
+    fetchAthlete();
+    fetchExtras();
+
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
-  if (loading || !athlete) {
+  if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 5 }}>
         <CircularProgress />
       </Box>
     );
   }
+  if (!athlete) return <Layout><Typography>Atleta no encontrado</Typography></Layout>;
 
   return (
     <Layout>

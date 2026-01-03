@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { 
-  ComposedChart, Area, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
+  BarChart, Area, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
   Legend, ReferenceLine, ReferenceArea, Cell, Brush 
 } from 'recharts';
 import { 
@@ -56,11 +56,17 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
     const [range, setRange] = useState('SEASON');
 
     const chartWrapRef = useRef(null);
-    const [chartWidth, setChartWidth] = useState(0);
+    // Default fijo para evitar width inválido en el primer render
+    const [chartWidth, setChartWidth] = useState(900);
 
     const safeWeeklyStats = Array.isArray(weeklyStats) ? weeklyStats : [];
     const hasWeeklyStats = safeWeeklyStats.length > 0;
     const isWeekly = String(granularity || 'DAILY').toUpperCase() === 'WEEKLY';
+
+    // En semanal, no arrancamos en PERFORMANCE (no aplica) para evitar panel "vacío"
+    useEffect(() => {
+        if (isWeekly && metric === 'PERFORMANCE') setMetric('DISTANCE');
+    }, [isWeekly, metric]);
 
     useLayoutEffect(() => {
         const el = chartWrapRef.current;
@@ -69,7 +75,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
         const ro = new ResizeObserver((entries) => {
             const w = Math.floor(entries?.[0]?.contentRect?.width || 0);
             // Evita negativos / 0 intermitentes que rompen Recharts
-            if (w > 0) setChartWidth(w);
+            if (w > 0) setChartWidth(Math.max(320, w));
         });
         ro.observe(el);
         return () => ro.disconnect();
@@ -408,18 +414,13 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
 
             {/* Sin ResponsiveContainer: ancho medido por ResizeObserver */}
             <Box ref={chartWrapRef} sx={{ width: '100%', height: 400, minHeight: 400, position: 'relative' }}>
-                {chartWidth <= 0 ? (
-                    <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <CircularProgress size={22} />
-                    </Box>
-                ) : (
-                    <ComposedChart
+                <BarChart
                         key={`${String(granularity || 'DAILY')}-${metric}-${sport}-${range}`}
-                        width={chartWidth}
+                        width={Math.max(320, Number(chartWidth) || 900)}
                         height={400}
                         data={isWeekly ? weeklyChartData : filteredData}
                         margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
-                    >
+                >
                     <defs>
                         <linearGradient id="colorCtl" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={COLORS.FITNESS} stopOpacity={0.2}/><stop offset="95%" stopColor={COLORS.FITNESS} stopOpacity={0}/></linearGradient>
                         <linearGradient id="colorElev" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={COLORS.ELEV_POS} stopOpacity={0.4}/><stop offset="95%" stopColor={COLORS.ELEV_POS} stopOpacity={0.1}/></linearGradient>
@@ -475,8 +476,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
                     {!isWeekly && filteredData.length > 0 && (
                          <Brush dataKey="fecha" height={20} stroke={COLORS.GRID} startIndex={startIndex} tickFormatter={(str) => safeFormat(str, 'MMM')}/>
                     )}
-                    </ComposedChart>
-                )}
+                </BarChart>
             </Box>
         </Paper>
     );
