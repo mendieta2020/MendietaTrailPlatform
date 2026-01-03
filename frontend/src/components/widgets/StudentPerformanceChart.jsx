@@ -48,7 +48,7 @@ const safeFormat = (dateStr, formatStr) => {
     } catch { return ''; }
 };
 
-const StudentPerformanceChart = ({ alumnoId, weeklyStats } = {}) => {
+const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) => {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [metric, setMetric] = useState('PERFORMANCE');
@@ -57,6 +57,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats } = {}) => {
 
     const safeWeeklyStats = Array.isArray(weeklyStats) ? weeklyStats : [];
     const hasWeeklyStats = safeWeeklyStats.length > 0;
+    const isWeekly = String(granularity || 'DAILY').toUpperCase() === 'WEEKLY';
 
     useEffect(() => {
         let isMounted = true;
@@ -119,6 +120,49 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats } = {}) => {
     };
 
     const filteredData = getFilteredData();
+
+    const getFilteredWeeklyData = () => {
+        if (!hasWeeklyStats) return [];
+        const today = new Date();
+        let startDate, endDate;
+
+        switch (range) {
+            case '3M': startDate = subMonths(today, 3); endDate = addMonths(today, 1); break;
+            case 'SEASON': startDate = subMonths(today, 6); endDate = addMonths(today, 6); break;
+            case '1Y': startDate = subMonths(today, 12); endDate = addMonths(today, 6); break;
+            default: startDate = subMonths(today, 6); endDate = addMonths(today, 6);
+        }
+
+        const mapped = safeWeeklyStats
+            .map((w) => ({
+                week: w?.week,
+                range_start: w?.range?.start,
+                range_end: w?.range?.end,
+                km: Number(w?.km) || 0,
+                elev_gain_m: Number(w?.elev_gain_m) || 0,
+                calories_kcal: Number(w?.calories_kcal) || 0,
+            }))
+            .filter((w) => w.week && w.range_end);
+
+        mapped.sort((a, b) => {
+            try {
+                return parseISO(a.range_end).getTime() - parseISO(b.range_end).getTime();
+            } catch {
+                return String(a.week).localeCompare(String(b.week));
+            }
+        });
+
+        return mapped.filter((w) => {
+            try {
+                const d = parseISO(w.range_end);
+                return isValid(d) && d >= startDate && d <= endDate;
+            } catch {
+                return false;
+            }
+        });
+    };
+
+    const filteredWeeklyData = getFilteredWeeklyData();
     const races = filteredData.filter(d => d.race);
     const todayStr = new Date().toISOString().split('T')[0];
     
@@ -134,8 +178,18 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats } = {}) => {
 
     if (loading) return <Paper elevation={0} sx={{ p: 4, display:'flex', justifyContent:'center', borderRadius: 3, height: 500, border: '1px solid #E2E8F0' }}><CircularProgress /></Paper>;
     
+    if (isWeekly && metric === 'PERFORMANCE') {
+        return (
+            <Paper elevation={0} sx={{ p: 4, textAlign:'center', borderRadius: 3, height: 500, border: '1px solid #E2E8F0', bgcolor: '#F8FAFC', display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center' }}>
+                <AutoGraph sx={{ fontSize: 60, color: '#CBD5E1', mb: 2 }} />
+                <Typography color="textSecondary" fontWeight="bold">Sin datos</Typography>
+                <Typography variant="caption" color="textSecondary">La vista semanal aplica a Km/Desnivel/Kcal.</Typography>
+            </Paper>
+        );
+    }
+
     // Estado vacío seguro
-    if (!data.length) return (
+    if ((!isWeekly && !data.length) || (isWeekly && !filteredWeeklyData.length)) return (
         <Paper elevation={0} sx={{ p: 4, textAlign:'center', borderRadius: 3, height: 500, border: '1px solid #E2E8F0', bgcolor: '#F8FAFC', display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center' }}>
             <AutoGraph sx={{ fontSize: 60, color: '#CBD5E1', mb: 2 }} />
             <Typography color="textSecondary" fontWeight="bold">Sin datos</Typography>
@@ -240,32 +294,57 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats } = {}) => {
             )}
 
             <ResponsiveContainer width="100%" height="80%">
-                <ComposedChart data={filteredData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                <ComposedChart data={isWeekly ? filteredWeeklyData : filteredData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                     <defs>
                         <linearGradient id="colorCtl" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={COLORS.FITNESS} stopOpacity={0.2}/><stop offset="95%" stopColor={COLORS.FITNESS} stopOpacity={0}/></linearGradient>
                         <linearGradient id="colorElev" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={COLORS.ELEV_POS} stopOpacity={0.4}/><stop offset="95%" stopColor={COLORS.ELEV_POS} stopOpacity={0.1}/></linearGradient>
                         <linearGradient id="colorNeg" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={COLORS.ELEV_NEG} stopOpacity={0.2}/><stop offset="95%" stopColor={COLORS.ELEV_NEG} stopOpacity={0.0}/></linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.GRID} />
-                    <XAxis dataKey="fecha" tickFormatter={(str) => safeFormat(str, 'd MMM')} tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} minTickGap={40} />
+                    <XAxis
+                        dataKey={isWeekly ? "week" : "fecha"}
+                        tickFormatter={(str) => (isWeekly ? String(str || "") : safeFormat(str, 'd MMM'))}
+                        tick={{ fontSize: 10, fill: '#94A3B8' }}
+                        tickLine={false}
+                        axisLine={false}
+                        minTickGap={40}
+                    />
                     <YAxis yAxisId="left" tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
                     <YAxis yAxisId="right" orientation="right" hide />
-                    <Tooltip content={<CustomTooltip />} />
+                    <Tooltip content={isWeekly ? undefined : <CustomTooltip />} />
                     <Legend wrapperStyle={{ paddingTop: '10px' }} iconType="circle"/>
-                    <ReferenceArea x1={todayStr} ifOverflow="extendDomain" fill="rgba(241, 245, 249, 0.5)" />
+                    {!isWeekly && <ReferenceArea x1={todayStr} ifOverflow="extendDomain" fill="rgba(241, 245, 249, 0.5)" />}
 
-                    {metric === 'PERFORMANCE' && (<><Bar yAxisId="left" dataKey="load" name="Carga" barSize={4} fill="#94A3B8" opacity={0.3} /><Area yAxisId="left" type="monotone" dataKey="ctl" name="Fitness" stroke={COLORS.FITNESS} strokeWidth={3} fill="url(#colorCtl)" dot={false} /><Line yAxisId="left" type="monotone" dataKey="atl" name="Fatiga" stroke={COLORS.FATIGUE} strokeWidth={2} dot={false} strokeDasharray="3 3" /><Line yAxisId="right" type="monotone" dataKey="tsb" name="Forma" stroke={COLORS.FORM} strokeWidth={2} dot={false} /></>)}
+                    {!isWeekly && metric === 'PERFORMANCE' && (<><Bar yAxisId="left" dataKey="load" name="Carga" barSize={4} fill="#94A3B8" opacity={0.3} /><Area yAxisId="left" type="monotone" dataKey="ctl" name="Fitness" stroke={COLORS.FITNESS} strokeWidth={3} fill="url(#colorCtl)" dot={false} /><Line yAxisId="left" type="monotone" dataKey="atl" name="Fatiga" stroke={COLORS.FATIGUE} strokeWidth={2} dot={false} strokeDasharray="3 3" /><Line yAxisId="right" type="monotone" dataKey="tsb" name="Forma" stroke={COLORS.FORM} strokeWidth={2} dot={false} /></>)}
                     
-                    {metric === 'DISTANCE' && (<Bar yAxisId="left" dataKey="dist" name="Distancia (km)" barSize={8} radius={[2, 2, 0, 0]}>{filteredData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.is_future ? COLORS.BAR_PLAN : COLORS.BAR_REAL} />))}</Bar>)}
+                    {metric === 'DISTANCE' && (
+                        isWeekly ? (
+                            <Bar yAxisId="left" dataKey="km" name="Distancia (km)" barSize={10} radius={[2, 2, 0, 0]} fill={COLORS.BAR_REAL} />
+                        ) : (
+                            <Bar yAxisId="left" dataKey="dist" name="Distancia (km)" barSize={8} radius={[2, 2, 0, 0]}>{filteredData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.is_future ? COLORS.BAR_PLAN : COLORS.BAR_REAL} />))}</Bar>
+                        )
+                    )}
                     
-                    {metric === 'TIME' && (<><Bar yAxisId="left" dataKey="time" name="Tiempo (min)" barSize={8} radius={[2, 2, 0, 0]}>{filteredData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.is_future ? COLORS.TIME_PLAN : COLORS.TIME_REAL} />))}</Bar><Line yAxisId="right" type="monotone" dataKey="calories" name="Kcal" stroke={COLORS.CALORIES} strokeWidth={2} dot={false} /></>)}
+                    {metric === 'TIME' && (
+                        isWeekly ? (
+                            <Bar yAxisId="left" dataKey="calories_kcal" name="Kcal" barSize={10} radius={[2, 2, 0, 0]} fill={COLORS.CALORIES} />
+                        ) : (
+                            <><Bar yAxisId="left" dataKey="time" name="Tiempo (min)" barSize={8} radius={[2, 2, 0, 0]}>{filteredData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.is_future ? COLORS.TIME_PLAN : COLORS.TIME_REAL} />))}</Bar><Line yAxisId="right" type="monotone" dataKey="calories" name="Kcal" stroke={COLORS.CALORIES} strokeWidth={2} dot={false} /></>
+                        )
+                    )}
 
-                    {metric === 'ELEVATION' && (<><Area yAxisId="left" type="monotone" dataKey="elev_gain" name="Desnivel +" stroke={COLORS.ELEV_POS} fill="url(#colorElev)" /><Area yAxisId="left" type="monotone" dataKey="elev_loss_plot" name="Desnivel -" stroke={COLORS.ELEV_NEG} fill="url(#colorNeg)" /></>)}
+                    {metric === 'ELEVATION' && (
+                        isWeekly ? (
+                            <Bar yAxisId="left" dataKey="elev_gain_m" name="Desnivel +" barSize={10} radius={[2, 2, 0, 0]} fill={COLORS.ELEV_POS} />
+                        ) : (
+                            <><Area yAxisId="left" type="monotone" dataKey="elev_gain" name="Desnivel +" stroke={COLORS.ELEV_POS} fill="url(#colorElev)" /><Area yAxisId="left" type="monotone" dataKey="elev_loss_plot" name="Desnivel -" stroke={COLORS.ELEV_NEG} fill="url(#colorNeg)" /></>
+                        )
+                    )}
 
-                    <ReferenceLine yAxisId="left" x={todayStr} stroke={COLORS.TODAY_LINE} strokeDasharray="3 3" />
-                    {races.map((race, idx) => (<ReferenceLine yAxisId="left" key={idx} x={race.fecha} stroke="#EF4444" strokeWidth={2} strokeDasharray="3 3" label={{ position: 'top', value: '🏁', fontSize: 20 }} />))}
+                    {!isWeekly && <ReferenceLine yAxisId="left" x={todayStr} stroke={COLORS.TODAY_LINE} strokeDasharray="3 3" />}
+                    {!isWeekly && races.map((race, idx) => (<ReferenceLine yAxisId="left" key={idx} x={race.fecha} stroke="#EF4444" strokeWidth={2} strokeDasharray="3 3" label={{ position: 'top', value: '🏁', fontSize: 20 }} />))}
                     
-                    {filteredData.length > 0 && (
+                    {!isWeekly && filteredData.length > 0 && (
                          <Brush dataKey="fecha" height={20} stroke={COLORS.GRID} startIndex={startIndex} tickFormatter={(str) => safeFormat(str, 'MMM')}/>
                     )}
                 </ComposedChart>
