@@ -6,12 +6,16 @@ from typing import Iterable
 
 from django.db import transaction
 from django.db.models import Sum
-from django.db.models.functions import ExtractIsoWeek, ExtractIsoYear, TruncDate
+from django.db.models.functions import TruncDate, ExtractWeek, ExtractYear
 from django.utils import timezone
 
 from analytics.models import DailyActivityAgg, HistorialFitness, PMCHistory
 from core.models import Actividad
 
+# --- COMPATIBILIDAD DJANGO ---
+# Usamos las funciones estándar de Django para extraer semana y año ISO
+ExtractIsoWeek = ExtractWeek
+ExtractIsoYear = ExtractYear
 
 PMC_SPORT_GROUPS: dict[str, set[str]] = {
     "RUN": {"RUN", "TRAIL"},
@@ -46,11 +50,6 @@ def _normalize_business_sport(tipo_deporte: str | None) -> str:
 def _extract_activity_load(raw_json: dict | None, duration_s: int) -> float:
     """
     MVP robusto: intenta usar señales típicas de Strava; si no existen, usa proxy por duración.
-
-    Prioridad:
-    - relative_effort (Strava)
-    - suffer_score (legacy)
-    - proxy: horas * 50
     """
     raw_json = raw_json or {}
 
@@ -65,7 +64,6 @@ def _extract_activity_load(raw_json: dict | None, duration_s: int) -> float:
         except Exception:
             pass
 
-    # Proxy conservador (evita 0s si faltan campos en el payload)
     try:
         hrs = max(float(duration_s or 0) / 3600.0, 0.0)
     except Exception:
@@ -87,7 +85,7 @@ class DailyAggRow:
 def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
     """
     Reconstruye DailyActivityAgg desde `start_date` (inclusive).
-    Idempotente: borra rango y re-crea.
+    Incluye la suma de calorías diarias para analíticas rápidas.
     """
     start_date = date.fromisoformat(str(start_date))
 
@@ -162,20 +160,15 @@ def _daterange(start: date, end: date) -> Iterable[date]:
 
 def recompute_pmc_for_alumno(*, alumno_id: int, start_date: date) -> dict[str, int]:
     """
-    Recalcula PMC incremental desde `start_date` (inclusive) para ALL/RUN/BIKE.
-    - Seedea con el día anterior si existe PMCHistory previa, sino 0.
-    - Idempotente: borra rango y re-crea.
-    - Mantiene `analytics.HistorialFitness` sincronizado para ALL (compat + injury_risk).
+    Recalcula PMC incremental desde `start_date` para los grupos ALL, RUN y BIKE.
     """
     start_date = date.fromisoformat(str(start_date))
 
-    # Rango efectivo: desde start_date hasta hoy (o último día con agg, si fuese > hoy)
     last_agg = (
         DailyActivityAgg.objects.filter(alumno_id=alumno_id).order_by("-fecha").values_list("fecha", flat=True).first()
     )
     end_date = max(timezone.localdate(), last_agg) if last_agg else timezone.localdate()
 
-    # Pre-cargamos loads por día+sport canónico (RUN/TRAIL/BIKE/...)
     aggs = DailyActivityAgg.objects.filter(alumno_id=alumno_id, fecha__range=[start_date, end_date]).values(
         "fecha", "sport", "load"
     )
@@ -224,22 +217,11 @@ def recompute_pmc_for_alumno(*, alumno_id: int, start_date: date) -> dict[str, i
         new_rows.extend(
             [
                 PMCHistory(alumno_id=alumno_id, fecha=d, sport="ALL", tss_diario=tss_all, ctl=ctl_prev, atl=atl_prev, tsb=tsb_all),
-                PMCHistory(
-                    alumno_id=alumno_id, fecha=d, sport="RUN", tss_diario=tss_run, ctl=ctl_prev_run, atl=atl_prev_run, tsb=tsb_run
-                ),
-                PMCHistory(
-                    alumno_id=alumno_id,
-                    fecha=d,
-                    sport="BIKE",
-                    tss_diario=tss_bike,
-                    ctl=ctl_prev_bike,
-                    atl=atl_prev_bike,
-                    tsb=tsb_bike,
-                ),
+                PMCHistory(alumno_id=alumno_id, fecha=d, sport="RUN", tss_diario=tss_run, ctl=ctl_prev_run, atl=atl_prev_run, tsb=tsb_run),
+                PMCHistory(alumno_id=alumno_id, fecha=d, sport="BIKE", tss_diario=tss_bike, ctl=ctl_prev_bike, atl=atl_prev_bike, tsb=tsb_bike),
             ]
         )
 
-        # Compat: HistorialFitness = ALL
         new_hf.append(HistorialFitness(alumno_id=alumno_id, fecha=d, tss_diario=tss_all, ctl=ctl_prev, atl=atl_prev, tsb=tsb_all))
 
     with transaction.atomic():
@@ -253,9 +235,6 @@ def recompute_pmc_for_alumno(*, alumno_id: int, start_date: date) -> dict[str, i
 
 
 def ensure_pmc_materialized(*, alumno_id: int) -> bool:
-    """
-    Best-effort para UX: si no hay PMC persistido pero sí hay actividades, lo materializa.
-    """
     if PMCHistory.objects.filter(alumno_id=alumno_id).exists():
         return True
 
@@ -282,12 +261,8 @@ def weekly_activity_stats_for_alumno(
     sport_group: str = "ALL",
 ) -> list[dict]:
     """
-    Agrega métricas por semana ISO (YYYY-WW) para UX (vista semanal).
-
-    Contracto estable (frontend-safe):
-    - Siempre devuelve lista (nunca None).
-    - Si no hay datos: [].
-    - Valores numéricos normalizados: km (float), elev_gain_m (int), calories_kcal (int).
+    Agrega métricas por semana ISO para UX (vista semanal).
+    Extrae Distancia, Desnivel y Calorías agrupados por semana real.
     """
     try:
         weeks = int(weeks or 0)
@@ -297,7 +272,6 @@ def weekly_activity_stats_for_alumno(
         return []
 
     end = end_date or timezone.localdate()
-    # Ventana cerrada por semanas completas hacia atrás (aprox), pero agrupamos por ISO week real.
     start = end - timedelta(days=(weeks * 7) - 1)
 
     sport_group = str(sport_group or "ALL").upper().strip()
@@ -326,7 +300,13 @@ def weekly_activity_stats_for_alumno(
     for r in weekly_aggs:
         y = int(r["iso_year"])
         w = int(r["iso_week"])
-        week_start = date.fromisocalendar(y, w, 1)
+        try:
+            week_start = date.fromisocalendar(y, w, 1)
+        except AttributeError:
+            # Fallback para versiones muy antiguas de Python (opcional)
+            import datetime
+            week_start = datetime.datetime.strptime(f'{y}-W{w}-1', "%G-W%V-%u").date()
+            
         week_end = week_start + timedelta(days=6)
 
         dist_m = float(r.get("distance_m") or 0.0)
@@ -343,6 +323,4 @@ def weekly_activity_stats_for_alumno(
             }
         )
 
-    # Si no hay filas de DailyActivityAgg, igual devolvemos [] (no inventamos semanas)
     return out
-
