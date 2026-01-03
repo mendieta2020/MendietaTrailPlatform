@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { 
   ComposedChart, Area, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
-  ResponsiveContainer, Legend, ReferenceLine, ReferenceArea, Cell, Brush 
+  Legend, ReferenceLine, ReferenceArea, Cell, Brush 
 } from 'recharts';
 import { 
     Box, Paper, Typography, CircularProgress, Chip, MenuItem, Select, FormControl, 
@@ -55,15 +55,31 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
     const [sport, setSport] = useState('ALL'); 
     const [range, setRange] = useState('SEASON');
 
+    const chartWrapRef = useRef(null);
+    const [chartWidth, setChartWidth] = useState(0);
+
     const safeWeeklyStats = Array.isArray(weeklyStats) ? weeklyStats : [];
     const hasWeeklyStats = safeWeeklyStats.length > 0;
     const isWeekly = String(granularity || 'DAILY').toUpperCase() === 'WEEKLY';
+
+    useLayoutEffect(() => {
+        const el = chartWrapRef.current;
+        if (!el) return;
+
+        const ro = new ResizeObserver((entries) => {
+            const w = Math.floor(entries?.[0]?.contentRect?.width || 0);
+            // Evita negativos / 0 intermitentes que rompen Recharts
+            if (w > 0) setChartWidth(w);
+        });
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
 
     useEffect(() => {
         if (isWeekly) {
             // Debug visual solicitado: verificar payload semanal antes de dibujar
             // eslint-disable-next-line no-console
-            console.log('Semanal Data:', safeWeeklyStats);
+            console.log('Métrica Semanal:', safeWeeklyStats[0]);
         }
     }, [isWeekly, safeWeeklyStats]);
 
@@ -175,6 +191,43 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
     const filteredWeeklyData = getFilteredWeeklyData();
     const races = filteredData.filter(d => d.race);
     const todayStr = new Date().toISOString().split('T')[0];
+
+    // En semanal, calculamos duración semanal desde datos diarios (PMC) para evitar 0
+    const weeklyChartData = isWeekly
+        ? filteredWeeklyData.map((w) => {
+            const startStr = w.range_start;
+            const endStr = w.range_end;
+            let timeMin = Number(w.time_min) || 0;
+            if (timeMin === 0 && startStr && endStr && filteredData.length) {
+                try {
+                    const start = parseISO(startStr);
+                    const end = parseISO(endStr);
+                    if (isValid(start) && isValid(end)) {
+                        let sum = 0;
+                        for (const d of filteredData) {
+                            try {
+                                const dd = parseISO(d.fecha);
+                                if (isValid(dd) && dd >= start && dd <= end && !d.is_future) {
+                                    sum += Number(d.time) || 0; // minutos
+                                }
+                            } catch {
+                                // ignore
+                            }
+                        }
+                        timeMin = Math.round(sum);
+                    }
+                } catch {
+                    // ignore
+                }
+            }
+            return {
+                ...w,
+                // Aseguramos keys correctas (no NaN)
+                calories_kcal: Math.round(Number(w.calories_kcal) || 0),
+                time_min: Math.round(Number(timeMin) || 0),
+            };
+        })
+        : [];
     
     // Próximo objetivo
     let nextRace = null, weeksToRace = null;
@@ -353,16 +406,18 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
                 </Typography>
             )}
 
-            {/* Fijamos dimensiones para evitar width:-1 en consola */}
-            <div style={{ width: '100%', height: '400px', position: 'relative' }}>
-                <ResponsiveContainer
-                    key={`${String(granularity || 'DAILY')}-${metric}-${sport}-${range}`}
-                    width="100%"
-                    height="100%"
-                >
+            {/* Sin ResponsiveContainer: ancho medido por ResizeObserver */}
+            <Box ref={chartWrapRef} sx={{ width: '100%', height: 400, minHeight: 400, position: 'relative' }}>
+                {chartWidth <= 0 ? (
+                    <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <CircularProgress size={22} />
+                    </Box>
+                ) : (
                     <ComposedChart
                         key={`${String(granularity || 'DAILY')}-${metric}-${sport}-${range}`}
-                        data={isWeekly ? filteredWeeklyData : filteredData}
+                        width={chartWidth}
+                        height={400}
+                        data={isWeekly ? weeklyChartData : filteredData}
                         margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
                     >
                     <defs>
@@ -421,8 +476,8 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
                          <Brush dataKey="fecha" height={20} stroke={COLORS.GRID} startIndex={startIndex} tickFormatter={(str) => safeFormat(str, 'MMM')}/>
                     )}
                     </ComposedChart>
-                </ResponsiveContainer>
-            </div>
+                )}
+            </Box>
         </Paper>
     );
 };

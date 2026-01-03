@@ -6,6 +6,7 @@ from .models import (
 )
 from analytics.models import InjuryRiskSnapshot
 from analytics.pmc_engine import weekly_activity_stats_for_alumno
+from analytics.serializers import WeeklyActivityStatSerializer
 
 # ==============================================================================
 #  0. GESTIÓN DE EQUIPOS
@@ -162,7 +163,9 @@ class AlumnoSerializer(serializers.ModelSerializer):
         if view is not None and getattr(view, "action", None) not in (None, "retrieve"):
             return []
         try:
-            return weekly_activity_stats_for_alumno(alumno_id=obj.id, weeks=26) or []
+            stats = weekly_activity_stats_for_alumno(alumno_id=obj.id, weeks=26) or []
+            # Serializer explícito: asegura keys (incluyendo calories_kcal)
+            return WeeklyActivityStatSerializer(stats, many=True).data
         except Exception:
             return []
 
