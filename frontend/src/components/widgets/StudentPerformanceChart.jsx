@@ -60,6 +60,14 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
     const isWeekly = String(granularity || 'DAILY').toUpperCase() === 'WEEKLY';
 
     useEffect(() => {
+        if (isWeekly) {
+            // Debug visual solicitado: verificar payload semanal antes de dibujar
+            // eslint-disable-next-line no-console
+            console.log('Semanal Data:', safeWeeklyStats);
+        }
+    }, [isWeekly, safeWeeklyStats]);
+
+    useEffect(() => {
         let isMounted = true;
         const fetchData = async () => {
             try {
@@ -141,6 +149,8 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
                 km: Number(w?.km) || 0,
                 elev_gain_m: Math.round(Number(w?.elev_gain_m) || 0),
                 calories_kcal: Math.round(Number(w?.calories_kcal) || 0),
+                // Si el backend agrega duración semanal en el futuro, la mostramos; si no, 0 (no rompe).
+                time_min: Math.round(Number(w?.time_min ?? w?.duration_min ?? w?.duration ?? 0) || 0),
             }))
             .filter((w) => w.week && w.range_end);
 
@@ -264,6 +274,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
         const p = payload[0]?.payload || {};
         const weekLabel = label || p.week;
         const kcal = Math.round(Number(p.calories_kcal) || 0);
+        const tmin = Math.round(Number(p.time_min) || 0);
 
         return (
             <Paper sx={{ p: 2, bgcolor: COLORS.TOOLTIP_BG, color: 'white', borderRadius: 2, minWidth: 240, boxShadow: '0 8px 32px rgba(0,0,0,0.5)', zIndex: 9999 }}>
@@ -274,14 +285,24 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
                     <Chip label="SEMANA" size="small" sx={{ ml: 1, height: 18, fontSize: '0.6rem', bgcolor:'rgba(255,255,255,0.2)', color:'white' }} />
                 </Box>
                 {metric === 'TIME' && (
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Typography variant="caption" sx={{ color: COLORS.CALORIES, opacity: 0.95 }}>
-                            Calorías Totales
-                        </Typography>
-                        <Typography variant="caption" fontWeight="bold" sx={{ color: 'white' }}>
-                            {kcal} kcal
-                        </Typography>
-                    </Box>
+                    <Stack spacing={0.75}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.75)' }}>
+                                Duración Total
+                            </Typography>
+                            <Typography variant="caption" fontWeight="bold" sx={{ color: 'white' }}>
+                                {tmin} min
+                            </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Typography variant="caption" sx={{ color: COLORS.CALORIES, opacity: 0.95 }}>
+                                Calorías Totales
+                            </Typography>
+                            <Typography variant="caption" fontWeight="bold" sx={{ color: 'white' }}>
+                                {kcal} kcal
+                            </Typography>
+                        </Box>
+                    </Stack>
                 )}
             </Paper>
         );
@@ -321,8 +342,10 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
                 </Typography>
             )}
 
-            <ResponsiveContainer width="100%" height="80%">
-                <ComposedChart data={isWeekly ? filteredWeeklyData : filteredData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+            {/* Fijamos dimensiones para evitar width:-1 en consola */}
+            <Box sx={{ width: '100%', height: 420, minWidth: 0 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={isWeekly ? filteredWeeklyData : filteredData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                     <defs>
                         <linearGradient id="colorCtl" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={COLORS.FITNESS} stopOpacity={0.2}/><stop offset="95%" stopColor={COLORS.FITNESS} stopOpacity={0}/></linearGradient>
                         <linearGradient id="colorElev" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={COLORS.ELEV_POS} stopOpacity={0.4}/><stop offset="95%" stopColor={COLORS.ELEV_POS} stopOpacity={0.1}/></linearGradient>
@@ -338,7 +361,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
                         minTickGap={40}
                     />
                     <YAxis yAxisId="left" tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
-                    <YAxis yAxisId="right" orientation="right" hide />
+                    <YAxis yAxisId="right" orientation="right" hide={!(isWeekly && metric === 'TIME')} tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
                     <Tooltip content={isWeekly ? <WeeklyTooltip /> : <CustomTooltip />} />
                     <Legend wrapperStyle={{ paddingTop: '10px' }} iconType="circle"/>
                     {!isWeekly && <ReferenceArea x1={todayStr} ifOverflow="extendDomain" fill="rgba(241, 245, 249, 0.5)" />}
@@ -355,7 +378,10 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
                     
                     {metric === 'TIME' && (
                         isWeekly ? (
-                            <Bar yAxisId="left" dataKey="calories_kcal" name="Calorías (kcal)" barSize={10} radius={[2, 2, 0, 0]} fill={COLORS.CALORIES} />
+                            <>
+                                <Bar yAxisId="left" dataKey="time_min" name="Duración (min)" barSize={10} radius={[2, 2, 0, 0]} fill="#475569" />
+                                <Bar yAxisId="right" dataKey="calories_kcal" name="Calorías (kcal)" barSize={10} radius={[2, 2, 0, 0]} fill={COLORS.CALORIES} />
+                            </>
                         ) : (
                             <><Bar yAxisId="left" dataKey="time" name="Tiempo (min)" barSize={8} radius={[2, 2, 0, 0]}>{filteredData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.is_future ? COLORS.TIME_PLAN : COLORS.TIME_REAL} />))}</Bar><Line yAxisId="right" type="monotone" dataKey="calories" name="Kcal" stroke={COLORS.CALORIES} strokeWidth={2} dot={false} /></>
                         )
@@ -375,8 +401,9 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
                     {!isWeekly && filteredData.length > 0 && (
                          <Brush dataKey="fecha" height={20} stroke={COLORS.GRID} startIndex={startIndex} tickFormatter={(str) => safeFormat(str, 'MMM')}/>
                     )}
-                </ComposedChart>
-            </ResponsiveContainer>
+                    </ComposedChart>
+                </ResponsiveContainer>
+            </Box>
         </Paper>
     );
 };
