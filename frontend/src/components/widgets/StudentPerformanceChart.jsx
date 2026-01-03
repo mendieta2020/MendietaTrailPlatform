@@ -26,7 +26,7 @@ const COLORS = {
     TIME_PLAN: '#FEF3C7',  
     ELEV_POS: '#7C3AED',   
     ELEV_NEG: '#EF4444',   
-    CALORIES: '#F97316',   
+    CALORIES: '#FF8C00',
     TODAY_LINE: '#EF4444',
     GRID: '#F1F5F9',
     TOOLTIP_BG: 'rgba(15, 23, 42, 0.98)'
@@ -139,8 +139,8 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
                 range_start: w?.range?.start,
                 range_end: w?.range?.end,
                 km: Number(w?.km) || 0,
-                elev_gain_m: Number(w?.elev_gain_m) || 0,
-                calories_kcal: Number(w?.calories_kcal) || 0,
+                elev_gain_m: Math.round(Number(w?.elev_gain_m) || 0),
+                calories_kcal: Math.round(Number(w?.calories_kcal) || 0),
             }))
             .filter((w) => w.week && w.range_end);
 
@@ -259,6 +259,34 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
         return null;
     };
 
+    const WeeklyTooltip = ({ active, payload, label }) => {
+        if (!active || !payload || !payload.length) return null;
+        const p = payload[0]?.payload || {};
+        const weekLabel = label || p.week;
+        const kcal = Math.round(Number(p.calories_kcal) || 0);
+
+        return (
+            <Paper sx={{ p: 2, bgcolor: COLORS.TOOLTIP_BG, color: 'white', borderRadius: 2, minWidth: 240, boxShadow: '0 8px 32px rgba(0,0,0,0.5)', zIndex: 9999 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5, borderBottom: '1px solid rgba(255,255,255,0.2)', pb: 1 }}>
+                    <Typography variant="subtitle2" fontWeight={700}>
+                        {String(weekLabel || '')}
+                    </Typography>
+                    <Chip label="SEMANA" size="small" sx={{ ml: 1, height: 18, fontSize: '0.6rem', bgcolor:'rgba(255,255,255,0.2)', color:'white' }} />
+                </Box>
+                {metric === 'TIME' && (
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="caption" sx={{ color: COLORS.CALORIES, opacity: 0.95 }}>
+                            Calorías Totales
+                        </Typography>
+                        <Typography variant="caption" fontWeight="bold" sx={{ color: 'white' }}>
+                            {kcal} kcal
+                        </Typography>
+                    </Box>
+                )}
+            </Paper>
+        );
+    };
+
     const DataRow = ({ color, label, value, icon }) => (
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="caption" sx={{ color: color || '#94A3B8', display: 'flex', alignItems: 'center', gap: 1, opacity: 0.9 }}>{icon ? icon : <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: color }} />}{label}</Typography>
@@ -311,7 +339,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
                     />
                     <YAxis yAxisId="left" tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
                     <YAxis yAxisId="right" orientation="right" hide />
-                    <Tooltip content={isWeekly ? undefined : <CustomTooltip />} />
+                    <Tooltip content={isWeekly ? <WeeklyTooltip /> : <CustomTooltip />} />
                     <Legend wrapperStyle={{ paddingTop: '10px' }} iconType="circle"/>
                     {!isWeekly && <ReferenceArea x1={todayStr} ifOverflow="extendDomain" fill="rgba(241, 245, 249, 0.5)" />}
 
@@ -327,7 +355,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
                     
                     {metric === 'TIME' && (
                         isWeekly ? (
-                            <Bar yAxisId="left" dataKey="calories_kcal" name="Kcal" barSize={10} radius={[2, 2, 0, 0]} fill={COLORS.CALORIES} />
+                            <Bar yAxisId="left" dataKey="calories_kcal" name="Calorías (kcal)" barSize={10} radius={[2, 2, 0, 0]} fill={COLORS.CALORIES} />
                         ) : (
                             <><Bar yAxisId="left" dataKey="time" name="Tiempo (min)" barSize={8} radius={[2, 2, 0, 0]}>{filteredData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.is_future ? COLORS.TIME_PLAN : COLORS.TIME_REAL} />))}</Bar><Line yAxisId="right" type="monotone" dataKey="calories" name="Kcal" stroke={COLORS.CALORIES} strokeWidth={2} dot={false} /></>
                         )
