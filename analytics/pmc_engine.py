@@ -81,6 +81,7 @@ class DailyAggRow:
     distance_m: float
     elev_gain_m: float
     duration_s: int
+    calories_kcal: float
 
 
 def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
@@ -93,7 +94,15 @@ def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
     acts = (
         Actividad.objects.filter(alumno_id=alumno_id, validity=Actividad.Validity.VALID)
         .filter(fecha_inicio__date__gte=start_date)
-        .values("fecha_inicio", "tipo_deporte", "distancia", "desnivel_positivo", "tiempo_movimiento", "datos_brutos")
+        .values(
+            "fecha_inicio",
+            "tipo_deporte",
+            "distancia",
+            "desnivel_positivo",
+            "tiempo_movimiento",
+            "calories_kcal",
+            "datos_brutos",
+        )
     )
 
     by_key: dict[tuple[date, str], DailyAggRow] = {}
@@ -103,12 +112,13 @@ def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
         distance_m = float(a.get("distancia") or 0.0)
         elev_m = float(a.get("desnivel_positivo") or 0.0)
         dur_s = int(a.get("tiempo_movimiento") or 0)
+        calories_kcal = float(a.get("calories_kcal") or 0.0)
         load = float(_extract_activity_load(a.get("datos_brutos") or {}, dur_s) or 0.0)
 
         key = (d, sport)
         prev = by_key.get(key)
         if prev is None:
-            by_key[key] = DailyAggRow(d, sport, load, distance_m, elev_m, dur_s)
+            by_key[key] = DailyAggRow(d, sport, load, distance_m, elev_m, dur_s, calories_kcal)
         else:
             by_key[key] = DailyAggRow(
                 d,
@@ -117,6 +127,7 @@ def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
                 prev.distance_m + distance_m,
                 prev.elev_gain_m + elev_m,
                 prev.duration_s + dur_s,
+                prev.calories_kcal + calories_kcal,
             )
 
     rows = list(by_key.values())
@@ -132,6 +143,7 @@ def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
                     distance_m=float(r.distance_m or 0.0),
                     elev_gain_m=float(r.elev_gain_m or 0.0),
                     duration_s=int(r.duration_s or 0),
+                    calories_kcal=float(r.calories_kcal or 0.0),
                 )
                 for r in rows
             ],
@@ -293,7 +305,7 @@ def weekly_activity_stats_for_alumno(
         sport_group = "ALL"
     included_sports = list(PMC_SPORT_GROUPS[sport_group])
 
-    # Sumas por ISO week desde DailyActivityAgg (distancia y desnivel)
+    # Sumas por ISO week desde DailyActivityAgg (distancia, desnivel y calorías)
     weekly_aggs = (
         DailyActivityAgg.objects.filter(
             alumno_id=int(alumno_id),
@@ -302,24 +314,13 @@ def weekly_activity_stats_for_alumno(
         )
         .annotate(iso_year=ExtractIsoYear("fecha"), iso_week=ExtractIsoWeek("fecha"))
         .values("iso_year", "iso_week")
-        .annotate(distance_m=Sum("distance_m"), elev_gain_m=Sum("elev_gain_m"))
-        .order_by("iso_year", "iso_week")
-    )
-
-    # Calorías por ISO week desde Actividad (opcional; algunos atletas no lo tienen)
-    weekly_cals = (
-        Actividad.objects.filter(
-            alumno_id=int(alumno_id),
-            validity=Actividad.Validity.VALID,
-            fecha_inicio__date__range=[start, end],
+        .annotate(
+            distance_m=Sum("distance_m"),
+            elev_gain_m=Sum("elev_gain_m"),
+            calories_kcal=Sum("calories_kcal"),
         )
-        .annotate(d=TruncDate("fecha_inicio"))
-        .annotate(iso_year=ExtractIsoYear("d"), iso_week=ExtractIsoWeek("d"))
-        .values("iso_year", "iso_week")
-        .annotate(calories_kcal=Sum("calories_kcal"))
         .order_by("iso_year", "iso_week")
     )
-    cals_by_week = {(int(r["iso_year"]), int(r["iso_week"])): r.get("calories_kcal") for r in weekly_cals}
 
     out: list[dict] = []
     for r in weekly_aggs:
@@ -330,7 +331,7 @@ def weekly_activity_stats_for_alumno(
 
         dist_m = float(r.get("distance_m") or 0.0)
         elev_m = float(r.get("elev_gain_m") or 0.0)
-        calories = cals_by_week.get((y, w), 0)  # None si la suma es NULL
+        calories = float(r.get("calories_kcal") or 0.0)
 
         out.append(
             {
@@ -338,7 +339,7 @@ def weekly_activity_stats_for_alumno(
                 "range": {"start": week_start.isoformat(), "end": week_end.isoformat()},
                 "km": round(dist_m / 1000.0, 2),
                 "elev_gain_m": int(round(elev_m)),
-                "calories_kcal": int(round(float(calories or 0.0))),
+                "calories_kcal": int(round(calories)),
             }
         )
 
