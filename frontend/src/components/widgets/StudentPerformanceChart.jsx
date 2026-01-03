@@ -295,8 +295,8 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
                     </Typography>
                     <Chip label="SEMANA" size="small" sx={{ ml: 1, height: 18, fontSize: '0.6rem', bgcolor:'rgba(255,255,255,0.2)', color:'white' }} />
                 </Box>
-                {metric === 'TIME' && (
-                    <Stack spacing={0.75}>
+                <Stack spacing={0.75}>
+                    {metric === 'TIME' && (
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.75)' }}>
                                 Duración Total
@@ -305,16 +305,16 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
                                 {tmin} min
                             </Typography>
                         </Box>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Typography variant="caption" sx={{ color: COLORS.CALORIES, opacity: 0.95 }}>
-                                Calorías Totales
-                            </Typography>
-                            <Typography variant="caption" fontWeight="bold" sx={{ color: 'white' }}>
-                                {kcal} kcal
-                            </Typography>
-                        </Box>
-                    </Stack>
-                )}
+                    )}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="caption" sx={{ color: COLORS.CALORIES, opacity: 0.95 }}>
+                            Calorías Totales
+                        </Typography>
+                        <Typography variant="caption" fontWeight="bold" sx={{ color: 'white' }}>
+                            {kcal} kcal
+                        </Typography>
+                    </Box>
+                </Stack>
             </Paper>
         );
     };
@@ -354,9 +354,17 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
             )}
 
             {/* Fijamos dimensiones para evitar width:-1 en consola */}
-            <div style={{ width: '100%', height: 400, minHeight: 400 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={isWeekly ? filteredWeeklyData : filteredData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+            <div style={{ width: '100%', height: '400px', position: 'relative' }}>
+                <ResponsiveContainer
+                    key={`${String(granularity || 'DAILY')}-${metric}-${sport}-${range}`}
+                    width="100%"
+                    height="100%"
+                >
+                    <ComposedChart
+                        key={`${String(granularity || 'DAILY')}-${metric}-${sport}-${range}`}
+                        data={isWeekly ? filteredWeeklyData : filteredData}
+                        margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+                    >
                     <defs>
                         <linearGradient id="colorCtl" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={COLORS.FITNESS} stopOpacity={0.2}/><stop offset="95%" stopColor={COLORS.FITNESS} stopOpacity={0}/></linearGradient>
                         <linearGradient id="colorElev" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={COLORS.ELEV_POS} stopOpacity={0.4}/><stop offset="95%" stopColor={COLORS.ELEV_POS} stopOpacity={0.1}/></linearGradient>
