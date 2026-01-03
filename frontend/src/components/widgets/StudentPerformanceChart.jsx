@@ -48,12 +48,15 @@ const safeFormat = (dateStr, formatStr) => {
     } catch { return ''; }
 };
 
-const StudentPerformanceChart = ({ alumnoId } = {}) => {
+const StudentPerformanceChart = ({ alumnoId, weeklyStats } = {}) => {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [metric, setMetric] = useState('PERFORMANCE');
     const [sport, setSport] = useState('ALL'); 
     const [range, setRange] = useState('SEASON');
+
+    const safeWeeklyStats = Array.isArray(weeklyStats) ? weeklyStats : [];
+    const hasWeeklyStats = safeWeeklyStats.length > 0;
 
     useEffect(() => {
         let isMounted = true;
@@ -135,7 +138,7 @@ const StudentPerformanceChart = ({ alumnoId } = {}) => {
     if (!data.length) return (
         <Paper elevation={0} sx={{ p: 4, textAlign:'center', borderRadius: 3, height: 500, border: '1px solid #E2E8F0', bgcolor: '#F8FAFC', display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center' }}>
             <AutoGraph sx={{ fontSize: 60, color: '#CBD5E1', mb: 2 }} />
-            <Typography color="textSecondary" fontWeight="bold">Sin datos de rendimiento</Typography>
+            <Typography color="textSecondary" fontWeight="bold">Sin datos</Typography>
         </Paper>
     );
 
@@ -229,6 +232,12 @@ const StudentPerformanceChart = ({ alumnoId } = {}) => {
                 <Grid item xs={12} md={4} sx={{ display: 'flex', justifyContent: { md: 'center' } }}><ToggleButtonGroup value={sport} exclusive onChange={(e, val) => val && setSport(val)} size="small" sx={{ bgcolor: '#F8FAFC' }}><ToggleButton value="ALL" sx={{ px: 2 }}><Layers/></ToggleButton><ToggleButton value="RUN" sx={{ px: 2 }}><DirectionsRun/></ToggleButton><ToggleButton value="BIKE" sx={{ px: 2 }}><PedalBike/></ToggleButton></ToggleButtonGroup></Grid>
                 <Grid item xs={12} md={4} sx={{ display: 'flex', justifyContent: { md: 'flex-end' } }}><ToggleButtonGroup value={range} exclusive onChange={(e, val) => val && setRange(val)} size="small"><ToggleButton value="3M">3M</ToggleButton><ToggleButton value="SEASON">TEMP</ToggleButton><ToggleButton value="1Y">1 AÑO</ToggleButton></ToggleButtonGroup></Grid>
             </Grid>
+
+            {!hasWeeklyStats && (
+                <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 1 }}>
+                    Sin datos
+                </Typography>
+            )}
 
             <ResponsiveContainer width="100%" height="80%">
                 <ComposedChart data={filteredData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>

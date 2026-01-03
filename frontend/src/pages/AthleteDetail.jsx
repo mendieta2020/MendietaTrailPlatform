@@ -51,8 +51,8 @@ const AthleteDetail = () => {
 
         // 2. Sus Entrenamientos
         const resTrainings = await client.get(`/api/entrenamientos/?alumno=${id}`);
-        const trainingsPayload = resTrainings?.data?.results ?? resTrainings?.data;
-        setTrainings(Array.isArray(trainingsPayload) ? trainingsPayload : []);
+        const data = resTrainings.data.results || resTrainings.data || [];
+        setTrainings(Array.isArray(data) ? data : []);
       } catch (err) {
         console.error("Error cargando perfil:", err);
       } finally {
@@ -62,9 +62,13 @@ const AthleteDetail = () => {
     fetchData();
   }, [id]);
 
-  if (loading) return <Layout><Box sx={{ p: 5, textAlign: 'center' }}><CircularProgress /></Box></Layout>;
-  if (!athlete) return <Layout><Typography>Atleta no encontrado</Typography></Layout>;
-  if (!athlete?.stats_semanales) return <Layout><Box sx={{ p: 5, textAlign: 'center' }}><CircularProgress /></Box></Layout>;
+  if (loading || !athlete) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 5 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
     <Layout>
@@ -116,7 +120,7 @@ const AthleteDetail = () => {
       <Box sx={{ mb: 4 }}>
           {/* El ErrorBoundary atrapa cualquier crash dentro del gráfico y evita la pantalla blanca */}
           <ErrorBoundary height={550}>
-              <StudentPerformanceChart alumnoId={id} />
+              <StudentPerformanceChart alumnoId={id} weeklyStats={athlete?.stats_semanales || []} />
           </ErrorBoundary>
       </Box>
 
