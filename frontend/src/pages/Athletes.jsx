@@ -18,7 +18,7 @@ const Athletes = () => {
     const fetchAthletes = async () => {
       try {
         const res = await client.get('/api/alumnos/?include_injury_risk=1');
-        setAthletes(res.data);
+        setAthletes(res.data.results || res.data || []);
       } catch (err) {
         console.error(err);
       }
@@ -27,7 +27,8 @@ const Athletes = () => {
   }, []);
 
   // Filtro de búsqueda en tiempo real
-  const filteredAthletes = athletes.filter(athlete => 
+  const safeAthletes = Array.isArray(athletes) ? athletes : [];
+  const filteredAthletes = safeAthletes.filter(athlete => 
     athlete.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || 
     athlete.apellido.toLowerCase().includes(searchTerm.toLowerCase())
   );

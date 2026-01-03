@@ -58,12 +58,18 @@ const Dashboard = () => {
           client.get('/api/pagos/')
         ]);
 
-        const totalIngresos = resPagos.data.reduce((acc, pago) => acc + parseFloat(pago.monto), 0);
+        const alumnosArr = resAlumnos.data.results || resAlumnos.data || [];
+        const pagosArr = resPagos.data.results || resPagos.data || [];
+
+        const safePagos = Array.isArray(pagosArr) ? pagosArr : [];
+        const safeAlumnos = Array.isArray(alumnosArr) ? alumnosArr : [];
+
+        const totalIngresos = safePagos.reduce((acc, pago) => acc + parseFloat(pago.monto), 0);
         setKpiData({ 
-            alumnos: resAlumnos.data.length, 
+            alumnos: safeAlumnos.length, 
             ingresos: totalIngresos 
         });
-        setPagosData(resPagos.data);
+        setPagosData(safePagos);
 
         // 2. Cargar Datos Científicos (PMC) - Opcional: Pasar fechas en query params
         // Por ahora traemos todo y filtramos en frontend (para MVP es rápido)
