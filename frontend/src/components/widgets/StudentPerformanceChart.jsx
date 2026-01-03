@@ -187,6 +187,17 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
     const startIndex = filteredData.length > 60 ? filteredData.length - 60 : 0;
 
     if (loading) return <Paper elevation={0} sx={{ p: 4, display:'flex', justifyContent:'center', borderRadius: 3, height: 500, border: '1px solid #E2E8F0' }}><CircularProgress /></Paper>;
+
+    // Si el atleta aún no inyectó weeklyStats pero ya estamos en semanal, mostramos loading suave.
+    // Evita "pantalla vacía" durante el primer render.
+    if (isWeekly && !hasWeeklyStats) {
+        return (
+            <Paper elevation={0} sx={{ p: 4, borderRadius: 3, height: 500, border: '1px solid #E2E8F0', bgcolor: '#F8FAFC', display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center', gap: 2 }}>
+                <CircularProgress />
+                <Typography color="textSecondary" fontWeight="bold">Cargando datos de rendimiento...</Typography>
+            </Paper>
+        );
+    }
     
     if (isWeekly && metric === 'PERFORMANCE') {
         return (
@@ -343,7 +354,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
             )}
 
             {/* Fijamos dimensiones para evitar width:-1 en consola */}
-            <Box sx={{ width: '100%', height: 420, minWidth: 0 }}>
+            <div style={{ width: '100%', height: 400, minHeight: 400 }}>
                 <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={isWeekly ? filteredWeeklyData : filteredData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                     <defs>
@@ -403,7 +414,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
                     )}
                     </ComposedChart>
                 </ResponsiveContainer>
-            </Box>
+            </div>
         </Paper>
     );
 };
