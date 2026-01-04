@@ -92,7 +92,7 @@ const AthleteDetail = () => {
       const merged = [];
       const cache = trainingCache && typeof trainingCache === 'object' ? trainingCache : {};
       Object.values(cache).forEach((arr) => {
-        if (Array.isArray(arr)) merged.push(...arr);
+        if (arr && Array.isArray(arr)) merged.push(...arr);
       });
 
       // dedupe defensivo (por id) + eliminar items corruptos
@@ -122,11 +122,12 @@ const AthleteDetail = () => {
   }, [trainings]);
 
   const fetchMonthIfNeeded = useCallback(async ({ monthKey, startISO, endISO }) => {
-    if (!monthKey || !startISO || !endISO) return;
     const cache = trainingCacheRef.current || {};
     const loadingMap = loadingMonthsRef.current || {};
+    // Corte estricto (pedido): si no hay mes o ya está cargando, no hacemos nada.
+    if (!monthKey || loadingMap[monthKey]) return;
+    if (!startISO || !endISO) return;
     if (cache[monthKey]) return;
-    if (loadingMap[monthKey]) return;
 
     try {
       setLoadingMonths((prev) => ({ ...prev, [monthKey]: true }));
@@ -200,8 +201,10 @@ const AthleteDetail = () => {
   // Logging de emergencia (pedido) justo antes del render principal
   console.log('DEBUG_APP_STATE', { athlete, trainings, trainingCache });
 
-  return (
-    <Layout>
+  let page = null;
+  try {
+    page = (
+      <Layout>
       {/* HEADER DE NAVEGACIÓN */}
       <Button startIcon={<ArrowBack />} onClick={() => navigate(-1)} sx={{ mb: 2, color: '#64748B' }}>
         Volver
@@ -324,7 +327,24 @@ const AthleteDetail = () => {
       </Dialog>
 
     </Layout>
-  );
+    );
+  } catch (err) {
+    console.error("FATAL_RENDER - AthleteDetail crashed:", err);
+    return (
+      <Layout>
+        <Paper sx={{ p: 3, borderRadius: 3, bgcolor: '#FEF2F2', border: '1px solid #FECACA' }}>
+          <Typography sx={{ fontWeight: 900, color: '#991B1B' }}>
+            Ocurrió un error renderizando esta pantalla.
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#B91C1C', mt: 1 }}>
+            Revisá la consola del navegador para ver el error (logs DEBUG_APP_STATE / FATAL_RENDER).
+          </Typography>
+        </Paper>
+      </Layout>
+    );
+  }
+
+  return page;
 };
 
 export default AthleteDetail;
