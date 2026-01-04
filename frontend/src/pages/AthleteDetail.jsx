@@ -133,7 +133,7 @@ const AthleteDetail = () => {
                 <Typography variant="caption" color="textSecondary">Asigna plantillas desde la librería o crea una sesión individual.</Typography>
             </Paper>
         ) : (
-            <WeeklyCalendar trainings={trainings} />
+            <WeeklyCalendar trainings={trainings} athleteId={id} />
         )}
       </Box>
 

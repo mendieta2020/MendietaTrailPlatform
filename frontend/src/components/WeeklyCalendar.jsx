@@ -16,7 +16,7 @@ import TrainingCardPro from './widgets/TrainingCardPro';
 import EditTrainingModal from './EditTrainingModal';
 import TrainingDetailModal from './TrainingDetailModal'; // <--- IMPORTACIÓN CRÍTICA
 
-const WeeklyCalendar = ({ trainings: initialTrainings }) => {
+const WeeklyCalendar = ({ trainings: initialTrainings, athleteId }) => {
   const [trainings, setTrainings] = useState([]); 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [overallCompliance, setOverallCompliance] = useState(0);
@@ -89,10 +89,33 @@ const WeeklyCalendar = ({ trainings: initialTrainings }) => {
 
   const handleDropOnDay = async (e, dayDate) => {
       e.preventDefault();
+      const templateId = e.dataTransfer.getData("templateId");
       const trainingId = e.dataTransfer.getData("trainingId");
-      if (!trainingId) return;
 
       const newDateStr = format(dayDate, 'yyyy-MM-dd');
+
+      // A) Drop desde Librería (Plantilla -> crear instancia individual)
+      if (templateId) {
+          if (!athleteId) {
+              setFeedback({ open: true, msg: 'No se pudo asignar: falta athleteId.', type: 'error' });
+              return;
+          }
+          try {
+              const res = await client.post(`/api/plantillas/${templateId}/aplicar_a_alumno/`, {
+                  alumno_id: athleteId,
+                  fecha_asignada: newDateStr,
+              });
+              setTrainings((prev) => [res.data, ...prev]);
+              setFeedback({ open: true, msg: 'Sesión asignada ✅', type: 'success' });
+          } catch (error) {
+              console.error("Error asignando plantilla:", error);
+              setFeedback({ open: true, msg: 'Error al asignar. Reintenta.', type: 'error' });
+          }
+          return;
+      }
+
+      // B) Move de un Entrenamiento existente (drag interno)
+      if (!trainingId) return;
 
       // Optimistic update
       const updatedTrainings = trainings.map(t => {

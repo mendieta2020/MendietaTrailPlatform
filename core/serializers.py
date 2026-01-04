@@ -23,10 +23,22 @@ class EquipoSerializer(serializers.ModelSerializer):
 class PlantillaEntrenamientoSerializer(serializers.ModelSerializer):
     # díficultad_display es un campo calculado en el serializer, no en el modelo
     dificultad_display = serializers.SerializerMethodField()
+    # Alias solicitado por arquitectura: “descripcion_detallada” como JSON (source de verdad = estructura)
+    descripcion_detallada_json = serializers.JSONField(source="estructura", required=False)
 
     class Meta:
         model = PlantillaEntrenamiento
-        fields = ['id', 'titulo', 'deporte', 'etiqueta_dificultad', 'dificultad_display', 'descripcion_global', 'estructura', 'created_at']
+        fields = [
+            'id',
+            'titulo',
+            'deporte',
+            'etiqueta_dificultad',
+            'dificultad_display',
+            'descripcion_global',
+            'estructura',
+            'descripcion_detallada_json',
+            'created_at',
+        ]
 
     def get_dificultad_display(self, obj):
         return obj.get_etiqueta_dificultad_display()
@@ -34,6 +46,8 @@ class PlantillaEntrenamientoSerializer(serializers.ModelSerializer):
 class EntrenamientoSerializer(serializers.ModelSerializer):
     alumno_nombre = serializers.CharField(source='alumno.nombre', read_only=True)
     alumno_apellido = serializers.CharField(source='alumno.apellido', read_only=True)
+    # Alias solicitado por arquitectura: JSON estructurado de la sesión
+    descripcion_detallada_json = serializers.JSONField(source="estructura", required=False)
     
     class Meta:
         model = Entrenamiento
@@ -45,7 +59,8 @@ class EntrenamientoSerializer(serializers.ModelSerializer):
             'distancia_planificada_km', 'tiempo_planificado_min', 'desnivel_planificado_m',
             'rpe_planificado', 'descripcion_detallada',
             # EL CEREBRO NUEVO (JSON)
-            'estructura', 
+            'estructura',
+            'descripcion_detallada_json',
             # Métricas Reales
             'distancia_real_km', 'tiempo_real_min', 'desnivel_real_m',
             'rpe', 'feedback_alumno',

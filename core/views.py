@@ -35,6 +35,7 @@ from .serializers import (
 
 from allauth.socialaccount.models import SocialToken
 from .services import sincronizar_actividades_strava
+from .planning_services import apply_template_to_student, build_bulk_entrenamientos_for_team
 
 # ==============================================================================
 #  API REST (EL CEREBRO DE LA APP MÓVIL 📱)
@@ -322,6 +323,36 @@ class EntrenamientoViewSet(TenantModelViewSet):
             "cumplimiento": entrenamiento.porcentaje_cumplimiento
         })
 
+    @action(detail=True, methods=["post"])
+    def guardar_como_plantilla(self, request, pk=None):
+        """
+        Convierte un Entrenamiento (instancia individual) en Plantilla (maestro) del coach.
+
+        Útil para: “ajusté un alumno, ahora quiero guardar esta sesión en mi librería”.
+        """
+        user = request.user
+        # Athletes no pueden crear plantillas desde aquí
+        if hasattr(user, "perfil_alumno") and not user.is_staff:
+            return Response({"error": "No autorizado."}, status=status.HTTP_403_FORBIDDEN)
+
+        entreno = self.get_object()
+        titulo = (request.data.get("titulo") or entreno.titulo or "").strip()
+        if not titulo:
+            return Response({"error": "Título inválido."}, status=status.HTTP_400_BAD_REQUEST)
+
+        plantilla = PlantillaEntrenamiento.objects.create(
+            entrenador=user,
+            titulo=titulo,
+            deporte=entreno.tipo_actividad,
+            descripcion_global=(request.data.get("descripcion_global") or entreno.descripcion_detallada or "")[:2000],
+            estructura=entreno.estructura or {},
+            etiqueta_dificultad=(request.data.get("etiqueta_dificultad") or "MODERATE"),
+        )
+        return Response(
+            PlantillaEntrenamientoSerializer(plantilla, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
 
 class PlantillaViewSet(TenantModelViewSet):
     """
@@ -380,24 +411,11 @@ class PlantillaViewSet(TenantModelViewSet):
         # 2. Ejecución Atómica (Todo o Nada)
         try:
             with transaction.atomic():
-                for alumno in alumnos:
-                    # Clonamos la "Receta" en un "Plato Real" para este alumno
-                    entrenamiento = Entrenamiento(
-                        alumno=alumno,
-                        plantilla_origen=plantilla,
-                        fecha_asignada=fecha_inicio,
-                        titulo=plantilla.titulo,
-                        tipo_actividad=plantilla.deporte,
-                        descripcion_detallada=plantilla.descripcion_global,
-                        
-                        # --- CLAVE: CLONACIÓN DE ESTRUCTURA JSON ---
-                        estructura=plantilla.estructura, # Copiamos los bloques tal cual
-                        
-                        # Métricas base (se recalcularán luego si es necesario)
-                        # distancia_planificada_km y tiempo se pueden extraer del JSON aquí si quisiéramos
-                        completado=False
-                    )
-                    nuevos_entrenamientos.append(entrenamiento)
+                nuevos_entrenamientos, _, _ = build_bulk_entrenamientos_for_team(
+                    plantilla=plantilla,
+                    alumnos=alumnos,
+                    fecha_asignada=fecha_inicio,
+                )
                 
                 # Bulk Create: 50 veces más rápido que guardar uno por uno
                 Entrenamiento.objects.bulk_create(nuevos_entrenamientos)
@@ -412,6 +430,42 @@ class PlantillaViewSet(TenantModelViewSet):
 
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=["post"])
+    def aplicar_a_alumno(self, request, pk=None):
+        """
+        Recibe: { "alumno_id": 123, "fecha_asignada": "2026-01-04" }
+        Acción: crea una instancia individual editable desde la plantilla.
+        """
+        plantilla = self.get_object()
+        alumno_id = request.data.get("alumno_id")
+        fecha_str = request.data.get("fecha_asignada") or request.data.get("fecha")
+
+        if not alumno_id or not fecha_str:
+            return Response(
+                {"error": "Faltan datos: alumno_id y fecha_asignada son obligatorios."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            alumno = Alumno.objects.get(pk=alumno_id, entrenador=request.user)
+        except Alumno.DoesNotExist:
+            return Response({"error": "El alumno no existe."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            fecha_asignada = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+        except ValueError:
+            return Response(
+                {"error": "Formato de fecha inválido. Use YYYY-MM-DD."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        entreno = apply_template_to_student(
+            plantilla=plantilla,
+            alumno=alumno,
+            fecha_asignada=fecha_asignada,
+        )
+        return Response(EntrenamientoSerializer(entreno, context={"request": request}).data, status=status.HTTP_201_CREATED)
 
 
 class CarreraViewSet(TenantModelViewSet):
