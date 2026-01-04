@@ -423,8 +423,9 @@ const EditTrainingModal = ({ open, onClose, training, onUpdated }) => {
           descripcion_detallada: desc
       };
       
-      await client.patch(`/api/entrenamientos/${training.id}/`, payload);
-      onUpdated(); onClose();
+      const res = await client.patch(`/api/entrenamientos/${training.id}/`, payload);
+      if (typeof onUpdated === 'function') onUpdated(res?.data);
+      onClose();
     } catch { alert("Error al guardar."); } finally { setLoading(false); }
   };
 

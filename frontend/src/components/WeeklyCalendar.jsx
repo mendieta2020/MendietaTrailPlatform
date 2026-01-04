@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { 
   Box, Typography, Paper, Grid, IconButton, Button, Snackbar, Alert 
 } from '@mui/material';
 import { 
-  format, startOfWeek, addDays, isSameDay, addWeeks, subWeeks, parseISO 
+  format, startOfWeek, addDays, isSameDay, addWeeks, subWeeks, parseISO, startOfMonth, endOfMonth
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { 
@@ -16,9 +16,10 @@ import TrainingCardPro from './widgets/TrainingCardPro';
 import EditTrainingModal from './EditTrainingModal';
 import TrainingDetailModal from './TrainingDetailModal'; // <--- IMPORTACIÓN CRÍTICA
 
-const WeeklyCalendar = ({ trainings: initialTrainings }) => {
+const WeeklyCalendar = ({ trainings: initialTrainings, athleteId, onActiveDateChange, onNeedMonth }) => {
   const [trainings, setTrainings] = useState([]); 
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [activeDay, setActiveDay] = useState(new Date());
   const [overallCompliance, setOverallCompliance] = useState(0);
   
   // Estado de Modales
@@ -35,11 +36,31 @@ const WeeklyCalendar = ({ trainings: initialTrainings }) => {
   });
 
   useEffect(() => {
-    setTrainings(initialTrainings);
+    setTrainings(Array.isArray(initialTrainings) ? initialTrainings : []);
   }, [initialTrainings]);
 
   const startOfVisibleWeek = startOfWeek(currentDate, { weekStartsOn: 1 });
   const weekDays = Array.from({ length: 7 }).map((_, i) => addDays(startOfVisibleWeek, i));
+
+  const lastMonthRequestedRef = useRef(null);
+
+  // Lazy loading: pedir solo el mes visible (cache en el parent).
+  useEffect(() => {
+    if (!athleteId) return;
+    if (typeof onNeedMonth !== 'function') return;
+    const monthKey = format(currentDate, 'yyyy-MM');
+    if (lastMonthRequestedRef.current === monthKey) return;
+    const startISO = format(startOfMonth(currentDate), 'yyyy-MM-dd');
+    const endISO = format(endOfMonth(currentDate), 'yyyy-MM-dd');
+    lastMonthRequestedRef.current = monthKey;
+    onNeedMonth({ monthKey, startISO, endISO });
+  }, [athleteId, currentDate, onNeedMonth]);
+
+  // Fecha activa para “click-to-assign” desde librería
+  useEffect(() => {
+    if (typeof onActiveDateChange !== 'function') return;
+    onActiveDateChange(format(activeDay, 'yyyy-MM-dd'));
+  }, [activeDay, onActiveDateChange]);
 
   // --- CÁLCULOS DE ESTADÍSTICAS ---
   useEffect(() => {
@@ -50,8 +71,8 @@ const WeeklyCalendar = ({ trainings: initialTrainings }) => {
         hours: { planned: 0, actual: 0 },
     };
 
-    const weekTrainings = trainings.filter(t => {
-        if (!t.fecha_asignada) return false;
+    const weekTrainings = (Array.isArray(trainings) ? trainings : []).filter(t => {
+        if (!t || !t.fecha_asignada) return false;
         const tDate = parseISO(t.fecha_asignada);
         return tDate >= startOfVisibleWeek && tDate <= addDays(startOfVisibleWeek, 6);
     });
@@ -89,10 +110,33 @@ const WeeklyCalendar = ({ trainings: initialTrainings }) => {
 
   const handleDropOnDay = async (e, dayDate) => {
       e.preventDefault();
+      const templateId = e.dataTransfer.getData("templateId");
       const trainingId = e.dataTransfer.getData("trainingId");
-      if (!trainingId) return;
 
       const newDateStr = format(dayDate, 'yyyy-MM-dd');
+
+      // A) Drop desde Librería (Plantilla -> crear instancia individual)
+      if (templateId) {
+          if (!athleteId) {
+              setFeedback({ open: true, msg: 'No se pudo asignar: falta athleteId.', type: 'error' });
+              return;
+          }
+          try {
+              const res = await client.post(`/api/plantillas/${templateId}/aplicar_a_alumno/`, {
+                  alumno_id: athleteId,
+                  fecha_asignada: newDateStr,
+              });
+              setTrainings((prev) => [res.data, ...prev]);
+              setFeedback({ open: true, msg: 'Sesión asignada ✅', type: 'success' });
+          } catch (error) {
+              console.error("Error asignando plantilla:", error);
+              setFeedback({ open: true, msg: 'Error al asignar. Reintenta.', type: 'error' });
+          }
+          return;
+      }
+
+      // B) Move de un Entrenamiento existente (drag interno)
+      if (!trainingId) return;
 
       // Optimistic update
       const updatedTrainings = trainings.map(t => {
@@ -115,17 +159,14 @@ const WeeklyCalendar = ({ trainings: initialTrainings }) => {
   };
 
   const getTrainingsForDay = (day) => {
-    return trainings.filter(t => t.fecha_asignada === format(day, 'yyyy-MM-dd'));
+    const dayStr = format(day, 'yyyy-MM-dd');
+    return (Array.isArray(trainings) ? trainings : []).filter((t) => t && t.fecha_asignada === dayStr);
   };
 
   // --- 🔥 GESTIÓN DE CLICS (MODO PRUEBA DE FUEGO) ---
   const handleCardClick = (training) => {
-      // ⚠️ MODO ALUMNO ACTIVADO PARA TESTING ⚠️
-      // En el futuro, aquí pondremos un 'if (isCoach) setEditingTraining(training) else setDetailTraining(training)'
-      setDetailTraining(training); 
-      
-      // Si quisieras editar como entrenador, descomenta esto y comenta la línea de arriba:
-      // setEditingTraining(training);
+      // Pantalla de coach: click = ajustar sesión individual (solo este día).
+      setEditingTraining(training);
   };
 
   const handleFeedbackSaved = () => {
@@ -181,9 +222,10 @@ const WeeklyCalendar = ({ trainings: initialTrainings }) => {
       {/* CALENDARIO SEMANAL */}
       <Paper elevation={0} sx={{ border: '1px solid #E2E8F0', borderRadius: 3, overflow: 'hidden' }}>
         <Box sx={{ overflowX: 'auto' }}>
-            <Box sx={{ display: 'flex', minWidth: 1200 }}> 
+            <Box sx={{ display: 'flex', minWidth: { xs: 780, sm: 980, md: 1200 } }}> 
                 {weekDays.map((day, index) => {
                     const isToday = isSameDay(day, new Date());
+                    const isActive = isSameDay(day, activeDay);
                     const dayTrainings = getTrainingsForDay(day);
                     const isWeekend = index >= 5;
 
@@ -192,9 +234,12 @@ const WeeklyCalendar = ({ trainings: initialTrainings }) => {
                         key={day.toString()} 
                         onDragOver={(e) => e.preventDefault()} 
                         onDrop={(e) => handleDropOnDay(e, day)} 
+                        onClick={() => setActiveDay(day)}
                         sx={{ 
-                            flex: 1, minWidth: 0, minHeight: 400, 
+                            flex: 1, minWidth: 0, minHeight: { xs: 300, md: 400 }, 
                             borderRight: index < 6 ? '1px solid #E2E8F0' : 'none', 
+                            outline: isActive ? '2px solid #F57C00' : 'none',
+                            outlineOffset: isActive ? '-2px' : undefined,
                             bgcolor: isToday ? '#FFF7ED' : (isWeekend ? '#F8FAFC' : 'white'),
                             display: 'flex', flexDirection: 'column',
                             transition: 'background-color 0.2s'
@@ -254,7 +299,11 @@ const WeeklyCalendar = ({ trainings: initialTrainings }) => {
             open={true}
             onClose={() => setEditingTraining(null)} 
             training={editingTraining}
-            onUpdated={() => window.location.reload()} 
+            onUpdated={(updated) => {
+              if (!updated?.id) return;
+              setTrainings((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+              setFeedback({ open: true, msg: 'Sesión actualizada ✅', type: 'success' });
+            }} 
           />
       )}
 

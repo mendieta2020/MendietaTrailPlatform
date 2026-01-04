@@ -1,6 +1,17 @@
 import React from 'react';
 import { Card, CardContent, Box, Typography, Chip, Divider, Stack } from '@mui/material';
-import { DirectionsRun, PedalBike, FitnessCenter, WatchLater, Straighten, FormatListBulleted } from '@mui/icons-material';
+import {
+  DirectionsRun,
+  PedalBike,
+  FitnessCenter,
+  WatchLater,
+  Straighten,
+  FormatListBulleted,
+  WbSunny,
+  Bolt,
+  AcUnit,
+  PauseCircleOutline,
+} from '@mui/icons-material';
 
 const TrainingCardPro = ({ training, onClick }) => { 
   
@@ -27,25 +38,99 @@ const TrainingCardPro = ({ training, onClick }) => {
   const SportIcon = style.icon;
 
   // --- 3. LÓGICA DE VISUALIZACIÓN DE ESTRUCTURA (JSON vs TEXTO) ---
+  const BLOCK_STYLE = {
+    WARMUP: { label: 'Calentamiento', color: '#84CC16', bg: '#ECFCCB', icon: WbSunny },
+    MAIN: { label: 'Principal', color: '#F57C00', bg: '#FFF7ED', icon: Bolt },
+    COOLDOWN: { label: 'Vuelta a la calma', color: '#3B82F6', bg: '#EFF6FF', icon: AcUnit },
+    REST: { label: 'Pausa', color: '#94A3B8', bg: '#F1F5F9', icon: PauseCircleOutline },
+  };
+
+  const ZONE_COLOR = {
+    1: '#A3E635',
+    2: '#84CC16',
+    3: '#FACC15',
+    4: '#F97316',
+    5: '#EF4444',
+  };
+
+  const summarizeStep = (s) => {
+    if (!s || typeof s !== 'object') return null;
+    const dv = s.duration_value ?? s.durationValue ?? s.duration ?? '';
+    const du = s.duration_unit ?? s.durationUnit ?? '';
+    const intensity = s.intensity ?? null;
+    const parts = [];
+    if (dv !== '' && du) parts.push(`${dv}${du}`);
+    else if (dv !== '') parts.push(String(dv));
+    if (intensity) parts.push(`Z${intensity}`);
+    return parts.length ? parts.join(' · ') : (s.description || '').trim();
+  };
+
+  const summarizeBlock = (bloque) => {
+    if (!bloque || typeof bloque !== 'object') return '';
+    if (typeof bloque.content === 'string' && bloque.content.trim()) return bloque.content.trim();
+    const steps = Array.isArray(bloque.steps) ? bloque.steps : [];
+    const reps = parseInt(bloque.repeats || 1, 10) || 1;
+    const stepSummaries = steps
+      .map(summarizeStep)
+      .filter(Boolean)
+      .slice(0, 2);
+    let base = stepSummaries.join(' | ');
+    if (!base) base = 'Sin detalle';
+    if (reps > 1) base = `x${reps} · ${base}`;
+    return base;
+  };
+
   const renderStructure = () => {
       // Opción A: Tenemos JSON estructurado (La nueva era)
       // Usamos ?. para evitar errores si 'estructura' es null
       if (training?.estructura?.bloques && training.estructura.bloques.length > 0) {
           return (
-              <Stack spacing={0.5} sx={{ mt: 1 }}>
-                  {training.estructura.bloques.map((bloque, index) => {
-                      // Colores pequeños para diferenciar bloques
-                      let barColor = '#94A3B8';
-                      if (bloque.type === 'WARMUP') barColor = '#84CC16'; // Verde
-                      if (bloque.type === 'MAIN') barColor = '#F59E0B';   // Naranja
-                      if (bloque.type === 'COOLDOWN') barColor = '#3B82F6'; // Azul
+              <Stack spacing={0.75} sx={{ mt: 1 }}>
+                  {training.estructura.bloques.slice(0, 3).map((bloque, index) => {
+                      const type = (bloque?.type || 'MAIN').toUpperCase();
+                      const cfg = BLOCK_STYLE[type] || { label: type, color: '#64748B', bg: '#F1F5F9', icon: FormatListBulleted };
+                      const BlockIcon = cfg.icon;
+
+                      // Color por intensidad (si hay)
+                      const firstIntensity = Array.isArray(bloque?.steps) && bloque.steps[0]?.intensity ? bloque.steps[0].intensity : null;
+                      const accent = (firstIntensity && ZONE_COLOR[firstIntensity]) ? ZONE_COLOR[firstIntensity] : cfg.color;
 
                       return (
-                          <Box key={index} sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '0.7rem', color: '#475569' }}>
-                              <Box sx={{ width: 4, height: 14, bgcolor: barColor, borderRadius: 1, flexShrink: 0 }} />
-                              <Typography variant="body2" sx={{ fontSize: '0.75rem', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {bloque.content || "Sin descripción"}
-                              </Typography>
+                          <Box
+                            key={index}
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1,
+                              px: 1,
+                              py: 0.75,
+                              borderRadius: 1.5,
+                              bgcolor: cfg.bg,
+                              border: `1px solid ${accent}33`,
+                            }}
+                          >
+                              <Box sx={{ width: 28, height: 28, borderRadius: 1.5, bgcolor: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                <BlockIcon sx={{ fontSize: 16, color: 'white' }} />
+                              </Box>
+                              <Box sx={{ minWidth: 0 }}>
+                                <Typography variant="caption" sx={{ fontWeight: 900, color: '#0F172A', display: 'block', lineHeight: 1 }}>
+                                  {cfg.label}
+                                </Typography>
+                                <Typography
+                                  variant="body2"
+                                  sx={{
+                                    fontSize: '0.72rem',
+                                    color: '#475569',
+                                    lineHeight: 1.2,
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                    maxWidth: '100%',
+                                  }}
+                                >
+                                  {summarizeBlock(bloque)}
+                                </Typography>
+                              </Box>
                           </Box>
                       );
                   })}

@@ -242,6 +242,14 @@ class Entrenamiento(models.Model):
 
     class Meta: 
         ordering = ['-fecha_asignada']
+        indexes = [
+            # Consultas críticas en UI/analytics:
+            # - agenda por atleta (semana/mes): alumno + fecha
+            # - listados por fecha para equipos/coaches
+            models.Index(fields=["alumno", "-fecha_asignada"], name="ent_alumno_fecha_desc"),
+            models.Index(fields=["alumno", "fecha_asignada"], name="ent_alumno_fecha"),
+            models.Index(fields=["fecha_asignada", "alumno"], name="ent_fecha_alumno"),
+        ]
         constraints = [
             # Strava activity id es globalmente único, pero el campo permite NULL/blank.
             # Este índice parcial previene duplicados reales sin romper registros legacy.
