@@ -6,7 +6,7 @@ import {
 } from '@mui/material';
 import { 
   ArrowBack, Edit, Email, LocationOn, CalendarMonth, FitnessCenter,
-  LibraryBooks 
+  LibraryBooks, Refresh
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import client from '../api/client';
@@ -26,6 +26,7 @@ const AthleteDetail = () => {
   const [loading, setLoading] = useState(true);
   const [granularity, setGranularity] = useState('DAILY');
   const [chartMetric, setChartMetric] = useState('PERFORMANCE');
+  const [refreshNonce, setRefreshNonce] = useState(0);
   
   // Estado para la Librería Lateral
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
@@ -148,7 +149,25 @@ const AthleteDetail = () => {
 
       {/* --- SECCIÓN DE ANALYTICS (BLINDADA) --- */}
       <Box sx={{ mb: 4 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, gap: 2 }}>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<Refresh />}
+                onClick={async () => {
+                  try {
+                    const resAthlete = await client.get(`/api/alumnos/${id}/`);
+                    setAthlete(resAthlete.data);
+                  } catch (err) {
+                    console.error("Error refrescando alumno:", err);
+                  } finally {
+                    setRefreshNonce((n) => n + 1);
+                  }
+                }}
+                sx={{ textTransform: 'none', fontWeight: 700 }}
+              >
+                Refrescar Datos
+              </Button>
               <ToggleButtonGroup
                   value={granularity}
                   exclusive
@@ -184,6 +203,7 @@ const AthleteDetail = () => {
                 weeklyStats={athlete?.stats_semanales || []}
                 onMetricChange={setChartMetric}
                 onRequireDaily={() => setGranularity('DAILY')}
+                refreshNonce={refreshNonce}
               />
           </ErrorBoundary>
       </Box>

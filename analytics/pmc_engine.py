@@ -99,6 +99,7 @@ def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
             "desnivel_positivo",
             "tiempo_movimiento",
             "calories_kcal",
+            "effort",
             "datos_brutos",
         )
     )
@@ -111,7 +112,19 @@ def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
         elev_m = float(a.get("desnivel_positivo") or 0.0)
         dur_s = int(a.get("tiempo_movimiento") or 0)
         calories_kcal = float(a.get("calories_kcal") or 0.0)
-        load = float(_extract_activity_load(a.get("datos_brutos") or {}, dur_s) or 0.0)
+        # Prioridad para "TSS/carga":
+        # - `Actividad.effort` (si existe) es la señal más directa (Strava relative_effort / suffer_score)
+        # - fallback a extracción de `datos_brutos`
+        # - último fallback: proxy por duración
+        effort = a.get("effort")
+        if effort is not None:
+            try:
+                eff_v = float(effort)
+            except Exception:
+                eff_v = 0.0
+        else:
+            eff_v = 0.0
+        load = float(eff_v) if eff_v > 0 else float(_extract_activity_load(a.get("datos_brutos") or {}, dur_s) or 0.0)
 
         key = (d, sport)
         prev = by_key.get(key)

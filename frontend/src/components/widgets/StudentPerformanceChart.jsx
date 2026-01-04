@@ -48,7 +48,7 @@ const safeFormat = (dateStr, formatStr) => {
     } catch { return ''; }
 };
 
-const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricChange, onRequireDaily } = {}) => {
+const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricChange, onRequireDaily, refreshNonce } = {}) => {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [metric, setMetric] = useState('PERFORMANCE');
@@ -133,7 +133,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
         };
         fetchData();
         return () => { isMounted = false; };
-    }, [sport, alumnoId]);
+    }, [sport, alumnoId, refreshNonce]);
 
     // Filtrado de Datos
     const getFilteredData = () => {
@@ -374,45 +374,20 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                     <Chip label="SEMANA" size="small" sx={{ ml: 1, height: 18, fontSize: '0.6rem', bgcolor:'rgba(255,255,255,0.2)', color:'white' }} />
                 </Box>
                 <Stack spacing={0.75}>
+                    {metric === 'TIME' && (
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.85)' }}>
+                            Total Semanal: <strong>{tmin} min</strong> | <strong>{kcal} kcal</strong>
+                        </Typography>
+                    )}
                     {metric === 'DISTANCE' && (
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.75)' }}>
-                                Distancia (km)
-                            </Typography>
-                            <Typography variant="caption" fontWeight="bold" sx={{ color: 'white' }}>
-                                {km}
-                            </Typography>
-                        </Box>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.85)' }}>
+                            Total Semanal: <strong>{km} km</strong>
+                        </Typography>
                     )}
                     {metric === 'ELEVATION' && (
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.75)' }}>
-                                Desnivel Positivo (m)
-                            </Typography>
-                            <Typography variant="caption" fontWeight="bold" sx={{ color: 'white' }}>
-                                {elev}
-                            </Typography>
-                        </Box>
-                    )}
-                    {metric === 'TIME' && (
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.75)' }}>
-                                Duración Total
-                            </Typography>
-                            <Typography variant="caption" fontWeight="bold" sx={{ color: 'white' }}>
-                                {tmin} min
-                            </Typography>
-                        </Box>
-                    )}
-                    {metric === 'TIME' && (
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Typography variant="caption" sx={{ color: COLORS.CALORIES, opacity: 0.95 }}>
-                                Calorías (kcal)
-                            </Typography>
-                            <Typography variant="caption" fontWeight="bold" sx={{ color: 'white' }}>
-                                {kcal} kcal
-                            </Typography>
-                        </Box>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.85)' }}>
+                            Total Semanal: <strong>{elev} m+</strong>
+                        </Typography>
                     )}
                 </Stack>
             </Paper>
