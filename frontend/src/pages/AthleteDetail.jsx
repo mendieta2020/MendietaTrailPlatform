@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Box, Typography, Paper, Grid, Avatar, Chip, Button, 
@@ -34,10 +34,23 @@ const AthleteDetail = () => {
   const [loadingMonths, setLoadingMonths] = useState({}); // { [monthKey]: true }
   const [monthOrder, setMonthOrder] = useState([]); // LRU simple para no acumular meses
 
+  // Refs para evitar closures stale en callbacks (y prevenir loops por props inestables)
+  const trainingCacheRef = useRef(trainingCache);
+  const loadingMonthsRef = useRef(loadingMonths);
+  useEffect(() => {
+    trainingCacheRef.current = trainingCache;
+  }, [trainingCache]);
+  useEffect(() => {
+    loadingMonthsRef.current = loadingMonths;
+  }, [loadingMonths]);
+
   // Quick assign (click-to-assign)
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignTemplate, setAssignTemplate] = useState(null);
   const [assignDate, setAssignDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+
+  // DEBUG (solicitado)
+  console.log('DEBUG - Athlete Data:', athlete);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -88,10 +101,23 @@ const AthleteDetail = () => {
     });
   }, [trainingCache]);
 
-  const fetchMonthIfNeeded = async ({ monthKey, startISO, endISO }) => {
+  // DEBUG (solicitado)
+  console.log('DEBUG - Trainings:', trainings);
+
+  // DEBUG más útil: cuando cambian los datos
+  useEffect(() => {
+    console.log('DEBUG - Athlete Data (effect):', athlete);
+  }, [athlete]);
+  useEffect(() => {
+    console.log('DEBUG - Trainings (effect):', trainings);
+  }, [trainings]);
+
+  const fetchMonthIfNeeded = useCallback(async ({ monthKey, startISO, endISO }) => {
     if (!monthKey || !startISO || !endISO) return;
-    if (trainingCache[monthKey]) return;
-    if (loadingMonths[monthKey]) return;
+    const cache = trainingCacheRef.current || {};
+    const loadingMap = loadingMonthsRef.current || {};
+    if (cache[monthKey]) return;
+    if (loadingMap[monthKey]) return;
 
     try {
       setLoadingMonths((prev) => ({ ...prev, [monthKey]: true }));
@@ -113,7 +139,7 @@ const AthleteDetail = () => {
         return next;
       });
     }
-  };
+  }, [id]);
 
   const handleOpenAssign = (tpl) => {
     setAssignTemplate(tpl);

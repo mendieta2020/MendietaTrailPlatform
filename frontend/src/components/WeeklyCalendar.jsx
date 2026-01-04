@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { 
   Box, Typography, Paper, Grid, IconButton, Button, Snackbar, Alert 
 } from '@mui/material';
@@ -42,13 +42,17 @@ const WeeklyCalendar = ({ trainings: initialTrainings, athleteId, onActiveDateCh
   const startOfVisibleWeek = startOfWeek(currentDate, { weekStartsOn: 1 });
   const weekDays = Array.from({ length: 7 }).map((_, i) => addDays(startOfVisibleWeek, i));
 
+  const lastMonthRequestedRef = useRef(null);
+
   // Lazy loading: pedir solo el mes visible (cache en el parent).
   useEffect(() => {
     if (!athleteId) return;
     if (typeof onNeedMonth !== 'function') return;
     const monthKey = format(currentDate, 'yyyy-MM');
+    if (lastMonthRequestedRef.current === monthKey) return;
     const startISO = format(startOfMonth(currentDate), 'yyyy-MM-dd');
     const endISO = format(endOfMonth(currentDate), 'yyyy-MM-dd');
+    lastMonthRequestedRef.current = monthKey;
     onNeedMonth({ monthKey, startISO, endISO });
   }, [athleteId, currentDate, onNeedMonth]);
 
