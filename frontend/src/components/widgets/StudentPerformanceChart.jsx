@@ -58,6 +58,20 @@ const isoWeekKey = (d) => {
     }
 };
 
+const getNumericMax = (rows, key) => {
+    try {
+        if (!Array.isArray(rows) || !rows.length) return 0;
+        let max = 0;
+        for (const r of rows) {
+            const v = Number(r?.[key]);
+            if (Number.isFinite(v) && v > max) max = v;
+        }
+        return max;
+    } catch {
+        return 0;
+    }
+};
+
 // Helper seguro para fechas
 const safeFormat = (dateStr, formatStr) => {
     try {
@@ -294,6 +308,19 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
 
     // En semanal, calculamos duración semanal desde datos diarios (PMC) para evitar 0
     const weeklyChartData = isWeekly ? weeklyFromDaily : [];
+
+    // Y-domain defensivo para que barras chicas no queden invisibles.
+    const activeRows = isWeekly ? weeklyChartData : filteredData;
+    const yKey =
+        metric === 'TIME'
+            ? (isWeekly ? 'calories_kcal' : 'calories')
+            : metric === 'DISTANCE'
+                ? (isWeekly ? 'km' : 'dist')
+                : metric === 'ELEVATION'
+                    ? (isWeekly ? 'elev_gain_m' : 'elev_gain')
+                    : null;
+    const yMax = yKey ? getNumericMax(activeRows, yKey) : 0;
+    const yDomain = yKey ? [0, Math.max(Math.ceil(yMax * 1.15), 10)] : [0, 'auto'];
     
     // Próximo objetivo
     let nextRace = null, weeksToRace = null;
@@ -505,7 +532,14 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                         axisLine={false}
                         minTickGap={40}
                     />
-                    <YAxis yAxisId="left" tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
+                    <YAxis
+                        yAxisId="left"
+                        domain={yDomain}
+                        padding={{ top: 18, bottom: 0 }}
+                        tick={{ fontSize: 10, fill: '#94A3B8' }}
+                        tickLine={false}
+                        axisLine={false}
+                    />
                     <YAxis yAxisId="right" orientation="right" hide={!(isWeekly && metric === 'TIME')} tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
                     <Tooltip content={isWeekly ? <WeeklyTooltip /> : <CustomTooltip />} />
                     {metric !== 'TIME' && <Legend wrapperStyle={{ paddingTop: '10px' }} iconType="circle"/>}
@@ -515,23 +549,23 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                     
                     {metric === 'DISTANCE' && (
                         isWeekly ? (
-                            <Bar yAxisId="left" dataKey="km" name="Distancia (km)" barSize={10} radius={[2, 2, 0, 0]} fill={COLORS.BAR_REAL} />
+                            <Bar yAxisId="left" dataKey="km" name="Distancia (km)" barSize={10} minPointSize={2} radius={[2, 2, 0, 0]} fill={COLORS.BAR_REAL} />
                         ) : (
-                            <Bar yAxisId="left" dataKey="dist" name="Distancia (km)" barSize={8} radius={[2, 2, 0, 0]}>{filteredData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.is_future ? COLORS.BAR_PLAN : COLORS.BAR_REAL} />))}</Bar>
+                            <Bar yAxisId="left" dataKey="dist" name="Distancia (km)" barSize={8} minPointSize={2} radius={[2, 2, 0, 0]}>{filteredData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.is_future ? COLORS.BAR_PLAN : COLORS.BAR_REAL} />))}</Bar>
                         )
                     )}
                     
                     {metric === 'TIME' && (
                         isWeekly ? (
-                            <Bar yAxisId="left" dataKey="calories_kcal" name="Calorías (kcal)" barSize={10} radius={[2, 2, 0, 0]} fill={COLORS.CALORIES} />
+                            <Bar yAxisId="left" dataKey="calories_kcal" name="Calorías (kcal)" barSize={10} minPointSize={2} radius={[2, 2, 0, 0]} fill={COLORS.CALORIES} />
                         ) : (
-                            <Bar yAxisId="left" dataKey="calories" name="Calorías (kcal)" barSize={8} radius={[2, 2, 0, 0]} fill={COLORS.CALORIES} />
+                            <Bar yAxisId="left" dataKey="calories" name="Calorías (kcal)" barSize={8} minPointSize={2} radius={[2, 2, 0, 0]} fill={COLORS.CALORIES} />
                         )
                     )}
 
                     {metric === 'ELEVATION' && (
                         isWeekly ? (
-                            <Bar yAxisId="left" dataKey="elev_gain_m" name="Desnivel Positivo (m)" barSize={10} radius={[2, 2, 0, 0]} fill={COLORS.ELEV_POS} />
+                            <Bar yAxisId="left" dataKey="elev_gain_m" name="Desnivel Positivo (m)" barSize={10} minPointSize={2} radius={[2, 2, 0, 0]} fill={COLORS.ELEV_POS} />
                         ) : (
                             <>
                               <Area yAxisId="left" type="monotone" dataKey="elev_gain" name="Desnivel Positivo (m)" stroke={COLORS.ELEV_POS} fill="url(#colorElev)" />
