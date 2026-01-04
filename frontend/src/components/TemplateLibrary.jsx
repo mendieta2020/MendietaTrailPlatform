@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { 
   Box, Typography, Paper, List, ListItem, ListItemText, 
   Chip, TextField, InputAdornment, IconButton, CircularProgress, Divider
@@ -6,7 +6,7 @@ import {
 import { Search, FitnessCenter, DirectionsRun, PedalBike, Add } from '@mui/icons-material';
 import client from '../api/client';
 
-const TemplateLibrary = () => {
+const TemplateLibrary = ({ onSelectTemplate }) => {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
@@ -45,17 +45,19 @@ const TemplateLibrary = () => {
     }
   };
 
-  const filteredList = templates.filter(t => 
-    t.titulo.toLowerCase().includes(filter.toLowerCase())
-  );
+  const filteredList = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return templates;
+    return templates.filter((t) => (t.titulo || '').toLowerCase().includes(q));
+  }, [templates, filter]);
 
   return (
     <Paper sx={{ height: '100%', display: 'flex', flexDirection: 'column', borderRight: '1px solid #e0e0e0' }}>
       {/* HEADER */}
       <Box sx={{ p: 2, bgcolor: '#f8fafc', borderBottom: '1px solid #e0e0e0' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#475569' }}>
-            LIBRERÍA 📚
+          <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#0F172A' }}>
+            Librería de Sesiones
           </Typography>
           <IconButton size="small" sx={{ bgcolor: '#e2e8f0' }}>
             <Add fontSize="small" />
@@ -90,12 +92,15 @@ const TemplateLibrary = () => {
                   button 
                   sx={{ 
                     '&:hover': { bgcolor: '#f1f5f9' },
-                    cursor: 'grab' // Cursor de manito para indicar arrastre
+                    cursor: 'grab' // indica arrastre, pero también soporta click-to-assign
                   }}
                   draggable // ¡Habilita el arrastre nativo!
                   onDragStart={(e) => {
                     e.dataTransfer.setData("templateId", tpl.id);
                     e.dataTransfer.setData("templateTitle", tpl.titulo);
+                  }}
+                  onClick={() => {
+                    if (typeof onSelectTemplate === 'function') onSelectTemplate(tpl);
                   }}
                 >
                   <Box sx={{ mr: 1.5, color: '#64748B', display: 'flex' }}>

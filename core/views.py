@@ -284,7 +284,12 @@ class EntrenamientoViewSet(TenantModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['alumno', 'fecha_asignada', 'completado']
+    # Lazy-loading frontend: permitir rangos por fecha sin traer todo el histórico.
+    filterset_fields = {
+        "alumno": ["exact"],
+        "completado": ["exact"],
+        "fecha_asignada": ["exact", "gte", "lte"],
+    }
     ordering_fields = ['fecha_asignada']
 
     # ======================================================================
