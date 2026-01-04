@@ -67,7 +67,8 @@ const safeFormat = (dateStr, formatStr) => {
 };
 
 const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricChange, onRequireDaily, refreshNonce } = {}) => {
-    const [data, setData] = useState([]);
+    // Cache por deporte para evitar mezcla al alternar RUN/BIKE/ALL
+    const [dataBySport, setDataBySport] = useState({ ALL: [], RUN: [], BIKE: [] });
     const [loading, setLoading] = useState(true);
     const [metric, setMetric] = useState('PERFORMANCE');
     const [sport, setSport] = useState('ALL'); 
@@ -139,12 +140,19 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                             tsb: Number(item.tsb) || 0,
                             fecha: item.fecha
                         }));
-                        setData(sanitizedData);
-                    } else { setData([]); }
+                        const key = String(sport || 'ALL').toUpperCase();
+                        setDataBySport((prev) => ({ ...prev, [key]: sanitizedData }));
+                    } else {
+                        const key = String(sport || 'ALL').toUpperCase();
+                        setDataBySport((prev) => ({ ...prev, [key]: [] }));
+                    }
                 }
             } catch (err) {
                 console.error("Error PMC:", err);
-                if (isMounted) setData([]);
+                if (isMounted) {
+                    const key = String(sport || 'ALL').toUpperCase();
+                    setDataBySport((prev) => ({ ...prev, [key]: [] }));
+                }
             } finally {
                 if (isMounted) setLoading(false);
             }
@@ -153,9 +161,13 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
         return () => { isMounted = false; };
     }, [sport, alumnoId, refreshNonce]);
 
+    const currentDaily = Array.isArray(dataBySport?.[String(sport || 'ALL').toUpperCase()])
+        ? dataBySport[String(sport || 'ALL').toUpperCase()]
+        : [];
+
     // Filtrado de Datos
     const getFilteredData = () => {
-        if (!data.length) return [];
+        if (!currentDaily.length) return [];
         const today = new Date();
         let startDate, endDate;
 
@@ -166,7 +178,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
             default: startDate = subMonths(today, 6); endDate = addMonths(today, 6);
         }
         
-        return data.filter(d => {
+        return currentDaily.filter(d => {
             const dDate = parseISO(d.fecha);
             return isValid(dDate) && dDate >= startDate && dDate <= endDate;
         });
@@ -315,17 +327,21 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
         );
     }
 
-    // Estado vacío seguro
-    if ((!isWeekly && !data.length) || (isWeekly && !filteredWeeklyData.length)) return (
-        <Paper elevation={0} sx={{ p: 4, textAlign:'center', borderRadius: 3, height: 500, border: '1px solid #E2E8F0', bgcolor: '#F8FAFC', display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center' }}>
-            <AutoGraph sx={{ fontSize: 60, color: '#CBD5E1', mb: 2 }} />
-            <Typography color="textSecondary" fontWeight="bold">Sin datos</Typography>
-        </Paper>
-    );
+    // Estado vacío seguro (sin pantalla en blanco)
+    if ((!isWeekly && !filteredData.length) || (isWeekly && !weeklyChartData.length)) {
+        return (
+            <Paper elevation={0} sx={{ p: 4, textAlign:'center', borderRadius: 3, height: 500, border: '1px solid #E2E8F0', bgcolor: '#F8FAFC', display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center' }}>
+                <AutoGraph sx={{ fontSize: 60, color: '#CBD5E1', mb: 2 }} />
+                <Typography color="textSecondary" fontWeight="bold">
+                    {sport === 'ALL' ? 'Sin datos' : 'Sin datos de este deporte'}
+                </Typography>
+            </Paper>
+        );
+    }
 
     const CustomTooltip = ({ active, payload, label }) => {
         if (active && payload && payload.length && label) {
-            const dayData = data.find(d => d.fecha === label);
+            const dayData = currentDaily.find(d => d.fecha === label);
             if (!dayData) return null;
             const isFut = dayData.is_future;
             const primaryLabel =
@@ -383,14 +399,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                             />
                           </>
                         )}
-                        {metric === 'TIME' && dayData.effort != null && (
-                          <DataRow
-                            icon={<Layers fontSize="inherit" />}
-                            label="Esfuerzo total"
-                            value={dayData.effort}
-                            color="#22C55E"
-                          />
-                        )}
+                        {/* Eliminamos duplicidad: en TIME mostramos sólo load como Esfuerzo */}
                         {(dayData.elev_gain > 0 || dayData.elev_loss_raw != null) && (
                           <Box sx={{ display: 'flex', gap: 2, justifyContent: 'space-between' }}>
                             {dayData.elev_gain > 0 && (
@@ -482,6 +491,22 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                             {Object.keys(METRICS).map(key => (<MenuItem key={key} value={key}><Stack direction="row" gap={1} alignItems="center">{METRICS[key].icon} {METRICS[key].label}</Stack></MenuItem>))}
                         </Select>
                     </FormControl>
+                    {metric === 'TIME' && (
+                        <Box sx={{ mt: 1, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: COLORS.CALORIES }} />
+                                <Typography variant="caption" sx={{ color: '#475569', fontWeight: 800 }}>Calorías totales</Typography>
+                            </Box>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#475569' }} />
+                                <Typography variant="caption" sx={{ color: '#475569', fontWeight: 800 }}>Duración</Typography>
+                            </Box>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#22C55E' }} />
+                                <Typography variant="caption" sx={{ color: '#475569', fontWeight: 800 }}>Esfuerzo</Typography>
+                            </Box>
+                        </Box>
+                    )}
                 </Grid>
                 <Grid item xs={12} md={4} sx={{ display: 'flex', justifyContent: { md: 'center' } }}><ToggleButtonGroup value={sport} exclusive onChange={(e, val) => val && setSport(val)} size="small" sx={{ bgcolor: '#F8FAFC' }}><ToggleButton value="ALL" sx={{ px: 2 }}><Layers/></ToggleButton><ToggleButton value="RUN" sx={{ px: 2 }}><DirectionsRun/></ToggleButton><ToggleButton value="BIKE" sx={{ px: 2 }}><PedalBike/></ToggleButton></ToggleButtonGroup></Grid>
                 <Grid item xs={12} md={4} sx={{ display: 'flex', justifyContent: { md: 'flex-end' } }}><ToggleButtonGroup value={range} exclusive onChange={(e, val) => val && setRange(val)} size="small"><ToggleButton value="3M">3M</ToggleButton><ToggleButton value="SEASON">TEMP</ToggleButton><ToggleButton value="1Y">1 AÑO</ToggleButton></ToggleButtonGroup></Grid>
@@ -519,7 +544,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                     <YAxis yAxisId="left" tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
                     <YAxis yAxisId="right" orientation="right" hide={!(isWeekly && metric === 'TIME')} tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
                     <Tooltip content={isWeekly ? <WeeklyTooltip /> : <CustomTooltip />} />
-                    <Legend wrapperStyle={{ paddingTop: '10px' }} iconType="circle"/>
+                    {metric !== 'TIME' && <Legend wrapperStyle={{ paddingTop: '10px' }} iconType="circle"/>}
                     {!isWeekly && <ReferenceArea x1={todayStr} ifOverflow="extendDomain" fill="rgba(241, 245, 249, 0.5)" />}
 
                     {!isWeekly && metric === 'PERFORMANCE' && (<><Bar yAxisId="left" dataKey="load" name="Carga" barSize={4} fill="#94A3B8" opacity={0.3} /><Area yAxisId="left" type="monotone" dataKey="ctl" name="Fitness" stroke={COLORS.FITNESS} strokeWidth={3} fill="url(#colorCtl)" dot={false} /><Line yAxisId="left" type="monotone" dataKey="atl" name="Fatiga" stroke={COLORS.FATIGUE} strokeWidth={2} dot={false} strokeDasharray="3 3" /><Line yAxisId="right" type="monotone" dataKey="tsb" name="Forma" stroke={COLORS.FORM} strokeWidth={2} dot={false} /></>)}
@@ -560,23 +585,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                 </ComposedChart>
             </Box>
 
-            {/* Leyenda inferior fija (estilo TrainingPeaks) para TIME */}
-            {metric === 'TIME' && (
-                <Box sx={{ mt: 1.5, display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: COLORS.CALORIES }} />
-                        <Typography variant="caption" sx={{ color: '#475569', fontWeight: 700 }}>Calorías totales</Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#475569' }} />
-                        <Typography variant="caption" sx={{ color: '#475569', fontWeight: 700 }}>Duración</Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#22C55E' }} />
-                        <Typography variant="caption" sx={{ color: '#475569', fontWeight: 700 }}>Esfuerzo</Typography>
-                    </Box>
-                </Box>
-            )}
+            {/* Leyendas movidas arriba (junto al selector de métricas) */}
         </Paper>
     );
 };
