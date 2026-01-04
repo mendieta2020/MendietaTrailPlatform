@@ -39,6 +39,14 @@ const METRICS = {
     ELEVATION: { label: 'Desnivel (+/-)', icon: <Terrain fontSize="small"/> },
 };
 
+const formatDurationHuman = (minutesLike) => {
+    const totalMin = Math.max(0, Math.round(Number(minutesLike) || 0));
+    const hrs = Math.floor(totalMin / 60);
+    const mins = totalMin % 60;
+    if (hrs <= 0) return `${mins} min`;
+    return `${hrs} horas ${String(mins).padStart(2, '0')} min`;
+};
+
 // Helper seguro para fechas
 const safeFormat = (dateStr, formatStr) => {
     try {
@@ -209,6 +217,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
             const startStr = w.range_start;
             const endStr = w.range_end;
             let timeMin = Number(w.time_min) || 0;
+            let loadSum = 0;
             if (timeMin === 0 && startStr && endStr && filteredData.length) {
                 try {
                     const start = parseISO(startStr);
@@ -220,6 +229,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                                 const dd = parseISO(d.fecha);
                                 if (isValid(dd) && dd >= start && dd <= end && !d.is_future) {
                                     sum += Number(d.time) || 0; // minutos
+                                    loadSum += Number(d.load) || 0;
                                 }
                             } catch {
                                 // ignore
@@ -230,12 +240,33 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                 } catch {
                     // ignore
                 }
+            } else if (startStr && endStr && filteredData.length) {
+                // Igual sumamos load semanal aunque time_min venga del backend
+                try {
+                    const start = parseISO(startStr);
+                    const end = parseISO(endStr);
+                    if (isValid(start) && isValid(end)) {
+                        for (const d of filteredData) {
+                            try {
+                                const dd = parseISO(d.fecha);
+                                if (isValid(dd) && dd >= start && dd <= end && !d.is_future) {
+                                    loadSum += Number(d.load) || 0;
+                                }
+                            } catch {
+                                // ignore
+                            }
+                        }
+                    }
+                } catch {
+                    // ignore
+                }
             }
             return {
                 ...w,
                 // Aseguramos keys correctas (no NaN)
                 calories_kcal: Math.round(Number(w.calories_kcal) || 0),
                 time_min: Math.round(Number(timeMin) || 0),
+                load_sum: Math.round(Number(loadSum) || 0),
             };
         })
         : [];
@@ -320,12 +351,26 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                         )}
                         <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.1)' }} />
                         {metric === 'TIME' && (
-                          <DataRow
-                            icon={<LocalFireDepartment fontSize="inherit"/>}
-                            label="Calorías (kcal)"
-                            value={dayData.calories != null ? `${Math.round(Number(dayData.calories) || 0)} kcal` : '—'}
-                            color={COLORS.CALORIES}
-                          />
+                          <>
+                            <DataRow
+                              icon={<Timer fontSize="inherit" />}
+                              label="Duración"
+                              value={formatDurationHuman(dayData.time)}
+                              color="rgba(255,255,255,0.85)"
+                            />
+                            <DataRow
+                              icon={<LocalFireDepartment fontSize="inherit"/>}
+                              label="Calorías"
+                              value={`${Math.round(Number(dayData.calories) || 0)} kcal`}
+                              color={COLORS.CALORIES}
+                            />
+                            <DataRow
+                              icon={<Layers fontSize="inherit" />}
+                              label="Esfuerzo total"
+                              value={Math.round(Number(dayData.load) || 0)}
+                              color="rgba(255,255,255,0.85)"
+                            />
+                          </>
                         )}
                         {metric === 'TIME' && dayData.effort != null && (
                           <DataRow
@@ -364,6 +409,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
         const tmin = Math.round(Number(p.time_min) || 0);
         const km = Number(p.km) || 0;
         const elev = Math.round(Number(p.elev_gain_m) || 0);
+        const loadSum = Math.round(Number(p.load_sum) || 0);
 
         return (
             <Paper sx={{ p: 2, bgcolor: COLORS.TOOLTIP_BG, color: 'white', borderRadius: 2, minWidth: 240, boxShadow: '0 8px 32px rgba(0,0,0,0.5)', zIndex: 9999 }}>
@@ -375,9 +421,17 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                 </Box>
                 <Stack spacing={0.75}>
                     {metric === 'TIME' && (
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.85)' }}>
-                            Total Semanal: <strong>{tmin} min</strong> | <strong>{kcal} kcal</strong>
-                        </Typography>
+                        <>
+                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.85)' }}>
+                              Duración: <strong>{formatDurationHuman(tmin)}</strong>
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: COLORS.CALORIES, opacity: 0.95 }}>
+                              Calorías: <strong>{kcal} kcal</strong>
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.85)' }}>
+                              Esfuerzo total: <strong>{loadSum}</strong>
+                          </Typography>
+                        </>
                     )}
                     {metric === 'DISTANCE' && (
                         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.85)' }}>
@@ -469,12 +523,9 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                     
                     {metric === 'TIME' && (
                         isWeekly ? (
-                            <>
-                                <Bar yAxisId="left" dataKey="time_min" name="Duración (min)" barSize={10} radius={[2, 2, 0, 0]} fill="#475569" />
-                                <Bar yAxisId="right" dataKey="calories_kcal" name="Calorías (kcal)" barSize={10} radius={[2, 2, 0, 0]} fill={COLORS.CALORIES} />
-                            </>
+                            <Bar yAxisId="left" dataKey="calories_kcal" name="Calorías (kcal)" barSize={10} radius={[2, 2, 0, 0]} fill={COLORS.CALORIES} />
                         ) : (
-                            <><Bar yAxisId="left" dataKey="time" name="Tiempo (min)" barSize={8} radius={[2, 2, 0, 0]}>{filteredData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.is_future ? COLORS.TIME_PLAN : COLORS.TIME_REAL} />))}</Bar><Line yAxisId="right" type="monotone" dataKey="calories" name="Kcal" stroke={COLORS.CALORIES} strokeWidth={2} dot={false} /></>
+                            <Bar yAxisId="left" dataKey="calories" name="Calorías (kcal)" barSize={8} radius={[2, 2, 0, 0]} fill={COLORS.CALORIES} />
                         )
                     )}
 
