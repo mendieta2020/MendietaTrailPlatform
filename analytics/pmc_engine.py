@@ -202,16 +202,18 @@ def recompute_pmc_for_alumno(*, alumno_id: int, start_date: date) -> dict[str, i
         tss_run = tss_for_group(d, "RUN")
         tss_bike = tss_for_group(d, "BIKE")
 
+        # CTL (fitness) tradicional ~42d. ATL (fatiga) más agresivo en corto plazo para que TSB no quede "inflado".
+        # Ajuste: ATL pasa de 7d a 5d (respuesta más rápida a spikes de carga).
         ctl_prev = ctl_prev + (tss_all - ctl_prev) / 42.0
-        atl_prev = atl_prev + (tss_all - atl_prev) / 7.0
+        atl_prev = atl_prev + (tss_all - atl_prev) / 5.0
         tsb_all = ctl_prev - atl_prev
 
         ctl_prev_run = ctl_prev_run + (tss_run - ctl_prev_run) / 42.0
-        atl_prev_run = atl_prev_run + (tss_run - atl_prev_run) / 7.0
+        atl_prev_run = atl_prev_run + (tss_run - atl_prev_run) / 5.0
         tsb_run = ctl_prev_run - atl_prev_run
 
         ctl_prev_bike = ctl_prev_bike + (tss_bike - ctl_prev_bike) / 42.0
-        atl_prev_bike = atl_prev_bike + (tss_bike - atl_prev_bike) / 7.0
+        atl_prev_bike = atl_prev_bike + (tss_bike - atl_prev_bike) / 5.0
         tsb_bike = ctl_prev_bike - atl_prev_bike
 
         new_rows.extend(

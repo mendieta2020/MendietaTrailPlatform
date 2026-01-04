@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { 
-  BarChart, Area, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
+  ComposedChart, Area, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
   Legend, ReferenceLine, ReferenceArea, Cell, Brush 
 } from 'recharts';
 import { 
@@ -48,7 +48,7 @@ const safeFormat = (dateStr, formatStr) => {
     } catch { return ''; }
 };
 
-const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) => {
+const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricChange, onRequireDaily } = {}) => {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [metric, setMetric] = useState('PERFORMANCE');
@@ -63,10 +63,15 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
     const hasWeeklyStats = safeWeeklyStats.length > 0;
     const isWeekly = String(granularity || 'DAILY').toUpperCase() === 'WEEKLY';
 
-    // En semanal, no arrancamos en PERFORMANCE (no aplica) para evitar panel "vacío"
     useEffect(() => {
-        if (isWeekly && metric === 'PERFORMANCE') setMetric('DISTANCE');
-    }, [isWeekly, metric]);
+        onMetricChange?.(metric);
+    }, [metric, onMetricChange]);
+
+    useEffect(() => {
+        if (isWeekly && metric === 'PERFORMANCE') {
+            onRequireDaily?.();
+        }
+    }, [isWeekly, metric, onRequireDaily]);
 
     useLayoutEffect(() => {
         const el = chartWrapRef.current;
@@ -281,6 +286,16 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
             const dayData = data.find(d => d.fecha === label);
             if (!dayData) return null;
             const isFut = dayData.is_future;
+            const primaryLabel =
+                metric === 'DISTANCE' ? 'Distancia (km)' :
+                metric === 'TIME' ? 'Duración (min)' :
+                metric === 'ELEVATION' ? 'Desnivel Positivo (m)' :
+                'Valor';
+            const primaryValue =
+                metric === 'DISTANCE' ? dayData.dist :
+                metric === 'TIME' ? dayData.time :
+                metric === 'ELEVATION' ? dayData.elev_gain :
+                (payload?.[0]?.value ?? null);
             
             return (
                 <Paper sx={{ p: 2, bgcolor: COLORS.TOOLTIP_BG, color: 'white', borderRadius: 2, minWidth: 240, boxShadow: '0 8px 32px rgba(0,0,0,0.5)', zIndex: 9999 }}>
@@ -300,13 +315,15 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
                     <Stack spacing={0.5}>
                         {metric === 'PERFORMANCE' ? (
                            <><DataRow color={COLORS.FITNESS} label="Fitness" value={dayData.ctl} /><DataRow color={COLORS.FATIGUE} label="Fatiga" value={dayData.atl} /><DataRow color={COLORS.FORM} label="Forma" value={dayData.tsb} /></>
-                        ) : (<DataRow color="#fff" label="Valor Principal" value={payload[0].value} />)}
+                        ) : (
+                          <DataRow color="#fff" label={primaryLabel} value={primaryValue} />
+                        )}
                         <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.1)' }} />
-                        {metric === 'TIME' && dayData.calories != null && (
+                        {metric === 'TIME' && (
                           <DataRow
                             icon={<LocalFireDepartment fontSize="inherit"/>}
-                            label="Calorías"
-                            value={`${dayData.calories} kcal`}
+                            label="Calorías (kcal)"
+                            value={dayData.calories != null ? `${Math.round(Number(dayData.calories) || 0)} kcal` : '—'}
                             color={COLORS.CALORIES}
                           />
                         )}
@@ -345,6 +362,8 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
         const weekLabel = label || p.week;
         const kcal = Math.round(Number(p.calories_kcal) || 0);
         const tmin = Math.round(Number(p.time_min) || 0);
+        const km = Number(p.km) || 0;
+        const elev = Math.round(Number(p.elev_gain_m) || 0);
 
         return (
             <Paper sx={{ p: 2, bgcolor: COLORS.TOOLTIP_BG, color: 'white', borderRadius: 2, minWidth: 240, boxShadow: '0 8px 32px rgba(0,0,0,0.5)', zIndex: 9999 }}>
@@ -355,6 +374,26 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
                     <Chip label="SEMANA" size="small" sx={{ ml: 1, height: 18, fontSize: '0.6rem', bgcolor:'rgba(255,255,255,0.2)', color:'white' }} />
                 </Box>
                 <Stack spacing={0.75}>
+                    {metric === 'DISTANCE' && (
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.75)' }}>
+                                Distancia (km)
+                            </Typography>
+                            <Typography variant="caption" fontWeight="bold" sx={{ color: 'white' }}>
+                                {km}
+                            </Typography>
+                        </Box>
+                    )}
+                    {metric === 'ELEVATION' && (
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.75)' }}>
+                                Desnivel Positivo (m)
+                            </Typography>
+                            <Typography variant="caption" fontWeight="bold" sx={{ color: 'white' }}>
+                                {elev}
+                            </Typography>
+                        </Box>
+                    )}
                     {metric === 'TIME' && (
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.75)' }}>
@@ -365,14 +404,16 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
                             </Typography>
                         </Box>
                     )}
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Typography variant="caption" sx={{ color: COLORS.CALORIES, opacity: 0.95 }}>
-                            Calorías Totales
-                        </Typography>
-                        <Typography variant="caption" fontWeight="bold" sx={{ color: 'white' }}>
-                            {kcal} kcal
-                        </Typography>
-                    </Box>
+                    {metric === 'TIME' && (
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Typography variant="caption" sx={{ color: COLORS.CALORIES, opacity: 0.95 }}>
+                                Calorías (kcal)
+                            </Typography>
+                            <Typography variant="caption" fontWeight="bold" sx={{ color: 'white' }}>
+                                {kcal} kcal
+                            </Typography>
+                        </Box>
+                    )}
                 </Stack>
             </Paper>
         );
@@ -414,7 +455,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
 
             {/* Sin ResponsiveContainer: ancho medido por ResizeObserver */}
             <Box ref={chartWrapRef} sx={{ width: '100%', height: 400, minHeight: 400, position: 'relative' }}>
-                <BarChart
+                <ComposedChart
                         key={`${String(granularity || 'DAILY')}-${metric}-${sport}-${range}`}
                         width={Math.max(320, Number(chartWidth) || 900)}
                         height={400}
@@ -464,9 +505,12 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
 
                     {metric === 'ELEVATION' && (
                         isWeekly ? (
-                            <Bar yAxisId="left" dataKey="elev_gain_m" name="Desnivel +" barSize={10} radius={[2, 2, 0, 0]} fill={COLORS.ELEV_POS} />
+                            <Bar yAxisId="left" dataKey="elev_gain_m" name="Desnivel Positivo (m)" barSize={10} radius={[2, 2, 0, 0]} fill={COLORS.ELEV_POS} />
                         ) : (
-                            <><Area yAxisId="left" type="monotone" dataKey="elev_gain" name="Desnivel +" stroke={COLORS.ELEV_POS} fill="url(#colorElev)" /><Area yAxisId="left" type="monotone" dataKey="elev_loss_plot" name="Desnivel -" stroke={COLORS.ELEV_NEG} fill="url(#colorNeg)" /></>
+                            <>
+                              <Area yAxisId="left" type="monotone" dataKey="elev_gain" name="Desnivel Positivo (m)" stroke={COLORS.ELEV_POS} fill="url(#colorElev)" />
+                              <Area yAxisId="left" type="monotone" dataKey="elev_loss_plot" name="Desnivel -" stroke={COLORS.ELEV_NEG} fill="url(#colorNeg)" />
+                            </>
                         )
                     )}
 
@@ -476,7 +520,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity } = {}) =>
                     {!isWeekly && filteredData.length > 0 && (
                          <Brush dataKey="fecha" height={20} stroke={COLORS.GRID} startIndex={startIndex} tickFormatter={(str) => safeFormat(str, 'MMM')}/>
                     )}
-                </BarChart>
+                </ComposedChart>
             </Box>
         </Paper>
     );

@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Box, Typography, Paper, Grid, Avatar, Chip, Button, 
-  CircularProgress, Stack, Fab, Drawer, ToggleButtonGroup, ToggleButton
+  CircularProgress, Stack, Fab, Drawer, ToggleButtonGroup, ToggleButton, Tooltip
 } from '@mui/material';
 import { 
   ArrowBack, Edit, Email, LocationOn, CalendarMonth, FitnessCenter,
@@ -25,6 +25,7 @@ const AthleteDetail = () => {
   const [injuryRisk, setInjuryRisk] = useState(null);
   const [loading, setLoading] = useState(true);
   const [granularity, setGranularity] = useState('DAILY');
+  const [chartMetric, setChartMetric] = useState('PERFORMANCE');
   
   // Estado para la Librería Lateral
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
@@ -83,6 +84,12 @@ const AthleteDetail = () => {
       cancelled = true;
     };
   }, [id]);
+
+  useEffect(() => {
+    if (chartMetric === 'PERFORMANCE' && granularity !== 'DAILY') {
+      setGranularity('DAILY');
+    }
+  }, [chartMetric, granularity]);
 
   if (loading) {
     return (
@@ -151,9 +158,22 @@ const AthleteDetail = () => {
                   <ToggleButton value="DAILY" sx={{ textTransform: 'none', fontWeight: 700 }}>
                       Diaria
                   </ToggleButton>
-                  <ToggleButton value="WEEKLY" sx={{ textTransform: 'none', fontWeight: 700 }}>
-                      Semanal
-                  </ToggleButton>
+                  <Tooltip
+                    title={chartMetric === 'PERFORMANCE' ? 'PMC solo es compatible con vista diaria.' : ''}
+                    disableHoverListener={chartMetric !== 'PERFORMANCE'}
+                    disableFocusListener={chartMetric !== 'PERFORMANCE'}
+                    disableTouchListener={chartMetric !== 'PERFORMANCE'}
+                  >
+                    <span>
+                      <ToggleButton
+                        value="WEEKLY"
+                        disabled={chartMetric === 'PERFORMANCE'}
+                        sx={{ textTransform: 'none', fontWeight: 700 }}
+                      >
+                        Semanal
+                      </ToggleButton>
+                    </span>
+                  </Tooltip>
               </ToggleButtonGroup>
           </Box>
           {/* El ErrorBoundary atrapa cualquier crash dentro del gráfico y evita la pantalla blanca */}
@@ -162,6 +182,8 @@ const AthleteDetail = () => {
                 alumnoId={id}
                 granularity={granularity}
                 weeklyStats={athlete?.stats_semanales || []}
+                onMetricChange={setChartMetric}
+                onRequireDaily={() => setGranularity('DAILY')}
               />
           </ErrorBoundary>
       </Box>
