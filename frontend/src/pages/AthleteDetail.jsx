@@ -83,22 +83,31 @@ const AthleteDetail = () => {
   }, [id]);
 
   if (loading) return <Layout><Box sx={{ p: 5, textAlign: 'center' }}><CircularProgress /></Box></Layout>;
-  if (!athlete) return <Layout><Typography>Atleta no encontrado</Typography></Layout>;
+  // Blindaje: si athlete aún no llegó (o hubo shape inesperado), no intentamos renderizar calendarios.
+  if (!athlete) return <Layout><Box sx={{ p: 5, textAlign: 'center' }}><CircularProgress /></Box></Layout>;
 
   const trainings = useMemo(() => {
-    // Unimos meses cargados (el calendario filtra por semana internamente)
-    const merged = [];
-    Object.values(trainingCache).forEach((arr) => {
-      if (Array.isArray(arr)) merged.push(...arr);
-    });
-    // dedupe defensivo (por id)
-    const seen = new Set();
-    return merged.filter((t) => {
-      const key = String(t?.id ?? '');
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    try {
+      // Unimos meses cargados (el calendario filtra por semana internamente)
+      const merged = [];
+      const cache = trainingCache && typeof trainingCache === 'object' ? trainingCache : {};
+      Object.values(cache).forEach((arr) => {
+        if (Array.isArray(arr)) merged.push(...arr);
+      });
+
+      // dedupe defensivo (por id) + eliminar items corruptos
+      const seen = new Set();
+      return merged.filter((t) => {
+        if (!t || typeof t !== 'object') return false;
+        const key = String(t?.id ?? '');
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    } catch (err) {
+      console.error('DEBUG - trainings useMemo crashed:', err, { trainingCache });
+      return [];
+    }
   }, [trainingCache]);
 
   // DEBUG (solicitado)
@@ -187,6 +196,9 @@ const AthleteDetail = () => {
       return next;
     });
   }, [monthOrder]);
+
+  // Logging de emergencia (pedido) justo antes del render principal
+  console.log('DEBUG_APP_STATE', { athlete, trainings, trainingCache });
 
   return (
     <Layout>
