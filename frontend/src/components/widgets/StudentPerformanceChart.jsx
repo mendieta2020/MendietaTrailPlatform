@@ -12,7 +12,7 @@ import {
     Layers, LocalFireDepartment, EmojiEvents
 } from '@mui/icons-material';
 import client from '../../api/client';
-import { format, parseISO, addMonths, subMonths, isValid, differenceInWeeks } from 'date-fns';
+import { format, parseISO, addMonths, subMonths, isValid, differenceInWeeks, startOfISOWeek, endOfISOWeek, getISOWeek, getISOWeekYear } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 // --- COLORES PROFESIONALES ---
@@ -45,6 +45,16 @@ const formatDurationHuman = (minutesLike) => {
     const mins = totalMin % 60;
     if (hrs <= 0) return `${mins} min`;
     return `${hrs} horas ${String(mins).padStart(2, '0')} min`;
+};
+
+const isoWeekKey = (d) => {
+    try {
+        const y = getISOWeekYear(d);
+        const w = getISOWeek(d);
+        return `${y}-${String(w).padStart(2, '0')}`;
+    } catch {
+        return '';
+    }
 };
 
 // Helper seguro para fechas
@@ -164,6 +174,64 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
 
     const filteredData = getFilteredData();
 
+    // Agregación semanal en frontend (estricta por deporte), construida desde el dataset diario ya filtrado por sport.
+    const buildWeeklyFromDaily = () => {
+        if (!filteredData.length) return [];
+        const byWeek = new Map();
+
+        for (const row of filteredData) {
+            if (row.is_future) continue;
+            if (!row.fecha) continue;
+            let d;
+            try {
+                d = parseISO(row.fecha);
+            } catch {
+                continue;
+            }
+            if (!isValid(d)) continue;
+
+            const wk = isoWeekKey(d);
+            if (!wk) continue;
+            const start = startOfISOWeek(d);
+            const end = endOfISOWeek(d);
+
+            const prev = byWeek.get(wk) || {
+                week: wk,
+                range_start: start.toISOString().slice(0, 10),
+                range_end: end.toISOString().slice(0, 10),
+                km: 0,
+                elev_gain_m: 0,
+                calories_kcal: 0,
+                time_min: 0,
+                load_sum: 0,
+            };
+
+            prev.km += Number(row.dist) || 0;
+            prev.elev_gain_m += Number(row.elev_gain) || 0;
+            prev.time_min += Number(row.time) || 0;
+            prev.load_sum += Number(row.load) || 0;
+            // Si calorías vienen null, se suman como 0 (mantiene comportamiento estable)
+            prev.calories_kcal += Number(row.calories) || 0;
+
+            byWeek.set(wk, prev);
+        }
+
+        const out = Array.from(byWeek.values())
+            .map((w) => ({
+                ...w,
+                km: Math.round((Number(w.km) || 0) * 100) / 100,
+                elev_gain_m: Math.round(Number(w.elev_gain_m) || 0),
+                time_min: Math.round(Number(w.time_min) || 0),
+                load_sum: Math.round(Number(w.load_sum) || 0),
+                calories_kcal: Math.round(Number(w.calories_kcal) || 0),
+            }))
+            .sort((a, b) => String(a.week).localeCompare(String(b.week)));
+
+        return out;
+    };
+
+    const weeklyFromDaily = buildWeeklyFromDaily();
+
     const getFilteredWeeklyData = () => {
         if (!hasWeeklyStats) return [];
         const today = new Date();
@@ -212,64 +280,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
     const todayStr = new Date().toISOString().split('T')[0];
 
     // En semanal, calculamos duración semanal desde datos diarios (PMC) para evitar 0
-    const weeklyChartData = isWeekly
-        ? filteredWeeklyData.map((w) => {
-            const startStr = w.range_start;
-            const endStr = w.range_end;
-            let timeMin = Number(w.time_min) || 0;
-            let loadSum = 0;
-            if (timeMin === 0 && startStr && endStr && filteredData.length) {
-                try {
-                    const start = parseISO(startStr);
-                    const end = parseISO(endStr);
-                    if (isValid(start) && isValid(end)) {
-                        let sum = 0;
-                        for (const d of filteredData) {
-                            try {
-                                const dd = parseISO(d.fecha);
-                                if (isValid(dd) && dd >= start && dd <= end && !d.is_future) {
-                                    sum += Number(d.time) || 0; // minutos
-                                    loadSum += Number(d.load) || 0;
-                                }
-                            } catch {
-                                // ignore
-                            }
-                        }
-                        timeMin = Math.round(sum);
-                    }
-                } catch {
-                    // ignore
-                }
-            } else if (startStr && endStr && filteredData.length) {
-                // Igual sumamos load semanal aunque time_min venga del backend
-                try {
-                    const start = parseISO(startStr);
-                    const end = parseISO(endStr);
-                    if (isValid(start) && isValid(end)) {
-                        for (const d of filteredData) {
-                            try {
-                                const dd = parseISO(d.fecha);
-                                if (isValid(dd) && dd >= start && dd <= end && !d.is_future) {
-                                    loadSum += Number(d.load) || 0;
-                                }
-                            } catch {
-                                // ignore
-                            }
-                        }
-                    }
-                } catch {
-                    // ignore
-                }
-            }
-            return {
-                ...w,
-                // Aseguramos keys correctas (no NaN)
-                calories_kcal: Math.round(Number(w.calories_kcal) || 0),
-                time_min: Math.round(Number(timeMin) || 0),
-                load_sum: Math.round(Number(loadSum) || 0),
-            };
-        })
-        : [];
+    const weeklyChartData = isWeekly ? weeklyFromDaily : [];
     
     // Próximo objetivo
     let nextRace = null, weeksToRace = null;
@@ -283,13 +294,13 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
 
     if (loading) return <Paper elevation={0} sx={{ p: 4, display:'flex', justifyContent:'center', borderRadius: 3, height: 500, border: '1px solid #E2E8F0' }}><CircularProgress /></Paper>;
 
-    // Si el atleta aún no inyectó weeklyStats pero ya estamos en semanal, mostramos loading suave.
-    // Evita "pantalla vacía" durante el primer render.
-    if (isWeekly && !hasWeeklyStats) {
+    // En semanal, dependemos del dataset diario ya filtrado por sport.
+    // Evita pantalla en blanco: mostramos "sin datos" por deporte si no hay.
+    if (isWeekly && !weeklyChartData.length) {
         return (
-            <Paper elevation={0} sx={{ p: 4, borderRadius: 3, height: 500, border: '1px solid #E2E8F0', bgcolor: '#F8FAFC', display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center', gap: 2 }}>
-                <CircularProgress />
-                <Typography color="textSecondary" fontWeight="bold">Cargando datos de rendimiento...</Typography>
+            <Paper elevation={0} sx={{ p: 4, borderRadius: 3, height: 500, border: '1px solid #E2E8F0', bgcolor: '#F8FAFC', display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center', gap: 1 }}>
+                <AutoGraph sx={{ fontSize: 60, color: '#CBD5E1', mb: 1 }} />
+                <Typography color="textSecondary" fontWeight="bold">Sin datos de este deporte</Typography>
             </Paper>
         );
     }
@@ -375,7 +386,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                         {metric === 'TIME' && dayData.effort != null && (
                           <DataRow
                             icon={<Layers fontSize="inherit" />}
-                            label="Esfuerzo"
+                            label="Esfuerzo total"
                             value={dayData.effort}
                             color="#22C55E"
                           />
@@ -548,6 +559,24 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                     )}
                 </ComposedChart>
             </Box>
+
+            {/* Leyenda inferior fija (estilo TrainingPeaks) para TIME */}
+            {metric === 'TIME' && (
+                <Box sx={{ mt: 1.5, display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: COLORS.CALORIES }} />
+                        <Typography variant="caption" sx={{ color: '#475569', fontWeight: 700 }}>Calorías totales</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#475569' }} />
+                        <Typography variant="caption" sx={{ color: '#475569', fontWeight: 700 }}>Duración</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#22C55E' }} />
+                        <Typography variant="caption" sx={{ color: '#475569', fontWeight: 700 }}>Esfuerzo</Typography>
+                    </Box>
+                </Box>
+            )}
         </Paper>
     );
 };
