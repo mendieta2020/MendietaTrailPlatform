@@ -320,7 +320,18 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                     ? (isWeekly ? 'elev_gain_m' : 'elev_gain')
                     : null;
     const yMax = yKey ? getNumericMax(activeRows, yKey) : 0;
-    const yDomain = yKey ? [0, Math.max(Math.ceil(yMax * 1.15), 10)] : [0, 'auto'];
+    // Para calorías: dominio dinámico basado en dataMax + 500 (mejor visibilidad histórica).
+    // Para el resto: buffer proporcional.
+    const yDomain =
+        metric === 'TIME'
+            ? [0, 'dataMax + 500']
+            : yKey
+                ? [0, Math.max(Math.ceil(yMax * 1.15), 10)]
+                : [0, 'auto'];
+
+    const PANEL_HEIGHT = 400;
+    // Reservamos espacio fijo para controles + leyenda inferior.
+    const CHART_HEIGHT = 260;
     
     // Próximo objetivo
     let nextRace = null, weeksToRace = null;
@@ -404,13 +415,17 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                         ) : null}
                         <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.1)' }} />
                         {metric === 'TIME' && (
-                          <>
+                          <Stack spacing={0.5}>
                             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.9)' }}>
-                              Duración: <strong>{formatDurationHuman(dayData.time)}</strong> |{' '}
-                              <span style={{ color: COLORS.CALORIES }}>Calorías: <strong>{Math.round(Number(dayData.calories) || 0)} kcal</strong></span>{' '}
-                              | <span style={{ color: COLORS.EFFORT }}>Esfuerzo: <strong>{Math.round(Number(dayData.load) || 0)}</strong></span>
+                              Duración: <strong>{formatDurationHuman(dayData.time)}</strong>
                             </Typography>
-                          </>
+                            <Typography variant="caption" sx={{ color: COLORS.CALORIES, opacity: 0.95 }}>
+                              Gasto Energético: <strong>{Math.round(Number(dayData.calories) || 0)} kcal</strong>
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: COLORS.EFFORT, opacity: 0.95 }}>
+                              Esfuerzo Relativo: <strong>{Math.round(Number(dayData.load) || 0)}</strong>
+                            </Typography>
+                          </Stack>
                         )}
                         {/* Eliminamos duplicidad: en TIME mostramos sólo load como Esfuerzo */}
                         {(dayData.elev_gain > 0 || dayData.elev_loss_raw != null) && (
@@ -454,11 +469,17 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                 </Box>
                 <Stack spacing={0.75}>
                     {metric === 'TIME' && (
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.9)' }}>
-                          Duración: <strong>{formatDurationHuman(tmin)}</strong> |{' '}
-                          <span style={{ color: COLORS.CALORIES }}>Calorías: <strong>{kcal} kcal</strong></span>{' '}
-                          | <span style={{ color: COLORS.EFFORT }}>Esfuerzo: <strong>{loadSum}</strong></span>
-                        </Typography>
+                        <Stack spacing={0.5}>
+                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.9)' }}>
+                            Duración: <strong>{formatDurationHuman(tmin)}</strong>
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: COLORS.CALORIES, opacity: 0.95 }}>
+                            Gasto Energético: <strong>{kcal} kcal</strong>
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: COLORS.EFFORT, opacity: 0.95 }}>
+                            Esfuerzo Relativo: <strong>{loadSum}</strong>
+                          </Typography>
+                        </Stack>
                     )}
                     {metric === 'DISTANCE' && (
                         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.85)' }}>
@@ -483,7 +504,20 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
     );
 
     return (
-        <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #E2E8F0', mb: 3, position: 'relative' }}>
+        <Paper
+            elevation={0}
+            sx={{
+                p: 3,
+                borderRadius: 3,
+                border: '1px solid #E2E8F0',
+                mb: 3,
+                position: 'relative',
+                height: PANEL_HEIGHT,
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+            }}
+        >
             {nextRace && (
                 <Box sx={{ position: 'absolute', top: 20, right: 20, zIndex: 10, bgcolor: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(4px)', border: '1px solid #FECACA', borderRadius: 2, p: 1.5, boxShadow: '0 4px 20px rgba(239, 68, 68, 0.1)', display: 'flex', alignItems: 'center', gap: 2 }}>
                     <Box sx={{ bgcolor: '#FEF2F2', p: 1, borderRadius: 1.5 }}><EmojiEvents sx={{ color: '#EF4444' }} /></Box>
@@ -510,11 +544,11 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
             )}
 
             {/* Sin ResponsiveContainer: ancho medido por ResizeObserver */}
-            <Box ref={chartWrapRef} sx={{ width: '100%', height: 400, minHeight: 400, position: 'relative' }}>
+            <Box ref={chartWrapRef} sx={{ width: '100%', height: CHART_HEIGHT, minHeight: CHART_HEIGHT, position: 'relative' }}>
                 <ComposedChart
                         key={`${String(granularity || 'DAILY')}-${metric}-${sport}-${range}`}
                         width={Math.max(320, Number(chartWidth) || 900)}
-                        height={400}
+                        height={CHART_HEIGHT}
                         data={isWeekly ? weeklyChartData : filteredData}
                         margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
                 >
