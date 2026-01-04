@@ -393,7 +393,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                             />
                             <DataRow
                               icon={<Layers fontSize="inherit" />}
-                              label="Esfuerzo total"
+                              label="Esfuerzo"
                               value={Math.round(Number(dayData.load) || 0)}
                               color="rgba(255,255,255,0.85)"
                             />
@@ -449,7 +449,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                               Calorías: <strong>{kcal} kcal</strong>
                           </Typography>
                           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.85)' }}>
-                              Esfuerzo total: <strong>{loadSum}</strong>
+                              Esfuerzo: <strong>{loadSum}</strong>
                           </Typography>
                         </>
                     )}
@@ -491,22 +491,6 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                             {Object.keys(METRICS).map(key => (<MenuItem key={key} value={key}><Stack direction="row" gap={1} alignItems="center">{METRICS[key].icon} {METRICS[key].label}</Stack></MenuItem>))}
                         </Select>
                     </FormControl>
-                    {metric === 'TIME' && (
-                        <Box sx={{ mt: 1, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: COLORS.CALORIES }} />
-                                <Typography variant="caption" sx={{ color: '#475569', fontWeight: 800 }}>Calorías totales</Typography>
-                            </Box>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#475569' }} />
-                                <Typography variant="caption" sx={{ color: '#475569', fontWeight: 800 }}>Duración</Typography>
-                            </Box>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#22C55E' }} />
-                                <Typography variant="caption" sx={{ color: '#475569', fontWeight: 800 }}>Esfuerzo</Typography>
-                            </Box>
-                        </Box>
-                    )}
                 </Grid>
                 <Grid item xs={12} md={4} sx={{ display: 'flex', justifyContent: { md: 'center' } }}><ToggleButtonGroup value={sport} exclusive onChange={(e, val) => val && setSport(val)} size="small" sx={{ bgcolor: '#F8FAFC' }}><ToggleButton value="ALL" sx={{ px: 2 }}><Layers/></ToggleButton><ToggleButton value="RUN" sx={{ px: 2 }}><DirectionsRun/></ToggleButton><ToggleButton value="BIKE" sx={{ px: 2 }}><PedalBike/></ToggleButton></ToggleButtonGroup></Grid>
                 <Grid item xs={12} md={4} sx={{ display: 'flex', justifyContent: { md: 'flex-end' } }}><ToggleButtonGroup value={range} exclusive onChange={(e, val) => val && setRange(val)} size="small"><ToggleButton value="3M">3M</ToggleButton><ToggleButton value="SEASON">TEMP</ToggleButton><ToggleButton value="1Y">1 AÑO</ToggleButton></ToggleButtonGroup></Grid>
@@ -585,7 +569,23 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                 </ComposedChart>
             </Box>
 
-            {/* Leyendas movidas arriba (junto al selector de métricas) */}
+            {/* Leyendas inferiores centradas (TIME) */}
+            {metric === 'TIME' && (
+                <Box sx={{ mt: 1.5, display: 'flex', gap: 3, justifyContent: 'center', flexWrap: 'wrap' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: COLORS.CALORIES }} />
+                        <Typography variant="caption" sx={{ color: '#475569', fontWeight: 800 }}>Calorías totales</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#475569' }} />
+                        <Typography variant="caption" sx={{ color: '#475569', fontWeight: 800 }}>Duración</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#22C55E' }} />
+                        <Typography variant="caption" sx={{ color: '#475569', fontWeight: 800 }}>Esfuerzo</Typography>
+                    </Box>
+                </Box>
+            )}
         </Paper>
     );
 };
