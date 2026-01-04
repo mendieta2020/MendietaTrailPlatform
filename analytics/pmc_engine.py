@@ -5,11 +5,17 @@ from datetime import date, timedelta
 from typing import Iterable
 
 from django.db import transaction
+from django.db.models import Sum
+from django.db.models.functions import TruncDate, ExtractWeek, ExtractYear
 from django.utils import timezone
 
 from analytics.models import DailyActivityAgg, HistorialFitness, PMCHistory
 from core.models import Actividad
 
+# --- COMPATIBILIDAD DJANGO ---
+# Usamos las funciones estándar de Django para extraer semana y año ISO
+ExtractIsoWeek = ExtractWeek
+ExtractIsoYear = ExtractYear
 
 PMC_SPORT_GROUPS: dict[str, set[str]] = {
     "RUN": {"RUN", "TRAIL"},
@@ -44,11 +50,6 @@ def _normalize_business_sport(tipo_deporte: str | None) -> str:
 def _extract_activity_load(raw_json: dict | None, duration_s: int) -> float:
     """
     MVP robusto: intenta usar señales típicas de Strava; si no existen, usa proxy por duración.
-
-    Prioridad:
-    - relative_effort (Strava)
-    - suffer_score (legacy)
-    - proxy: horas * 50
     """
     raw_json = raw_json or {}
 
@@ -63,7 +64,6 @@ def _extract_activity_load(raw_json: dict | None, duration_s: int) -> float:
         except Exception:
             pass
 
-    # Proxy conservador (evita 0s si faltan campos en el payload)
     try:
         hrs = max(float(duration_s or 0) / 3600.0, 0.0)
     except Exception:
@@ -79,19 +79,29 @@ class DailyAggRow:
     distance_m: float
     elev_gain_m: float
     duration_s: int
+    calories_kcal: float
 
 
 def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
     """
     Reconstruye DailyActivityAgg desde `start_date` (inclusive).
-    Idempotente: borra rango y re-crea.
+    Incluye la suma de calorías diarias para analíticas rápidas.
     """
     start_date = date.fromisoformat(str(start_date))
 
     acts = (
         Actividad.objects.filter(alumno_id=alumno_id, validity=Actividad.Validity.VALID)
         .filter(fecha_inicio__date__gte=start_date)
-        .values("fecha_inicio", "tipo_deporte", "distancia", "desnivel_positivo", "tiempo_movimiento", "datos_brutos")
+        .values(
+            "fecha_inicio",
+            "tipo_deporte",
+            "distancia",
+            "desnivel_positivo",
+            "tiempo_movimiento",
+            "calories_kcal",
+            "effort",
+            "datos_brutos",
+        )
     )
 
     by_key: dict[tuple[date, str], DailyAggRow] = {}
@@ -101,12 +111,25 @@ def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
         distance_m = float(a.get("distancia") or 0.0)
         elev_m = float(a.get("desnivel_positivo") or 0.0)
         dur_s = int(a.get("tiempo_movimiento") or 0)
-        load = float(_extract_activity_load(a.get("datos_brutos") or {}, dur_s) or 0.0)
+        calories_kcal = float(a.get("calories_kcal") or 0.0)
+        # Prioridad para "TSS/carga":
+        # - `Actividad.effort` (si existe) es la señal más directa (Strava relative_effort / suffer_score)
+        # - fallback a extracción de `datos_brutos`
+        # - último fallback: proxy por duración
+        effort = a.get("effort")
+        if effort is not None:
+            try:
+                eff_v = float(effort)
+            except Exception:
+                eff_v = 0.0
+        else:
+            eff_v = 0.0
+        load = float(eff_v) if eff_v > 0 else float(_extract_activity_load(a.get("datos_brutos") or {}, dur_s) or 0.0)
 
         key = (d, sport)
         prev = by_key.get(key)
         if prev is None:
-            by_key[key] = DailyAggRow(d, sport, load, distance_m, elev_m, dur_s)
+            by_key[key] = DailyAggRow(d, sport, load, distance_m, elev_m, dur_s, calories_kcal)
         else:
             by_key[key] = DailyAggRow(
                 d,
@@ -115,6 +138,7 @@ def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
                 prev.distance_m + distance_m,
                 prev.elev_gain_m + elev_m,
                 prev.duration_s + dur_s,
+                prev.calories_kcal + calories_kcal,
             )
 
     rows = list(by_key.values())
@@ -130,6 +154,7 @@ def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
                     distance_m=float(r.distance_m or 0.0),
                     elev_gain_m=float(r.elev_gain_m or 0.0),
                     duration_s=int(r.duration_s or 0),
+                    calories_kcal=float(r.calories_kcal or 0.0),
                 )
                 for r in rows
             ],
@@ -148,20 +173,15 @@ def _daterange(start: date, end: date) -> Iterable[date]:
 
 def recompute_pmc_for_alumno(*, alumno_id: int, start_date: date) -> dict[str, int]:
     """
-    Recalcula PMC incremental desde `start_date` (inclusive) para ALL/RUN/BIKE.
-    - Seedea con el día anterior si existe PMCHistory previa, sino 0.
-    - Idempotente: borra rango y re-crea.
-    - Mantiene `analytics.HistorialFitness` sincronizado para ALL (compat + injury_risk).
+    Recalcula PMC incremental desde `start_date` para los grupos ALL, RUN y BIKE.
     """
     start_date = date.fromisoformat(str(start_date))
 
-    # Rango efectivo: desde start_date hasta hoy (o último día con agg, si fuese > hoy)
     last_agg = (
         DailyActivityAgg.objects.filter(alumno_id=alumno_id).order_by("-fecha").values_list("fecha", flat=True).first()
     )
     end_date = max(timezone.localdate(), last_agg) if last_agg else timezone.localdate()
 
-    # Pre-cargamos loads por día+sport canónico (RUN/TRAIL/BIKE/...)
     aggs = DailyActivityAgg.objects.filter(alumno_id=alumno_id, fecha__range=[start_date, end_date]).values(
         "fecha", "sport", "load"
     )
@@ -195,37 +215,28 @@ def recompute_pmc_for_alumno(*, alumno_id: int, start_date: date) -> dict[str, i
         tss_run = tss_for_group(d, "RUN")
         tss_bike = tss_for_group(d, "BIKE")
 
+        # CTL (fitness) tradicional ~42d. ATL (fatiga) más agresivo en corto plazo para que TSB no quede "inflado".
+        # Ajuste: ATL pasa de 7d a 5d (respuesta más rápida a spikes de carga).
         ctl_prev = ctl_prev + (tss_all - ctl_prev) / 42.0
-        atl_prev = atl_prev + (tss_all - atl_prev) / 7.0
+        atl_prev = atl_prev + (tss_all - atl_prev) / 5.0
         tsb_all = ctl_prev - atl_prev
 
         ctl_prev_run = ctl_prev_run + (tss_run - ctl_prev_run) / 42.0
-        atl_prev_run = atl_prev_run + (tss_run - atl_prev_run) / 7.0
+        atl_prev_run = atl_prev_run + (tss_run - atl_prev_run) / 5.0
         tsb_run = ctl_prev_run - atl_prev_run
 
         ctl_prev_bike = ctl_prev_bike + (tss_bike - ctl_prev_bike) / 42.0
-        atl_prev_bike = atl_prev_bike + (tss_bike - atl_prev_bike) / 7.0
+        atl_prev_bike = atl_prev_bike + (tss_bike - atl_prev_bike) / 5.0
         tsb_bike = ctl_prev_bike - atl_prev_bike
 
         new_rows.extend(
             [
                 PMCHistory(alumno_id=alumno_id, fecha=d, sport="ALL", tss_diario=tss_all, ctl=ctl_prev, atl=atl_prev, tsb=tsb_all),
-                PMCHistory(
-                    alumno_id=alumno_id, fecha=d, sport="RUN", tss_diario=tss_run, ctl=ctl_prev_run, atl=atl_prev_run, tsb=tsb_run
-                ),
-                PMCHistory(
-                    alumno_id=alumno_id,
-                    fecha=d,
-                    sport="BIKE",
-                    tss_diario=tss_bike,
-                    ctl=ctl_prev_bike,
-                    atl=atl_prev_bike,
-                    tsb=tsb_bike,
-                ),
+                PMCHistory(alumno_id=alumno_id, fecha=d, sport="RUN", tss_diario=tss_run, ctl=ctl_prev_run, atl=atl_prev_run, tsb=tsb_run),
+                PMCHistory(alumno_id=alumno_id, fecha=d, sport="BIKE", tss_diario=tss_bike, ctl=ctl_prev_bike, atl=atl_prev_bike, tsb=tsb_bike),
             ]
         )
 
-        # Compat: HistorialFitness = ALL
         new_hf.append(HistorialFitness(alumno_id=alumno_id, fecha=d, tss_diario=tss_all, ctl=ctl_prev, atl=atl_prev, tsb=tsb_all))
 
     with transaction.atomic():
@@ -239,9 +250,6 @@ def recompute_pmc_for_alumno(*, alumno_id: int, start_date: date) -> dict[str, i
 
 
 def ensure_pmc_materialized(*, alumno_id: int) -> bool:
-    """
-    Best-effort para UX: si no hay PMC persistido pero sí hay actividades, lo materializa.
-    """
     if PMCHistory.objects.filter(alumno_id=alumno_id).exists():
         return True
 
@@ -259,3 +267,75 @@ def ensure_pmc_materialized(*, alumno_id: int) -> bool:
     recompute_pmc_for_alumno(alumno_id=alumno_id, start_date=start)
     return True
 
+
+def weekly_activity_stats_for_alumno(
+    *,
+    alumno_id: int,
+    weeks: int = 26,
+    end_date: date | None = None,
+    sport_group: str = "ALL",
+) -> list[dict]:
+    """
+    Agrega métricas por semana ISO para UX (vista semanal).
+    Extrae Distancia, Desnivel y Calorías agrupados por semana real.
+    """
+    try:
+        weeks = int(weeks or 0)
+    except Exception:
+        weeks = 0
+    if weeks <= 0:
+        return []
+
+    end = end_date or timezone.localdate()
+    start = end - timedelta(days=(weeks * 7) - 1)
+
+    sport_group = str(sport_group or "ALL").upper().strip()
+    if sport_group not in PMC_SPORT_GROUPS:
+        sport_group = "ALL"
+    included_sports = list(PMC_SPORT_GROUPS[sport_group])
+
+    # Sumas por ISO week desde DailyActivityAgg (distancia, desnivel y calorías)
+    weekly_aggs = (
+        DailyActivityAgg.objects.filter(
+            alumno_id=int(alumno_id),
+            fecha__range=[start, end],
+            sport__in=included_sports,
+        )
+        .annotate(iso_year=ExtractIsoYear("fecha"), iso_week=ExtractIsoWeek("fecha"))
+        .values("iso_year", "iso_week")
+        .annotate(
+            distance_m=Sum("distance_m"),
+            elev_gain_m=Sum("elev_gain_m"),
+            calories_kcal=Sum("calories_kcal"),
+        )
+        .order_by("iso_year", "iso_week")
+    )
+
+    out: list[dict] = []
+    for r in weekly_aggs:
+        y = int(r["iso_year"])
+        w = int(r["iso_week"])
+        try:
+            week_start = date.fromisocalendar(y, w, 1)
+        except AttributeError:
+            # Fallback para versiones muy antiguas de Python (opcional)
+            import datetime
+            week_start = datetime.datetime.strptime(f'{y}-W{w}-1', "%G-W%V-%u").date()
+            
+        week_end = week_start + timedelta(days=6)
+
+        dist_m = float(r.get("distance_m") or 0.0)
+        elev_m = float(r.get("elev_gain_m") or 0.0)
+        calories = float(r.get("calories_kcal") or 0.0)
+
+        out.append(
+            {
+                "week": f"{y}-{w:02d}",
+                "range": {"start": week_start.isoformat(), "end": week_end.isoformat()},
+                "km": round(dist_m / 1000.0, 2),
+                "elev_gain_m": int(round(elev_m)),
+                "calories_kcal": int(round(calories)),
+            }
+        )
+
+    return out

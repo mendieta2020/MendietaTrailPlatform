@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Box, Typography, Paper, Grid, Avatar, Chip, Button, 
-  CircularProgress, Stack, Fab, Drawer 
+  CircularProgress, Stack, Fab, Drawer, ToggleButtonGroup, ToggleButton, Tooltip
 } from '@mui/material';
 import { 
   ArrowBack, Edit, Email, LocationOn, CalendarMonth, FitnessCenter,
-  LibraryBooks 
+  LibraryBooks, Refresh
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import client from '../api/client';
@@ -24,21 +24,35 @@ const AthleteDetail = () => {
   const [trainings, setTrainings] = useState([]);
   const [injuryRisk, setInjuryRisk] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [granularity, setGranularity] = useState('DAILY');
+  const [chartMetric, setChartMetric] = useState('PERFORMANCE');
+  const [refreshNonce, setRefreshNonce] = useState(0);
   
   // Estado para la Librería Lateral
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
 
   useEffect(() => {
-    const fetchData = async () => {
+    let cancelled = false;
+
+    const fetchAthlete = async () => {
       try {
         setLoading(true);
-        // 1. Datos del Alumno
         const resAthlete = await client.get(`/api/alumnos/${id}/`);
-        setAthlete(resAthlete.data);
+        if (!cancelled) setAthlete(resAthlete.data);
+      } catch (err) {
+        console.error("Error cargando alumno:", err);
+        if (!cancelled) setAthlete(null);
+      } finally {
+        // IMPORTANTE: loading depende SOLO de la carga inicial del alumno
+        if (!cancelled) setLoading(false);
+      }
+    };
 
-        // 1.1 Riesgo de lesión (snapshot materializado)
+    const fetchExtras = async () => {
+      try {
+        // Riesgo de lesión (best-effort, no bloquea pantalla)
         const resRisk = await client.get(`/api/alumnos/${id}/injury-risk/`);
-        // Normalizamos al formato del componente
+        if (cancelled) return;
         if (resRisk?.data?.data_available) {
           setInjuryRisk({
             risk_level: resRisk.data.risk_level,
@@ -48,20 +62,43 @@ const AthleteDetail = () => {
         } else {
           setInjuryRisk(null);
         }
-
-        // 2. Sus Entrenamientos
-        const resTrainings = await client.get(`/api/entrenamientos/?alumno=${id}`);
-        setTrainings(resTrainings.data);
       } catch (err) {
-        console.error("Error cargando perfil:", err);
-      } finally {
-        setLoading(false);
+        console.error("Error cargando injury risk:", err);
+        if (!cancelled) setInjuryRisk(null);
+      }
+
+      try {
+        // Entrenamientos (best-effort, no bloquea pantalla)
+        const resTrainings = await client.get(`/api/entrenamientos/?alumno=${id}`);
+        const data = resTrainings.data.results || resTrainings.data || [];
+        if (!cancelled) setTrainings(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error("Error cargando entrenamientos:", err);
+        if (!cancelled) setTrainings([]);
       }
     };
-    fetchData();
+
+    fetchAthlete();
+    fetchExtras();
+
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
-  if (loading) return <Layout><Box sx={{ p: 5, textAlign: 'center' }}><CircularProgress /></Box></Layout>;
+  useEffect(() => {
+    if (chartMetric === 'PERFORMANCE' && granularity !== 'DAILY') {
+      setGranularity('DAILY');
+    }
+  }, [chartMetric, granularity]);
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 5 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
   if (!athlete) return <Layout><Typography>Atleta no encontrado</Typography></Layout>;
 
   return (
@@ -112,9 +149,62 @@ const AthleteDetail = () => {
 
       {/* --- SECCIÓN DE ANALYTICS (BLINDADA) --- */}
       <Box sx={{ mb: 4 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, gap: 2 }}>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<Refresh />}
+                onClick={async () => {
+                  try {
+                    const resAthlete = await client.get(`/api/alumnos/${id}/`);
+                    setAthlete(resAthlete.data);
+                  } catch (err) {
+                    console.error("Error refrescando alumno:", err);
+                  } finally {
+                    setRefreshNonce((n) => n + 1);
+                  }
+                }}
+                sx={{ textTransform: 'none', fontWeight: 700 }}
+              >
+                Refrescar Datos
+              </Button>
+              <ToggleButtonGroup
+                  value={granularity}
+                  exclusive
+                  size="small"
+                  onChange={(e, val) => val && setGranularity(val)}
+              >
+                  <ToggleButton value="DAILY" sx={{ textTransform: 'none', fontWeight: 700 }}>
+                      Diaria
+                  </ToggleButton>
+                  <Tooltip
+                    title={chartMetric === 'PERFORMANCE' ? 'PMC solo es compatible con vista diaria.' : ''}
+                    disableHoverListener={chartMetric !== 'PERFORMANCE'}
+                    disableFocusListener={chartMetric !== 'PERFORMANCE'}
+                    disableTouchListener={chartMetric !== 'PERFORMANCE'}
+                  >
+                    <span>
+                      <ToggleButton
+                        value="WEEKLY"
+                        disabled={chartMetric === 'PERFORMANCE'}
+                        sx={{ textTransform: 'none', fontWeight: 700 }}
+                      >
+                        Semanal
+                      </ToggleButton>
+                    </span>
+                  </Tooltip>
+              </ToggleButtonGroup>
+          </Box>
           {/* El ErrorBoundary atrapa cualquier crash dentro del gráfico y evita la pantalla blanca */}
           <ErrorBoundary height={550}>
-              <StudentPerformanceChart alumnoId={id} />
+              <StudentPerformanceChart
+                alumnoId={id}
+                granularity={granularity}
+                weeklyStats={athlete?.stats_semanales || []}
+                onMetricChange={setChartMetric}
+                onRequireDaily={() => setGranularity('DAILY')}
+                refreshNonce={refreshNonce}
+              />
           </ErrorBoundary>
       </Box>
 

@@ -22,7 +22,7 @@ const Teams = () => {
     try {
       setLoading(true);
       const res = await client.get('/api/equipos/');
-      setTeams(res.data);
+      setTeams(res.data.results || res.data || []);
     } catch (err) {
       console.error("Error cargando equipos:", err);
     } finally {

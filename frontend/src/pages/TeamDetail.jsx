@@ -40,7 +40,7 @@ const TeamDetail = () => {
       setTeam(resTeam.data);
 
       const resAthletes = await client.get(`/api/equipos/${id}/alumnos/`);
-      setAthletes(resAthletes.data);
+      setAthletes(resAthletes.data.results || resAthletes.data || []);
     } catch (err) {
       console.error("Error cargando equipo:", err);
     }

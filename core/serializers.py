@@ -5,6 +5,8 @@ from .models import (
     Equipo, VideoEjercicio # <--- NUEVO MODELO IMPORTADO
 )
 from analytics.models import InjuryRiskSnapshot
+from analytics.pmc_engine import weekly_activity_stats_for_alumno
+from analytics.serializers import WeeklyActivityStatSerializer
 
 # ==============================================================================
 #  0. GESTIÓN DE EQUIPOS
@@ -90,6 +92,7 @@ class AlumnoSerializer(serializers.ModelSerializer):
     pagos = PagoSerializer(many=True, read_only=True)
     injury_risk = serializers.SerializerMethodField()
     sync_state = serializers.SerializerMethodField()
+    stats_semanales = serializers.SerializerMethodField()
 
     class Meta:
         model = Alumno
@@ -148,6 +151,23 @@ class AlumnoSerializer(serializers.ModelSerializer):
             "last_backfill_count": int(st.last_backfill_count or 0),
             "last_error": st.last_error or "",
         }
+
+    def get_stats_semanales(self, obj):
+        """
+        Métricas semanales (ISO week) para vista semanal (frontend).
+
+        - En listados devolvemos [] para evitar consultas pesadas por atleta (N+1).
+        - En detalle: siempre lista, nunca None.
+        """
+        view = self.context.get("view")
+        if view is not None and getattr(view, "action", None) not in (None, "retrieve"):
+            return []
+        try:
+            stats = weekly_activity_stats_for_alumno(alumno_id=obj.id, weeks=26) or []
+            # Serializer explícito: asegura keys (incluyendo calories_kcal)
+            return WeeklyActivityStatSerializer(stats, many=True).data
+        except Exception:
+            return []
 
 # ==============================================================================
 #  4. CARRERAS

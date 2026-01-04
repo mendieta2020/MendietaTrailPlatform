@@ -6,6 +6,26 @@ from analytics.models import (
     InjuryRiskSnapshot,
 )
 
+class _WeekRangeSerializer(serializers.Serializer):
+    start = serializers.CharField()
+    end = serializers.CharField()
+
+
+class WeeklyActivityStatSerializer(serializers.Serializer):
+    """
+    Contrato explícito para stats_semanales (vista semanal).
+    Asegura que calories_kcal esté presente en el JSON.
+    """
+
+    week = serializers.CharField()
+    range = _WeekRangeSerializer()
+    km = serializers.FloatField()
+    elev_gain_m = serializers.IntegerField()
+    calories_kcal = serializers.IntegerField()
+    # Opcional: si el backend lo agrega en el futuro
+    time_min = serializers.IntegerField(required=False, default=0)
+
+
 class HistorialFitnessSerializer(serializers.ModelSerializer):
     """
     Serializer optimizado para gráficos de rendimiento (PMC).
