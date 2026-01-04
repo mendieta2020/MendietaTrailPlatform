@@ -26,7 +26,8 @@ const COLORS = {
     TIME_PLAN: '#FEF3C7',  
     ELEV_POS: '#7C3AED',   
     ELEV_NEG: '#EF4444',   
-    CALORIES: '#FF8C00',
+    CALORIES: '#FC4C02', // Strava Orange
+    EFFORT: '#10B981',   // Emerald
     TODAY_LINE: '#EF4444',
     GRID: '#F1F5F9',
     TOOLTIP_BG: 'rgba(15, 23, 42, 0.98)'
@@ -44,7 +45,7 @@ const formatDurationHuman = (minutesLike) => {
     const hrs = Math.floor(totalMin / 60);
     const mins = totalMin % 60;
     if (hrs <= 0) return `${mins} min`;
-    return `${hrs} horas ${String(mins).padStart(2, '0')} min`;
+    return `${hrs}h ${mins}m`;
 };
 
 const isoWeekKey = (d) => {
@@ -346,12 +347,10 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
             const isFut = dayData.is_future;
             const primaryLabel =
                 metric === 'DISTANCE' ? 'Distancia (km)' :
-                metric === 'TIME' ? 'Duración (min)' :
                 metric === 'ELEVATION' ? 'Desnivel Positivo (m)' :
                 'Valor';
             const primaryValue =
                 metric === 'DISTANCE' ? dayData.dist :
-                metric === 'TIME' ? dayData.time :
                 metric === 'ELEVATION' ? dayData.elev_gain :
                 (payload?.[0]?.value ?? null);
             
@@ -373,30 +372,17 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                     <Stack spacing={0.5}>
                         {metric === 'PERFORMANCE' ? (
                            <><DataRow color={COLORS.FITNESS} label="Fitness" value={dayData.ctl} /><DataRow color={COLORS.FATIGUE} label="Fatiga" value={dayData.atl} /><DataRow color={COLORS.FORM} label="Forma" value={dayData.tsb} /></>
-                        ) : (
+                        ) : metric !== 'TIME' ? (
                           <DataRow color="#fff" label={primaryLabel} value={primaryValue} />
-                        )}
+                        ) : null}
                         <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.1)' }} />
                         {metric === 'TIME' && (
                           <>
-                            <DataRow
-                              icon={<Timer fontSize="inherit" />}
-                              label="Duración"
-                              value={formatDurationHuman(dayData.time)}
-                              color="rgba(255,255,255,0.85)"
-                            />
-                            <DataRow
-                              icon={<LocalFireDepartment fontSize="inherit"/>}
-                              label="Calorías"
-                              value={`${Math.round(Number(dayData.calories) || 0)} kcal`}
-                              color={COLORS.CALORIES}
-                            />
-                            <DataRow
-                              icon={<Layers fontSize="inherit" />}
-                              label="Esfuerzo"
-                              value={Math.round(Number(dayData.load) || 0)}
-                              color="rgba(255,255,255,0.85)"
-                            />
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.9)' }}>
+                              Duración: <strong>{formatDurationHuman(dayData.time)}</strong> |{' '}
+                              <span style={{ color: COLORS.CALORIES }}>Calorías: <strong>{Math.round(Number(dayData.calories) || 0)} kcal</strong></span>{' '}
+                              | <span style={{ color: COLORS.EFFORT }}>Esfuerzo: <strong>{Math.round(Number(dayData.load) || 0)}</strong></span>
+                            </Typography>
                           </>
                         )}
                         {/* Eliminamos duplicidad: en TIME mostramos sólo load como Esfuerzo */}
@@ -441,17 +427,11 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                 </Box>
                 <Stack spacing={0.75}>
                     {metric === 'TIME' && (
-                        <>
-                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.85)' }}>
-                              Duración: <strong>{formatDurationHuman(tmin)}</strong>
-                          </Typography>
-                          <Typography variant="caption" sx={{ color: COLORS.CALORIES, opacity: 0.95 }}>
-                              Calorías: <strong>{kcal} kcal</strong>
-                          </Typography>
-                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.85)' }}>
-                              Esfuerzo: <strong>{loadSum}</strong>
-                          </Typography>
-                        </>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.9)' }}>
+                          Duración: <strong>{formatDurationHuman(tmin)}</strong> |{' '}
+                          <span style={{ color: COLORS.CALORIES }}>Calorías: <strong>{kcal} kcal</strong></span>{' '}
+                          | <span style={{ color: COLORS.EFFORT }}>Esfuerzo: <strong>{loadSum}</strong></span>
+                        </Typography>
                     )}
                     {metric === 'DISTANCE' && (
                         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.85)' }}>
@@ -476,7 +456,7 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
     );
 
     return (
-        <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #E2E8F0', mb: 3, height: 550, position: 'relative' }}>
+        <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #E2E8F0', mb: 3, position: 'relative' }}>
             {nextRace && (
                 <Box sx={{ position: 'absolute', top: 20, right: 20, zIndex: 10, bgcolor: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(4px)', border: '1px solid #FECACA', borderRadius: 2, p: 1.5, boxShadow: '0 4px 20px rgba(239, 68, 68, 0.1)', display: 'flex', alignItems: 'center', gap: 2 }}>
                     <Box sx={{ bgcolor: '#FEF2F2', p: 1, borderRadius: 1.5 }}><EmojiEvents sx={{ color: '#EF4444' }} /></Box>
@@ -574,15 +554,15 @@ const StudentPerformanceChart = ({ alumnoId, weeklyStats, granularity, onMetricC
                 <Box sx={{ mt: 1.5, display: 'flex', gap: 3, justifyContent: 'center', flexWrap: 'wrap' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: COLORS.CALORIES }} />
-                        <Typography variant="caption" sx={{ color: '#475569', fontWeight: 800 }}>Calorías totales</Typography>
+                        <Typography variant="caption" sx={{ color: '#475569', fontWeight: 700 }}>Calorías totales</Typography>
                     </Box>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#475569' }} />
-                        <Typography variant="caption" sx={{ color: '#475569', fontWeight: 800 }}>Duración</Typography>
+                        <Typography variant="caption" sx={{ color: '#475569', fontWeight: 700 }}>Duración</Typography>
                     </Box>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#22C55E' }} />
-                        <Typography variant="caption" sx={{ color: '#475569', fontWeight: 800 }}>Esfuerzo</Typography>
+                        <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: COLORS.EFFORT }} />
+                        <Typography variant="caption" sx={{ color: '#475569', fontWeight: 700 }}>Esfuerzo</Typography>
                     </Box>
                 </Box>
             )}
