@@ -35,7 +35,7 @@ const WeeklyCalendar = ({ trainings: initialTrainings }) => {
   });
 
   useEffect(() => {
-    setTrainings(initialTrainings);
+    setTrainings(Array.isArray(initialTrainings) ? initialTrainings : []);
   }, [initialTrainings]);
 
   const startOfVisibleWeek = startOfWeek(currentDate, { weekStartsOn: 1 });
