@@ -35,7 +35,7 @@ from .serializers import (
 )
 
 from allauth.socialaccount.models import SocialToken
-from .services import sincronizar_actividades_strava
+from .services import sincronizar_actividades_strava, asignar_plantilla_a_alumno
 
 # ==============================================================================
 #  API REST (EL CEREBRO DE LA APP MÓVIL 📱)
@@ -443,6 +443,40 @@ class PlantillaViewSet(TenantModelViewSet):
 
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['post'], url_path='asignar_a_alumno')
+    def asignar_a_alumno(self, request, pk=None):
+        """
+        Recibe: { "alumno_id": 1, "fecha": "2025-12-15" }
+        Acción: Clona la plantilla para un alumno específico.
+        """
+        plantilla = self.get_object()
+        alumno_id = request.data.get('alumno_id')
+        fecha_str = request.data.get('fecha')
+
+        if not alumno_id or not fecha_str:
+            return Response(
+                {"error": "Faltan datos: alumno_id y fecha son obligatorios."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            fecha = datetime.strptime(fecha_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({"error": "Formato de fecha inválido. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+
+        alumno_qs = Alumno.objects.all() if request.user.is_staff else Alumno.objects.filter(entrenador=request.user)
+        alumno = alumno_qs.filter(pk=alumno_id).first()
+        if not alumno:
+            return Response({"error": "El alumno no existe."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            entrenamiento = asignar_plantilla_a_alumno(plantilla, alumno, fecha)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        serializer = EntrenamientoSerializer(entrenamiento, context={"request": request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class CarreraViewSet(TenantModelViewSet):

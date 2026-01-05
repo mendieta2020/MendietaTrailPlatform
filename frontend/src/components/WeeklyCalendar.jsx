@@ -16,7 +16,7 @@ import TrainingCardPro from './widgets/TrainingCardPro';
 import EditTrainingModal from './EditTrainingModal';
 import TrainingDetailModal from './TrainingDetailModal'; // <--- IMPORTACIÓN CRÍTICA
 
-const WeeklyCalendar = ({ trainings: initialTrainings }) => {
+const WeeklyCalendar = ({ trainings: initialTrainings, athleteId, onTrainingCreated }) => {
   const [trainings, setTrainings] = useState([]); 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [overallCompliance, setOverallCompliance] = useState(0);
@@ -35,7 +35,7 @@ const WeeklyCalendar = ({ trainings: initialTrainings }) => {
   });
 
   useEffect(() => {
-    setTrainings(initialTrainings);
+    setTrainings(Array.isArray(initialTrainings) ? initialTrainings : []);
   }, [initialTrainings]);
 
   const startOfVisibleWeek = startOfWeek(currentDate, { weekStartsOn: 1 });
@@ -50,7 +50,7 @@ const WeeklyCalendar = ({ trainings: initialTrainings }) => {
         hours: { planned: 0, actual: 0 },
     };
 
-    const weekTrainings = trainings.filter(t => {
+    const weekTrainings = (Array.isArray(trainings) ? trainings : []).filter(t => {
         if (!t.fecha_asignada) return false;
         const tDate = parseISO(t.fecha_asignada);
         return tDate >= startOfVisibleWeek && tDate <= addDays(startOfVisibleWeek, 6);
@@ -89,13 +89,39 @@ const WeeklyCalendar = ({ trainings: initialTrainings }) => {
 
   const handleDropOnDay = async (e, dayDate) => {
       e.preventDefault();
+      const templateId = e.dataTransfer.getData("templateId");
       const trainingId = e.dataTransfer.getData("trainingId");
-      if (!trainingId) return;
 
       const newDateStr = format(dayDate, 'yyyy-MM-dd');
 
+      if (templateId) {
+          if (!athleteId) {
+              setFeedback({ open: true, msg: 'Selecciona un atleta antes de asignar.', type: 'error' });
+              return;
+          }
+          try {
+              const res = await client.post(`/api/plantillas/${templateId}/asignar_a_alumno/`, {
+                  alumno_id: athleteId,
+                  fecha: newDateStr
+              });
+              const newTraining = res.data;
+              const updatedTrainings = [...(Array.isArray(trainings) ? trainings : []), newTraining];
+              setTrainings(updatedTrainings);
+              if (onTrainingCreated) {
+                  onTrainingCreated(newTraining);
+              }
+              setFeedback({ open: true, msg: 'Plantilla asignada ✅', type: 'success' });
+          } catch (error) {
+              console.error("Error asignando plantilla:", error);
+              setFeedback({ open: true, msg: 'Error al asignar plantilla.', type: 'error' });
+          }
+          return;
+      }
+
+      if (!trainingId) return;
+
       // Optimistic update
-      const updatedTrainings = trainings.map(t => {
+      const updatedTrainings = (Array.isArray(trainings) ? trainings : []).map(t => {
           if (t.id.toString() === trainingId) {
               return { ...t, fecha_asignada: newDateStr };
           }
@@ -115,7 +141,7 @@ const WeeklyCalendar = ({ trainings: initialTrainings }) => {
   };
 
   const getTrainingsForDay = (day) => {
-    return trainings.filter(t => t.fecha_asignada === format(day, 'yyyy-MM-dd'));
+    return (Array.isArray(trainings) ? trainings : []).filter(t => t.fecha_asignada === format(day, 'yyyy-MM-dd'));
   };
 
   // --- 🔥 GESTIÓN DE CLICS (MODO PRUEBA DE FUEGO) ---

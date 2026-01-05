@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Box, Typography, Paper, List, ListItem, ListItemText, 
-  Chip, TextField, InputAdornment, IconButton, CircularProgress, Divider
+  Chip, TextField, InputAdornment, IconButton, CircularProgress, Divider,
+  Dialog, DialogTitle, DialogContent, DialogActions, Button, FormControl,
+  InputLabel, Select, MenuItem, Alert
 } from '@mui/material';
 import { Search, FitnessCenter, DirectionsRun, PedalBike, Add } from '@mui/icons-material';
 import client from '../api/client';
@@ -10,6 +12,15 @@ const TemplateLibrary = () => {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [createState, setCreateState] = useState({
+    titulo: '',
+    deporte: 'RUN',
+    estructura: '{\n  "bloques": []\n}',
+    descripcion_global: '',
+  });
+  const [createError, setCreateError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     fetchTemplates();
@@ -57,6 +68,57 @@ const TemplateLibrary = () => {
     return parsed.toLocaleDateString();
   };
 
+  const handleCreateChange = (field) => (event) => {
+    setCreateState((prev) => ({ ...prev, [field]: event.target.value }));
+  };
+
+  const handleOpenCreate = () => {
+    setCreateError('');
+    setIsCreateOpen(true);
+  };
+
+  const handleCloseCreate = () => {
+    if (!isSaving) {
+      setIsCreateOpen(false);
+    }
+  };
+
+  const handleCreateTemplate = async () => {
+    setCreateError('');
+    let estructuraPayload = {};
+    if (createState.estructura?.trim()) {
+      try {
+        estructuraPayload = JSON.parse(createState.estructura);
+      } catch (error) {
+        setCreateError('La estructura debe ser un JSON válido.');
+        return;
+      }
+    }
+
+    try {
+      setIsSaving(true);
+      await client.post('/api/plantillas/', {
+        titulo: createState.titulo,
+        deporte: createState.deporte,
+        estructura: estructuraPayload,
+        descripcion_global: createState.descripcion_global,
+      });
+      setIsCreateOpen(false);
+      setCreateState({
+        titulo: '',
+        deporte: 'RUN',
+        estructura: '{\n  "bloques": []\n}',
+        descripcion_global: '',
+      });
+      await fetchTemplates();
+    } catch (error) {
+      console.error('Error creando plantilla:', error);
+      setCreateError('No se pudo crear la plantilla. Revisa los campos.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <Paper sx={{ height: '100%', display: 'flex', flexDirection: 'column', borderRight: '1px solid #e0e0e0' }}>
       {/* HEADER */}
@@ -65,7 +127,7 @@ const TemplateLibrary = () => {
           <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#475569' }}>
             LIBRERÍA 📚
           </Typography>
-          <IconButton size="small" sx={{ bgcolor: '#e2e8f0' }}>
+          <IconButton size="small" sx={{ bgcolor: '#e2e8f0' }} onClick={handleOpenCreate}>
             <Add fontSize="small" />
           </IconButton>
         </Box>
@@ -148,6 +210,64 @@ const TemplateLibrary = () => {
           </List>
         )}
       </Box>
+
+      <Dialog open={isCreateOpen} onClose={handleCloseCreate} fullWidth maxWidth="sm">
+        <DialogTitle>Nueva plantilla</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+          {createError ? <Alert severity="error">{createError}</Alert> : null}
+          <TextField
+            label="Título"
+            value={createState.titulo}
+            onChange={handleCreateChange('titulo')}
+            fullWidth
+            required
+          />
+          <FormControl fullWidth>
+            <InputLabel id="template-sport-label">Deporte</InputLabel>
+            <Select
+              labelId="template-sport-label"
+              label="Deporte"
+              value={createState.deporte}
+              onChange={handleCreateChange('deporte')}
+            >
+              <MenuItem value="RUN">Running</MenuItem>
+              <MenuItem value="TRAIL">Trail</MenuItem>
+              <MenuItem value="CYCLING">Ciclismo</MenuItem>
+              <MenuItem value="MTB">MTB</MenuItem>
+              <MenuItem value="GYM">Gimnasio</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            label="Descripción global"
+            value={createState.descripcion_global}
+            onChange={handleCreateChange('descripcion_global')}
+            fullWidth
+            multiline
+            rows={2}
+          />
+          <TextField
+            label="Estructura (JSON)"
+            value={createState.estructura}
+            onChange={handleCreateChange('estructura')}
+            fullWidth
+            multiline
+            rows={6}
+            helperText="Define bloques y pasos en formato JSON."
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleCloseCreate} disabled={isSaving}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleCreateTemplate}
+            disabled={isSaving || !createState.titulo.trim()}
+          >
+            Crear
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Paper>
   );
 };

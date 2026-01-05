@@ -27,6 +27,9 @@ const AthleteDetail = () => {
   
   // Estado para la Librería Lateral
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+  const handleTrainingCreated = (training) => {
+    setTrainings((prev) => [...(Array.isArray(prev) ? prev : []), training]);
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -51,7 +54,12 @@ const AthleteDetail = () => {
 
         // 2. Sus Entrenamientos
         const resTrainings = await client.get(`/api/entrenamientos/?alumno=${id}`);
-        setTrainings(resTrainings.data);
+        const trainingsData = Array.isArray(resTrainings.data)
+          ? resTrainings.data
+          : Array.isArray(resTrainings.data?.results)
+            ? resTrainings.data.results
+            : [];
+        setTrainings(trainingsData);
       } catch (err) {
         console.error("Error cargando perfil:", err);
       } finally {
@@ -126,15 +134,14 @@ const AthleteDetail = () => {
             </Typography>
         </Box>
 
-        {trainings.length === 0 ? (
-            <Paper sx={{ p: 6, textAlign: 'center', border: '2px dashed #e2e8f0', bgcolor: '#f8fafc', borderRadius: 3 }}>
-                <FitnessCenter sx={{ fontSize: 50, color: '#cbd5e1', mb: 1 }} />
-                <Typography color="textSecondary" sx={{ fontWeight: 500 }}>No hay entrenamientos asignados aún.</Typography>
-                <Typography variant="caption" color="textSecondary">Asigna plantillas desde la librería o crea una sesión individual.</Typography>
-            </Paper>
-        ) : (
-            <WeeklyCalendar trainings={trainings} />
+        {trainings.length === 0 && (
+          <Paper sx={{ p: 3, textAlign: 'center', border: '2px dashed #e2e8f0', bgcolor: '#f8fafc', borderRadius: 3, mb: 2 }}>
+              <FitnessCenter sx={{ fontSize: 40, color: '#cbd5e1', mb: 1 }} />
+              <Typography color="textSecondary" sx={{ fontWeight: 500 }}>No hay entrenamientos asignados aún.</Typography>
+              <Typography variant="caption" color="textSecondary">Arrastra una plantilla al calendario para empezar.</Typography>
+          </Paper>
         )}
+        <WeeklyCalendar trainings={trainings} athleteId={id} onTrainingCreated={handleTrainingCreated} />
       </Box>
 
       {/* --- HERRAMIENTAS FLOTANTES (LIBRERÍA) --- */}
