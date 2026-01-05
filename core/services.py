@@ -3,10 +3,99 @@ from django.utils import timezone
 from django.core.serializers.json import DjangoJSONEncoder
 from allauth.socialaccount.models import SocialToken, SocialApp
 from stravalib.client import Client
+from typing import Protocol, TypedDict
+
 from .models import Alumno, Entrenamiento, BloqueEntrenamiento, PasoEntrenamiento, Actividad
+from .strava_mapper import map_strava_activity_to_actividad
 import json 
 import time
 import datetime
+
+# ==============================================================================
+#  0. INTERFAZ COMÚN DE INGESTA (NORMALIZACIÓN EXTERNA -> ACTIVIDAD)
+# ==============================================================================
+
+class NormalizedActividadPayload(TypedDict):
+    source: str
+    source_object_id: str
+    source_hash: str
+    nombre: str
+    distancia: float
+    tiempo_movimiento: int
+    fecha_inicio: datetime.datetime
+    tipo_deporte: str
+    desnivel_positivo: float | None
+    elev_loss_m: float
+    calories_kcal: float
+    effort: float
+    ritmo_promedio: float | None
+    mapa_polilinea: str | None
+    datos_brutos: dict
+    strava_id: int | None
+    strava_sport_type: str
+
+
+class ExternalActivityAdapter(Protocol):
+    provider: str
+
+    def normalize(self, payload: dict) -> NormalizedActividadPayload:
+        """Devuelve payload listo para Actividad (contrato estable)."""
+
+
+class StravaActivityAdapter:
+    provider = "strava"
+
+    def normalize(self, payload: dict) -> NormalizedActividadPayload:
+        mapped = map_strava_activity_to_actividad(payload)
+        mapped["calories_kcal"] = float(mapped.get("calories_kcal") or 0.0)
+        mapped["effort"] = float(mapped.get("effort") or 0.0)
+        mapped["elev_loss_m"] = float(mapped.get("elev_loss_m") or 0.0)
+        mapped["tiempo_movimiento"] = int(mapped.get("tiempo_movimiento") or 0)
+        return mapped
+
+
+class GarminActivityAdapter:
+    provider = "garmin"
+
+    def normalize(self, payload: dict) -> NormalizedActividadPayload:
+        raise NotImplementedError("Garmin adapter pending: normalize external payload to Actividad.")
+
+
+class CorosActivityAdapter:
+    provider = "coros"
+
+    def normalize(self, payload: dict) -> NormalizedActividadPayload:
+        raise NotImplementedError("Coros adapter pending: normalize external payload to Actividad.")
+
+
+class SuuntoActivityAdapter:
+    provider = "suunto"
+
+    def normalize(self, payload: dict) -> NormalizedActividadPayload:
+        raise NotImplementedError("Suunto adapter pending: normalize external payload to Actividad.")
+
+
+class PolarActivityAdapter:
+    provider = "polar"
+
+    def normalize(self, payload: dict) -> NormalizedActividadPayload:
+        raise NotImplementedError("Polar adapter pending: normalize external payload to Actividad.")
+
+
+_EXTERNAL_ACTIVITY_ADAPTERS: dict[str, ExternalActivityAdapter] = {
+    "strava": StravaActivityAdapter(),
+    "garmin": GarminActivityAdapter(),
+    "coros": CorosActivityAdapter(),
+    "suunto": SuuntoActivityAdapter(),
+    "polar": PolarActivityAdapter(),
+}
+
+
+def get_external_activity_adapter(provider: str) -> ExternalActivityAdapter:
+    adapter = _EXTERNAL_ACTIVITY_ADAPTERS.get(str(provider or "").lower())
+    if not adapter:
+        raise ValueError(f"Unsupported external provider: {provider}")
+    return adapter
 
 # ==============================================================================
 #  1. CLONADOR UNIVERSAL (EL NÚCLEO DE LA AUTOMATIZACIÓN)

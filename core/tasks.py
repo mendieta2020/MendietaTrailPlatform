@@ -1164,13 +1164,15 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
 
     # Upsert Entrenamiento (plan match / unplanned)
     fecha = activity["start_date_local"].date()
+    tipo_entreno = _map_strava_type_to_core(activity.get("tipo_deporte") or activity.get("type"))
     with transaction.atomic():
         entreno = Entrenamiento.objects.select_for_update().filter(strava_id=str(activity["id"])).first()
         accion = "UPDATED"
         if not entreno:
-            entreno = Entrenamiento.objects.select_for_update().filter(
-                alumno=alumno, fecha_asignada=fecha, completado=False
-            ).first()
+            qs = Entrenamiento.objects.select_for_update().filter(alumno=alumno, fecha_asignada=fecha, completado=False)
+            if tipo_entreno and tipo_entreno != "OTHER":
+                qs = qs.filter(tipo_actividad=tipo_entreno)
+            entreno = qs.first()
             if entreno:
                 accion = "MATCHED"
         if not entreno:
@@ -1179,7 +1181,7 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
 
         entreno.strava_id = str(activity["id"])
         entreno.completado = True
-        entreno.tipo_actividad = _map_strava_type_to_core(activity.get("tipo_deporte") or activity.get("type"))
+        entreno.tipo_actividad = tipo_entreno
         entreno.distancia_real_km = round(float(activity.get("distance_m") or 0.0) / 1000.0, 2)
         entreno.tiempo_real_min = int(round(float(activity.get("moving_time_s") or 0) / 60.0))
         entreno.desnivel_real_m = int(round(float(activity.get("elevation_m") or 0.0)))
