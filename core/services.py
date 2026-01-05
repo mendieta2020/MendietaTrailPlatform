@@ -1,12 +1,19 @@
+from dataclasses import dataclass
+import datetime
+import json
+import time
+from typing import Iterable, Optional
+
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from django.utils import timezone
-from django.core.serializers.json import DjangoJSONEncoder
 from allauth.socialaccount.models import SocialToken, SocialApp
 from stravalib.client import Client
+
+from analytics.injury_risk import compute_injury_risk
+from analytics.models import PMCHistory
+from analytics.plan_vs_actual import PlannedVsActualComparator
 from .models import Alumno, Entrenamiento, BloqueEntrenamiento, PasoEntrenamiento, Actividad
-import json 
-import time
-import datetime
 
 # ==============================================================================
 #  1. CLONADOR UNIVERSAL (EL NÚCLEO DE LA AUTOMATIZACIÓN)
@@ -209,6 +216,254 @@ def ejecutar_cruce_inteligente(actividad):
     except Exception as e:
         print(f"   ❌ Error fusión: {e}")
         return False
+
+# ==============================================================================
+#  3.1. RECONCILIACIÓN AUTOMÁTICA (PLANIFICADO vs REAL)
+# ==============================================================================
+
+
+@dataclass(frozen=True)
+class ReconciliationOutcome:
+    matched: bool
+    entrenamiento_id: Optional[int]
+    confidence: float
+    compliance_score: int
+    classification: str
+    injury_risk_level: Optional[str]
+    injury_risk_score: Optional[int]
+    injury_risk_reasons: list[str]
+    load_adjustment_suggestion: str
+
+
+def _normalize_activity_type(value: Optional[str]) -> str:
+    raw = str(value or "").strip().upper()
+    if raw in {"RUN", "VIRTUALRUN", "VIRTUAL_RUN"}:
+        return "RUN"
+    if raw in {"TRAIL", "TRAILRUN", "TRAIL_RUN", "TRAILRUNNING"}:
+        return "TRAIL"
+    if raw in {"RIDE", "CYCLING", "BIKE", "ROADBIKERIDE", "GRAVELRIDE"}:
+        return "CYCLING"
+    if raw in {"MTB", "MOUNTAINBIKERIDE"}:
+        return "MTB"
+    if raw in {"VIRTUALRIDE", "INDOORBIKERIDE", "INDOOR_BIKE"}:
+        return "INDOOR_BIKE"
+    if raw in {"SWIM", "SWIMMING", "POOLSWIM"}:
+        return "SWIMMING"
+    if raw in {"STRENGTH", "GYM", "WEIGHTTRAINING"}:
+        return "STRENGTH"
+    if raw in {"CARDIO"}:
+        return "CARDIO"
+    return "OTHER"
+
+
+def _plan_types_for_activity(normalized: str) -> set[str]:
+    if normalized in {"RUN", "TRAIL"}:
+        return {"RUN", "TRAIL"}
+    if normalized in {"CYCLING", "MTB", "INDOOR_BIKE"}:
+        return {"CYCLING", "MTB", "INDOOR_BIKE"}
+    if normalized == "SWIMMING":
+        return {"SWIMMING"}
+    if normalized == "STRENGTH":
+        return {"STRENGTH"}
+    if normalized == "CARDIO":
+        return {"CARDIO"}
+    return {"OTHER"}
+
+
+def _primary_plan_type(normalized: str) -> str:
+    if normalized in {"RUN", "TRAIL"}:
+        return normalized
+    if normalized in {"CYCLING", "MTB", "INDOOR_BIKE"}:
+        return "CYCLING" if normalized == "CYCLING" else normalized
+    return normalized
+
+
+def _load_pmc_inputs(
+    *,
+    alumno_id: int,
+    reference_date: datetime.date,
+) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float], Iterable[float]]:
+    latest = (
+        PMCHistory.objects.filter(alumno_id=alumno_id, sport="ALL", fecha__lte=reference_date)
+        .order_by("-fecha")
+        .values("ctl", "atl", "tsb")
+        .first()
+    )
+    atl_7d_ago = (
+        PMCHistory.objects.filter(alumno_id=alumno_id, sport="ALL", fecha=reference_date - datetime.timedelta(days=7))
+        .values_list("atl", flat=True)
+        .first()
+    )
+    last_3_days = (
+        PMCHistory.objects.filter(alumno_id=alumno_id, sport="ALL", fecha__lte=reference_date)
+        .order_by("-fecha")
+        .values_list("tss_diario", flat=True)[:3]
+    )
+    if not latest:
+        return None, None, None, None, list(last_3_days)
+    return (
+        float(latest["ctl"]),
+        float(latest["atl"]),
+        float(latest["tsb"]),
+        float(atl_7d_ago) if atl_7d_ago is not None else None,
+        list(last_3_days),
+    )
+
+
+def reconcile_activity_with_plan(
+    *,
+    activity: Actividad,
+    allow_date_shift_days: int = 1,
+) -> ReconciliationOutcome:
+    """
+    Vincula automáticamente una Actividad real con un Entrenamiento planificado.
+
+    Criterios:
+    - mismo alumno
+    - fecha cercana (± allow_date_shift_days)
+    - deporte compatible (RUN/TRAIL, CYCLING/MTB/INDOOR_BIKE, etc.)
+    - entrenamiento pendiente y sin actividad ya vinculada
+    """
+    if activity.entrenamiento_id:
+        return ReconciliationOutcome(
+            matched=True,
+            entrenamiento_id=activity.entrenamiento_id,
+            confidence=float(activity.reconciliation_score or 0),
+            compliance_score=0,
+            classification="on_track",
+            injury_risk_level=None,
+            injury_risk_score=None,
+            injury_risk_reasons=[],
+            load_adjustment_suggestion="",
+        )
+    alumno = activity.alumno
+    if not alumno:
+        return ReconciliationOutcome(
+            matched=False,
+            entrenamiento_id=None,
+            confidence=0.0,
+            compliance_score=0,
+            classification="anomaly",
+            injury_risk_level=None,
+            injury_risk_score=None,
+            injury_risk_reasons=[],
+            load_adjustment_suggestion="",
+        )
+
+    activity_date = timezone.localtime(activity.fecha_inicio).date()
+    normalized = _normalize_activity_type(activity.tipo_deporte or activity.strava_sport_type)
+    plan_types = _plan_types_for_activity(normalized)
+    primary_type = _primary_plan_type(normalized)
+
+    window_start = activity_date - datetime.timedelta(days=allow_date_shift_days)
+    window_end = activity_date + datetime.timedelta(days=allow_date_shift_days)
+
+    candidates = (
+        Entrenamiento.objects.filter(
+            alumno=alumno,
+            fecha_asignada__range=(window_start, window_end),
+            completado=False,
+            tipo_actividad__in=plan_types,
+        )
+        .filter(actividades_reconciliadas__isnull=True)
+        .order_by("fecha_asignada")
+    )
+
+    best_match = None
+    best_score = -1.0
+    for candidate in candidates:
+        day_diff = abs((candidate.fecha_asignada - activity_date).days)
+        score = 100.0 - (day_diff * 15.0)
+        if candidate.tipo_actividad == primary_type:
+            score += 5.0
+        if score > best_score:
+            best_score = score
+            best_match = candidate
+
+    if not best_match:
+        return ReconciliationOutcome(
+            matched=False,
+            entrenamiento_id=None,
+            confidence=0.0,
+            compliance_score=0,
+            classification="anomaly",
+            injury_risk_level=None,
+            injury_risk_score=None,
+            injury_risk_reasons=[],
+            load_adjustment_suggestion="",
+        )
+
+    dist_real_km = round(float(activity.distancia or 0.0) / 1000.0, 2)
+    tiempo_real_min = int(float(activity.tiempo_movimiento or 0.0) / 60.0)
+    desnivel_real_m = int(float(activity.desnivel_positivo or 0.0))
+
+    comparator = PlannedVsActualComparator()
+    comparison = comparator.compare(best_match, activity)
+
+    with transaction.atomic():
+        best_match.distancia_real_km = dist_real_km
+        best_match.tiempo_real_min = tiempo_real_min
+        best_match.desnivel_real_m = desnivel_real_m
+        best_match.strava_id = str(activity.strava_id) if activity.strava_id else best_match.strava_id
+        best_match.completado = True
+        best_match.save()
+
+        activity.entrenamiento = best_match
+        activity.reconciled_at = timezone.now()
+        activity.reconciliation_score = max(0.0, min(100.0, best_score))
+        activity.reconciliation_method = "auto_date_sport"
+        activity.save(
+            update_fields=[
+                "entrenamiento",
+                "reconciled_at",
+                "reconciliation_score",
+                "reconciliation_method",
+            ]
+        )
+
+    ctl, atl, tsb, atl_7d_ago, last_3_days = _load_pmc_inputs(
+        alumno_id=alumno.id,
+        reference_date=activity_date,
+    )
+    if ctl is None or atl is None or tsb is None:
+        injury_risk_level = None
+        injury_risk_score = None
+        injury_risk_reasons: list[str] = []
+        load_adjustment_suggestion = ""
+    else:
+        risk = compute_injury_risk(
+            ctl=ctl,
+            atl=atl,
+            tsb=tsb,
+            atl_7d_ago=atl_7d_ago,
+            last_3_days_tss=last_3_days,
+        )
+        injury_risk_level = risk.risk_level
+        injury_risk_score = risk.risk_score
+        injury_risk_reasons = risk.risk_reasons
+        if risk.risk_level == "HIGH":
+            load_adjustment_suggestion = (
+                "Reducir carga planificada 20–40% en los próximos 7 días, "
+                "añadir 1–2 días de recuperación activa y evitar intensidad alta."
+            )
+        elif risk.risk_level == "MEDIUM":
+            load_adjustment_suggestion = (
+                "Reducir intensidad 10–20% o sustituir una sesión clave por trabajo aeróbico suave."
+            )
+        else:
+            load_adjustment_suggestion = "Carga dentro de rango. Mantener progresión actual."
+
+    return ReconciliationOutcome(
+        matched=True,
+        entrenamiento_id=best_match.id,
+        confidence=max(0.0, min(100.0, best_score)),
+        compliance_score=comparison.compliance_score,
+        classification=comparison.classification,
+        injury_risk_level=injury_risk_level,
+        injury_risk_score=injury_risk_score,
+        injury_risk_reasons=injury_risk_reasons,
+        load_adjustment_suggestion=load_adjustment_suggestion,
+    )
 
 # ==============================================================================
 #  4. SYNC STRAVA (INTACTO)

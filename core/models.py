@@ -365,6 +365,14 @@ class Actividad(models.Model):
         blank=True,
         db_index=True,
     )
+    entrenamiento = models.ForeignKey(
+        "Entrenamiento",
+        on_delete=models.SET_NULL,
+        related_name="actividades_reconciliadas",
+        null=True,
+        blank=True,
+        db_index=True,
+    )
 
     # Multi-fuente (nuevo): clave idempotente de la actividad en su provider de origen.
     # Ej: source=strava, source_object_id="123456789"
@@ -397,6 +405,9 @@ class Actividad(models.Model):
     # Auditoría / visualización
     mapa_polilinea = models.TextField(blank=True, null=True)
     datos_brutos = models.JSONField(default=dict, blank=True)
+    reconciled_at = models.DateTimeField(null=True, blank=True)
+    reconciliation_score = models.FloatField(default=0)
+    reconciliation_method = models.CharField(max_length=40, blank=True, default="")
 
     # Validación estricta para UI/insights futuros
     validity = models.CharField(max_length=12, choices=Validity.choices, default=Validity.VALID)
