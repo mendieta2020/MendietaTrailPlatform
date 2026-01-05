@@ -54,7 +54,10 @@ const AthleteDetail = () => {
 
         // 2. Sus Entrenamientos
         const resTrainings = await client.get(`/api/entrenamientos/?alumno=${id}`);
-        setTrainings(resTrainings.data);
+        const trainingsPayload = Array.isArray(resTrainings.data)
+          ? resTrainings.data
+          : (resTrainings.data?.results || []);
+        setTrainings(trainingsPayload);
       } catch (err) {
         console.error("Error cargando perfil:", err);
       } finally {
