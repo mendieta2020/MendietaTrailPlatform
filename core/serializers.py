@@ -23,13 +23,36 @@ class EquipoSerializer(serializers.ModelSerializer):
 class PlantillaEntrenamientoSerializer(serializers.ModelSerializer):
     # díficultad_display es un campo calculado en el serializer, no en el modelo
     dificultad_display = serializers.SerializerMethodField()
+    version_actual = serializers.SerializerMethodField()
+    ultima_actualizacion = serializers.SerializerMethodField()
 
     class Meta:
         model = PlantillaEntrenamiento
-        fields = ['id', 'titulo', 'deporte', 'etiqueta_dificultad', 'dificultad_display', 'descripcion_global', 'estructura', 'created_at']
+        fields = [
+            'id',
+            'titulo',
+            'deporte',
+            'etiqueta_dificultad',
+            'dificultad_display',
+            'descripcion_global',
+            'estructura',
+            'created_at',
+            'version_actual',
+            'ultima_actualizacion',
+        ]
 
     def get_dificultad_display(self, obj):
         return obj.get_etiqueta_dificultad_display()
+
+    def get_version_actual(self, obj):
+        version = obj.versiones.order_by("-version").first()
+        return version.version if version else None
+
+    def get_ultima_actualizacion(self, obj):
+        version = obj.versiones.order_by("-version").first()
+        if version:
+            return version.created_at.isoformat()
+        return obj.created_at.isoformat() if obj.created_at else None
 
 class EntrenamientoSerializer(serializers.ModelSerializer):
     alumno_nombre = serializers.CharField(source='alumno.nombre', read_only=True)
@@ -45,13 +68,14 @@ class EntrenamientoSerializer(serializers.ModelSerializer):
             'distancia_planificada_km', 'tiempo_planificado_min', 'desnivel_planificado_m',
             'rpe_planificado', 'descripcion_detallada',
             # EL CEREBRO NUEVO (JSON)
-            'estructura', 
+            'estructura',
+            'plantilla_version',
             # Métricas Reales
             'distancia_real_km', 'tiempo_real_min', 'desnivel_real_m',
             'rpe', 'feedback_alumno',
             'strava_id' 
         ]
-        read_only_fields = ['porcentaje_cumplimiento']
+        read_only_fields = ['porcentaje_cumplimiento', 'plantilla_version']
 
     def validate_alumno(self, alumno: Alumno):
         """

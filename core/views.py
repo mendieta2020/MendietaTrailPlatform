@@ -6,9 +6,9 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.db import transaction 
+from django.db import transaction
 from datetime import datetime, date as date_type, timedelta
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Max
 from django.db.models import Q
 from django.utils import timezone
 
@@ -17,7 +17,8 @@ from .models import (
     Alumno, Entrenamiento, Actividad, 
     PlantillaEntrenamiento, Carrera, 
     InscripcionCarrera, Pago,
-    Equipo, VideoEjercicio # <--- NUEVO MODELO IMPORTADO
+    Equipo, VideoEjercicio,
+    PlantillaEntrenamientoVersion,
 )
 from analytics.models import InjuryRiskSnapshot
 from analytics.serializers import InjuryRiskSnapshotSerializer
@@ -278,7 +279,11 @@ class EntrenamientoViewSet(TenantModelViewSet):
     Calendario de Entrenamientos.
     Soporta filtrado por fechas (vista mensual/semanal).
     """
-    queryset = Entrenamiento.objects.select_related("alumno", "plantilla_origen").all()
+    queryset = Entrenamiento.objects.select_related(
+        "alumno",
+        "plantilla_origen",
+        "plantilla_version",
+    ).all()
     serializer_class = EntrenamientoSerializer
     permission_classes = [permissions.IsAuthenticated]
     
@@ -339,7 +344,23 @@ class PlantillaViewSet(TenantModelViewSet):
     ordering = ['-created_at']
 
     def perform_create(self, serializer):
-        serializer.save(entrenador=self.request.user)
+        plantilla = serializer.save(entrenador=self.request.user)
+        PlantillaEntrenamientoVersion.objects.create(
+            plantilla=plantilla,
+            version=1,
+            estructura=plantilla.estructura,
+            descripcion=plantilla.descripcion_global,
+        )
+
+    def perform_update(self, serializer):
+        plantilla = serializer.save()
+        current_version = plantilla.versiones.aggregate(max_version=Max("version")).get("max_version") or 0
+        PlantillaEntrenamientoVersion.objects.create(
+            plantilla=plantilla,
+            version=current_version + 1,
+            estructura=plantilla.estructura,
+            descripcion=plantilla.descripcion_global,
+        )
 
     # ==========================================================================
     #  ⚡ MOTOR DE CLONACIÓN MASIVA (DROP & ASSIGN) - VERSIÓN JSON PRO
@@ -376,6 +397,15 @@ class PlantillaViewSet(TenantModelViewSet):
              return Response({"error": "El equipo está vacío. Agrega atletas primero."}, status=status.HTTP_400_BAD_REQUEST)
         
         nuevos_entrenamientos = []
+        plantilla_version = plantilla.versiones.order_by("-version").first()
+        if not plantilla_version:
+            plantilla_version = PlantillaEntrenamientoVersion.objects.create(
+                plantilla=plantilla,
+                version=1,
+                estructura=plantilla.estructura,
+                descripcion=plantilla.descripcion_global,
+            )
+        estructura_snapshot = plantilla_version.estructura
 
         # 2. Ejecución Atómica (Todo o Nada)
         try:
@@ -385,13 +415,14 @@ class PlantillaViewSet(TenantModelViewSet):
                     entrenamiento = Entrenamiento(
                         alumno=alumno,
                         plantilla_origen=plantilla,
+                        plantilla_version=plantilla_version,
                         fecha_asignada=fecha_inicio,
                         titulo=plantilla.titulo,
                         tipo_actividad=plantilla.deporte,
                         descripcion_detallada=plantilla.descripcion_global,
                         
                         # --- CLAVE: CLONACIÓN DE ESTRUCTURA JSON ---
-                        estructura=plantilla.estructura, # Copiamos los bloques tal cual
+                        estructura=estructura_snapshot, # Copiamos los bloques tal cual
                         
                         # Métricas base (se recalcularán luego si es necesario)
                         # distancia_planificada_km y tiempo se pueden extraer del JSON aquí si quisiéramos

@@ -49,6 +49,14 @@ const TemplateLibrary = () => {
     t.titulo.toLowerCase().includes(filter.toLowerCase())
   );
 
+  const formatLastUpdate = (tpl) => {
+    const rawDate = tpl.ultima_actualizacion || tpl.created_at;
+    if (!rawDate) return 'Sin fecha';
+    const parsed = new Date(rawDate);
+    if (Number.isNaN(parsed.getTime())) return 'Sin fecha';
+    return parsed.toLocaleDateString();
+  };
+
   return (
     <Paper sx={{ height: '100%', display: 'flex', flexDirection: 'column', borderRight: '1px solid #e0e0e0' }}>
       {/* HEADER */}
@@ -108,7 +116,7 @@ const TemplateLibrary = () => {
                       </Typography>
                     }
                     secondary={
-                      <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
+                      <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, flexWrap: 'wrap' }}>
                         <Chip 
                           label={tpl.dificultad_display || 'Normal'} 
                           size="small" 
@@ -121,6 +129,14 @@ const TemplateLibrary = () => {
                         />
                          <Typography variant="caption" color="textSecondary" sx={{ fontSize: '0.7rem' }}>
                            • {tpl.deporte}
+                         </Typography>
+                         {tpl.version_actual ? (
+                           <Typography variant="caption" color="textSecondary" sx={{ fontSize: '0.7rem' }}>
+                             • v{tpl.version_actual}
+                           </Typography>
+                         ) : null}
+                         <Typography variant="caption" color="textSecondary" sx={{ fontSize: '0.7rem' }}>
+                           • Últ. act: {formatLastUpdate(tpl)}
                          </Typography>
                       </Box>
                     }
