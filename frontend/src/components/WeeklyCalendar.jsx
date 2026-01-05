@@ -107,6 +107,11 @@ const WeeklyCalendar = ({ trainings: initialTrainings, athleteId, onTrainingCrea
               const newTraining = res.data;
 const updatedTrainings = [...(Array.isArray(trainings) ? trainings : []), newTraining];
 
+setTrainings(updatedTrainings);
+if (onTrainingCreated) {
+  onTrainingCreated(newTraining);
+}
+
               setTrainings(updatedTrainings);
               if (onTrainingCreated) {
                   onTrainingCreated(newTraining);
