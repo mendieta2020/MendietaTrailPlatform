@@ -35,7 +35,7 @@ const WeeklyCalendar = ({ trainings: initialTrainings, athleteId, onTrainingCrea
   });
 
   useEffect(() => {
-    setTrainings(initialTrainings);
+    setTrainings(Array.isArray(initialTrainings) ? initialTrainings : []);
   }, [initialTrainings]);
 
   const startOfVisibleWeek = startOfWeek(currentDate, { weekStartsOn: 1 });
@@ -50,7 +50,7 @@ const WeeklyCalendar = ({ trainings: initialTrainings, athleteId, onTrainingCrea
         hours: { planned: 0, actual: 0 },
     };
 
-    const weekTrainings = trainings.filter(t => {
+    const weekTrainings = (Array.isArray(trainings) ? trainings : []).filter(t => {
         if (!t.fecha_asignada) return false;
         const tDate = parseISO(t.fecha_asignada);
         return tDate >= startOfVisibleWeek && tDate <= addDays(startOfVisibleWeek, 6);
@@ -105,7 +105,8 @@ const WeeklyCalendar = ({ trainings: initialTrainings, athleteId, onTrainingCrea
                   fecha: newDateStr
               });
               const newTraining = res.data;
-              const updatedTrainings = [...trainings, newTraining];
+const updatedTrainings = [...(Array.isArray(trainings) ? trainings : []), newTraining];
+
               setTrainings(updatedTrainings);
               if (onTrainingCreated) {
                   onTrainingCreated(newTraining);
@@ -121,7 +122,7 @@ const WeeklyCalendar = ({ trainings: initialTrainings, athleteId, onTrainingCrea
       if (!trainingId) return;
 
       // Optimistic update
-      const updatedTrainings = trainings.map(t => {
+      const updatedTrainings = (Array.isArray(trainings) ? trainings : []).map(t => {
           if (t.id.toString() === trainingId) {
               return { ...t, fecha_asignada: newDateStr };
           }
@@ -141,7 +142,7 @@ const WeeklyCalendar = ({ trainings: initialTrainings, athleteId, onTrainingCrea
   };
 
   const getTrainingsForDay = (day) => {
-    return trainings.filter(t => t.fecha_asignada === format(day, 'yyyy-MM-dd'));
+    return (Array.isArray(trainings) ? trainings : []).filter(t => t.fecha_asignada === format(day, 'yyyy-MM-dd'));
   };
 
   // --- 🔥 GESTIÓN DE CLICS (MODO PRUEBA DE FUEGO) ---

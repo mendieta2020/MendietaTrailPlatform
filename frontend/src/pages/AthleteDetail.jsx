@@ -28,7 +28,8 @@ const AthleteDetail = () => {
   // Estado para la Librería Lateral
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const handleTrainingCreated = (training) => {
-    setTrainings((prev) => [...prev, training]);
+setTrainings((prev) => [...(Array.isArray(prev) ? prev : []), training]);
+
   };
 
   useEffect(() => {
@@ -54,7 +55,12 @@ const AthleteDetail = () => {
 
         // 2. Sus Entrenamientos
         const resTrainings = await client.get(`/api/entrenamientos/?alumno=${id}`);
-        setTrainings(resTrainings.data);
+        const trainingsData = Array.isArray(resTrainings.data)
+          ? resTrainings.data
+          : Array.isArray(resTrainings.data?.results)
+            ? resTrainings.data.results
+            : [];
+        setTrainings(trainingsData);
       } catch (err) {
         console.error("Error cargando perfil:", err);
       } finally {
