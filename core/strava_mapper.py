@@ -177,6 +177,8 @@ def map_strava_activity_to_actividad(strava_activity_json: dict) -> dict:
     calories_kcal = _to_float_or_none(strava_activity_json.get("calories_kcal"))
     if calories_kcal is None:
         calories_kcal = _to_float_or_none(raw.get("calories"))
+    if calories_kcal is None:
+        calories_kcal = 0.0
 
     effort = _to_float_or_none(strava_activity_json.get("effort"))
     if effort is None:
@@ -184,8 +186,12 @@ def map_strava_activity_to_actividad(strava_activity_json: dict) -> dict:
             effort = _to_float_or_none(raw.get(k))
             if effort is not None:
                 break
+    if effort is None:
+        effort = 0.0
 
     elev_loss_m = _to_float_or_none(strava_activity_json.get("elev_loss_m"))
+    if elev_loss_m is None:
+        elev_loss_m = 0.0
     elev_gain_m = _to_float_or_none(strava_activity_json.get("elevation_m"))
 
     return {

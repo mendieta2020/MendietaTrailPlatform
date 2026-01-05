@@ -92,7 +92,11 @@ const TrainingCardPro = ({ training, onClick }) => {
                 </Typography>
             </Box>
             {training.porcentaje_cumplimiento > 0 && (
-                <Chip label={`${training.porcentaje_cumplimiento}%`} size="small" sx={{ height: 16, fontSize: '0.6rem', fontWeight: 700, bgcolor: complianceStyle.border, color: 'white' }} />
+                <Chip
+                    label={`Plan vs Real ${training.porcentaje_cumplimiento}%`}
+                    size="small"
+                    sx={{ height: 16, fontSize: '0.6rem', fontWeight: 700, bgcolor: complianceStyle.border, color: 'white' }}
+                />
             )}
         </Box>
 
