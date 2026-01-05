@@ -15,6 +15,15 @@ import AlertsWidget from '../components/widgets/AlertsWidget';
 import { format, subMonths, startOfYear, startOfMonth, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
+function normalizeListPayload(payload, label = 'data') {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.results)) return payload.results;
+  if (payload && Array.isArray(payload.data)) return payload.data;
+  if (payload == null) return [];
+  console.warn(`⚠️ [Dashboard] Respuesta inválida para ${label}. Se esperaba array.`, payload);
+  return [];
+}
+
 // --- COMPONENTE DE TARJETA KPI ---
 const StatCard = ({ title, value, sub, color, icon: Icon, loading }) => (
   <Paper sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', borderLeft: `4px solid ${color}`, borderRadius: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
@@ -58,22 +67,28 @@ const Dashboard = () => {
           client.get('/api/pagos/')
         ]);
 
-        const totalIngresos = resPagos.data.reduce((acc, pago) => acc + parseFloat(pago.monto), 0);
+        const alumnosList = normalizeListPayload(resAlumnos?.data, 'alumnos');
+        const pagosList = normalizeListPayload(resPagos?.data, 'pagos');
+
+        const totalIngresos = pagosList.reduce((acc, pago) => acc + parseFloat(pago?.monto || 0), 0);
         setKpiData({ 
-            alumnos: resAlumnos.data.length, 
+            alumnos: alumnosList.length, 
             ingresos: totalIngresos 
         });
-        setPagosData(resPagos.data);
+        setPagosData(pagosList);
 
         // 2. Cargar Datos Científicos (PMC) - Opcional: Pasar fechas en query params
         // Por ahora traemos todo y filtramos en frontend (para MVP es rápido)
         // En producción, filtraremos en backend: `/api/analytics/pmc/?start=...&end=...`
         const resPMC = await client.get('/api/analytics/pmc/');
-        setPmcData(resPMC.data);
+        setPmcData(normalizeListPayload(resPMC?.data, 'pmc'));
 
       } catch (err) {
         console.error("Error Dashboard:", err);
         setError("Error de conexión. Verifica tu internet.");
+        setKpiData({ alumnos: 0, ingresos: 0 });
+        setPagosData([]);
+        setPmcData([]);
       } finally {
         setLoading(false);
       }
@@ -84,14 +99,15 @@ const Dashboard = () => {
 
   // --- FILTRADO DE DATOS PMC SEGÚN PERIODO ---
   const getFilteredPMC = () => {
-      if (!pmcData) return [];
+      const list = Array.isArray(pmcData) ? pmcData : [];
+      if (!list.length) return [];
       const now = new Date();
       let startDate = startOfMonth(now);
 
       if (periodo === 'LAST_3_MONTHS') startDate = subMonths(now, 3);
       if (periodo === 'THIS_YEAR') startDate = startOfYear(now);
 
-      return pmcData.filter(d => parseISO(d.fecha) >= startDate);
+      return list.filter(d => parseISO(d.fecha) >= startDate);
   };
 
   const filteredPMC = getFilteredPMC();
