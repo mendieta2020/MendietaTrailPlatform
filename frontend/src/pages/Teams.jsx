@@ -22,7 +22,8 @@ const Teams = () => {
     try {
       setLoading(true);
       const res = await client.get('/api/equipos/');
-      setTeams(res.data);
+      const payload = res.data?.results ?? res.data ?? [];
+      setTeams(Array.isArray(payload) ? payload : []);
     } catch (err) {
       console.error("Error cargando equipos:", err);
     } finally {
@@ -64,6 +65,8 @@ const Teams = () => {
     navigate(`/teams/${teamId}`);
   };
 
+  const safeTeams = Array.isArray(teams) ? teams : [];
+
   return (
     <Layout>
       {/* HEADER */}
@@ -91,7 +94,7 @@ const Teams = () => {
       {/* LISTA DE EQUIPOS (GRID) */}
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}><CircularProgress /></Box>
-      ) : teams.length === 0 ? (
+      ) : safeTeams.length === 0 ? (
         <Paper sx={{ p: 6, textAlign: 'center', borderRadius: 4, border: '2px dashed #CBD5E1', bgcolor: '#F8FAFC' }}>
           <Groups sx={{ fontSize: 60, color: '#94A3B8', mb: 2 }} />
           <Typography variant="h6" color="textSecondary" sx={{ fontWeight: 600 }}>No tienes grupos creados</Typography>
@@ -104,7 +107,7 @@ const Teams = () => {
         </Paper>
       ) : (
         <Grid container spacing={3}>
-          {teams.map((team) => (
+          {safeTeams.map((team) => (
             <Grid item xs={12} sm={6} md={4} key={team.id}>
               <Paper 
                 onClick={() => goToTeamDetail(team.id)} // Toda la tarjeta es clickable

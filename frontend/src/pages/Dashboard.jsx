@@ -58,12 +58,17 @@ const Dashboard = () => {
           client.get('/api/pagos/')
         ]);
 
-        const totalIngresos = resPagos.data.reduce((acc, pago) => acc + parseFloat(pago.monto), 0);
+        const alumnosPayload = resAlumnos.data?.results ?? resAlumnos.data ?? [];
+        const pagosPayload = resPagos.data?.results ?? resPagos.data ?? [];
+        const alumnosData = Array.isArray(alumnosPayload) ? alumnosPayload : [];
+        const pagosDataArray = Array.isArray(pagosPayload) ? pagosPayload : [];
+
+        const totalIngresos = pagosDataArray.reduce((acc, pago) => acc + parseFloat(pago.monto), 0);
         setKpiData({ 
-            alumnos: resAlumnos.data.length, 
+            alumnos: alumnosData.length, 
             ingresos: totalIngresos 
         });
-        setPagosData(resPagos.data);
+        setPagosData(pagosDataArray);
 
         // 2. Cargar Datos Científicos (PMC) - Opcional: Pasar fechas en query params
         // Por ahora traemos todo y filtramos en frontend (para MVP es rápido)
@@ -84,14 +89,14 @@ const Dashboard = () => {
 
   // --- FILTRADO DE DATOS PMC SEGÚN PERIODO ---
   const getFilteredPMC = () => {
-      if (!pmcData) return [];
+      const safePmcData = Array.isArray(pmcData) ? pmcData : [];
       const now = new Date();
       let startDate = startOfMonth(now);
 
       if (periodo === 'LAST_3_MONTHS') startDate = subMonths(now, 3);
       if (periodo === 'THIS_YEAR') startDate = startOfYear(now);
 
-      return pmcData.filter(d => parseISO(d.fecha) >= startDate);
+      return safePmcData.filter(d => parseISO(d.fecha) >= startDate);
   };
 
   const filteredPMC = getFilteredPMC();
