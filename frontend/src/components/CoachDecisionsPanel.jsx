@@ -97,9 +97,12 @@ export default function CoachDecisionsPanel({ athleteId }) {
     <Paper sx={{ p: 3, borderRadius: 3, mb: 4, border: '1px solid #E2E8F0', boxShadow: '0 4px 18px rgba(0,0,0,0.04)' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 2, mb: 1 }}>
         <Box>
-          <Typography variant="h6" sx={{ fontWeight: 900, color: '#0F172A' }}>
-            Coach Decisions
-          </Typography>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography variant="h6" sx={{ fontWeight: 900, color: '#0F172A' }}>
+              Coach Decisions
+            </Typography>
+            {k?.source === 'planned' && <Chip size="small" label="Planificado" color="warning" />}
+          </Stack>
           <Typography variant="caption" sx={{ color: '#64748B' }}>
             Semana {data?.week || week} · {data?.range?.start} → {data?.range?.end}
           </Typography>
@@ -199,4 +202,3 @@ export default function CoachDecisionsPanel({ athleteId }) {
     </Paper>
   );
 }
-

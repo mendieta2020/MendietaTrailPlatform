@@ -109,6 +109,27 @@ def _week_kpis_for_athlete(*, athlete_id: int, start: date, end: date) -> dict:
         calories_kcal=Sum("calories_kcal"),
         effort=Sum("effort"),
     )
+    if all(value is None for value in agg.values()):
+        plan_agg = Entrenamiento.objects.filter(
+            alumno_id=int(athlete_id),
+            fecha_asignada__range=[start, end],
+        ).aggregate(
+            duration_min=Sum("tiempo_planificado_min"),
+            distance_km=Sum("distancia_planificada_km"),
+            elev_gain_m=Sum("desnivel_planificado_m"),
+        )
+        duration_min = round(float(plan_agg["duration_min"] or 0.0), 1)
+        distance_km = round(float(plan_agg["distance_km"] or 0.0), 2)
+        elev_gain = plan_agg.get("elev_gain_m")
+        return {
+            "duration_min": duration_min,
+            "distance_km": distance_km,
+            "elev_gain_m": int(round(float(elev_gain))) if elev_gain is not None else None,
+            "elev_loss_m": None,
+            "calories_kcal": None,
+            "effort": None,
+            "source": "planned",
+        }
     dur_s = int(agg["duration_s"] or 0)
     return {
         "duration_min": round(dur_s / 60.0, 1),
@@ -117,6 +138,7 @@ def _week_kpis_for_athlete(*, athlete_id: int, start: date, end: date) -> dict:
         "elev_loss_m": int(round(float(agg["elev_loss_m"]))) if agg.get("elev_loss_m") is not None else None,
         "calories_kcal": int(round(float(agg["calories_kcal"]))) if agg.get("calories_kcal") is not None else None,
         "effort": round(float(agg["effort"]), 1) if agg.get("effort") is not None else None,
+        "source": "actual",
     }
 
 
@@ -456,4 +478,3 @@ class CoachAlertPatchView(APIView):
         if not updated:
             return Response({"detail": "Not found"}, status=404)
         return Response({"id": int(alert_id), "visto_por_coach": bool(visto)}, status=200)
-
