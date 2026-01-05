@@ -83,7 +83,10 @@ const Layout = ({ children }) => {
       <List sx={{ px: 1 }}>
         <ListItem disablePadding>
           <ListItemButton 
-            onClick={() => { localStorage.clear(); window.location.href = '/'; }}
+            onClick={() => {
+              try { localStorage.clear(); } catch (e) { /* ignore */ }
+              window.location.href = '/';
+            }}
             sx={{ borderRadius: 2, '&:hover': { bgcolor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' } }}
           >
             <ListItemIcon sx={{ minWidth: 40, color: '#64748B' }}><Logout /></ListItemIcon>

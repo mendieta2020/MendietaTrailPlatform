@@ -6,8 +6,16 @@ let accessToken = null;
 let refreshToken = null;
 
 function loadFromStorage() {
-  if (accessToken === null) accessToken = localStorage.getItem(ACCESS_TOKEN_KEY);
-  if (refreshToken === null) refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+  // Blindaje: en algunos entornos (Safari privado, iframes restrictivos) localStorage puede lanzar.
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    if (accessToken === null) accessToken = localStorage.getItem(ACCESS_TOKEN_KEY);
+    if (refreshToken === null) refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+  } catch (e) {
+    // Fallback seguro: tratamos como "sin sesión"
+    accessToken = null;
+    refreshToken = null;
+  }
 }
 
 export const tokenStore = {
@@ -24,20 +32,31 @@ export const tokenStore = {
   },
 
   setTokens({ access, refresh }) {
-    if (typeof access === 'string') {
-      accessToken = access;
-      localStorage.setItem(ACCESS_TOKEN_KEY, access);
-    }
-    if (typeof refresh === 'string') {
-      refreshToken = refresh;
-      localStorage.setItem(REFRESH_TOKEN_KEY, refresh);
+    try {
+      if (typeof access === 'string') {
+        accessToken = access;
+        if (typeof window !== 'undefined' && window.localStorage) localStorage.setItem(ACCESS_TOKEN_KEY, access);
+      }
+      if (typeof refresh === 'string') {
+        refreshToken = refresh;
+        if (typeof window !== 'undefined' && window.localStorage) localStorage.setItem(REFRESH_TOKEN_KEY, refresh);
+      }
+    } catch (e) {
+      // Si storage está bloqueado, mantenemos tokens en memoria.
+      if (typeof access === 'string') accessToken = access;
+      if (typeof refresh === 'string') refreshToken = refresh;
     }
   },
 
   clear() {
     accessToken = null;
     refreshToken = null;
-    localStorage.removeItem(ACCESS_TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
+    try {
+      if (typeof window === 'undefined' || !window.localStorage) return;
+      localStorage.removeItem(ACCESS_TOKEN_KEY);
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
+    } catch (e) {
+      // no-op
+    }
   },
 };

@@ -9,6 +9,15 @@ import Layout from '../components/Layout';
 import client from '../api/client';
 import RiskBadge from '../components/RiskBadge';
 
+function normalizeListPayload(payload, label = 'data') {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.results)) return payload.results;
+  if (payload && Array.isArray(payload.data)) return payload.data;
+  if (payload == null) return [];
+  console.warn(`⚠️ [Athletes] Respuesta inválida para ${label}. Se esperaba array.`, payload);
+  return [];
+}
+
 const Athletes = () => {
   const navigate = useNavigate(); // <--- Hook de navegación
   const [athletes, setAthletes] = useState([]);
@@ -18,19 +27,23 @@ const Athletes = () => {
     const fetchAthletes = async () => {
       try {
         const res = await client.get('/api/alumnos/?include_injury_risk=1');
-        setAthletes(res.data);
+        const list = normalizeListPayload(res?.data, 'alumnos');
+        setAthletes(list);
       } catch (err) {
-        console.error(err);
+        console.error('[Athletes] Error cargando alumnos:', err);
+        setAthletes([]);
       }
     };
     fetchAthletes();
   }, []);
 
   // Filtro de búsqueda en tiempo real
-  const filteredAthletes = athletes.filter(athlete => 
-    athlete.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    athlete.apellido.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const q = (searchTerm || '').toLowerCase();
+  const filteredAthletes = (Array.isArray(athletes) ? athletes : []).filter((athlete) => {
+    const nombre = String(athlete?.nombre || '').toLowerCase();
+    const apellido = String(athlete?.apellido || '').toLowerCase();
+    return nombre.includes(q) || apellido.includes(q);
+  });
 
   return (
     <Layout>
