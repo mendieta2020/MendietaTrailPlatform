@@ -16,7 +16,7 @@ import TrainingCardPro from './widgets/TrainingCardPro';
 import EditTrainingModal from './EditTrainingModal';
 import TrainingDetailModal from './TrainingDetailModal'; // <--- IMPORTACIÓN CRÍTICA
 
-const WeeklyCalendar = ({ trainings: initialTrainings }) => {
+const WeeklyCalendar = ({ trainings: initialTrainings, athleteId, onTrainingCreated }) => {
   const [trainings, setTrainings] = useState([]); 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [overallCompliance, setOverallCompliance] = useState(0);
@@ -89,10 +89,36 @@ const WeeklyCalendar = ({ trainings: initialTrainings }) => {
 
   const handleDropOnDay = async (e, dayDate) => {
       e.preventDefault();
+      const templateId = e.dataTransfer.getData("templateId");
       const trainingId = e.dataTransfer.getData("trainingId");
-      if (!trainingId) return;
 
       const newDateStr = format(dayDate, 'yyyy-MM-dd');
+
+      if (templateId) {
+          if (!athleteId) {
+              setFeedback({ open: true, msg: 'Selecciona un atleta antes de asignar.', type: 'error' });
+              return;
+          }
+          try {
+              const res = await client.post(`/api/plantillas/${templateId}/asignar_a_alumno/`, {
+                  alumno_id: athleteId,
+                  fecha: newDateStr
+              });
+              const newTraining = res.data;
+              const updatedTrainings = [...trainings, newTraining];
+              setTrainings(updatedTrainings);
+              if (onTrainingCreated) {
+                  onTrainingCreated(newTraining);
+              }
+              setFeedback({ open: true, msg: 'Plantilla asignada ✅', type: 'success' });
+          } catch (error) {
+              console.error("Error asignando plantilla:", error);
+              setFeedback({ open: true, msg: 'Error al asignar plantilla.', type: 'error' });
+          }
+          return;
+      }
+
+      if (!trainingId) return;
 
       // Optimistic update
       const updatedTrainings = trainings.map(t => {
