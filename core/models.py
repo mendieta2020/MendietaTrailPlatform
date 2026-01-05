@@ -199,10 +199,38 @@ class PlantillaEntrenamiento(models.Model):
 
     def __str__(self): return self.titulo
 
+# --- VERSIONADO DE PLANTILLAS (HISTORIAL INMUTABLE) ---
+class PlantillaEntrenamientoVersion(models.Model):
+    plantilla = models.ForeignKey(
+        PlantillaEntrenamiento,
+        on_delete=models.CASCADE,
+        related_name="versiones",
+    )
+    version = models.PositiveIntegerField()
+    estructura = models.JSONField(default=dict, blank=True)
+    descripcion = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-version']
+        constraints = [
+            models.UniqueConstraint(fields=["plantilla", "version"], name="unique_version_per_template"),
+        ]
+
+    def __str__(self):
+        return f"{self.plantilla.titulo} v{self.version}"
+
 # --- ENTRENAMIENTO (CALENDARIO) ---
 class Entrenamiento(models.Model):
     alumno = models.ForeignKey(Alumno, on_delete=models.CASCADE, related_name='entrenamientos')
     plantilla_origen = models.ForeignKey(PlantillaEntrenamiento, on_delete=models.SET_NULL, null=True, blank=True)
+    plantilla_version = models.ForeignKey(
+        "PlantillaEntrenamientoVersion",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="entrenamientos",
+    )
     
     fecha_asignada = models.DateField()
     titulo = models.CharField(max_length=200)
