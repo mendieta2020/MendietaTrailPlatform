@@ -35,7 +35,10 @@ const WeeklyCalendar = ({ trainings: initialTrainings, athleteId, onTrainingCrea
   });
 
   useEffect(() => {
-    setTrainings(initialTrainings);
+    const normalizedTrainings = Array.isArray(initialTrainings)
+      ? initialTrainings
+      : (initialTrainings?.results ?? []);
+    setTrainings(normalizedTrainings);
   }, [initialTrainings]);
 
   const startOfVisibleWeek = startOfWeek(currentDate, { weekStartsOn: 1 });
@@ -50,7 +53,7 @@ const WeeklyCalendar = ({ trainings: initialTrainings, athleteId, onTrainingCrea
         hours: { planned: 0, actual: 0 },
     };
 
-    const weekTrainings = trainings.filter(t => {
+    const weekTrainings = (Array.isArray(trainings) ? trainings : []).filter(t => {
         if (!t.fecha_asignada) return false;
         const tDate = parseISO(t.fecha_asignada);
         return tDate >= startOfVisibleWeek && tDate <= addDays(startOfVisibleWeek, 6);
@@ -141,7 +144,10 @@ const WeeklyCalendar = ({ trainings: initialTrainings, athleteId, onTrainingCrea
   };
 
   const getTrainingsForDay = (day) => {
-    return trainings.filter(t => t.fecha_asignada === format(day, 'yyyy-MM-dd'));
+    const dayKey = format(day, 'yyyy-MM-dd');
+    return (Array.isArray(trainings) ? trainings : []).filter(
+      (t) => t.fecha_asignada === dayKey
+    );
   };
 
   // --- 🔥 GESTIÓN DE CLICS (MODO PRUEBA DE FUEGO) ---
