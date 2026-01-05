@@ -1,9 +1,13 @@
+from datetime import timedelta
+from unittest import mock
+
 from django.test import TestCase
+from django.utils import timezone
 
 from analytics.injury_risk import compute_injury_risk
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
-from core.models import Alumno
+from core.models import Actividad, Alumno
 from analytics.models import AlertaRendimiento
 
 
@@ -189,3 +193,58 @@ class AnalyticsAlertsEndpointTests(TestCase):
         self.assertEqual(resp_pag.status_code, 200)
         self.assertEqual(resp_pag.data["count"], 5)
         self.assertTrue(all("coach1 alert" in a["mensaje"] for a in resp_pag.data["results"]))
+
+
+class AnalyticsMaterializationTests(TestCase):
+    def setUp(self):
+        self.api_client = APIClient()
+        self.user_model = get_user_model()
+
+    def _auth_client(self, username: str, password: str):
+        self.api_client.credentials()
+        resp = self.api_client.post("/api/token/", {"username": username, "password": password}, format="json")
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {resp.data['access']}")
+
+    def _create_activity(self, alumno: Alumno):
+        return Actividad.objects.create(
+            usuario=alumno.entrenador,
+            alumno=alumno,
+            source=Actividad.Source.STRAVA,
+            source_object_id="test-activity-1",
+            nombre="Test Run",
+            distancia=5000.0,
+            tiempo_movimiento=1800,
+            fecha_inicio=timezone.now() - timedelta(days=1),
+            tipo_deporte="RUN",
+        )
+
+    def test_pmc_returns_pending_when_materialization_missing(self):
+        coach = self.user_model.objects.create_user(username="coach_pmc", email="pmc@example.com", password="pass12345")
+        alumno = Alumno.objects.create(entrenador=coach, nombre="A", apellido="B", email="pmc_alumno@example.com")
+        self._create_activity(alumno)
+        self._auth_client("coach_pmc", "pass12345")
+
+        with mock.patch("analytics.views.recompute_pmc_from_activities.delay") as mocked_delay:
+            resp = self.api_client.get(f"/api/analytics/pmc/?alumno_id={alumno.id}")
+        self.assertEqual(resp.status_code, 202, resp.data)
+        self.assertEqual(resp.data["status"], "PENDING")
+        mocked_delay.assert_called()
+
+    def test_summary_returns_pending_when_materialization_missing(self):
+        coach = self.user_model.objects.create_user(username="coach_summary", email="sum@example.com", password="pass12345")
+        alumno = Alumno.objects.create(entrenador=coach, nombre="C", apellido="D", email="sum_alumno@example.com")
+        self._create_activity(alumno)
+        self._auth_client("coach_summary", "pass12345")
+
+        with mock.patch("analytics.views.recompute_pmc_from_activities.delay") as mocked_delay:
+            resp = self.api_client.get(f"/api/analytics/summary/?alumno_id={alumno.id}")
+        self.assertEqual(resp.status_code, 202, resp.data)
+        self.assertEqual(resp.data["status"], "PENDING")
+        mocked_delay.assert_called()
+
+    def test_materialization_status_requires_alumno_id_for_coach(self):
+        coach = self.user_model.objects.create_user(username="coach_status", email="status@example.com", password="pass12345")
+        self._auth_client("coach_status", "pass12345")
+        resp = self.api_client.get("/api/analytics/materialization-status/")
+        self.assertEqual(resp.status_code, 400)
