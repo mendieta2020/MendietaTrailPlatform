@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser # <--- CRÍTICO PARA SUBIR VIDEOS
 from django_filters.rest_framework import DjangoFilterBackend
 from django.shortcuts import render, redirect
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db import transaction
@@ -546,6 +547,12 @@ def dashboard_entrenador(request):
         
         # A. Sincronización Rápida (Últimas 10)
         if 'sync_strava' in request.POST:
+            if getattr(settings, "DISABLE_LEGACY_STRAVA_SYNC", True):
+                messages.error(
+                    request,
+                    "⚠️ Legacy Strava sync está deshabilitado en este entorno.",
+                )
+                return redirect('dashboard_principal')
             nuevas, actualizadas, estado = sincronizar_actividades_strava(request.user)
             
             if estado == "OK":
@@ -558,6 +565,12 @@ def dashboard_entrenador(request):
 
         # B. Sincronización Histórica (Últimos 60 días + Recálculo)
         elif 'sync_history' in request.POST:
+            if getattr(settings, "DISABLE_LEGACY_STRAVA_SYNC", True):
+                messages.error(
+                    request,
+                    "⚠️ Legacy Strava sync está deshabilitado en este entorno.",
+                )
+                return redirect('dashboard_principal')
             print("📚 Iniciando carga histórica de 60 días...")
             nuevas, actualizadas, estado = sincronizar_actividades_strava(request.user, dias_historial=60)
             

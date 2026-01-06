@@ -4,6 +4,9 @@ import json
 import time
 from typing import Iterable, Optional
 
+import logging
+
+from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from django.utils import timezone
@@ -14,6 +17,8 @@ from analytics.injury_risk import compute_injury_risk
 from analytics.models import PMCHistory
 from analytics.plan_vs_actual import PlannedVsActualComparator
 from .models import Alumno, Entrenamiento, BloqueEntrenamiento, PasoEntrenamiento, Actividad
+
+logger = logging.getLogger(__name__)
 
 # ==============================================================================
 #  1. CLONADOR UNIVERSAL (EL NÚCLEO DE LA AUTOMATIZACIÓN)
@@ -133,6 +138,7 @@ def ejecutar_cruce_inteligente(actividad):
     2. Si no, busca un plan PENDIENTE (Match).
     3. Califica cumplimiento (%).
     """
+    _ensure_legacy_strava_sync_allowed("ejecutar_cruce_inteligente")
     print(f"⚖️  EL JUEZ: Evaluando actividad {actividad.strava_id} ({actividad.nombre})...")
 
     email_usuario = actividad.usuario.email
@@ -570,7 +576,26 @@ def obtener_cliente_strava_para_alumno(alumno: Alumno, *, force_refresh: bool = 
         return obtener_cliente_strava(alumno.entrenador, force_refresh=force_refresh)
     return None
 
+
+class LegacyStravaSyncDisabled(RuntimeError):
+    """LEGACY PIPELINE — DO NOT USE IN PROD. Kept only for admin/dev compatibility."""
+
+
+def _ensure_legacy_strava_sync_allowed(origin: str) -> None:
+    if getattr(settings, "DISABLE_LEGACY_STRAVA_SYNC", True):
+        logger.warning(
+            "Legacy Strava sync blocked (%s). Set DISABLE_LEGACY_STRAVA_SYNC=False to allow.",
+            origin,
+        )
+        raise LegacyStravaSyncDisabled(
+            "LEGACY PIPELINE — DO NOT USE IN PROD. "
+            "Legacy Strava sync is disabled via DISABLE_LEGACY_STRAVA_SYNC."
+        )
+
+
 def sincronizar_actividades_strava(user, dias_historial=None):
+    # LEGACY PIPELINE — DO NOT USE IN PROD. Kept only for admin/dev compatibility.
+    _ensure_legacy_strava_sync_allowed("sincronizar_actividades_strava")
     client = obtener_cliente_strava(user)
     if not client: return 0, 0, "Token inválido."
 

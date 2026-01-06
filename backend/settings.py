@@ -71,6 +71,16 @@ STRAVA_WEBHOOK_VERIFY_TOKEN = get_env_variable(
     default="",
     required=(REQUIRE_RUNTIME_SECRETS and not DEBUG),
 )
+# Legacy Strava sync (services.sincronizar_actividades_strava) MUST be disabled in prod.
+# Default: disabled in non-debug to fail-closed. Override only for dev/admin compatibility.
+DISABLE_LEGACY_STRAVA_SYNC = (
+    get_env_variable(
+        "DISABLE_LEGACY_STRAVA_SYNC",
+        default=("True" if not DEBUG else "False"),
+        required=False,
+    )
+    == "True"
+)
 
 # OpenAI (opcional en local)
 OPENAI_API_KEY = get_env_variable("OPENAI_API_KEY", default="", required=False)
