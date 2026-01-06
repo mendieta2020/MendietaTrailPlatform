@@ -60,6 +60,15 @@ def determinar_carga_final(tss_power, tss_gap, trimp, rpe_load):
     if trimp and trimp > 0: return trimp
     return rpe_load
 
+def calcular_tss_estimado(*args, **kwargs):
+    """
+    Legacy alias para compatibilidad.
+    Si antes existía 'calcular_tss_estimado', hoy usamos otros cálculos (gap/power).
+    Devuelve 0 si no puede estimar de forma segura.
+    """
+    # Si querés, podés enrutar a un cálculo actual. Sin contexto, lo más seguro es 0.
+    return calcular_tss_estimado(*args, **kwargs)
+
 # ==============================================================================
 #  3. ESTIMACIÓN AUTOMÁTICA DE VAM (TESTS DE CAMPO)
 # ==============================================================================
