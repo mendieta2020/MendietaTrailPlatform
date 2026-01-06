@@ -10,8 +10,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from analytics.models import DailyActivityAgg, HistorialFitness, PMCHistory
-from analytics.pmc_engine import PMC_SPORT_GROUPS, ensure_pmc_materialized
-from core.models import Actividad, Alumno, Entrenamiento, InscripcionCarrera
+from analytics.pmc_engine import PMC_SPORT_GROUPS
+from analytics.tasks import recompute_pmc_from_activities
+from core.models import Actividad, Alumno, Entrenamiento, InscripcionCarrera, AthleteSyncState
 
 from analytics.models import AlertaRendimiento
 from analytics.serializers import AlertaRendimientoSerializer
@@ -54,9 +55,6 @@ class PMCDataView(APIView):
 
             alumno_id = int(alumno_id)
 
-            # Best-effort: materializar PMC si aún no existe (evita "Sin datos" post-backfill).
-            ensure_pmc_materialized(alumno_id=alumno_id)
-
             end_date = timezone.localdate()
             start_date = end_date - timedelta(days=365)
 
@@ -67,15 +65,26 @@ class PMCDataView(APIView):
             )
             if not pmc_rows:
                 # Fallback compat: algunos flujos legacy sólo materializan HistorialFitness via signals.
-                # Mantenemos /api/analytics/pmc vivo para no romper frontend/tests.
                 hf_rows = list(
                     HistorialFitness.objects.filter(alumno_id=alumno_id, fecha__range=[start_date, end_date])
                     .order_by("fecha")
                     .values("fecha", "tss_diario", "ctl", "atl", "tsb")
                 )
                 if not hf_rows:
-                    # Último fallback UX: si hay entrenamientos (plan) pero no hay PMC materializado,
-                    # devolvemos al menos el día actual con ceros para que el frontend no quede "vacío".
+                    has_activities = Actividad.objects.filter(alumno_id=alumno_id).exists()
+                    if has_activities:
+                        first_activity = (
+                            Actividad.objects.filter(alumno_id=alumno_id)
+                            .order_by("fecha_inicio")
+                            .values_list("fecha_inicio", flat=True)
+                            .first()
+                        )
+                        if first_activity:
+                            recompute_pmc_from_activities.delay(alumno_id, first_activity.date().isoformat())
+                        return Response(
+                            {"status": "PENDING", "detail": "materialization scheduled"},
+                            status=status.HTTP_202_ACCEPTED,
+                        )
                     if Entrenamiento.objects.filter(alumno_id=alumno_id).exists():
                         today = timezone.localdate()
                         return Response(
@@ -211,7 +220,16 @@ class AnalyticsSummaryView(APIView):
                 return Response({"alumno_id": None, "ranges": {}, "last_days": []}, status=200)
 
         alumno_id = int(alumno_id)
-        ensure_pmc_materialized(alumno_id=alumno_id)
+        if not DailyActivityAgg.objects.filter(alumno_id=alumno_id).exists():
+            first_activity = (
+                Actividad.objects.filter(alumno_id=alumno_id)
+                .order_by("fecha_inicio")
+                .values_list("fecha_inicio", flat=True)
+                .first()
+            )
+            if first_activity:
+                recompute_pmc_from_activities.delay(alumno_id, first_activity.date().isoformat())
+                return Response({"status": "PENDING", "detail": "materialization scheduled"}, status=status.HTTP_202_ACCEPTED)
 
         today = timezone.localdate()
         start_28 = today - timedelta(days=27)
@@ -266,6 +284,55 @@ class AnalyticsSummaryView(APIView):
                 "alumno_id": alumno_id,
                 "ranges": {"7d": rollup(start_7), "28d": rollup(start_28)},
                 "last_days": last_days,
+            },
+            status=200,
+        )
+
+
+class MaterializationStatusView(APIView):
+    """
+    GET /api/analytics/materialization-status/?alumno_id=<id>
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        alumno_id = request.query_params.get("alumno_id")
+        is_athlete = hasattr(user, "perfil_alumno")
+
+        if is_athlete:
+            alumno_id = user.perfil_alumno.id
+        else:
+            if not alumno_id:
+                return Response({"error": "alumno_id requerido"}, status=status.HTTP_400_BAD_REQUEST)
+            if not Alumno.objects.filter(id=alumno_id, entrenador=user).exists():
+                return Response({"error": "alumno_id inválido"}, status=status.HTTP_400_BAD_REQUEST)
+
+        alumno_id = int(alumno_id)
+
+        state = AthleteSyncState.objects.filter(alumno_id=alumno_id).values(
+            "metrics_status",
+            "metrics_last_run_at",
+            "metrics_last_error",
+            "metrics_pending_from",
+        ).first()
+        last_pmc_date = (
+            PMCHistory.objects.filter(alumno_id=alumno_id).order_by("-fecha").values_list("fecha", flat=True).first()
+        )
+        lag_days = None
+        if last_pmc_date:
+            lag_days = (timezone.localdate() - last_pmc_date).days
+
+        return Response(
+            {
+                "alumno_id": alumno_id,
+                "last_materialized_date": last_pmc_date.isoformat() if last_pmc_date else None,
+                "metrics_status": (state or {}).get("metrics_status") or "IDLE",
+                "metrics_last_run_at": (state or {}).get("metrics_last_run_at"),
+                "metrics_last_error": (state or {}).get("metrics_last_error") or "",
+                "metrics_pending_from": (state or {}).get("metrics_pending_from"),
+                "lag_days": lag_days,
             },
             status=200,
         )

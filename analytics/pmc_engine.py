@@ -81,16 +81,17 @@ class DailyAggRow:
     duration_s: int
 
 
-def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
+def build_daily_aggs_for_alumno_range(*, alumno_id: int, start_date: date, end_date: date | None = None) -> int:
     """
-    Reconstruye DailyActivityAgg desde `start_date` (inclusive).
+    Reconstruye DailyActivityAgg entre `start_date` y `end_date` (inclusive).
     Idempotente: borra rango y re-crea.
     """
     start_date = date.fromisoformat(str(start_date))
+    end_date = date.fromisoformat(str(end_date)) if end_date else timezone.localdate()
 
     acts = (
         Actividad.objects.filter(alumno_id=alumno_id, validity=Actividad.Validity.VALID)
-        .filter(fecha_inicio__date__gte=start_date)
+        .filter(fecha_inicio__date__range=[start_date, end_date])
         .values("fecha_inicio", "tipo_deporte", "distancia", "desnivel_positivo", "tiempo_movimiento", "datos_brutos")
     )
 
@@ -119,7 +120,7 @@ def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
 
     rows = list(by_key.values())
     with transaction.atomic():
-        DailyActivityAgg.objects.filter(alumno_id=alumno_id, fecha__gte=start_date).delete()
+        DailyActivityAgg.objects.filter(alumno_id=alumno_id, fecha__range=[start_date, end_date]).delete()
         DailyActivityAgg.objects.bulk_create(
             [
                 DailyActivityAgg(
@@ -139,6 +140,13 @@ def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
     return len(rows)
 
 
+def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
+    """
+    Reconstruye DailyActivityAgg desde `start_date` (inclusive) hasta hoy.
+    """
+    return build_daily_aggs_for_alumno_range(alumno_id=alumno_id, start_date=start_date, end_date=None)
+
+
 def _daterange(start: date, end: date) -> Iterable[date]:
     d = start
     while d <= end:
@@ -146,20 +154,21 @@ def _daterange(start: date, end: date) -> Iterable[date]:
         d += timedelta(days=1)
 
 
-def recompute_pmc_for_alumno(*, alumno_id: int, start_date: date) -> dict[str, int]:
+def recompute_pmc_for_alumno_range(*, alumno_id: int, start_date: date, end_date: date | None = None) -> dict[str, int]:
     """
-    Recalcula PMC incremental desde `start_date` (inclusive) para ALL/RUN/BIKE.
+    Recalcula PMC incremental desde `start_date` hasta `end_date` (inclusive) para ALL/RUN/BIKE.
     - Seedea con el día anterior si existe PMCHistory previa, sino 0.
     - Idempotente: borra rango y re-crea.
     - Mantiene `analytics.HistorialFitness` sincronizado para ALL (compat + injury_risk).
     """
     start_date = date.fromisoformat(str(start_date))
-
-    # Rango efectivo: desde start_date hasta hoy (o último día con agg, si fuese > hoy)
-    last_agg = (
-        DailyActivityAgg.objects.filter(alumno_id=alumno_id).order_by("-fecha").values_list("fecha", flat=True).first()
-    )
-    end_date = max(timezone.localdate(), last_agg) if last_agg else timezone.localdate()
+    if end_date is None:
+        last_agg = (
+            DailyActivityAgg.objects.filter(alumno_id=alumno_id).order_by("-fecha").values_list("fecha", flat=True).first()
+        )
+        end_date = max(timezone.localdate(), last_agg) if last_agg else timezone.localdate()
+    else:
+        end_date = date.fromisoformat(str(end_date))
 
     # Pre-cargamos loads por día+sport canónico (RUN/TRAIL/BIKE/...)
     aggs = DailyActivityAgg.objects.filter(alumno_id=alumno_id, fecha__range=[start_date, end_date]).values(
@@ -229,13 +238,20 @@ def recompute_pmc_for_alumno(*, alumno_id: int, start_date: date) -> dict[str, i
         new_hf.append(HistorialFitness(alumno_id=alumno_id, fecha=d, tss_diario=tss_all, ctl=ctl_prev, atl=atl_prev, tsb=tsb_all))
 
     with transaction.atomic():
-        PMCHistory.objects.filter(alumno_id=alumno_id, fecha__gte=start_date).delete()
+        PMCHistory.objects.filter(alumno_id=alumno_id, fecha__range=[start_date, end_date]).delete()
         PMCHistory.objects.bulk_create(new_rows, batch_size=1000)
 
-        HistorialFitness.objects.filter(alumno_id=alumno_id, fecha__gte=start_date).delete()
+        HistorialFitness.objects.filter(alumno_id=alumno_id, fecha__range=[start_date, end_date]).delete()
         HistorialFitness.objects.bulk_create(new_hf, batch_size=1000)
 
     return {"pmc_rows": len(new_rows), "historial_fitness_rows": len(new_hf)}
+
+
+def recompute_pmc_for_alumno(*, alumno_id: int, start_date: date) -> dict[str, int]:
+    """
+    Recalcula PMC incremental desde `start_date` (inclusive) hasta hoy.
+    """
+    return recompute_pmc_for_alumno_range(alumno_id=alumno_id, start_date=start_date, end_date=None)
 
 
 def ensure_pmc_materialized(*, alumno_id: int) -> bool:
@@ -258,4 +274,3 @@ def ensure_pmc_materialized(*, alumno_id: int) -> bool:
     build_daily_aggs_for_alumno(alumno_id=alumno_id, start_date=start)
     recompute_pmc_for_alumno(alumno_id=alumno_id, start_date=start)
     return True
-

@@ -9,6 +9,7 @@ from core.models import Alumno
 from analytics.models import HistorialFitness, InjuryRiskSnapshot
 from analytics.injury_risk import compute_injury_risk
 from core.models import AthleteSyncState
+from analytics.pmc_engine import build_daily_aggs_for_alumno_range, recompute_pmc_for_alumno_range
 
 
 logger = logging.getLogger(__name__)
@@ -161,8 +162,6 @@ def recompute_pmc_from_activities(self, alumno_id: int, affected_date_iso: str |
     - usa `core.AthleteSyncState` como lock/coalescing store por atleta.
     - múltiples eventos pueden encolar esta task; se "colapsan" vía metrics_pending_from.
     """
-    from analytics.pmc_engine import build_daily_aggs_for_alumno, recompute_pmc_for_alumno
-
     alumno_id = int(alumno_id)
     now = timezone.now()
     affected_date = None
@@ -207,15 +206,29 @@ def recompute_pmc_from_activities(self, alumno_id: int, affected_date_iso: str |
         )
 
     try:
-        aggs = build_daily_aggs_for_alumno(alumno_id=alumno_id, start_date=start_date)
-        pmc = recompute_pmc_for_alumno(alumno_id=alumno_id, start_date=start_date)
+        end_date = timezone.localdate()
+        aggs = build_daily_aggs_for_alumno_range(alumno_id=alumno_id, start_date=start_date, end_date=end_date)
+        pmc = recompute_pmc_for_alumno_range(alumno_id=alumno_id, start_date=start_date, end_date=end_date)
         with transaction.atomic():
             AthleteSyncState.objects.filter(alumno_id=alumno_id).update(metrics_status=AthleteSyncState.Status.DONE)
         logger.info(
             "analytics.pmc.recompute.done",
-            extra={"alumno_id": alumno_id, "start_date": str(start_date), "daily_aggs": aggs, **pmc},
+            extra={
+                "alumno_id": alumno_id,
+                "start_date": str(start_date),
+                "end_date": str(end_date),
+                "daily_aggs": aggs,
+                **pmc,
+            },
         )
-        return {"status": "OK", "alumno_id": alumno_id, "start_date": str(start_date), "daily_aggs": aggs, **pmc}
+        return {
+            "status": "OK",
+            "alumno_id": alumno_id,
+            "start_date": str(start_date),
+            "end_date": str(end_date),
+            "daily_aggs": aggs,
+            **pmc,
+        }
     except Exception as exc:
         with transaction.atomic():
             AthleteSyncState.objects.filter(alumno_id=alumno_id).update(
@@ -228,3 +241,50 @@ def recompute_pmc_from_activities(self, alumno_id: int, affected_date_iso: str |
         )
         raise
 
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=60)
+def compute_daily_aggs(self, alumno_id: int, start_date_iso: str, end_date_iso: str | None = None) -> dict:
+    """
+    Recompute DailyActivityAgg por rango (idempotente).
+    """
+    start_date = _safe_localdate(start_date_iso)
+    end_date = _safe_localdate(end_date_iso) if end_date_iso else timezone.localdate()
+    count = build_daily_aggs_for_alumno_range(alumno_id=int(alumno_id), start_date=start_date, end_date=end_date)
+    logger.info(
+        "analytics.daily_aggs.recompute.done",
+        extra={"alumno_id": int(alumno_id), "start_date": str(start_date), "end_date": str(end_date), "rows": count},
+    )
+    return {"status": "OK", "alumno_id": int(alumno_id), "start_date": str(start_date), "end_date": str(end_date), "rows": count}
+
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=60)
+def compute_pmc_history(self, alumno_id: int, start_date_iso: str, end_date_iso: str | None = None) -> dict:
+    """
+    Recompute PMCHistory por rango (idempotente).
+    """
+    start_date = _safe_localdate(start_date_iso)
+    end_date = _safe_localdate(end_date_iso) if end_date_iso else timezone.localdate()
+    result = recompute_pmc_for_alumno_range(alumno_id=int(alumno_id), start_date=start_date, end_date=end_date)
+    logger.info(
+        "analytics.pmc_history.recompute.done",
+        extra={"alumno_id": int(alumno_id), "start_date": str(start_date), "end_date": str(end_date), **result},
+    )
+    return {"status": "OK", "alumno_id": int(alumno_id), "start_date": str(start_date), "end_date": str(end_date), **result}
+
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=60)
+def compute_injury_risk_snapshot(self, alumno_id: int, start_date_iso: str, end_date_iso: str | None = None) -> dict:
+    """
+    Recompute InjuryRiskSnapshot por rango (idempotente por (alumno, fecha)).
+    """
+    start_date = _safe_localdate(start_date_iso)
+    end_date = _safe_localdate(end_date_iso) if end_date_iso else timezone.localdate()
+    days = (end_date - start_date).days
+    for offset in range(days + 1):
+        target = start_date + timedelta(days=offset)
+        recompute_injury_risk_for_athlete.delay(int(alumno_id), target.isoformat())
+    logger.info(
+        "analytics.injury_risk.recompute.enqueued",
+        extra={"alumno_id": int(alumno_id), "start_date": str(start_date), "end_date": str(end_date), "days": days + 1},
+    )
+    return {"status": "ENQUEUED", "alumno_id": int(alumno_id), "start_date": str(start_date), "end_date": str(end_date)}
