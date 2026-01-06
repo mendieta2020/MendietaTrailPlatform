@@ -18,6 +18,7 @@ from core.models import (
     StravaActivitySyncState,
 )
 from core.tasks import process_strava_event, _build_strava_activity_upserted_extra, _log_strava_activity_upserted
+from core.services import LegacyStravaSyncDisabled, sincronizar_actividades_strava
 from core.utils.logging import RESERVED_LOGRECORD_ATTRS
 
 
@@ -462,6 +463,58 @@ class StravaIngestionRobustTests(TestCase):
         self.assertEqual(act.alumno_id, self.alumno2.id)
         comp = SessionComparison.objects.get(activity=act)
         self.assertEqual(comp.entrenador_id, self.coach2.id)
+
+
+class LegacyStravaSyncGuardrailTests(TestCase):
+    @override_settings(DISABLE_LEGACY_STRAVA_SYNC=True)
+    def test_legacy_sync_blocked_in_production(self):
+        user = User.objects.create_user(username="legacy_blocked", password="x")
+        with patch("core.services.obtener_cliente_strava") as get_client:
+            with self.assertRaises(LegacyStravaSyncDisabled):
+                sincronizar_actividades_strava(user)
+
+        get_client.assert_not_called()
+        self.assertEqual(Actividad.objects.count(), 0)
+
+    @override_settings(
+        CELERY_TASK_ALWAYS_EAGER=True,
+        CELERY_TASK_EAGER_PROPAGATES=True,
+        DISABLE_LEGACY_STRAVA_SYNC=True,
+    )
+    def test_modern_pipeline_still_runs_with_legacy_disabled(self):
+        coach = User.objects.create_user(username="coach_modern", password="x")
+        alumno = Alumno.objects.create(
+            entrenador=coach,
+            nombre="Ana",
+            apellido="Modern",
+            email="ana_modern@test.com",
+            strava_athlete_id="333",
+        )
+        start = datetime.now(dt_timezone.utc)
+        run = _FakeStravaActivity(
+            activity_id=3333,
+            athlete_id=333,
+            name="Modern Run",
+            type_="Run",
+            start=start,
+            distance_m=7000,
+            moving_time_s=2100,
+        )
+        event = StravaWebhookEvent.objects.create(
+            event_uid="modern_legacy_disabled",
+            object_type="activity",
+            object_id=3333,
+            aspect_type="create",
+            owner_id=333,
+            subscription_id=1,
+            payload_raw={"test": True},
+            status=StravaWebhookEvent.Status.QUEUED,
+        )
+
+        with patch("core.services.obtener_cliente_strava", return_value=_FakeStravaClient(run)):
+            process_strava_event.delay(event.id)
+
+        self.assertEqual(Actividad.objects.filter(alumno=alumno, strava_id=3333).count(), 1)
 
 
 class PlannedVsActualComparatorTests(TestCase):
