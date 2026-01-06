@@ -304,8 +304,14 @@ class AlertaRendimientoViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
     def get_queryset(self):
-        user = self.request.user
         qs = super().get_queryset()
+
+        if getattr(self, "swagger_fake_view", False):
+            return qs.none()
+
+        user = self.request.user
+        if not user or not getattr(user, "is_authenticated", False):
+            return qs.none()
 
         # 🔒 Multi-tenant fail-closed (sin romper compatibilidad):
         # - Superuser: ve todo

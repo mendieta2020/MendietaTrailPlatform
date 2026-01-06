@@ -36,6 +36,7 @@ from .serializers import (
 
 from allauth.socialaccount.models import SocialToken
 from .services import sincronizar_actividades_strava, asignar_plantilla_a_alumno
+from .filters import ActividadFilter
 
 # ==============================================================================
 #  API REST (EL CEREBRO DE LA APP MÓVIL 📱)
@@ -61,6 +62,8 @@ class TenantModelViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        if getattr(self, "swagger_fake_view", False):
+            return qs.none()
         user = getattr(self.request, "user", None)
         if not user or not getattr(user, "is_authenticated", False):
             return qs.none()
@@ -270,6 +273,16 @@ class AlumnoViewSet(TenantModelViewSet):
         """
         alumno = self.get_object()  # scopiado por entrenador (multi-tenant)
         qs = Actividad.objects.filter(alumno=alumno).order_by("-fecha_inicio")
+        from .filters import ActividadFilter
+
+        filterset = ActividadFilter(request.query_params, queryset=qs, request=request)
+        qs = filterset.qs
+
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = ActividadSerializer(page, many=True, context={"request": request})
+            return self.get_paginated_response(serializer.data)
+
         data = ActividadSerializer(qs, many=True, context={"request": request}).data
         return Response(data)
 
@@ -529,7 +542,7 @@ class ActividadViewSet(TenantModelViewSet):
     http_method_names = ["get", "head", "options"]
 
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ["alumno", "tipo_deporte", "validity"]
+    filterset_class = ActividadFilter
     search_fields = ["nombre"]
     ordering_fields = ["fecha_inicio", "distancia", "tiempo_movimiento"]
     ordering = ["-fecha_inicio"]
