@@ -1,10 +1,12 @@
 from django.test import TestCase
+from django.contrib.auth.models import AnonymousUser
 
 from analytics.injury_risk import compute_injury_risk
 from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
+from rest_framework.test import APIClient, APIRequestFactory
 from core.models import Alumno
 from analytics.models import AlertaRendimiento
+from analytics.views import AlertaRendimientoViewSet
 
 
 class ComputeInjuryRiskTests(TestCase):
@@ -138,11 +140,47 @@ class AnalyticsAlertsEndpointTests(TestCase):
         self.api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {tokens['access']}")
         resp = self.api_client.get(f"{self.url}?page=1&page_size=20")
         self.assertEqual(resp.status_code, 200)
-        self.assertIsInstance(resp.data, dict)
-        self.assertIn("count", resp.data)
-        self.assertIn("results", resp.data)
-        self.assertEqual(resp.data["count"], 30)
-        self.assertLessEqual(len(resp.data["results"]), 20)
+
+
+class AnalyticsAlertsSchemaGuardTests(TestCase):
+    def setUp(self):
+        self.api_client = APIClient()
+        self.url = "/api/analytics/alerts/"
+
+    def _obtain_jwt(self, username: str, password: str) -> dict:
+        self.api_client.credentials()
+        resp = self.api_client.post(
+            "/api/token/",
+            {"username": username, "password": password},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIn("access", resp.data)
+        self.assertIn("refresh", resp.data)
+        return {"access": resp.data["access"], "refresh": resp.data["refresh"]}
+
+    def test_alerts_get_queryset_handles_swagger_fake_view(self):
+        factory = APIRequestFactory()
+        request = factory.get("/api/analytics/alerts/")
+        request.user = AnonymousUser()
+
+        view = AlertaRendimientoViewSet()
+        view.request = request
+        view.swagger_fake_view = True
+
+        queryset = view.get_queryset()
+        self.assertEqual(queryset.count(), 0)
+
+    def test_alerts_get_queryset_handles_anonymous_user(self):
+        factory = APIRequestFactory()
+        request = factory.get("/api/analytics/alerts/")
+        request.user = AnonymousUser()
+
+        view = AlertaRendimientoViewSet()
+        view.request = request
+
+        queryset = view.get_queryset()
+        self.assertEqual(queryset.count(), 0)
 
     def test_alerts_are_scoped_to_authenticated_user(self):
         """

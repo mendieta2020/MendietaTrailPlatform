@@ -50,3 +50,4 @@ celerybeat-schedule-wal
 tr coach exit()
 celerybeat-schedule*
 db.sqlite3
+openapi.json

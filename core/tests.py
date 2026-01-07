@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from analytics.models import HistorialFitness, InjuryRiskSnapshot
-from core.models import Alumno, Equipo, Entrenamiento
+from core.models import Actividad, Alumno, Equipo, Entrenamiento
 
 
 User = get_user_model()
@@ -115,6 +115,102 @@ class TenantIsolationPMCTests(TestCase):
         # anti-fuga: debe ocultar (respuesta vacía, sin 403 para no romper frontend)
         self.assertEqual(res.data, [])
 
+
+class ActividadFilterTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.coach1 = User.objects.create_user(username="coach_filter_1", password="x")
+        self.coach2 = User.objects.create_user(username="coach_filter_2", password="x")
+
+        self.alumno1 = Alumno.objects.create(entrenador=self.coach1, nombre="Ana", apellido="Filtro", email="ana_filtro@test.com")
+        self.alumno2 = Alumno.objects.create(entrenador=self.coach2, nombre="Beto", apellido="Filtro", email="beto_filtro@test.com")
+
+        self.start = timezone.now()
+        self.end = self.start + timedelta(hours=1)
+
+        self.activity_run = Actividad.objects.create(
+            usuario=self.coach1,
+            alumno=self.alumno1,
+            nombre="Run base",
+            distancia=5000,
+            tiempo_movimiento=1500,
+            fecha_inicio=self.start,
+            tipo_deporte="RUN",
+            source=Actividad.Source.STRAVA,
+        )
+        self.activity_bike = Actividad.objects.create(
+            usuario=self.coach1,
+            alumno=self.alumno1,
+            nombre="Bike base",
+            distancia=20000,
+            tiempo_movimiento=3600,
+            fecha_inicio=self.end,
+            tipo_deporte="BIKE",
+            source=Actividad.Source.GARMIN,
+        )
+        self.activity_other_tenant = Actividad.objects.create(
+            usuario=self.coach2,
+            alumno=self.alumno2,
+            nombre="Other tenant",
+            distancia=3000,
+            tiempo_movimiento=1000,
+            fecha_inicio=self.start,
+            tipo_deporte="RUN",
+            source=Actividad.Source.STRAVA,
+        )
+
+        self.training = Entrenamiento.objects.create(
+            alumno=self.alumno1,
+            fecha_asignada=timezone.localdate(),
+            titulo="Plan",
+            tipo_actividad="RUN",
+            tiempo_planificado_min=30,
+        )
+        self.activity_with_training = Actividad.objects.create(
+            usuario=self.coach1,
+            alumno=self.alumno1,
+            entrenamiento=self.training,
+            nombre="Run linked",
+            distancia=8000,
+            tiempo_movimiento=2000,
+            fecha_inicio=self.start + timedelta(days=1),
+            tipo_deporte="RUN",
+            source=Actividad.Source.STRAVA,
+        )
+
+    def test_actividad_filters_by_english_params(self):
+        self.client.force_authenticate(user=self.coach1)
+        res = self.client.get(
+            "/api/activities/",
+            {
+                "athlete_id": self.alumno1.id,
+                "sport_type": "RUN",
+                "start_date": self.start.date().isoformat(),
+                "end_date": (self.start.date() + timedelta(days=1)).isoformat(),
+            },
+        )
+        self.assertEqual(res.status_code, 200)
+        results = _api_list_results(res)
+        ids = {item["id"] for item in results}
+        self.assertIn(self.activity_run.id, ids)
+        self.assertNotIn(self.activity_bike.id, ids)
+
+    def test_actividad_filters_enforce_tenant_scope(self):
+        self.client.force_authenticate(user=self.coach1)
+        res = self.client.get("/api/activities/", {"athlete_id": self.alumno2.id})
+        self.assertEqual(res.status_code, 200)
+        results = _api_list_results(res)
+        self.assertEqual(results, [])
+
+    def test_actividad_filters_has_training(self):
+        self.client.force_authenticate(user=self.coach1)
+        res = self.client.get("/api/activities/", {"has_training": "true"})
+        self.assertEqual(res.status_code, 200)
+        results = _api_list_results(res)
+        ids = {item["id"] for item in results}
+        self.assertIn(self.activity_with_training.id, ids)
+        self.assertNotIn(self.activity_run.id, ids)
+
     def test_pmc_allows_own_tenant(self):
         self.client.force_authenticate(user=self.coach1)
         res = self.client.get(f"/api/analytics/pmc/?alumno_id={self.alumno1.id}")
@@ -195,4 +291,3 @@ class StravaOAuthLoggingTests(TestCase):
         self.assertEqual(sanitized["refresh_token"], "<redacted>")
         self.assertEqual(sanitized["expires_at"], "<redacted>")
         self.assertEqual(sanitized["athlete"]["id"], 1)
-
