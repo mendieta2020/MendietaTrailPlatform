@@ -1,4 +1,5 @@
 from rest_framework import viewsets, permissions, filters, status
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser # <--- CRÍTICO PARA SUBIR VIDEOS
@@ -56,8 +57,8 @@ class TenantModelViewSet(viewsets.ModelViewSet):
       (y `usuario=user` cuando aplique).
 
     Nota:
-    - Si el modelo no expone campos tenant, devolvemos queryset sin filtrar
-      (ej: catálogos globales como Carreras).
+    - Política fail-closed: si el modelo no expone campos tenant soportados,
+      se devuelve 403 para evitar fugas cross-tenant.
     """
 
     def get_queryset(self):
@@ -72,28 +73,37 @@ class TenantModelViewSet(viewsets.ModelViewSet):
         model = qs.model
         field_names = {f.name for f in model._meta.fields}
 
+        def deny_without_tenant_filter():
+            raise PermissionDenied("Tenant filter required for this resource.")
+
         # Alumno (atleta)
         if hasattr(user, "perfil_alumno"):
             if "usuario" in field_names:
                 return qs.filter(usuario=user)
             if "alumno" in field_names:
                 return qs.filter(alumno__usuario=user)
-            return qs.none()
+            deny_without_tenant_filter()
 
         # Coach (por defecto)
-        tenant_q = Q()
+        tenant_filters = []
         if "entrenador" in field_names:
-            tenant_q |= Q(entrenador=user)
+            tenant_filters.append(Q(entrenador=user))
         if "uploaded_by" in field_names:
-            tenant_q |= Q(uploaded_by=user)
+            tenant_filters.append(Q(uploaded_by=user))
         if "alumno" in field_names:
-            tenant_q |= Q(alumno__entrenador=user)
+            tenant_filters.append(Q(alumno__entrenador=user))
         if "usuario" in field_names:
-            tenant_q |= Q(usuario=user)
+            tenant_filters.append(Q(usuario=user))
+        if "equipo" in field_names:
+            tenant_filters.append(Q(equipo__entrenador=user))
 
-        if tenant_q:
-            return qs.filter(tenant_q)
-        return qs
+        if not tenant_filters:
+            deny_without_tenant_filter()
+
+        tenant_q = Q()
+        for tenant_filter in tenant_filters:
+            tenant_q |= tenant_filter
+        return qs.filter(tenant_q)
 
 
 # --- 🚀 NUEVO ENDPOINT: SUBIDA DE VIDEOS (GIMNASIO PRO) ---
