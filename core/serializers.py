@@ -247,6 +247,36 @@ class ActividadSerializer(serializers.ModelSerializer):
             "invalid_reason",
             "creado_en",
             "actualizado_en",
+        ]
+        read_only_fields = fields
+
+
+class ActividadRawPayloadSerializer(serializers.ModelSerializer):
+    alumno_nombre = serializers.CharField(source="alumno.nombre", read_only=True)
+    alumno_apellido = serializers.CharField(source="alumno.apellido", read_only=True)
+
+    class Meta:
+        model = Actividad
+        fields = [
+            "id",
+            "usuario",
+            "alumno",
+            "alumno_nombre",
+            "alumno_apellido",
+            "strava_id",
+            "strava_sport_type",
+            "nombre",
+            "tipo_deporte",
+            "fecha_inicio",
+            "distancia",
+            "tiempo_movimiento",
+            "desnivel_positivo",
+            "ritmo_promedio",
+            "mapa_polilinea",
+            "validity",
+            "invalid_reason",
+            "creado_en",
+            "actualizado_en",
             "datos_brutos",
         ]
         read_only_fields = fields
