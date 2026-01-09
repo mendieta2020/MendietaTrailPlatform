@@ -1,4 +1,5 @@
 from rest_framework import viewsets, permissions, filters, status
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -33,7 +34,7 @@ from .serializers import (
     AlumnoSerializer, EntrenamientoSerializer,
     PlantillaEntrenamientoSerializer, CarreraSerializer,
     InscripcionCarreraSerializer, PagoSerializer,
-    EquipoSerializer, VideoEjercicioSerializer, ActividadSerializer # <--- NUEVO SERIALIZER IMPORTADO
+    EquipoSerializer, VideoEjercicioSerializer, ActividadSerializer, ActividadRawPayloadSerializer # <--- NUEVO SERIALIZER IMPORTADO
 )
 
 from allauth.socialaccount.models import SocialToken
@@ -174,6 +175,7 @@ class AlumnoViewSet(TenantModelViewSet):
     serializer_class = AlumnoSerializer
     permission_classes = [permissions.IsAuthenticated] 
     queryset = Alumno.objects.all()
+    pagination_class = PageNumberPagination
     
     # Potenciadores de Búsqueda
     filter_backends = [filters.SearchFilter, DjangoFilterBackend, filters.OrderingFilter]
@@ -290,12 +292,13 @@ class AlumnoViewSet(TenantModelViewSet):
         qs = filterset.qs
 
         page = self.paginate_queryset(qs)
-        if page is not None:
-            serializer = ActividadSerializer(page, many=True, context={"request": request})
-            return self.get_paginated_response(serializer.data)
-
-        data = ActividadSerializer(qs, many=True, context={"request": request}).data
-        return Response(data)
+        if page is None:
+            return Response(
+                {"detail": "Pagination is required for this endpoint."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        serializer = ActividadSerializer(page, many=True, context={"request": request})
+        return self.get_paginated_response(serializer.data)
 
 
 class EntrenamientoViewSet(TenantModelViewSet):
@@ -551,12 +554,25 @@ class ActividadViewSet(TenantModelViewSet):
     serializer_class = ActividadSerializer
     permission_classes = [permissions.IsAuthenticated]
     http_method_names = ["get", "head", "options"]
+    pagination_class = PageNumberPagination
 
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = ActividadFilter
     search_fields = ["nombre"]
     ordering_fields = ["fecha_inicio", "distancia", "tiempo_movimiento"]
     ordering = ["-fecha_inicio"]
+
+    @action(detail=False, methods=["get"], url_path="raw", permission_classes=[permissions.IsAdminUser])
+    def raw(self, request):
+        qs = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(qs)
+        if page is None:
+            return Response(
+                {"detail": "Pagination is required for this endpoint."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        serializer = ActividadRawPayloadSerializer(page, many=True, context={"request": request})
+        return self.get_paginated_response(serializer.data)
 
 # ==============================================================================
 #  DASHBOARD LEGACY (Vista de Gestión / Admin - NO TOCAR)
