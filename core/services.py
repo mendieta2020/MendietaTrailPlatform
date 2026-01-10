@@ -17,6 +17,7 @@ from analytics.injury_risk import compute_injury_risk
 from analytics.models import PMCHistory
 from analytics.plan_vs_actual import PlannedVsActualComparator
 from .models import Alumno, Entrenamiento, BloqueEntrenamiento, PasoEntrenamiento, Actividad
+from .utils.logging import safe_extra
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,10 @@ def copiar_estructura_plantilla(entrenamiento, plantilla):
     una COPIA PROFUNDA (Deep Copy) de los bloques y pasos de la plantilla.
     Adapta la estructura nueva de objetivos flexibles (RPE, Zona VAM, Manual).
     """
-    print(f"📋 Copiando estructura de '{plantilla.titulo}' a Entrenamiento ID {entrenamiento.id}")
+    logger.info(
+        "plantillas.copiar_estructura",
+        extra=safe_extra({"entrenamiento_id": entrenamiento.id, "plantilla_id": plantilla.id}),
+    )
     
     try:
         # 1. Limpieza previa (Evita duplicados si se edita y cambia la plantilla)
@@ -81,9 +85,12 @@ def copiar_estructura_plantilla(entrenamiento, plantilla):
         # 5. GUARDADO FINAL (EL GATILLO)
         entrenamiento.save()
         
-    except Exception as e:
-        print(f"❌ ERROR CRÍTICO EN COPIADO: {e}")
-        raise e
+    except Exception:
+        logger.exception(
+            "plantillas.copiar_estructura_failed",
+            extra=safe_extra({"entrenamiento_id": entrenamiento.id, "plantilla_id": plantilla.id}),
+        )
+        raise
 
 # ==============================================================================
 #  2. ASIGNACIÓN MASIVA (USA EL CLONADOR ACTUALIZADO)
@@ -94,7 +101,10 @@ def asignar_plantilla_a_alumno(plantilla, alumno, fecha):
     Crea la cáscara del entrenamiento y delega el copiado al Clonador Universal.
     Calcula ritmos personalizados al final.
     """
-    print(f"🚀 INICIANDO CLONADO: {plantilla.titulo} -> {alumno.nombre} ({fecha})")
+    logger.info(
+        "plantillas.asignar_inicio",
+        extra=safe_extra({"plantilla_id": plantilla.id, "alumno_id": alumno.id, "fecha": str(fecha)}),
+    )
     
     try:
         with transaction.atomic():
@@ -123,9 +133,12 @@ def asignar_plantilla_a_alumno(plantilla, alumno, fecha):
             
             return nuevo_entreno
 
-    except Exception as e:
-        print(f"❌ ERROR CRÍTICO EN ASIGNACIÓN: {e}")
-        raise e
+    except Exception:
+        logger.exception(
+            "plantillas.asignar_failed",
+            extra=safe_extra({"plantilla_id": plantilla.id, "alumno_id": alumno.id, "fecha": str(fecha)}),
+        )
+        raise
 
 # ==============================================================================
 #  3. EL JUEZ: LÓGICA DE CRUCE V2 (INTACTA)
@@ -139,7 +152,10 @@ def ejecutar_cruce_inteligente(actividad):
     3. Califica cumplimiento (%).
     """
     _ensure_legacy_strava_sync_allowed("ejecutar_cruce_inteligente")
-    print(f"⚖️  EL JUEZ: Evaluando actividad {actividad.strava_id} ({actividad.nombre})...")
+    logger.info(
+        "cruce_inteligente.evaluar",
+        extra=safe_extra({"actividad_id": actividad.id, "strava_id": actividad.strava_id}),
+    )
 
     email_usuario = actividad.usuario.email
     alumno = Alumno.objects.filter(email=email_usuario).first()
@@ -152,7 +168,10 @@ def ejecutar_cruce_inteligente(actividad):
     entrenamiento_objetivo = Entrenamiento.objects.filter(strava_id=str(actividad.strava_id)).first()
 
     if entrenamiento_objetivo:
-        print(f"   🔄 Re-procesando: {entrenamiento_objetivo.titulo}")
+        logger.info(
+            "cruce_inteligente.reprocesar",
+            extra=safe_extra({"entrenamiento_id": entrenamiento_objetivo.id}),
+        )
     else:
         # 2. ¿Nuevo Match? (Buscar por fecha y estado pendiente)
         fecha_actividad = actividad.fecha_inicio.date()
@@ -169,7 +188,10 @@ def ejecutar_cruce_inteligente(actividad):
     try:
         with transaction.atomic():
             if not entrenamiento_objetivo.strava_id:
-                print(f"   🔥 ¡NUEVO MATCH! Vinculando con: {entrenamiento_objetivo.titulo}")
+                logger.info(
+                    "cruce_inteligente.match_vinculado",
+                    extra=safe_extra({"entrenamiento_id": entrenamiento_objetivo.id}),
+                )
             
             # 1. Datos Reales (Normalizados)
             dist_real_km = round(actividad.distancia / 1000, 2)
@@ -216,11 +238,22 @@ def ejecutar_cruce_inteligente(actividad):
             from .tasks import procesar_metricas_entrenamiento
             procesar_metricas_entrenamiento(entrenamiento_objetivo.id)
             
-            print(f"   ✅ Fusión Exitosa. Score: {entrenamiento_objetivo.porcentaje_cumplimiento}%")
+            logger.info(
+                "cruce_inteligente.fusion_ok",
+                extra=safe_extra(
+                    {
+                        "entrenamiento_id": entrenamiento_objetivo.id,
+                        "score": entrenamiento_objetivo.porcentaje_cumplimiento,
+                    }
+                ),
+            )
             return True
 
-    except Exception as e:
-        print(f"   ❌ Error fusión: {e}")
+    except Exception:
+        logger.exception(
+            "cruce_inteligente.fusion_failed",
+            extra=safe_extra({"actividad_id": actividad.id, "strava_id": actividad.strava_id}),
+        )
         return False
 
 # ==============================================================================
@@ -603,11 +636,14 @@ def sincronizar_actividades_strava(user, dias_historial=None):
     actualizadas = 0
 
     try:
-        print(f"🔄 Sincronizando Strava para: {user.username}...")
+        logger.info("strava.legacy_sync_start", extra=safe_extra({"user_id": user.id}))
         
         if dias_historial:
             start_time = timezone.now() - datetime.timedelta(days=dias_historial)
-            print(f"   📅 Modo Historia: Buscando desde {start_time.date()}")
+            logger.info(
+                "strava.legacy_sync_history_window",
+                extra=safe_extra({"user_id": user.id, "start_date": str(start_time.date())}),
+            )
             activities = client.get_activities(after=start_time)
         else:
             activities = client.get_activities(limit=10)
@@ -672,10 +708,16 @@ def sincronizar_actividades_strava(user, dias_historial=None):
              if alumno:
                  recalcular_historial_completo(alumno)
 
-        print(f"✅ Sincronización OK: {nuevas} nuevas, {actualizadas} actualizadas.")     
+        logger.info(
+            "strava.legacy_sync_ok",
+            extra=safe_extra({"user_id": user.id, "nuevas": nuevas, "actualizadas": actualizadas}),
+        )
         return nuevas, actualizadas, "OK"
 
     except Exception as e:
         error_msg = f"Error técnico: {str(e)}"
-        print(f"❌ {error_msg}")
+        logger.exception(
+            "strava.legacy_sync_failed",
+            extra=safe_extra({"user_id": user.id}),
+        )
         return nuevas, actualizadas, error_msg
