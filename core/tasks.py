@@ -77,6 +77,8 @@ try:
         calcular_tss_estimado, # Legacy support
         calcular_load_rpe, 
         determinar_carga_final,
+        calcular_carga_canonica,
+        LOAD_DEFINITION_VERSION,
         # Fase 4: Trail Science
         calcular_pendiente,
         calcular_gap_minetti,
@@ -117,6 +119,21 @@ def map_strava_type_internal(strava_type):
     if 'HIKE' in st or 'WALK' in st: return 'TRAIL'
     if 'VIRTUALRIDE' in st: return 'INDOOR_BIKE'
     return 'OTHER'
+
+def build_canonical_load_fields(*, activity: dict, alumno, sport_type: str | None = None) -> dict:
+    """
+    Enruta la carga canónica (PR6) para persistencia en Actividad.
+    """
+    payload = dict(activity or {})
+    payload["alumno"] = alumno
+    if sport_type:
+        payload["tipo_deporte"] = sport_type
+    load_value, method = calcular_carga_canonica(payload, sport_type=sport_type)
+    return {
+        "canonical_load": float(load_value or 0.0),
+        "canonical_load_method": method,
+        "load_version": LOAD_DEFINITION_VERSION,
+    }
 
 # ==============================================================================
 #  TAREA 1: MOTOR DE CÁLCULO (CIENCIA TRAIL V2)
@@ -1065,8 +1082,10 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
     source_object_id = mapped.pop("source_object_id")
     payload_sanitized = bool(activity.get("raw_sanitized"))
 
+    load_fields = build_canonical_load_fields(activity=activity, alumno=alumno, sport_type=normalized["tipo_deporte"])
     defaults = {
         **mapped,
+        **load_fields,
         "validity": Actividad.Validity.DISCARDED if invalid_reason else Actividad.Validity.VALID,
         "invalid_reason": invalid_reason or "",
     }

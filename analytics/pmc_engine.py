@@ -41,16 +41,24 @@ def _normalize_business_sport(tipo_deporte: str | None) -> str:
     return "OTHER"
 
 
-def _extract_activity_load(raw_json: dict | None, duration_s: int) -> float:
+def _extract_activity_load(raw_json: dict | None, duration_s: int, canonical_load: float | None = None) -> float:
     """
     MVP robusto: intenta usar señales típicas de Strava; si no existen, usa proxy por duración.
 
     Prioridad:
+    - canonical_load (PR6)
     - relative_effort (Strava)
     - suffer_score (legacy)
     - proxy: horas * 50
     """
     raw_json = raw_json or {}
+    if canonical_load is not None:
+        try:
+            canonical_value = float(canonical_load)
+            if canonical_value > 0:
+                return canonical_value
+        except Exception:
+            pass
 
     for key in ("relative_effort", "suffer_score", "sufferScore"):
         v = raw_json.get(key)
@@ -91,7 +99,15 @@ def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
     acts = (
         Actividad.objects.filter(alumno_id=alumno_id, validity=Actividad.Validity.VALID)
         .filter(fecha_inicio__date__gte=start_date)
-        .values("fecha_inicio", "tipo_deporte", "distancia", "desnivel_positivo", "tiempo_movimiento", "datos_brutos")
+        .values(
+            "fecha_inicio",
+            "tipo_deporte",
+            "distancia",
+            "desnivel_positivo",
+            "tiempo_movimiento",
+            "datos_brutos",
+            "canonical_load",
+        )
     )
 
     by_key: dict[tuple[date, str], DailyAggRow] = {}
@@ -101,7 +117,7 @@ def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
         distance_m = float(a.get("distancia") or 0.0)
         elev_m = float(a.get("desnivel_positivo") or 0.0)
         dur_s = int(a.get("tiempo_movimiento") or 0)
-        load = float(_extract_activity_load(a.get("datos_brutos") or {}, dur_s) or 0.0)
+        load = float(_extract_activity_load(a.get("datos_brutos") or {}, dur_s, a.get("canonical_load")) or 0.0)
 
         key = (d, sport)
         prev = by_key.get(key)
@@ -258,4 +274,3 @@ def ensure_pmc_materialized(*, alumno_id: int) -> bool:
     build_daily_aggs_for_alumno(alumno_id=alumno_id, start_date=start)
     recompute_pmc_for_alumno(alumno_id=alumno_id, start_date=start)
     return True
-
