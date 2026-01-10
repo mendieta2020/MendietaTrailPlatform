@@ -1,8 +1,9 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useState, useEffect, useContext } from 'react';
-import client from '../api/client'; // Instancia única (baseURL + interceptores)
 import { tokenStore } from '../api/tokenStore';
 import { subscribeOnLogout } from '../api/authEvents';
+import { USE_COOKIE_AUTH } from '../api/authMode';
+import { fetchSession, loginWithCredentials, logoutSession } from '../api/authClient';
 
 const AuthContext = createContext();
 
@@ -13,10 +14,22 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         // Al cargar, verificamos si ya existe un token guardado
         const checkAuth = async () => {
+            if (USE_COOKIE_AUTH) {
+                try {
+                    const response = await fetchSession();
+                    setUser(response.data);
+                } catch (error) {
+                    setUser(null);
+                } finally {
+                    setLoading(false);
+                }
+                return;
+            }
+
             const token = tokenStore.getAccessToken();
             if (token) {
                 // Si hay token, asumimos que el usuario es válido (el interceptor lo borrará si no)
-                setUser({ username: 'Coach' }); 
+                setUser({ username: 'Coach' });
             }
             setLoading(false);
         };
@@ -31,12 +44,8 @@ export const AuthProvider = ({ children }) => {
 
     const login = async (username, password) => {
         try {
-            // Hacemos POST a la ruta de token de Django
-            const response = await client.post('/api/token/', { username, password });
-            
-            // Guardamos las llaves
-            tokenStore.setTokens({ access: response.data.access, refresh: response.data.refresh });
-            
+            await loginWithCredentials({ username, password });
+
             setUser({ username });
             return { success: true };
         } catch (error) {
@@ -46,7 +55,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     const logout = () => {
-        tokenStore.clear();
+        logoutSession();
         setUser(null);
         // Recargar la página para limpiar estados
         window.location.href = '/';

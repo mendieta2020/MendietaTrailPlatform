@@ -4,8 +4,7 @@ import {
 } from '@mui/material';
 import { styled } from '@mui/system';
 import { useLocation, useNavigate } from 'react-router-dom';
-import client from '../api/client';
-import { tokenStore } from '../api/tokenStore';
+import { loginWithCredentials } from '../api/authClient';
 
 // Estilos personalizados
 const BackgroundBox = styled(Box)({
@@ -38,12 +37,10 @@ const Login = () => {
         setError('');
         
         try {
-            const response = await client.post('/api/token/', {
+            await loginWithCredentials({
                 username: username,
                 password: password
             });
-
-            tokenStore.setTokens({ access: response.data.access, refresh: response.data.refresh });
 
             // Redirigir a la ruta original (si venía de ProtectedRoute)
             const from = location.state?.from;

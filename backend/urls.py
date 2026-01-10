@@ -17,9 +17,11 @@ from core.webhooks import strava_webhook
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
-from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
-    TokenRefreshView,
+from core.auth_views import (
+    CookieLogoutView,
+    CookieTokenObtainPairView,
+    CookieTokenRefreshView,
+    SessionStatusView,
 )
 
 # Configuración de la vista de documentación API
@@ -73,8 +75,10 @@ urlpatterns = [
     # ==============================================================
 
     # 7. Autenticación (Tokens JWT)
-    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/token/', CookieTokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/token/refresh/', CookieTokenRefreshView.as_view(), name='token_refresh'),
+    path('api/token/logout/', CookieLogoutView.as_view(), name='token_logout'),
+    path('api/auth/session/', SessionStatusView.as_view(), name='auth_session'),
 
     # 8. Documentación Interactiva (Swagger)
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),

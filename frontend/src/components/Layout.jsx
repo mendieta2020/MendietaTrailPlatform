@@ -14,6 +14,7 @@ import {
   Settings        // Icono para Configuración (Futuro)
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { logoutSession } from '../api/authClient';
 
 const drawerWidth = 260;
 
@@ -21,6 +22,10 @@ const Layout = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const handleLogout = async () => {
+    await logoutSession();
+    window.location.href = '/';
+  };
 
   // DEFINICIÓN DEL MENÚ LATERAL
   // Aquí agregamos la nueva opción "Grupos"
@@ -83,7 +88,7 @@ const Layout = ({ children }) => {
       <List sx={{ px: 1 }}>
         <ListItem disablePadding>
           <ListItemButton 
-            onClick={() => { localStorage.clear(); window.location.href = '/'; }}
+            onClick={handleLogout}
             sx={{ borderRadius: 2, '&:hover': { bgcolor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' } }}
           >
             <ListItemIcon sx={{ minWidth: 40, color: '#64748B' }}><Logout /></ListItemIcon>
