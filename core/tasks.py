@@ -31,6 +31,17 @@ logger = logging.getLogger(__name__)
 # Linking / draining helpers
 # ------------------------------------------------------------------------------
 
+
+def _truncate_error(message: str, limit: int = 512) -> str:
+    return (message or "")[:limit]
+
+
+def _log_failed_threshold():
+    try:
+        StravaWebhookEvent.objects.log_failed_threshold(logger=logger)
+    except Exception:
+        logger.exception("strava.webhook.failed_threshold_check_failed")
+
 @shared_task
 def drain_strava_events_for_athlete(*, provider: str = "strava", owner_id: int, limit: int = 250):
     """
@@ -475,9 +486,6 @@ def process_strava_event(self, event_id: int):
     attempt_no = int(getattr(self.request, "retries", 0)) + 1
     t0 = time.monotonic()
 
-    def _truncate_err(msg: str, limit: int = 512) -> str:
-        return (msg or "")[:limit]
-
     try:
         return _process_strava_event_body(self, event_id=event_id, attempt_no=attempt_no, t0=t0)
     except StravaTransientError:
@@ -486,8 +494,8 @@ def process_strava_event(self, event_id: int):
     except Exception as exc:
         # Crash inesperado: cerrar evento y liberar lock (best-effort), sin romper idempotencia.
         now = timezone.now()
-        last_error = _truncate_err(str(exc), 512)
-        error_message = _truncate_err(f"{exc.__class__.__name__}: {str(exc)}", 1024)
+        last_error = _truncate_error(str(exc), 512)
+        error_message = _truncate_error(f"{exc.__class__.__name__}: {str(exc)}", 1024)
 
         # Best-effort: obtener contexto mínimo sin leer payloads (evitar datos sensibles).
         ctx = (
@@ -527,6 +535,7 @@ def process_strava_event(self, event_id: int):
             error_message=error_message,
             processed_at=now,
         )
+        _log_failed_threshold()
 
         # Liberar lock por actividad (best-effort).
         try:
@@ -806,7 +815,7 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
         StravaWebhookEvent.objects.filter(pk=event.pk).update(
             status=StravaWebhookEvent.Status.FAILED,
             discard_reason="missing_strava_auth",
-            last_error="missing_strava_auth",
+            last_error=_truncate_error("missing_strava_auth"),
             error_message=instruction,
             processed_at=timezone.now(),
         )
@@ -818,6 +827,7 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
             locked_by_event_uid="",
             last_attempt_at=timezone.now(),
         )
+        _log_failed_threshold()
         return "FAIL: no strava auth"
 
     # Fetch activity desde Strava (con refresh forzado ante 401)
@@ -947,14 +957,14 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
                 if retries >= int(getattr(self, "max_retries", 0)):
                     StravaWebhookEvent.objects.filter(pk=event.pk).update(
                         status=StravaWebhookEvent.Status.FAILED,
-                        last_error=f"max_retries_exceeded:{classification}: {fetch_error or exc}",
+                        last_error=_truncate_error(f"max_retries_exceeded:{classification}: {fetch_error or exc}"),
                         processed_at=timezone.now(),
                     )
                     StravaActivitySyncState.objects.filter(
                         provider=event.provider, strava_activity_id=int(event.object_id)
                     ).update(
                         status=StravaActivitySyncState.Status.FAILED,
-                        last_error=f"max_retries_exceeded:{classification}: {fetch_error or exc}",
+                        last_error=_truncate_error(f"max_retries_exceeded:{classification}: {fetch_error or exc}"),
                         locked_at=None,
                         locked_by_event_uid="",
                         last_attempt_at=timezone.now(),
@@ -972,11 +982,12 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
                         duration_ms=duration_ms,
                         metric_failed=1,
                     )
+                    _log_failed_threshold()
                     return "FAILED: max_retries_exceeded"
 
                 StravaWebhookEvent.objects.filter(pk=event.pk).update(
                     status=StravaWebhookEvent.Status.QUEUED,
-                    last_error=f"{classification}: {fetch_error or exc}",
+                    last_error=_truncate_error(f"{classification}: {fetch_error or exc}"),
                 )
                 # Mantener el lock RUNNING para evitar otros pipelines mientras reintenta.
                 StravaActivitySyncState.objects.filter(
@@ -985,25 +996,26 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
                     status=StravaActivitySyncState.Status.RUNNING,
                     locked_at=timezone.now(),
                     locked_by_event_uid=event_uid,
-                    last_error=f"{classification}: {fetch_error or exc}",
+                    last_error=_truncate_error(f"{classification}: {fetch_error or exc}"),
                     last_attempt_at=timezone.now(),
                 )
                 raise StravaTransientError(f"{classification}: {fetch_error or exc}")
 
             StravaWebhookEvent.objects.filter(pk=event.pk).update(
                 status=StravaWebhookEvent.Status.FAILED,
-                last_error=str(fetch_error or exc),
+                last_error=_truncate_error(str(fetch_error or exc)),
                 processed_at=timezone.now(),
             )
             StravaActivitySyncState.objects.filter(
                 provider=event.provider, strava_activity_id=int(event.object_id)
             ).update(
                 status=StravaActivitySyncState.Status.FAILED,
-                last_error=str(fetch_error or exc),
+                last_error=_truncate_error(str(fetch_error or exc)),
                 locked_at=None,
                 locked_by_event_uid="",
                 last_attempt_at=timezone.now(),
             )
+            _log_failed_threshold()
             return f"FAIL: {fetch_error or exc}"
 
     # Reglas estrictas de aceptación

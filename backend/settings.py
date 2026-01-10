@@ -71,6 +71,12 @@ STRAVA_WEBHOOK_VERIFY_TOKEN = get_env_variable(
     default="",
     required=(REQUIRE_RUNTIME_SECRETS and not DEBUG),
 )
+STRAVA_WEBHOOK_STUCK_THRESHOLD_MINUTES = int(
+    get_env_variable("STRAVA_WEBHOOK_STUCK_THRESHOLD_MINUTES", default="30", required=False)
+)
+STRAVA_WEBHOOK_FAILED_ALERT_THRESHOLD = int(
+    get_env_variable("STRAVA_WEBHOOK_FAILED_ALERT_THRESHOLD", default="50", required=False)
+)
 # Legacy Strava sync (services.sincronizar_actividades_strava) MUST be disabled in prod.
 # Default: disabled in non-debug to fail-closed. Override only for dev/admin compatibility.
 DISABLE_LEGACY_STRAVA_SYNC = (

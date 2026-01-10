@@ -7,6 +7,7 @@ from django.dispatch import receiver
 from datetime import date, timedelta
 from django.db.models import Sum, Q
 from django.utils import timezone
+import logging
 import uuid
 
 # ==============================================================================
@@ -523,6 +524,35 @@ class StravaWebhookEvent(models.Model):
         IGNORED = "ignored", "ignored"
         FAILED = "failed", "failed"
 
+    class QuerySet(models.QuerySet):
+        def failed(self):
+            return self.filter(status=self.model.Status.FAILED)
+
+        def stuck_processing(self, *, older_than_minutes: int | None = None):
+            threshold = (
+                int(older_than_minutes)
+                if older_than_minutes is not None
+                else int(getattr(settings, "STRAVA_WEBHOOK_STUCK_THRESHOLD_MINUTES", 30))
+            )
+            cutoff = timezone.now() - timezone.timedelta(minutes=threshold)
+            return self.filter(status=self.model.Status.PROCESSING, updated_at__lt=cutoff)
+
+        def log_failed_threshold(self, *, logger: logging.Logger | None = None, threshold: int | None = None):
+            threshold = (
+                int(threshold)
+                if threshold is not None
+                else int(getattr(settings, "STRAVA_WEBHOOK_FAILED_ALERT_THRESHOLD", 50))
+            )
+            if threshold <= 0:
+                return 0
+            failed_count = self.failed().count()
+            if failed_count >= threshold:
+                (logger or logging.getLogger(__name__)).warning(
+                    "strava.webhook.failed_threshold",
+                    extra={"failed_count": failed_count, "threshold": threshold},
+                )
+            return failed_count
+
     # Normalización multi-provider (hoy solo Strava, pero dejamos el shape SaaS)
     provider = models.CharField(max_length=20, default="strava", db_index=True)
     # Strava no envía event_id canónico; dejamos campo para futuros providers/compat.
@@ -543,6 +573,7 @@ class StravaWebhookEvent(models.Model):
 
     payload_raw = models.JSONField(default=dict, blank=True)
     received_at = models.DateTimeField(default=timezone.now, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True, db_index=True)
 
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.RECEIVED, db_index=True)
     attempts = models.PositiveSmallIntegerField(default=0)
@@ -570,6 +601,7 @@ class StravaWebhookEvent(models.Model):
         indexes = [
             models.Index(fields=["owner_id", "-received_at"]),
             models.Index(fields=["status", "-received_at"]),
+            models.Index(fields=["status", "updated_at"]),
             models.Index(fields=["object_type", "aspect_type", "object_id"]),
             models.Index(fields=["provider", "provider_event_id"]),
         ]
@@ -577,6 +609,8 @@ class StravaWebhookEvent(models.Model):
             # Requerimiento Fase 4: UniqueConstraint explícito para idempotencia y carreras.
             models.UniqueConstraint(fields=["provider", "event_uid"], name="uniq_strava_provider_event_uid"),
         ]
+
+    objects = QuerySet.as_manager()
 
     def mark_processed(self):
         self.status = self.Status.PROCESSED
