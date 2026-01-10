@@ -1,3 +1,5 @@
+import logging
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from .models import Alumno
@@ -14,6 +16,7 @@ from .metrics import (
     calcular_ritmos_series # <--- IMPORTACIÓN CLAVE
 )
 
+logger = logging.getLogger(__name__)
 def _has_field(obj, name: str) -> bool:
     # Evita crashes si el modelo no tiene ciertos campos (compat/migraciones desalineadas)
     return hasattr(obj, name)
@@ -45,7 +48,10 @@ def actualizar_pronosticos_alumno(sender, instance, created, **kwargs):
             tiempo_5k=getattr(instance, "test_5k_tiempo", 0) or 0,
         )
         if vam_calculada > 0:
-            print(f"🧪 [CIENCIA] VAM Calculada por Tests de Campo: {vam_calculada} km/h")
+            logger.info(
+                "alumno.vam_calculada",
+                extra={"alumno_id": instance.id, "vam": round(vam_calculada, 2)},
+            )
             vam_operativa = vam_calculada
             instance.vam_actual = vam_calculada 
 
@@ -56,7 +62,10 @@ def actualizar_pronosticos_alumno(sender, instance, created, **kwargs):
 
     # --- FASE 3: PREDICCIONES Y RITMOS (OUTPUTS) ---
     if vam_operativa > 0:
-        print(f"🔮 [PREDICCIÓN] Generando datos para {instance.nombre} (VAM: {vam_operativa})...")
+        logger.info(
+            "alumno.pronosticos_generados",
+            extra={"alumno_id": instance.id, "vam": round(vam_operativa, 2)},
+        )
         
         # A. Pronósticos de Carrera (9 valores)
         (p10, p21, p42, 

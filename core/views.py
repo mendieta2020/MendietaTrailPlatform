@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework import viewsets, permissions, filters, status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.exceptions import PermissionDenied
@@ -41,6 +43,7 @@ from allauth.socialaccount.models import SocialToken
 from .services import sincronizar_actividades_strava, asignar_plantilla_a_alumno
 from .filters import ActividadFilter
 
+logger = logging.getLogger(__name__)
 # ==============================================================================
 #  API REST (EL CEREBRO DE LA APP MÓVIL 📱)
 # ==============================================================================
@@ -610,7 +613,7 @@ def dashboard_entrenador(request):
                     "⚠️ Legacy Strava sync está deshabilitado en este entorno.",
                 )
                 return redirect('dashboard_principal')
-            print("📚 Iniciando carga histórica de 60 días...")
+            logger.info("strava.legacy_sync_history_request", extra={"user_id": request.user.id, "days": 60})
             nuevas, actualizadas, estado = sincronizar_actividades_strava(request.user, dias_historial=60)
             
             if estado == "OK":

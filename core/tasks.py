@@ -6,7 +6,6 @@ from django.db import transaction
 from django.db.models import F
 import openai
 import logging
-import traceback
 import random
 import time
 
@@ -143,14 +142,20 @@ def procesar_metricas_entrenamiento(entrenamiento_id):
     try:
         entreno = Entrenamiento.objects.select_related('alumno').get(pk=entrenamiento_id)
         alumno = entreno.alumno
-        logger.info(f"🧮 [CIENCIA TRAIL] Procesando: {entreno.titulo} (ID: {entreno.id})")
+        logger.info(
+            "ciencia_trail.procesar_inicio",
+            extra=safe_extra({"entrenamiento_id": entreno.id, "alumno_id": alumno.id}),
+        )
 
         tiempo_min = entreno.tiempo_real_min
         distancia_km = entreno.distancia_real_km
         desnivel_m = entreno.desnivel_real_m or 0
         
         if not tiempo_min or tiempo_min <= 0:
-            logger.warning(f"⚠️ [SKIP] ID {entreno.id}: Sin tiempo registrado.")
+            logger.warning(
+                "ciencia_trail.skip_sin_tiempo",
+                extra=safe_extra({"entrenamiento_id": entreno.id}),
+            )
             return "SKIPPED"
 
         # --- A. CÁLCULOS FISIOLÓGICOS BÁSICOS ---
@@ -171,7 +176,16 @@ def procesar_metricas_entrenamiento(entrenamiento_id):
                 tiempo_min, entreno.potencia_promedio, alumno.ftp
             )
             entreno.kilojoules = int((entreno.potencia_promedio * tiempo_min * 60) / 1000)
-            logger.info(f"   ⚡ Potencia: {entreno.potencia_promedio}w | TSS Power: {tss_calculado}")
+            logger.info(
+                "ciencia_trail.tss_power",
+                extra=safe_extra(
+                    {
+                        "entrenamiento_id": entreno.id,
+                        "potencia_promedio": entreno.potencia_promedio,
+                        "tss": tss_calculado,
+                    }
+                ),
+            )
         
         # Caso 2: Trail Running sin Potencia (Usamos GAP + Minetti)
         elif distancia_km and distancia_km > 0:
@@ -192,7 +206,17 @@ def procesar_metricas_entrenamiento(entrenamiento_id):
             # 4. Calcular rTSS basado en GAP
             tss_calculado, if_calculado = calcular_tss_gap(tiempo_min, gap_seg_km, umbral_ritmo)
             
-            logger.info(f"   ⛰️ Trail Data: Pendiente {pendiente:.1f}% | GAP {int(gap_seg_km)}s/km | rTSS {tss_calculado}")
+            logger.info(
+                "ciencia_trail.tss_gap",
+                extra=safe_extra(
+                    {
+                        "entrenamiento_id": entreno.id,
+                        "pendiente_pct": round(pendiente, 2),
+                        "gap_seg_km": int(gap_seg_km),
+                        "tss": tss_calculado,
+                    }
+                ),
+            )
 
         # --- C. GUARDADO INTELIGENTE ---
         if tss_calculado > 0:
@@ -218,17 +242,32 @@ def procesar_metricas_entrenamiento(entrenamiento_id):
                 carrera_match.tiempo_oficial = timezone.timedelta(minutes=tiempo_min)
                 # Aquí podríamos guardar feedback automático en la inscripción
                 carrera_match.save()
-                logger.info(f"   🏅 Carrera '{carrera_match.carrera.nombre}' finalizada automáticamente.")
-        except Exception as e:
-            logger.error(f"Error actualizando carrera: {e}")
+                logger.info(
+                    "ciencia_trail.carrera_finalizada",
+                    extra=safe_extra(
+                        {"entrenamiento_id": entreno.id, "carrera_id": carrera_match.carrera_id}
+                    ),
+                )
+        except Exception:
+            logger.exception(
+                "ciencia_trail.actualizar_carrera_failed",
+                extra=safe_extra({"entrenamiento_id": entreno.id}),
+            )
 
         entreno.save()
-        print(f"✅ [RESULTADO] Carga Final: {entreno.load_final:.1f}")
+        logger.info(
+            "ciencia_trail.carga_final",
+            extra=safe_extra(
+                {"entrenamiento_id": entreno.id, "load_final": round(entreno.load_final or 0.0, 2)}
+            ),
+        )
         return "OK"
 
-    except Exception as e:
-        print(f"❌ [ERROR CIENCIA]: {e}")
-        traceback.print_exc()
+    except Exception:
+        logger.exception(
+            "ciencia_trail.procesar_failed",
+            extra=safe_extra({"entrenamiento_id": entrenamiento_id}),
+        )
         return "FAIL"
 
 # ==============================================================================
@@ -263,8 +302,11 @@ def generar_feedback_ia(entrenamiento_id):
         entreno.feedback_ia = response.choices[0].message.content
         entreno.save()
         return "OK IA"
-    except Exception as e:
-        print(f"❌ [ERROR IA]: {e}")
+    except Exception:
+        logger.exception(
+            "ia.feedback_failed",
+            extra=safe_extra({"entrenamiento_id": entrenamiento_id}),
+        )
         return "FAIL IA"
 
 # ==============================================================================

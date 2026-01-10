@@ -1,3 +1,5 @@
+import logging
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.db import transaction
@@ -7,6 +9,7 @@ from .models import HistorialFitness, AlertaRendimiento
 from core.tasks import generar_feedback_ia
 from core.metrics import generar_pronosticos_alumno # Importamos la lógica Riegel
 
+logger = logging.getLogger(__name__)
 # ==============================================================================
 #  1. CÁLCULO DE FITNESS (PMC - MODELO BANISTER)
 # ==============================================================================
@@ -44,7 +47,10 @@ def actualizar_fitness_atleta(sender, instance, created, **kwargs):
     alumno = instance.alumno
     fecha_entreno = instance.fecha_asignada
     
-    print(f"🧬 [ANALYTICS] Impacto fisiológico detectado: {alumno} | TSS {tss_nuevo} | {fecha_entreno}")
+    logger.info(
+        "analytics.impacto_fisiologico",
+        extra={"alumno_id": alumno.id, "tss": round(tss_nuevo, 2), "fecha": str(fecha_entreno)},
+    )
 
     # Ejecutamos dentro de una transacción atómica para integridad
     with transaction.atomic():
@@ -79,7 +85,15 @@ def actualizar_fitness_atleta(sender, instance, created, **kwargs):
         historial_hoy.tsb = historial_hoy.ctl - historial_hoy.atl 
 
         historial_hoy.save()
-        print(f"   📈 PMC Actualizado -> CTL: {historial_hoy.ctl:.1f} | TSB: {historial_hoy.tsb:.1f}")
+        logger.info(
+            "analytics.pmc_actualizado",
+            extra={
+                "alumno_id": alumno.id,
+                "fecha": str(fecha_entreno),
+                "ctl": round(historial_hoy.ctl, 2),
+                "tsb": round(historial_hoy.tsb, 2),
+            },
+        )
 
 
 # ==============================================================================
@@ -130,7 +144,10 @@ def crear_alerta_si_no_existe(alumno, fecha, tipo, valor_nuevo, valor_viejo, con
             valor_detectado=valor_nuevo, valor_anterior=valor_viejo, 
             mensaje=msg
         )
-        print(f"🚀 [ALERTA] {tipo} detectado para {alumno.nombre}")
+        logger.info(
+            "analytics.alerta_creada",
+            extra={"alumno_id": alumno.id, "tipo": tipo, "fecha": str(fecha)},
+        )
 
 # ==============================================================================
 #  3. GATILLO DE FEEDBACK IA (CELERY)
@@ -151,6 +168,9 @@ def disparar_analisis_ia(sender, instance, created, **kwargs):
                    (instance.distancia_real_km and instance.distancia_real_km > 0)
 
         if has_data:
-            print(f"🧠 [SIGNAL] Solicitando análisis IA para {instance}")
+            logger.info(
+                "analytics.feedback_ia_solicitado",
+                extra={"entrenamiento_id": instance.id, "alumno_id": instance.alumno_id},
+            )
             # transaction.on_commit asegura que Celery no lea la DB antes de que Django escriba
             transaction.on_commit(lambda: generar_feedback_ia.apply_async(args=[instance.id], countdown=2))

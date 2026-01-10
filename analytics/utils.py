@@ -1,14 +1,20 @@
 # backend/analytics/utils.py
+import logging
+
 from core.models import Entrenamiento
 from analytics.models import HistorialFitness
-from django.db import transaction
+
+logger = logging.getLogger(__name__)
 
 def recalcular_historial_completo(alumno):
     """
     Borra el historial de fitness y lo reconstruye desde el primer entrenamiento
     hasta hoy, día por día, para asegurar la integridad matemática (CTL/ATL).
     """
-    print(f"🧮 [RECALCULO] Iniciando reconstrucción total para {alumno.nombre}...")
+    logger.info(
+        "analytics.recalculo_inicio",
+        extra={"alumno_id": alumno.id},
+    )
     
     # 1. Borrar historial corrupto/viejo
     HistorialFitness.objects.filter(alumno=alumno).delete()
@@ -21,7 +27,7 @@ def recalcular_historial_completo(alumno):
     ).order_by('fecha_asignada')
     
     if not entrenamientos.exists():
-        print("⚠️ No hay entrenamientos con TSS para calcular.")
+        logger.info("analytics.recalculo_skip_sin_entrenos", extra={"alumno_id": alumno.id})
         return
 
     # 3. Inicializar variables de Banister (Empezamos de cero)
@@ -61,4 +67,7 @@ def recalcular_historial_completo(alumno):
         ctl_ayer = ctl_hoy
         atl_ayer = atl_hoy
         
-    print(f"✅ [RECALCULO] Historial reconstruido hasta {fecha}. CTL Final: {ctl_ayer:.1f}")
+    logger.info(
+        "analytics.recalculo_ok",
+        extra={"alumno_id": alumno.id, "fecha": str(fecha), "ctl_final": round(ctl_ayer, 2)},
+    )

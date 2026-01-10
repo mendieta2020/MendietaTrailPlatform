@@ -1,3 +1,4 @@
+import logging
 import os
 from celery import Celery
 from celery.schedules import crontab
@@ -26,6 +27,11 @@ app.conf.beat_schedule = {
 # 4. Auto-descubrir tareas en todas las apps instaladas (core, etc.)
 app.autodiscover_tasks()
 
+logger = logging.getLogger(__name__)
+
 @app.task(bind=True)
 def debug_task(self):
-    print(f'Request: {self.request!r}')
+    logger.debug(
+        "celery.debug_task.request",
+        extra={"task_id": getattr(self.request, "id", None), "task": self.name},
+    )
