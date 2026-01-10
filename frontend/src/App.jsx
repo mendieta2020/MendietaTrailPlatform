@@ -15,15 +15,19 @@ import CalendarPage from './pages/Calendar';
 import Teams from './pages/Teams';
 import TeamDetail from './pages/TeamDetail';
 import Alerts from './pages/Alerts';
-import { tokenStore } from './api/tokenStore';
+import { useAuth } from './context/AuthContext';
 
 // --- COMPONENTE DE SEGURIDAD (GUARDIÁN) ---
 // Verifica si existe un token válido. Si no, redirige al Login.
 const ProtectedRoute = ({ children }) => {
-  const token = tokenStore.getAccessToken();
+  const { user, loading } = useAuth();
   const location = useLocation();
-  
-  if (!token) {
+
+  if (loading) {
+    return null;
+  }
+
+  if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
   

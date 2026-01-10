@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { tokenStore } from './tokenStore';
 import { emitLogout } from './authEvents';
+import { USE_COOKIE_AUTH } from './authMode';
 
 // 1. ESCALABILIDAD: Definimos la URL base dinámicamente.
 // Si existe una variable de entorno (Producción), la usa. Si no, usa localhost.
@@ -10,6 +11,7 @@ const baseURL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_UR
 const client = axios.create({
     baseURL: baseURL, // Apuntamos a la raíz, no a /api/ (para evitar duplicados)
     timeout: 10000,   // Esperamos máximo 10 seg antes de dar error (Robustez)
+    withCredentials: USE_COOKIE_AUTH,
     headers: {
         'Content-Type': 'application/json',
         'accept': 'application/json'
@@ -20,6 +22,7 @@ const client = axios.create({
 const refreshClient = axios.create({
     baseURL: baseURL,
     timeout: 10000,
+    withCredentials: USE_COOKIE_AUTH,
     headers: {
         'Content-Type': 'application/json',
         'accept': 'application/json'
@@ -31,7 +34,7 @@ const refreshClient = axios.create({
 client.interceptors.request.use(
     (config) => {
         const token = tokenStore.getAccessToken();
-        if (token) {
+        if (token && !USE_COOKIE_AUTH) {
             config.headers = config.headers || {};
             config.headers.Authorization = `Bearer ${token}`;
         }
@@ -84,7 +87,7 @@ client.interceptors.response.use(
         // Si el error es 401 y no es auth endpoint, intentamos refresh una sola vez
         if (status === 401 && !isAuthEndpoint && originalRequest && !originalRequest._retry) {
             const refreshToken = tokenStore.getRefreshToken();
-            if (!refreshToken) {
+            if (!USE_COOKIE_AUTH && !refreshToken) {
                 clearSessionAndNotify('missing_refresh_token');
                 return Promise.reject(error);
             }
@@ -95,7 +98,9 @@ client.interceptors.response.use(
                     subscribeTokenRefresh((newAccessToken) => {
                         originalRequest._retry = true;
                         originalRequest.headers = originalRequest.headers || {};
-                        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+                        if (newAccessToken) {
+                            originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+                        }
                         resolve(client(originalRequest));
                     });
                 });
@@ -104,25 +109,30 @@ client.interceptors.response.use(
             isRefreshing = true;
 
             try {
-                const refreshResponse = await refreshClient.post('/api/token/refresh/', {
-                    refresh: refreshToken,
-                });
+                const refreshResponse = await refreshClient.post(
+                    '/api/token/refresh/',
+                    USE_COOKIE_AUTH ? {} : { refresh: refreshToken }
+                );
 
                 const newAccessToken = refreshResponse.data?.access;
                 const newRefreshToken = refreshResponse.data?.refresh;
-                if (!newAccessToken) {
+                if (!newAccessToken && !USE_COOKIE_AUTH) {
                     clearSessionAndNotify('refresh_missing_access');
                     return Promise.reject(error);
                 }
 
                 // Importante: SIMPLE_JWT puede rotar refresh tokens (ROTATE_REFRESH_TOKENS=True)
-                tokenStore.setTokens({ access: newAccessToken, refresh: newRefreshToken });
+                if (!USE_COOKIE_AUTH) {
+                    tokenStore.setTokens({ access: newAccessToken, refresh: newRefreshToken });
+                }
                 isRefreshing = false;
                 onRefreshed(newAccessToken);
 
                 originalRequest._retry = true;
                 originalRequest.headers = originalRequest.headers || {};
-                originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+                if (newAccessToken && !USE_COOKIE_AUTH) {
+                    originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+                }
                 return client(originalRequest);
             } catch (refreshErr) {
                 isRefreshing = false;

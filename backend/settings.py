@@ -49,9 +49,28 @@ def get_env_variable(var_name, default=None, required=True):
                 raise Exception(error_msg)
         return default
 
+def parse_env_list(value):
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
 # Variables Críticas
 SECRET_KEY = get_env_variable("SECRET_KEY", default="test-secret-key", required=not RUNNING_TESTS)
 DEBUG = get_env_variable("DEBUG", default=("True" if RUNNING_TESTS else "False"), required=not RUNNING_TESTS) == "True"
+
+# ======================================================================
+#  FLAGS DE AUTENTICACIÓN (Transición JWT -> Cookies HttpOnly)
+# ======================================================================
+USE_COOKIE_AUTH = get_env_variable("USE_COOKIE_AUTH", default="False", required=False) == "True"
+COOKIE_AUTH_ACCESS_NAME = get_env_variable("COOKIE_AUTH_ACCESS_NAME", default="mt_access", required=False)
+COOKIE_AUTH_REFRESH_NAME = get_env_variable("COOKIE_AUTH_REFRESH_NAME", default="mt_refresh", required=False)
+COOKIE_AUTH_SAMESITE = get_env_variable("COOKIE_AUTH_SAMESITE", default="Lax", required=False)
+COOKIE_AUTH_DOMAIN = get_env_variable("COOKIE_AUTH_DOMAIN", default="", required=False) or None
+COOKIE_AUTH_SECURE = get_env_variable(
+    "COOKIE_AUTH_SECURE",
+    default=("True" if not DEBUG else "False"),
+    required=False,
+) == "True"
 
 # --- CONFIGURACIÓN DE HOSTS (Ngrok Ready) ---
 if DEBUG:
@@ -228,6 +247,7 @@ SWAGGER_SETTINGS = {
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
+        'core.authentication.CookieJWTAuthentication',
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ),
@@ -274,21 +294,29 @@ DEFAULT_FROM_EMAIL = 'Mendieta Platform <noreply@mendieta.ai>'
 # ==============================================================================
 #  CORS & SEGURIDAD WEBHOOKS
 # ==============================================================================
-# Permitir acceso desde el Frontend (React)
-if DEBUG:
-    CORS_ALLOW_ALL_ORIGINS = True # 🔓 Desarrollo fácil
-else:
+# Permitir acceso desde el Frontend (React) - configurable por env
+CORS_ALLOWED_ORIGINS = parse_env_list(get_env_variable("CORS_ALLOWED_ORIGINS", default="", required=False))
+if USE_COOKIE_AUTH and not CORS_ALLOWED_ORIGINS:
     CORS_ALLOWED_ORIGINS = [
         "http://localhost:5173",
         "http://localhost:3000",
     ]
+    CORS_ALLOW_ALL_ORIGINS = False
+elif DEBUG and not CORS_ALLOWED_ORIGINS:
+    CORS_ALLOW_ALL_ORIGINS = True  # 🔓 Desarrollo fácil
+else:
+    CORS_ALLOW_ALL_ORIGINS = False
 
-# CRÍTICO: Dominios confiables para recibir POST (Webhooks Strava)
-# IMPORTANTE: Asegúrate de que esta URL coincida con la de tu Ngrok actual
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:5173",
-    "https://overfaithfully-piquant-bryn.ngrok-free.dev", 
-]
+# Permitir credenciales (cookies) en modo cookie auth
+CORS_ALLOW_CREDENTIALS = USE_COOKIE_AUTH
+
+# Dominios confiables para recibir POST (CSRF)
+CSRF_TRUSTED_ORIGINS = parse_env_list(get_env_variable("CSRF_TRUSTED_ORIGINS", default="", required=False))
+if DEBUG and not CSRF_TRUSTED_ORIGINS:
+    CSRF_TRUSTED_ORIGINS = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ]
 
 # ==============================================================================
 #  CONFIGURACIÓN MAESTRA DE STRAVA (ALLAUTH)
