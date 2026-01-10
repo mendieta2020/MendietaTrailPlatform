@@ -25,6 +25,23 @@ VERIFY_TOKEN = _CONFIGURED_VERIFY_TOKEN or ("MENDIETA_SECRET_TOKEN_2025" if geta
 # si se define `STRAVA_WEBHOOK_SUBSCRIPTION_ID`, solo aceptamos eventos de esa suscripción.
 EXPECTED_SUBSCRIPTION_ID = getattr(settings, "STRAVA_WEBHOOK_SUBSCRIPTION_ID", None)
 
+
+def _truncate_error(message: str, limit: int = 300) -> str:
+    return (message or "")[:limit]
+
+
+def _mark_event_failed(event: StravaWebhookEvent, *, error: Exception | str, attempts_increment: bool = True):
+    last_error = _truncate_error(str(error))
+    updates = {
+        "status": StravaWebhookEvent.Status.FAILED,
+        "last_error": last_error,
+        "last_attempt_at": timezone.now(),
+    }
+    if attempts_increment:
+        updates["attempts"] = F("attempts") + 1
+    StravaWebhookEvent.objects.filter(pk=event.pk).update(**updates)
+    StravaWebhookEvent.objects.log_failed_threshold(logger=logger)
+
 @csrf_exempt 
 @require_http_methods(["GET", "POST"])
 def strava_webhook(request):
@@ -63,6 +80,8 @@ def strava_webhook(request):
     # ==============================================================================
     if request.method == 'POST':
         t0 = time.monotonic()
+        event = None
+        created = False
         try:
             # Intentamos parsear el JSON
             try:
@@ -78,6 +97,15 @@ def strava_webhook(request):
             subscription_id = data.get('subscription_id')
             event_time = data.get('event_time')
 
+            if object_type is None or aspect_type is None or object_id is None or owner_id is None:
+                return HttpResponse("Payload inválido", status=400)
+
+            try:
+                object_id_int = int(object_id)
+                owner_id_int = int(owner_id)
+            except (TypeError, ValueError):
+                return HttpResponse("Payload inválido", status=400)
+
             # Hardening opcional: si configuramos un subscription_id esperado, ignoramos el resto.
             if EXPECTED_SUBSCRIPTION_ID is not None and str(subscription_id) != str(EXPECTED_SUBSCRIPTION_ID):
                 logger.warning(
@@ -88,15 +116,15 @@ def strava_webhook(request):
                         "subscription_id": subscription_id,
                     },
                 )
-                return HttpResponse(status=200)
+                return HttpResponse(status=403)
 
             # event_uid determinístico para idempotencia total.
             # Incluimos event_time si viene para diferenciar eventos legítimos sobre el mismo object_id.
             uid_payload = {
                 "subscription_id": subscription_id,
-                "owner_id": owner_id,
+                "owner_id": owner_id_int,
                 "object_type": object_type,
-                "object_id": object_id,
+                "object_id": object_id_int,
                 "aspect_type": aspect_type,
                 "event_time": event_time,
             }
@@ -110,9 +138,9 @@ def strava_webhook(request):
                     event_uid=event_uid,
                     defaults={
                         "object_type": str(object_type or ""),
-                        "object_id": int(object_id or 0),
+                        "object_id": object_id_int,
                         "aspect_type": str(aspect_type or ""),
-                        "owner_id": int(owner_id or 0),
+                        "owner_id": owner_id_int,
                         "subscription_id": int(subscription_id) if subscription_id is not None else None,
                         "event_time": int(event_time) if event_time is not None else None,
                         "payload_raw": data,
@@ -147,13 +175,42 @@ def strava_webhook(request):
                         duplicate_count=F("duplicate_count") + 1,
                         last_duplicate_at=timezone.now(),
                     )
+                    if event.status in {
+                        StravaWebhookEvent.Status.RECEIVED,
+                        StravaWebhookEvent.Status.FAILED,
+                    }:
+                        try:
+                            StravaWebhookEvent.objects.filter(pk=event.pk).update(
+                                status=StravaWebhookEvent.Status.QUEUED,
+                                last_error="",
+                                error_message="",
+                                discard_reason="",
+                            )
+                            process_strava_event.delay(event.pk)
+                            logger.info(
+                                "strava_webhook.outcome",
+                                extra={
+                                    "event_uid": event_uid,
+                                    "correlation_id": str(getattr(event, "correlation_id", "") or ""),
+                                    "athlete_id": owner_id_int,
+                                    "activity_id": object_id_int,
+                                    "status": "requeued",
+                                    "reason": "event_uid_retry",
+                                    "attempt": 0,
+                                    "duration_ms": duration_ms,
+                                },
+                            )
+                            return HttpResponse(status=200)
+                        except Exception as exc:
+                            _mark_event_failed(event, error=exc)
+                            return HttpResponse(status=503)
                 logger.info(
                     "strava_webhook.outcome",
                     extra={
                         "event_uid": event_uid,
                         "correlation_id": str(getattr(event, "correlation_id", "") or ""),
-                        "athlete_id": owner_id,
-                        "activity_id": object_id,
+                        "athlete_id": owner_id_int,
+                        "activity_id": object_id_int,
                         "status": "duplicate",
                         "reason": "event_uid_already_seen",
                         "attempt": 0,
@@ -187,8 +244,8 @@ def strava_webhook(request):
                     extra={
                         "event_uid": event_uid,
                         "correlation_id": str(event.correlation_id),
-                        "athlete_id": owner_id,
-                        "activity_id": object_id,
+                        "athlete_id": owner_id_int,
+                        "activity_id": object_id_int,
                         "status": "discarded",
                         "reason": "non_activity_event",
                         "attempt": 0,
@@ -208,8 +265,8 @@ def strava_webhook(request):
                     extra={
                         "event_uid": event_uid,
                         "correlation_id": str(event.correlation_id),
-                        "athlete_id": owner_id,
-                        "activity_id": object_id,
+                        "athlete_id": owner_id_int,
+                        "activity_id": object_id_int,
                         "status": "discarded",
                         "reason": "delete_event_ignored",
                         "attempt": 0,
@@ -220,14 +277,18 @@ def strava_webhook(request):
 
             # OK: encolar y responder 200 ASAP.
             StravaWebhookEvent.objects.filter(pk=event.pk).update(status=StravaWebhookEvent.Status.QUEUED)
-            process_strava_event.delay(event.pk)
+            try:
+                process_strava_event.delay(event.pk)
+            except Exception as exc:
+                _mark_event_failed(event, error=exc)
+                return HttpResponse(status=503)
             logger.info(
                 "strava_webhook.outcome",
                 extra={
                     "event_uid": event_uid,
                     "correlation_id": str(event.correlation_id),
-                    "athlete_id": owner_id,
-                    "activity_id": object_id,
+                    "athlete_id": owner_id_int,
+                    "activity_id": object_id_int,
                     "status": "enqueued",
                     "reason": "accepted",
                     "attempt": 0,
@@ -235,17 +296,17 @@ def strava_webhook(request):
                 },
             )
 
-            # IMPORTANTE: Siempre responder 200 OK a Strava para confirmar recepción
             return HttpResponse(status=200)
 
         except Exception as e:
-            # Responder 200 evita reintentos masivos; el error queda auditado en logs.
             duration_ms = int((time.monotonic() - t0) * 1000)
             logger.exception(
                 "strava_webhook.error",
                 extra={"error": str(e), "status": "error", "duration_ms": duration_ms},
             )
-            return HttpResponse(status=200)
+            if event is not None:
+                _mark_event_failed(event, error=e, attempts_increment=True)
+            return HttpResponse(status=500)
 
     # Si por alguna razón milagrosa llega aquí (no debería por el decorador), devolvemos 405
     return HttpResponse(status=405)
