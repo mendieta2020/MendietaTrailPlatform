@@ -401,6 +401,23 @@ class Actividad(models.Model):
         blank=True,
         help_text="Esfuerzo (Strava relative_effort / suffer_score). NULL si faltante.",
     )
+    canonical_load = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Carga canónica (PR6) derivada de TSS/TRIMP/RPE/relative_effort.",
+    )
+    canonical_load_method = models.CharField(
+        max_length=30,
+        blank=True,
+        default="",
+        help_text="Método usado para la carga canónica (tss_power/tss_gap/trimp/rpe/relative_effort).",
+    )
+    load_version = models.CharField(
+        max_length=10,
+        blank=True,
+        default="",
+        help_text="Versión de la definición canónica de carga (ej: 1.0).",
+    )
     ritmo_promedio = models.FloatField(blank=True, null=True, help_text="Metros por segundo")
 
     # Auditoría / visualización

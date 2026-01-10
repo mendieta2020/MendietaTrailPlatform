@@ -1,6 +1,8 @@
 import math
 from datetime import timedelta, date
 
+LOAD_DEFINITION_VERSION = "1.0"
+
 # ==============================================================================
 #  1. UTILIDADES BÁSICAS
 # ==============================================================================
@@ -59,6 +61,134 @@ def determinar_carga_final(tss_power, tss_gap, trimp, rpe_load):
     if tss_gap and tss_gap > 0: return tss_gap
     if trimp and trimp > 0: return trimp
     return rpe_load
+
+def calcular_carga_canonica(actividad, *, sport_type: str | None = None) -> tuple[float, str]:
+    """
+    Devuelve (carga, metodo) para usar en PMC/analytics.
+
+    Política (prioridad de señales):
+    1) Potencia + FTP (ciclismo) -> TSS power.
+    2) GAP/Minetti + umbral (running/trail) -> rTSS (TSS GAP).
+    3) FC promedio + FC máx/reposo -> TRIMP.
+    4) relative_effort (Strava) -> valor directo (compat legacy).
+    5) RPE + duración -> load_rpe.
+    """
+    def _get(obj, key, default=None):
+        if isinstance(obj, dict):
+            return obj.get(key, default)
+        return getattr(obj, key, default)
+
+    def _safe_float(v):
+        try:
+            if v is None:
+                return 0.0
+            return float(v)
+        except Exception:
+            return 0.0
+
+    def _safe_int(v):
+        try:
+            if v is None:
+                return 0
+            return int(v)
+        except Exception:
+            return 0
+
+    def _raw_dict(obj) -> dict:
+        raw = _get(obj, "datos_brutos", None)
+        if isinstance(raw, dict):
+            return raw
+        raw = _get(obj, "raw", None)
+        return raw if isinstance(raw, dict) else {}
+
+    raw = _raw_dict(actividad)
+    alumno = _get(actividad, "alumno", None)
+
+    sport = str(
+        sport_type
+        or _get(actividad, "tipo_deporte", None)
+        or _get(actividad, "sport_type", None)
+        or ""
+    ).strip().upper()
+
+    tiempo_min = _safe_float(_get(actividad, "tiempo_real_min", None))
+    tiempo_seg = _safe_int(
+        _get(actividad, "tiempo_movimiento", None)
+        or _get(actividad, "moving_time_s", None)
+        or _get(actividad, "duracion", None)
+    )
+    if tiempo_min <= 0 and tiempo_seg > 0:
+        tiempo_min = tiempo_seg / 60.0
+    if tiempo_seg <= 0 and tiempo_min > 0:
+        tiempo_seg = int(tiempo_min * 60)
+
+    distancia_m = _safe_float(
+        _get(actividad, "distancia", None)
+        or _get(actividad, "distance_m", None)
+        or _safe_float(_get(actividad, "distancia_real_km", None)) * 1000.0
+    )
+    elev_m = _safe_float(
+        _get(actividad, "desnivel_positivo", None)
+        or _get(actividad, "desnivel_real_m", None)
+        or _get(actividad, "elevation_m", None)
+    )
+
+    avg_power = _safe_float(
+        _get(actividad, "potencia_promedio", None)
+        or _get(actividad, "avg_watts", None)
+        or raw.get("average_watts")
+        or raw.get("weighted_average_watts")
+    )
+    avg_hr = _safe_float(
+        _get(actividad, "frecuencia_cardiaca_promedio", None)
+        or _get(actividad, "avg_hr", None)
+        or raw.get("average_heartrate")
+    )
+    max_hr = _safe_float(
+        _get(actividad, "max_hr", None)
+        or raw.get("max_heartrate")
+        or (_get(alumno, "fcm", None) if alumno else None)
+    )
+    rest_hr = _safe_float(_get(alumno, "fcreposo", None) if alumno else None)
+
+    ftp = _safe_float(
+        _get(alumno, "ftp_ciclismo", None)
+        or _get(alumno, "ftp", None)
+    )
+
+    rpe = _safe_float(_get(actividad, "rpe", None))
+    relative_effort = _safe_float(_get(actividad, "effort", None) or raw.get("relative_effort") or raw.get("suffer_score") or raw.get("sufferScore"))
+
+    if sport in {"BIKE", "CYCLING", "INDOOR_BIKE"} and avg_power > 0 and ftp > 0 and tiempo_min > 0:
+        tss_power, _ = calcular_tss_power(tiempo_min, avg_power, ftp)
+        if tss_power > 0:
+            return tss_power, "tss_power"
+
+    if sport in {"RUN", "TRAIL"} and distancia_m > 0 and tiempo_min > 0:
+        umbral_velocidad = _safe_float(_get(alumno, "velocidad_uanae", None) if alumno else None) or _safe_float(
+            _get(alumno, "vam_actual", None) if alumno else None
+        )
+        umbral_ritmo = velocidad_a_pace(umbral_velocidad) if umbral_velocidad > 0 else 0
+        if umbral_ritmo > 0:
+            ritmo_real_seg_km = tiempo_seg / (distancia_m / 1000.0)
+            pendiente = calcular_pendiente(distancia_m, elev_m)
+            gap_seg_km = calcular_gap_minetti(ritmo_real_seg_km, pendiente)
+            tss_gap, _ = calcular_tss_gap(tiempo_min, gap_seg_km, umbral_ritmo)
+            if tss_gap > 0:
+                return tss_gap, "tss_gap"
+
+    if avg_hr > 0 and max_hr > 0 and rest_hr > 0 and tiempo_min > 0:
+        trimp = calcular_trimp(tiempo_min, avg_hr, max_hr, rest_hr)
+        if trimp > 0:
+            return trimp, "trimp"
+
+    if relative_effort > 0:
+        return relative_effort, "relative_effort"
+
+    if rpe > 0 and tiempo_min > 0:
+        return calcular_load_rpe(tiempo_min, rpe), "rpe"
+
+    return 0.0, "none"
 
 def calcular_tss_estimado(*args, **kwargs):
     """
