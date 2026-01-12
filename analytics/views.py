@@ -1,16 +1,18 @@
 import logging
 from datetime import date, timedelta
 
-from django.db.models import Q, Sum
-from django.db.models.functions import TruncDate
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from analytics.models import DailyActivityAgg, HistorialFitness, PMCHistory
+from analytics.cache import get_range_cache, set_range_cache
+from analytics.models import DailyActivityAgg
+from analytics.pmc import get_pmc_for_range
 from analytics.pmc_engine import PMC_SPORT_GROUPS, ensure_pmc_materialized
+from analytics.range_utils import max_range_days, parse_date_range_params
 from core.models import Actividad, Alumno, Entrenamiento, InscripcionCarrera
 
 from analytics.models import AlertaRendimiento
@@ -26,6 +28,8 @@ class PMCDataView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        start_param = request.query_params.get("start_date")
+        end_param = request.query_params.get("end_date")
         try:
             user = request.user
             alumno_id = request.query_params.get("alumno_id")
@@ -54,126 +58,52 @@ class PMCDataView(APIView):
 
             alumno_id = int(alumno_id)
 
-            # Best-effort: materializar PMC si aún no existe (evita "Sin datos" post-backfill).
-            ensure_pmc_materialized(alumno_id=alumno_id)
-
-            end_date = timezone.localdate()
-            start_date = end_date - timedelta(days=365)
-
-            pmc_rows = list(
-                PMCHistory.objects.filter(alumno_id=alumno_id, sport=sport_filter, fecha__range=[start_date, end_date])
-                .order_by("fecha")
-                .values("fecha", "tss_diario", "ctl", "atl", "tsb")
-            )
-            if not pmc_rows:
-                # Fallback compat: algunos flujos legacy sólo materializan HistorialFitness via signals.
-                # Mantenemos /api/analytics/pmc vivo para no romper frontend/tests.
-                hf_rows = list(
-                    HistorialFitness.objects.filter(alumno_id=alumno_id, fecha__range=[start_date, end_date])
-                    .order_by("fecha")
-                    .values("fecha", "tss_diario", "ctl", "atl", "tsb")
+            try:
+                start_date, end_date, _ = parse_date_range_params(
+                    start_param,
+                    end_param,
+                    default_days=365,
+                    enforce_max_for_custom=True,
                 )
-                if not hf_rows:
-                    # Último fallback UX: si hay entrenamientos (plan) pero no hay PMC materializado,
-                    # devolvemos al menos el día actual con ceros para que el frontend no quede "vacío".
-                    if Entrenamiento.objects.filter(alumno_id=alumno_id).exists():
-                        today = timezone.localdate()
-                        return Response(
-                            [
-                                {
-                                    "fecha": today.isoformat(),
-                                    "is_future": False,
-                                    "ctl": 0.0,
-                                    "atl": 0.0,
-                                    "tsb": 0.0,
-                                    "load": 0,
-                                    "dist": 0.0,
-                                    "time": 0,
-                                    "elev_gain": 0,
-                                    "elev_loss": None,
-                                    "calories": None,
-                                    "effort": None,
-                                    "race": None,
-                                }
-                            ],
-                            status=200,
-                        )
-                    return Response([], status=200)
-                pmc_rows = hf_rows
+            except ValueError as exc:
+                reason = str(exc)
+                if reason == "start_end_required":
+                    return Response({"detail": "start_date and end_date must be provided together."}, status=400)
+                if reason == "start_after_end":
+                    return Response({"detail": "start_date must be before end_date."}, status=400)
+                if reason == "range_too_large":
+                    return Response(
+                        {"detail": "Requested range too large.", "max_days": max_range_days()},
+                        status=400,
+                    )
+                return Response({"detail": "Invalid date range."}, status=400)
 
-            included_sports = PMC_SPORT_GROUPS[sport_filter]
-            agg_rows = DailyActivityAgg.objects.filter(
+            cached = get_range_cache(
+                cache_type="PMC",
                 alumno_id=alumno_id,
-                fecha__range=[start_date, end_date],
-                sport__in=list(included_sports),
-            ).values("fecha", "distance_m", "elev_gain_m", "duration_s")
-
-            by_date = {}
-            for r in agg_rows.iterator(chunk_size=1000):
-                d = r["fecha"]
-                prev = by_date.get(d) or {"distance_m": 0.0, "elev_gain_m": 0.0, "duration_s": 0}
-                prev["distance_m"] += float(r.get("distance_m") or 0.0)
-                prev["elev_gain_m"] += float(r.get("elev_gain_m") or 0.0)
-                prev["duration_s"] += int(r.get("duration_s") or 0)
-                by_date[d] = prev
-
-            # Métricas opcionales (NO usar 0 como faltante): vienen de `core.Actividad`.
-            # - calories_kcal, elev_loss_m, effort
-            opt_rows = (
-                Actividad.objects.filter(alumno_id=alumno_id, validity=Actividad.Validity.VALID)
-                .filter(fecha_inicio__date__range=[start_date, end_date])
-                .annotate(d=TruncDate("fecha_inicio"))
-                .values("d")
-                .annotate(
-                    calories_kcal=Sum("calories_kcal"),
-                    elev_loss_m=Sum("elev_loss_m"),
-                    effort=Sum("effort"),
-                )
+                sport=sport_filter,
+                start_date=start_date,
+                end_date=end_date,
             )
-            opt_by_date = {r["d"]: r for r in opt_rows.iterator(chunk_size=1000)}
+            if cached is not None:
+                return Response(cached, status=status.HTTP_200_OK)
 
-            objetivos_base = InscripcionCarrera.objects.all()
-            if is_athlete:
-                objetivos_base = objetivos_base.filter(alumno__usuario=user)
-            else:
-                objetivos_base = objetivos_base.filter(alumno__entrenador=user)
-
-            objetivos_qs = objetivos_base.filter(alumno_id=alumno_id).select_related("carrera").values(
-                "carrera__fecha", "carrera__nombre", "carrera__distancia_km", "carrera__desnivel_positivo_m"
+            data = get_pmc_for_range(
+                alumno_id=alumno_id,
+                sport_filter=sport_filter,
+                start_date=start_date,
+                end_date=end_date,
+                user=user,
+                is_athlete=is_athlete,
             )
-            objetivos_map = {
-                obj["carrera__fecha"].strftime("%Y-%m-%d"): {
-                    "nombre": obj["carrera__nombre"],
-                    "km": obj["carrera__distancia_km"],
-                    "elev": obj["carrera__desnivel_positivo_m"],
-                }
-                for obj in objetivos_qs
-            }
-
-            data = []
-            for row in pmc_rows:
-                d = row["fecha"]
-                f_str = d.isoformat()
-                agg = by_date.get(d) or {"distance_m": 0.0, "elev_gain_m": 0.0, "duration_s": 0}
-                opt = opt_by_date.get(d) or {}
-                data.append(
-                    {
-                        "fecha": f_str,
-                        "is_future": False,
-                        "ctl": round(float(row["ctl"] or 0.0), 1),
-                        "atl": round(float(row["atl"] or 0.0), 1),
-                        "tsb": round(float(row["tsb"] or 0.0), 1),
-                        "load": int(float(row["tss_diario"] or 0.0)),
-                        "dist": round(float(agg["distance_m"] or 0.0) / 1000.0, 2),
-                        "time": int(round(float(agg["duration_s"] or 0) / 60.0)),
-                        "elev_gain": int(round(float(agg["elev_gain_m"] or 0.0))),
-                        "elev_loss": int(round(float(opt["elev_loss_m"]))) if opt.get("elev_loss_m") is not None else None,
-                        "calories": int(round(float(opt["calories_kcal"]))) if opt.get("calories_kcal") is not None else None,
-                        "effort": float(opt["effort"]) if opt.get("effort") is not None else None,
-                        "race": objetivos_map.get(f_str, None),
-                    }
-                )
-
+            set_range_cache(
+                cache_type="PMC",
+                alumno_id=alumno_id,
+                sport=sport_filter,
+                start_date=start_date,
+                end_date=end_date,
+                payload=data,
+            )
             return Response(data, status=status.HTTP_200_OK)
 
         except Exception as e:

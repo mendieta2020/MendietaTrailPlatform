@@ -65,3 +65,10 @@
   - `celery -A backend worker -Q strava_ingest -l info`
   - `celery -A backend worker -Q analytics_recompute -l info`
   - `celery -A backend worker -Q notifications -l info`
+
+## Analytics: rangos y caché (PMC / week-summary)
+- **Rangos explícitos**: `/api/analytics/pmc/` acepta `start_date` y `end_date` (ISO) para acotar cómputo.
+- **Week summary**: `/api/coach/athletes/{id}/week-summary/?week=YYYY-WW` deriva rango ISO y reutiliza la misma lógica.
+- **Caché por atleta + rango**: `AnalyticsRangeCache` persiste payload por `(alumno, cache_type, sport, start_date, end_date)`.
+- **TTL configurable**: `ANALYTICS_RANGE_CACHE_TTL_SECONDS` controla frescura (default 6h).
+- **Límite de ventana**: `ANALYTICS_MAX_RANGE_DAYS` limita rangos solicitados (fail-closed con 400 si excede).

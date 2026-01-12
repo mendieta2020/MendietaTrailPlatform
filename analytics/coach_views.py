@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from django.db.models import Avg, Case, ExpressionWrapper, F, FloatField, Max, Sum, Value, When
-from django.utils import timezone
+from django.db.models import Avg, Case, Count, ExpressionWrapper, F, FloatField, Max, Sum, Value, When
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework.permissions import IsAuthenticated
@@ -11,31 +10,25 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.exceptions import NotFound
 
+from analytics.cache import get_range_cache, set_range_cache
 from analytics.models import Alert, DailyActivityAgg, InjuryRiskSnapshot, PMCHistory
 from analytics.pmc_engine import PMC_SPORT_GROUPS, ensure_pmc_materialized
+from analytics.range_utils import parse_iso_week_param
 from core.models import Actividad, Alumno, Entrenamiento, Equipo
 
 
-def _parse_iso_week_param(week_str: str | None) -> tuple[date, date, str]:
-    """
-    week=YYYY-WW (ISO week).
-    Devuelve (start_monday, end_sunday, canonical_week_str).
-    """
-    if not week_str:
-        today = timezone.localdate()
-        year, week, _ = today.isocalendar()
-        week_str = f"{year}-{week:02d}"
-
-    s = str(week_str).strip().upper().replace("W", "").replace("_", "-")
-    # Aceptar "YYYY-WW" o "YYYY-WWW"
-    parts = s.split("-")
-    if len(parts) != 2:
-        raise ValueError("invalid_week_format")
-    year = int(parts[0])
-    week = int(parts[1])
-    start = date.fromisocalendar(year, week, 1)
-    end = start + timedelta(days=6)
-    return start, end, f"{year}-{week:02d}"
+def _sessions_by_type(*, athlete_id: int, start: date, end: date) -> list[dict]:
+    qs = (
+        Actividad.objects.filter(
+            alumno_id=int(athlete_id),
+            validity=Actividad.Validity.VALID,
+            fecha_inicio__date__range=[start, end],
+        )
+        .values("tipo_deporte")
+        .annotate(count=Count("id"))
+        .order_by("-count")
+    )
+    return [{"type": row["tipo_deporte"], "count": int(row["count"] or 0)} for row in qs]
 
 
 def _require_athlete_for_coach(*, coach, athlete_id: int) -> Alumno:
@@ -214,6 +207,15 @@ def _compliance_for_athlete(*, athlete_id: int, start: date, end: date) -> dict:
     }
 
 
+def _week_summary_core(*, athlete_id: int, start: date, end: date) -> dict:
+    return {
+        "kpis": _week_kpis_for_athlete(athlete_id=athlete_id, start=start, end=end),
+        "pmc": _pmc_for_athlete(athlete_id=athlete_id, day=end),
+        "compliance": _compliance_for_athlete(athlete_id=athlete_id, start=start, end=end),
+        "sessions_by_type": _sessions_by_type(athlete_id=athlete_id, start=start, end=end),
+    }
+
+
 class CoachAthleteWeekSummaryView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -225,17 +227,33 @@ class CoachAthleteWeekSummaryView(APIView):
     def get(self, request, athlete_id: int):
         athlete = _require_athlete_for_coach(coach=request.user, athlete_id=int(athlete_id))
         try:
-            start, end, week = _parse_iso_week_param(request.query_params.get("week"))
+            start, end, week = parse_iso_week_param(request.query_params.get("week"))
         except Exception:
             return Response({"detail": "Invalid week format. Use week=YYYY-WW"}, status=400)
+
+        cached_core = get_range_cache(
+            cache_type="WEEK_SUMMARY",
+            alumno_id=athlete.id,
+            sport="ALL",
+            start_date=start,
+            end_date=end,
+        )
+        if cached_core is None:
+            cached_core = _week_summary_core(athlete_id=athlete.id, start=start, end=end)
+            set_range_cache(
+                cache_type="WEEK_SUMMARY",
+                alumno_id=athlete.id,
+                sport="ALL",
+                start_date=start,
+                end_date=end,
+                payload=cached_core,
+            )
 
         data = {
             "athlete_id": athlete.id,
             "week": week,
             "range": {"start": str(start), "end": str(end)},
-            "kpis": _week_kpis_for_athlete(athlete_id=athlete.id, start=start, end=end),
-            "pmc": _pmc_for_athlete(athlete_id=athlete.id, day=end),
-            "compliance": _compliance_for_athlete(athlete_id=athlete.id, start=start, end=end),
+            **cached_core,
             "alerts": _alerts_top_for_athlete(coach=request.user, athlete_id=athlete.id, limit=5),
         }
         return Response(data, status=200)
@@ -252,7 +270,7 @@ class CoachGroupWeekSummaryView(APIView):
     def get(self, request, group_id: int):
         group = _require_group_for_coach(coach=request.user, group_id=int(group_id))
         try:
-            start, end, week = _parse_iso_week_param(request.query_params.get("week"))
+            start, end, week = parse_iso_week_param(request.query_params.get("week"))
         except Exception:
             return Response({"detail": "Invalid week format. Use week=YYYY-WW"}, status=400)
 

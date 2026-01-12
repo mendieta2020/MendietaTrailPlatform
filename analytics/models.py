@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 from django.db.models import Q
+from django.utils import timezone
 
 from core.models import Alumno, Equipo, Entrenamiento, Actividad
 
@@ -101,6 +102,34 @@ class PMCHistory(models.Model):
             models.Index(fields=["alumno", "sport", "-fecha"]),
         ]
         ordering = ["-fecha"]
+
+
+class AnalyticsRangeCache(models.Model):
+    """
+    Cache persistente por atleta + rango.
+    Usado para PMC y resúmenes semanales (evita recomputes costosos).
+    """
+
+    class CacheType(models.TextChoices):
+        PMC = "PMC", "PMC"
+        WEEK_SUMMARY = "WEEK_SUMMARY", "WEEK_SUMMARY"
+
+    alumno = models.ForeignKey(Alumno, on_delete=models.CASCADE, related_name="analytics_cache", db_index=True)
+    cache_type = models.CharField(max_length=30, choices=CacheType.choices, db_index=True)
+    sport = models.CharField(max_length=10, default="ALL", db_index=True)
+    start_date = models.DateField(db_index=True)
+    end_date = models.DateField(db_index=True)
+    payload = models.JSONField(default=dict)
+    last_computed_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ("alumno", "cache_type", "sport", "start_date", "end_date")
+        indexes = [
+            models.Index(fields=["alumno", "cache_type", "sport", "start_date", "end_date"]),
+        ]
+        ordering = ["-last_computed_at"]
+
+
 class AlertaRendimiento(models.Model):
     """
     Guarda eventos donde el atleta superó sus métricas teóricas.
