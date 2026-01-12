@@ -306,6 +306,16 @@ CELERY_TASK_ROUTES = {
 CELERY_TASK_ALWAYS_EAGER = False
 CELERY_TASK_EAGER_PROPAGATES = False
 
+# ============================================================================== 
+#  ANALYTICS CACHE / RANGE LIMITS
+# ==============================================================================
+ANALYTICS_RANGE_CACHE_TTL_SECONDS = int(
+    get_env_variable("ANALYTICS_RANGE_CACHE_TTL_SECONDS", default="21600", required=False)
+)
+ANALYTICS_MAX_RANGE_DAYS = int(
+    get_env_variable("ANALYTICS_MAX_RANGE_DAYS", default="365", required=False)
+)
+
 # ==============================================================================
 #  EMAIL (DESARROLLO)
 # ==============================================================================
