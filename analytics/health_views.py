@@ -5,8 +5,10 @@ from django.contrib.auth import get_user_model
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET
 from kombu import Connection
+from kombu.exceptions import OperationalError as KombuOperationalError
 
 from backend.celery import app as celery_app
+from analytics.tasks import health_ping
 from core.models import StravaWebhookEvent
 
 logger = logging.getLogger(__name__)
@@ -33,14 +35,15 @@ def healthz(request):
 @require_GET
 def healthz_celery(request):
     try:
-        responses = celery_app.control.ping(timeout=1.0) or []
-        workers = len(responses)
+        result = health_ping.apply_async(queue="default")
+        pong = result.get(timeout=2.0)
     except Exception:
         logger.exception("healthz.celery.error")
-        return _json_status(ok=False, checks={"celery": {"workers_responding": 0}})
+        return _json_status(ok=False, checks={"celery": {"status": "error"}})
+    ok = pong == "pong"
     return _json_status(
-        ok=workers > 0,
-        checks={"celery": {"workers_responding": workers}},
+        ok=ok,
+        checks={"celery": {"status": "ok" if ok else "error"}},
     )
 
 
@@ -53,14 +56,23 @@ def healthz_redis(request):
     try:
         with Connection(broker_url) as connection:
             connection.ensure_connection(max_retries=1)
-    except Exception:
-        logger.exception("healthz.redis.error")
+    except Exception as exc:
+        if isinstance(exc, KombuOperationalError) and "ECONNREFUSED" in str(exc):
+            logger.warning("healthz.redis.connection_refused")
+        else:
+            logger.exception("healthz.redis.error")
         return _json_status(ok=False, checks={"redis": "error"})
     return _json_status(ok=True, checks={"redis": "ok"})
 
 
 @require_GET
 def healthz_strava(request):
+    required_vars = ["STRAVA_CLIENT_ID", "STRAVA_CLIENT_SECRET", "STRAVA_WEBHOOK_VERIFY_TOKEN"]
+    missing = [key for key in required_vars if not getattr(settings, key, None)]
+    if missing:
+        logger.warning("healthz.strava.missing_config", extra={"missing": missing})
+        return _json_status(ok=False, checks={"strava": {"status": "misconfigured", "missing": missing}})
+
     failed_threshold = int(getattr(settings, "STRAVA_WEBHOOK_FAILED_ALERT_THRESHOLD", 50))
     stuck_threshold_minutes = int(getattr(settings, "STRAVA_WEBHOOK_STUCK_THRESHOLD_MINUTES", 30))
 
@@ -87,12 +99,21 @@ def healthz_strava(request):
                 "stuck_threshold_minutes": stuck_threshold_minutes,
             },
         )
+        if stuck_processing > 0:
+            logger.warning(
+                "strava.webhook.stuck_detected",
+                extra={
+                    "stuck_processing": stuck_processing,
+                    "stuck_threshold_minutes": stuck_threshold_minutes,
+                },
+            )
 
     return JsonResponse(
         {
             "status": status,
             "checks": {
                 "strava": {
+                    "status": "ok" if status == "ok" else status,
                     "failed": failed,
                     "stuck_processing": stuck_processing,
                     "failed_threshold": failed_threshold,

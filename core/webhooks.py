@@ -40,6 +40,16 @@ def _mark_event_failed(event: StravaWebhookEvent, *, error: Exception | str, att
     if attempts_increment:
         updates["attempts"] = F("attempts") + 1
     StravaWebhookEvent.objects.filter(pk=event.pk).update(**updates)
+    logger.warning(
+        "strava.webhook.event_failed",
+        extra={
+            "event_uid": event.event_uid,
+            "event_id": event.pk,
+            "owner_id": event.owner_id,
+            "object_id": event.object_id,
+            "status": StravaWebhookEvent.Status.FAILED,
+        },
+    )
     StravaWebhookEvent.objects.log_failed_threshold(logger=logger)
 
 @csrf_exempt 

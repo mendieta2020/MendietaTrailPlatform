@@ -595,6 +595,18 @@ def process_strava_event(self, event_id: int):
             error_message=error_message,
             processed_at=now,
         )
+        logger.warning(
+            "strava.process_event.mark_failed",
+            extra=safe_extra(
+                {
+                    "event_uid": event_uid,
+                    "event_id": event_id,
+                    "owner_id": owner_id,
+                    "object_id": object_id,
+                    "status": StravaWebhookEvent.Status.FAILED,
+                }
+            ),
+        )
         _log_failed_threshold()
 
         # Liberar lock por actividad (best-effort).

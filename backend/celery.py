@@ -1,6 +1,7 @@
 import logging
 import os
 from celery import Celery
+from celery.signals import task_failure
 from kombu import Queue
 from celery.schedules import crontab
 
@@ -42,4 +43,21 @@ def debug_task(self):
     logger.debug(
         "celery.debug_task.request",
         extra={"task_id": getattr(self.request, "id", None), "task": self.name},
+    )
+
+
+@task_failure.connect
+def log_critical_task_failure(sender=None, task_id=None, exception=None, args=None, kwargs=None, **extras):
+    task_name = getattr(sender, "name", "") or ""
+    if not (task_name.startswith("strava.") or task_name.startswith("analytics.")):
+        return
+    logger.exception(
+        "celery.task.failed",
+        extra={
+            "task": task_name,
+            "task_id": task_id,
+            "args": args,
+            "kwargs": kwargs,
+            "exception": str(exception),
+        },
     )

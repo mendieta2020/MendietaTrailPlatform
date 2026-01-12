@@ -20,6 +20,11 @@ def _safe_localdate(d: str | None) -> date_type:
     return date_type.fromisoformat(d)
 
 
+@shared_task(name="observability.health_ping")
+def health_ping() -> str:
+    return "pong"
+
+
 @shared_task(
     name="analytics.recompute_injury_risk_for_athlete",
     bind=True,
