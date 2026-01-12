@@ -23,3 +23,33 @@ class TenantContextMiddleware:
                 request.tenant_coach_id = getattr(user, "id", None)
         return self.get_response(request)
 
+
+class ApiErrorLoggingMiddleware:
+    """
+    Log estructurado de errores 5xx en DRF/Django.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if getattr(response, "status_code", 200) >= 500:
+            self._log_response_error(request, response)
+        return response
+
+    def _log_response_error(self, request, response):
+        import logging
+
+        logger = logging.getLogger(__name__)
+        user = getattr(request, "user", None)
+        logger.error(
+            "api.response.error",
+            extra={
+                "path": getattr(request, "path", ""),
+                "method": getattr(request, "method", ""),
+                "status_code": getattr(response, "status_code", None),
+                "tenant_coach_id": getattr(request, "tenant_coach_id", None),
+                "user_id": getattr(user, "id", None) if getattr(user, "is_authenticated", False) else None,
+            },
+        )
