@@ -23,6 +23,12 @@ from core.auth_views import (
     CookieTokenRefreshView,
     SessionStatusView,
 )
+from analytics.health_views import (
+    healthz,
+    healthz_celery,
+    healthz_redis,
+    healthz_strava,
+)
 
 # Configuración de la vista de documentación API
 schema_view = get_schema_view(
@@ -54,7 +60,14 @@ urlpatterns = [
     # 4. Dashboard del Entrenador (Vista Legacy/Django Template)
     path('dashboard/', dashboard_entrenador, name='dashboard_principal'),
 
-    # ==============================================================
+    # ============================================================== 
+    # 0. Healthchecks (observabilidad mínima)
+    path('healthz', healthz, name='healthz'),
+    path('healthz/celery', healthz_celery, name='healthz_celery'),
+    path('healthz/redis', healthz_redis, name='healthz_redis'),
+    path('healthz/strava', healthz_strava, name='healthz_strava'),
+
+    # ============================================================== 
     # 5. WEBHOOKS (La "Oreja" del sistema)
     # ==============================================================
     path('webhooks/strava/', strava_webhook, name='strava_webhook'),
