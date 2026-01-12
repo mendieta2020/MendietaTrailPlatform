@@ -45,6 +45,13 @@ function MetricCard({ label, value, icon }) {
   );
 }
 
+function formatDuration(minutes) {
+  const total = Number.isFinite(minutes) ? Math.max(0, Math.round(minutes)) : 0;
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
+  return `${hours}h ${mins}m`;
+}
+
 export default function CoachDecisionsPanel({ athleteId }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -90,8 +97,10 @@ export default function CoachDecisionsPanel({ athleteId }) {
     }
   }
 
-  const k = data?.kpis || {};
   const c = data?.compliance || {};
+  const sessionsByType = data?.sessions_by_type || {};
+  const rangeStart = data?.start_date || data?.range?.start;
+  const rangeEnd = data?.end_date || data?.range?.end;
 
   return (
     <Paper sx={{ p: 3, borderRadius: 3, mb: 4, border: '1px solid #E2E8F0', boxShadow: '0 4px 18px rgba(0,0,0,0.04)' }}>
@@ -101,10 +110,9 @@ export default function CoachDecisionsPanel({ athleteId }) {
             <Typography variant="h6" sx={{ fontWeight: 900, color: '#0F172A' }}>
               Coach Decisions
             </Typography>
-            {k?.source === 'planned' && <Chip size="small" label="Planificado" color="warning" />}
           </Stack>
           <Typography variant="caption" sx={{ color: '#64748B' }}>
-            Semana {data?.week || week} · {data?.range?.start} → {data?.range?.end}
+            Semana {data?.week || week} · {rangeStart} → {rangeEnd}
           </Typography>
         </Box>
         {loading && <Chip size="small" label="Cargando…" />}
@@ -116,23 +124,44 @@ export default function CoachDecisionsPanel({ athleteId }) {
         <>
           <Grid container spacing={1.5} sx={{ mt: 1 }}>
             <Grid item xs={12} sm={6} md={2.4}>
-              <MetricCard label="Duración" value={`${k.duration_min ?? 0} min`} icon={<Timer fontSize="small" />} />
+              <MetricCard label="Duración" value={formatDuration(data?.total_duration_minutes)} icon={<Timer fontSize="small" />} />
             </Grid>
             <Grid item xs={12} sm={6} md={2.4}>
-              <MetricCard label="Distancia" value={`${k.distance_km ?? 0} km`} icon={<Straighten fontSize="small" />} />
+              <MetricCard label="Distancia" value={`${data?.total_distance_km ?? 0} km`} icon={<Straighten fontSize="small" />} />
             </Grid>
             <Grid item xs={12} sm={6} md={2.4}>
-              <MetricCard label="Elev +" value={k.elev_gain_m != null ? `${k.elev_gain_m} m` : '—'} icon={<Terrain fontSize="small" />} />
+              <MetricCard
+                label="Elev +"
+                value={`${data?.total_elevation_gain_m ?? 0} m`}
+                icon={<Terrain fontSize="small" />}
+              />
             </Grid>
             <Grid item xs={12} sm={6} md={2.4}>
-              <MetricCard label="Kcal" value={k.calories_kcal != null ? `${k.calories_kcal} kcal` : '—'} icon={<LocalFireDepartment fontSize="small" />} />
+              <MetricCard label="Kcal" value={`${data?.total_calories ?? 0} kcal`} icon={<LocalFireDepartment fontSize="small" />} />
             </Grid>
             <Grid item xs={12} sm={6} md={2.4}>
-              <MetricCard label="Esfuerzo" value={k.effort != null ? k.effort : '—'} icon={<Layers fontSize="small" />} />
+              <MetricCard label="Sesiones" value={data?.sessions_count ?? 0} icon={<Layers fontSize="small" />} />
             </Grid>
           </Grid>
 
           <Divider sx={{ my: 2 }} />
+
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#0F172A', mb: 1 }}>
+              Sesiones por tipo
+            </Typography>
+            {Object.keys(sessionsByType).length === 0 ? (
+              <Typography variant="body2" sx={{ color: '#64748B' }}>
+                Sin sesiones registradas.
+              </Typography>
+            ) : (
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                {Object.entries(sessionsByType).map(([type, count]) => (
+                  <Chip key={type} label={`${type}: ${count}`} size="small" />
+                ))}
+              </Stack>
+            )}
+          </Box>
 
           <Grid container spacing={2}>
             <Grid item xs={12} md={5}>

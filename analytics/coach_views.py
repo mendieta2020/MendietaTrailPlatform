@@ -18,7 +18,7 @@ from analytics.range_utils import max_range_days, parse_date_range_params, parse
 from core.models import Actividad, Alumno, Entrenamiento, Equipo
 
 
-def _sessions_by_type(*, athlete_id: int, start: date, end: date) -> list[dict]:
+def _sessions_by_type(*, athlete_id: int, start: date, end: date) -> dict[str, int]:
     qs = (
         Actividad.objects.filter(
             alumno_id=int(athlete_id),
@@ -29,7 +29,7 @@ def _sessions_by_type(*, athlete_id: int, start: date, end: date) -> list[dict]:
         .annotate(count=Count("id"))
         .order_by("-count")
     )
-    return [{"type": row["tipo_deporte"], "count": int(row["count"] or 0)} for row in qs]
+    return {row["tipo_deporte"]: int(row["count"] or 0) for row in qs}
 
 
 def _require_athlete_for_coach(*, coach, athlete_id: int) -> Alumno:
@@ -89,50 +89,37 @@ def _alerts_top_for_athlete(*, coach, athlete_id: int, limit: int = 5) -> list[d
     ]
 
 
-def _week_kpis_for_athlete(*, athlete_id: int, start: date, end: date) -> dict:
-    acts = Actividad.objects.filter(
+def _week_summary_totals(*, athlete_id: int, start: date, end: date) -> dict:
+    activities = Actividad.objects.filter(
         alumno_id=int(athlete_id),
         validity=Actividad.Validity.VALID,
         fecha_inicio__date__range=[start, end],
     )
-    agg = acts.aggregate(
-        duration_s=Sum("tiempo_movimiento"),
-        distance_m=Sum("distancia"),
-        elev_gain_m=Sum("desnivel_positivo"),
+    agg = DailyActivityAgg.objects.filter(alumno_id=int(athlete_id), fecha__range=[start, end]).aggregate(
+        duration_s=Sum("duration_s"),
+        distance_m=Sum("distance_m"),
+        elev_gain_m=Sum("elev_gain_m"),
+    )
+    activity_agg = activities.aggregate(
         elev_loss_m=Sum("elev_loss_m"),
         calories_kcal=Sum("calories_kcal"),
-        effort=Sum("effort"),
     )
-    if all(value is None for value in agg.values()):
-        plan_agg = Entrenamiento.objects.filter(
-            alumno_id=int(athlete_id),
-            fecha_asignada__range=[start, end],
-        ).aggregate(
-            duration_min=Sum("tiempo_planificado_min"),
-            distance_km=Sum("distancia_planificada_km"),
-            elev_gain_m=Sum("desnivel_planificado_m"),
-        )
-        duration_min = round(float(plan_agg["duration_min"] or 0.0), 1)
-        distance_km = round(float(plan_agg["distance_km"] or 0.0), 2)
-        elev_gain = plan_agg.get("elev_gain_m")
-        return {
-            "duration_min": duration_min,
-            "distance_km": distance_km,
-            "elev_gain_m": int(round(float(elev_gain))) if elev_gain is not None else None,
-            "elev_loss_m": None,
-            "calories_kcal": None,
-            "effort": None,
-            "source": "planned",
-        }
-    dur_s = int(agg["duration_s"] or 0)
+    sessions_count = activities.count()
+
+    duration_s = float(agg["duration_s"] or 0.0)
+    distance_m = float(agg["distance_m"] or 0.0)
+    elev_gain_m = float(agg["elev_gain_m"] or 0.0)
+    elev_loss_m = float(activity_agg["elev_loss_m"] or 0.0)
+    calories_kcal = float(activity_agg["calories_kcal"] or 0.0)
+
     return {
-        "duration_min": round(dur_s / 60.0, 1),
-        "distance_km": round(float(agg["distance_m"] or 0.0) / 1000.0, 2),
-        "elev_gain_m": int(round(float(agg["elev_gain_m"]))) if agg.get("elev_gain_m") is not None else None,
-        "elev_loss_m": int(round(float(agg["elev_loss_m"]))) if agg.get("elev_loss_m") is not None else None,
-        "calories_kcal": int(round(float(agg["calories_kcal"]))) if agg.get("calories_kcal") is not None else None,
-        "effort": round(float(agg["effort"]), 1) if agg.get("effort") is not None else None,
-        "source": "actual",
+        "total_distance_km": round(distance_m / 1000.0, 2),
+        "total_duration_minutes": int(round(duration_s / 60.0)),
+        "total_elevation_gain_m": int(round(elev_gain_m)),
+        "total_elevation_loss_m": int(round(elev_loss_m)),
+        "total_calories": int(round(calories_kcal)),
+        "sessions_count": int(sessions_count),
+        "sessions_by_type": _sessions_by_type(athlete_id=athlete_id, start=start, end=end),
     }
 
 
@@ -210,10 +197,9 @@ def _compliance_for_athlete(*, athlete_id: int, start: date, end: date) -> dict:
 
 def _week_summary_core(*, athlete_id: int, start: date, end: date) -> dict:
     return {
-        "kpis": _week_kpis_for_athlete(athlete_id=athlete_id, start=start, end=end),
+        **_week_summary_totals(athlete_id=athlete_id, start=start, end=end),
         "pmc": _pmc_for_athlete(athlete_id=athlete_id, day=end),
         "compliance": _compliance_for_athlete(athlete_id=athlete_id, start=start, end=end),
-        "sessions_by_type": _sessions_by_type(athlete_id=athlete_id, start=start, end=end),
     }
 
 
@@ -231,6 +217,26 @@ class CoachAthleteWeekSummaryView(APIView):
         ]
     )
     def get(self, request, athlete_id: int):
+        """
+        Week summary payload (200):
+        {
+          "athlete_id": 7,
+          "sport": "ALL",
+          "week": "2026-03",
+          "start_date": "2026-01-12",
+          "end_date": "2026-01-18",
+          "total_distance_km": 112.0,
+          "total_duration_minutes": 724,
+          "total_elevation_gain_m": 2797,
+          "total_elevation_loss_m": 2797,
+          "total_calories": 8500,
+          "sessions_count": 6,
+          "sessions_by_type": {"RUN": 4, "BIKE": 1, "STRENGTH": 1},
+          "pmc": {"fitness": 52.1, "fatigue": 61.4, "form": -9.3, "date": "2026-01-18"},
+          "compliance": {"duration": {...}, "distance": {...}, "elev": {...}, "load": {...}},
+          "alerts": [...]
+        }
+        """
         # Nota: devolvemos 401 si falta auth; 404 si el atleta no pertenece al coach autenticado.
         athlete = _require_athlete_for_coach(coach=request.user, athlete_id=int(athlete_id))
         start_param = request.query_params.get("start_date")
@@ -284,8 +290,10 @@ class CoachAthleteWeekSummaryView(APIView):
 
         data = {
             "athlete_id": athlete.id,
+            "sport": "ALL",
             "week": week,
-            "range": {"start": str(start), "end": str(end)},
+            "start_date": str(start),
+            "end_date": str(end),
             **cached_core,
             "alerts": _alerts_top_for_athlete(coach=request.user, athlete_id=athlete.id, limit=5),
         }
