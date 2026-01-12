@@ -51,3 +51,17 @@
 - `COOKIE_AUTH_ACCESS_NAME` / `COOKIE_AUTH_REFRESH_NAME`: nombres de cookies.
 - `COOKIE_AUTH_SAMESITE` / `COOKIE_AUTH_DOMAIN` / `COOKIE_AUTH_SECURE`: políticas de cookies.
 - `LOAD_DEFINITION_VERSION`: versión del cálculo de carga canónica.
+
+## Celery: colas por dominio
+- **Queues**:
+  - `strava_ingest`: ingestión/normalización Strava (`strava.*`).
+  - `analytics_recompute`: recomputes PMC/analytics (`analytics.*`).
+  - `notifications`: tareas livianas (emails/avisos futuros) (`notifications.*`).
+  - `default`: fallback para tasks sin route específica.
+- **Routing**:
+  - Se rutea por prefijo de task name (`strava.`, `analytics.`, `notifications.`).
+  - En entornos legacy sin colas dedicadas, todo sigue funcionando en `default`.
+- **Workers dedicados (ejemplos)**:
+  - `celery -A backend worker -Q strava_ingest -l info`
+  - `celery -A backend worker -Q analytics_recompute -l info`
+  - `celery -A backend worker -Q notifications -l info`

@@ -274,12 +274,30 @@ SIMPLE_JWT = {
 # ==============================================================================
 #  CELERY / REDIS (CONFIGURACIÓN OPTIMIZADA)
 # ==============================================================================
-CELERY_BROKER_URL = 'redis://127.0.0.1:6379/0'
-CELERY_RESULT_BACKEND = 'redis://127.0.0.1:6379/0'
+CELERY_BROKER_URL = get_env_variable(
+    "CELERY_BROKER_URL",
+    default="redis://127.0.0.1:6379/0",
+    required=False,
+)
+CELERY_RESULT_BACKEND = get_env_variable(
+    "CELERY_RESULT_BACKEND",
+    default=CELERY_BROKER_URL,
+    required=False,
+)
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
+CELERY_TASK_DEFAULT_QUEUE = get_env_variable(
+    "CELERY_TASK_DEFAULT_QUEUE",
+    default="default",
+    required=False,
+)
+CELERY_TASK_ROUTES = {
+    "strava.*": {"queue": "strava_ingest"},
+    "analytics.*": {"queue": "analytics_recompute"},
+    "notifications.*": {"queue": "notifications"},
+}
 
 # --- MODO INMEDIATO (EAGER MODE) ---
 # CRÍTICO: Esto hace que Django ejecute la tarea inmediatamente en local
