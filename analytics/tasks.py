@@ -20,7 +20,12 @@ def _safe_localdate(d: str | None) -> date_type:
     return date_type.fromisoformat(d)
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=30)
+@shared_task(
+    name="analytics.recompute_injury_risk_for_athlete",
+    bind=True,
+    max_retries=3,
+    default_retry_delay=30,
+)
 def recompute_injury_risk_for_athlete(self, alumno_id: int, fecha_iso: str | None = None) -> str:
     """
     Recalcula el snapshot de riesgo para un atleta y fecha (idempotente).
@@ -112,7 +117,12 @@ def recompute_injury_risk_for_athlete(self, alumno_id: int, fecha_iso: str | Non
     return "OK"
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+@shared_task(
+    name="analytics.recompute_injury_risk_for_coach",
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+)
 def recompute_injury_risk_for_coach(self, entrenador_id: int, fecha_iso: str | None = None) -> str:
     """
     Recalcula riesgo para todos los atletas de un entrenador (multi-tenant).
@@ -129,7 +139,12 @@ def recompute_injury_risk_for_coach(self, entrenador_id: int, fecha_iso: str | N
     return f"ENQUEUED_{count}"
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=120)
+@shared_task(
+    name="analytics.recompute_injury_risk_daily",
+    bind=True,
+    max_retries=3,
+    default_retry_delay=120,
+)
 def recompute_injury_risk_daily(self, fecha_iso: str | None = None) -> str:
     """
     Orquestador diario (idempotente): encola por entrenador.
@@ -152,7 +167,12 @@ def recompute_injury_risk_daily(self, fecha_iso: str | None = None) -> str:
     return f"ENQUEUED_COACHES_{enqueued}"
 
 
-@shared_task(bind=True, max_retries=1, default_retry_delay=30)
+@shared_task(
+    name="analytics.recompute_pmc_from_activities",
+    bind=True,
+    max_retries=1,
+    default_retry_delay=30,
+)
 def recompute_pmc_from_activities(self, alumno_id: int, affected_date_iso: str | None = None) -> dict:
     """
     Recalcula PMC desde `core.Actividad` de forma incremental e idempotente.
@@ -227,4 +247,3 @@ def recompute_pmc_from_activities(self, alumno_id: int, affected_date_iso: str |
             extra={"alumno_id": alumno_id, "start_date": str(start_date), "error": str(exc)},
         )
         raise
-

@@ -1,6 +1,7 @@
 import logging
 import os
 from celery import Celery
+from kombu import Queue
 from celery.schedules import crontab
 
 # 1. Establecemos el módulo de configuración de Django por defecto
@@ -14,11 +15,18 @@ app = Celery('backend')
 #    (Busca variables que empiecen con 'CELERY_')
 app.config_from_object('django.conf:settings', namespace='CELERY')
 
+app.conf.task_queues = (
+    Queue("default"),
+    Queue("strava_ingest"),
+    Queue("analytics_recompute"),
+    Queue("notifications"),
+)
+
 # 3.1. Schedule diario (Celery Beat)
 # Nota: requiere ejecutar celery beat en el entorno. Idempotente por diseño (UPSERT).
 app.conf.beat_schedule = {
     "injury-risk-daily-recompute": {
-        "task": "analytics.tasks.recompute_injury_risk_daily",
+        "task": "analytics.recompute_injury_risk_daily",
         "schedule": crontab(hour=2, minute=10),  # 02:10 UTC
         "args": (None,),
     },

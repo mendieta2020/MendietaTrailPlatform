@@ -41,7 +41,7 @@ def _log_failed_threshold():
     except Exception:
         logger.exception("strava.webhook.failed_threshold_check_failed")
 
-@shared_task
+@shared_task(name="strava.drain_events_for_athlete")
 def drain_strava_events_for_athlete(*, provider: str = "strava", owner_id: int, limit: int = 250):
     """
     Re-encola eventos en estado LINK_REQUIRED para un atleta externo.
@@ -525,6 +525,7 @@ def _map_strava_type_to_core(tipo: str) -> str:
 
 
 @shared_task(
+    name="strava.process_event",
     bind=True,
     max_retries=8,
     autoretry_for=(StravaTransientError,),
@@ -1356,7 +1357,7 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
     return f"OK: {accion}"
 
 
-@shared_task(bind=True)
+@shared_task(name="strava.procesar_actividad_strava", bind=True)
 def procesar_actividad_strava(self, object_id, owner_id):
     """
     Wrapper legacy (compat): crea un StravaWebhookEvent sintético y delega al pipeline robusto.
@@ -1378,7 +1379,7 @@ def procesar_actividad_strava(self, object_id, owner_id):
     return f"ENQUEUED: {event.pk}"
 
 
-@shared_task(bind=True)
+@shared_task(name="strava.backfill_activities", bind=True)
 def backfill_strava_activities(self, alumno_id: int, limit: int = 200):
     """
     Backfill SaaS: trae las últimas N actividades de Strava y las pasa por el MISMO pipeline
@@ -1498,7 +1499,7 @@ def backfill_strava_activities(self, alumno_id: int, limit: int = 200):
     return {"status": "ok", "fetched": len(activities), "enqueued": enqueued}
 
 
-@shared_task(bind=True)
+@shared_task(name="analytics.reclassify_activities_for_alumno", bind=True)
 def reclassify_activities_for_alumno(self, alumno_id: int) -> dict:
     """
     Recalcula `Actividad.tipo_deporte` para actividades existentes usando `strava_sport_type`
