@@ -72,3 +72,23 @@
 - **Caché por atleta + rango**: `AnalyticsRangeCache` persiste payload por `(alumno, cache_type, sport, start_date, end_date)`.
 - **TTL configurable**: `ANALYTICS_RANGE_CACHE_TTL_SECONDS` controla frescura (default 6h).
 - **Límite de ventana**: `ANALYTICS_MAX_RANGE_DAYS` limita rangos solicitados (fail-closed con 400 si excede).
+- **Payload week-summary (coach)**:
+  ```json
+  {
+    "athlete_id": 7,
+    "sport": "ALL",
+    "week": "2026-03",
+    "start_date": "2026-01-12",
+    "end_date": "2026-01-18",
+    "total_distance_km": 112.0,
+    "total_duration_minutes": 724,
+    "total_elevation_gain_m": 2797,
+    "total_elevation_loss_m": 2797,
+    "total_calories": 8500,
+    "sessions_count": 6,
+    "sessions_by_type": { "RUN": 4, "BIKE": 1, "STRENGTH": 1 },
+    "pmc": { "fitness": 52.1, "fatigue": 61.4, "form": -9.3, "date": "2026-01-18" },
+    "compliance": { "duration": { "planned": 120, "actual": 110, "pct": 92 }, "distance": { "planned": 50, "actual": 45 } },
+    "alerts": []
+  }
+  ```

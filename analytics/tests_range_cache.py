@@ -6,7 +6,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from analytics.models import AnalyticsRangeCache, PMCHistory
+from analytics.models import AnalyticsRangeCache, DailyActivityAgg, PMCHistory
 from core.models import Actividad, Alumno
 
 User = get_user_model()
@@ -137,7 +137,18 @@ class WeeklySummaryEndpointTests(TestCase):
             tiempo_movimiento=1800,
             fecha_inicio=start_dt,
             tipo_deporte="RUN",
+            elev_loss_m=120,
+            calories_kcal=450,
             source=Actividad.Source.STRAVA,
+        )
+        DailyActivityAgg.objects.create(
+            alumno=self.alumno,
+            fecha=self.monday,
+            sport=DailyActivityAgg.Sport.RUN,
+            load=45,
+            distance_m=5000,
+            elev_gain_m=140,
+            duration_s=1800,
         )
 
     def _login_with_cookie(self):
@@ -163,9 +174,11 @@ class WeeklySummaryEndpointTests(TestCase):
             f"/api/coach/athletes/{self.alumno.id}/week-summary/?week={self.week}"
         )
         self.assertEqual(res.status_code, 200)
-        self.assertIn("kpis", res.data)
+        self.assertIn("total_distance_km", res.data)
         self.assertIn("sessions_by_type", res.data)
         self.assertIn("pmc", res.data)
+        self.assertEqual(res.data["sessions_by_type"].get("RUN"), 1)
+        self.assertGreater(res.data["total_duration_minutes"], 0)
 
     def test_week_summary_custom_range_returns_payload(self):
         self._login_with_cookie()
@@ -175,7 +188,7 @@ class WeeklySummaryEndpointTests(TestCase):
             f"/api/coach/athletes/{self.alumno.id}/week-summary/?start_date={start}&end_date={end}"
         )
         self.assertEqual(res.status_code, 200)
-        self.assertIn("kpis", res.data)
+        self.assertIn("total_distance_km", res.data)
         self.assertIn("sessions_by_type", res.data)
         self.assertIn("pmc", res.data)
 
@@ -188,3 +201,36 @@ class WeeklySummaryEndpointTests(TestCase):
         )
         self.assertEqual(res.status_code, 400)
         self.assertIn("detail", res.data)
+
+    def test_week_summary_no_activity_returns_zeroes(self):
+        empty_athlete = Alumno.objects.create(
+            entrenador=self.coach,
+            nombre="Lia",
+            apellido="Empty",
+            email="lia_empty@test.com",
+        )
+        self._login_with_cookie()
+        res = self.client.get(
+            f"/api/coach/athletes/{empty_athlete.id}/week-summary/?week={self.week}"
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["sessions_count"], 0)
+        self.assertEqual(res.data["total_distance_km"], 0)
+        self.assertEqual(res.data["sessions_by_type"], {})
+
+    def test_week_summary_other_coach_returns_404(self):
+        other_coach = User.objects.create_user(username="coach_other", password="pass")
+        other_client = APIClient()
+        response = other_client.post(
+            "/api/token/",
+            {"username": other_coach.username, "password": "pass"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        access_cookie = response.cookies.get(settings.COOKIE_AUTH_ACCESS_NAME)
+        other_client.cookies[settings.COOKIE_AUTH_ACCESS_NAME] = access_cookie.value
+
+        res = other_client.get(
+            f"/api/coach/athletes/{self.alumno.id}/week-summary/?week={self.week}"
+        )
+        self.assertEqual(res.status_code, 404)
