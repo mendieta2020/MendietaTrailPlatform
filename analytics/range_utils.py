@@ -45,7 +45,7 @@ def parse_date_range_params(
 
 def parse_iso_week_param(week_str: str | None) -> tuple[date, date, str]:
     """
-    week=YYYY-WW (ISO week). Returns (start_monday, end_sunday, canonical_week_str).
+    week=YYYY-Www (ISO week). Returns (start_monday, end_sunday, canonical_week_str).
     """
     if not week_str:
         today = timezone.localdate()
@@ -60,4 +60,4 @@ def parse_iso_week_param(week_str: str | None) -> tuple[date, date, str]:
     week = int(parts[1])
     start = date.fromisocalendar(year, week, 1)
     end = start + timedelta(days=6)
-    return start, end, f"{year}-{week:02d}"
+    return start, end, f"{year}-W{week:02d}"

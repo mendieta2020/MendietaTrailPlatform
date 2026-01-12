@@ -17,7 +17,7 @@ import client from '../api/client';
 function isoWeekString(d = new Date()) {
   const year = getISOWeekYear(d);
   const week = getISOWeek(d);
-  return `${year}-${String(week).padStart(2, '0')}`;
+  return `${year}-W${String(week).padStart(2, '0')}`;
 }
 
 function severityChipColor(sev) {
@@ -55,6 +55,7 @@ function formatDuration(minutes) {
 export default function CoachDecisionsPanel({ athleteId }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [emptyState, setEmptyState] = useState(false);
   const [data, setData] = useState(null);
 
   const week = useMemo(() => isoWeekString(new Date()), []);
@@ -65,13 +66,25 @@ export default function CoachDecisionsPanel({ athleteId }) {
       try {
         setLoading(true);
         setError('');
+        setEmptyState(false);
         const resp = await client.get(`/api/coach/athletes/${athleteId}/week-summary/`, { params: { week } });
         if (cancelled) return;
         setData(resp.data);
       } catch (e) {
         if (cancelled) return;
-        setError('No se pudo cargar “Coach Decisions”.');
-        setData(null);
+        const status = e?.response?.status;
+        if (status === 404 || status === 204) {
+          setEmptyState(true);
+          setError('');
+          setData(null);
+        } else {
+          if (status >= 500) {
+            // eslint-disable-next-line no-console
+            console.error('Coach Decisions: error al cargar week summary.', e);
+          }
+          setError('No se pudo cargar “Coach Decisions”.');
+          setData(null);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -99,8 +112,16 @@ export default function CoachDecisionsPanel({ athleteId }) {
 
   const c = data?.compliance || {};
   const sessionsByType = data?.sessions_by_type || {};
+  const durationMinutes = data?.duration_minutes ?? data?.total_duration_minutes ?? 0;
+  const distanceKm = data?.distance_km ?? data?.total_distance_km ?? 0;
+  const kcal = data?.kcal ?? data?.total_calories ?? 0;
+  const elevationGain = data?.elevation_gain_m ?? data?.total_elevation_gain_m ?? 0;
+  const elevationLoss = data?.elevation_loss_m ?? data?.total_elevation_loss_m ?? 0;
+  const elevationTotal = data?.elevation_total_m ?? elevationGain + elevationLoss;
   const rangeStart = data?.start_date || data?.range?.start;
   const rangeEnd = data?.end_date || data?.range?.end;
+  const displayRangeStart = rangeStart || '—';
+  const displayRangeEnd = rangeEnd || '—';
 
   return (
     <Paper sx={{ p: 3, borderRadius: 3, mb: 4, border: '1px solid #E2E8F0', boxShadow: '0 4px 18px rgba(0,0,0,0.04)' }}>
@@ -112,34 +133,41 @@ export default function CoachDecisionsPanel({ athleteId }) {
             </Typography>
           </Stack>
           <Typography variant="caption" sx={{ color: '#64748B' }}>
-            Semana {data?.week || week} · {rangeStart} → {rangeEnd}
+            Semana {data?.week || week} · {displayRangeStart} → {displayRangeEnd}
           </Typography>
         </Box>
         {loading && <Chip size="small" label="Cargando…" />}
       </Box>
 
       {error && <MUIAlert severity="error" sx={{ mt: 2 }}>{error}</MUIAlert>}
+      {!error && emptyState && <MUIAlert severity="info" sx={{ mt: 2 }}>Sin datos para esta semana.</MUIAlert>}
 
-      {!error && (
+      {!error && !emptyState && (
         <>
           <Grid container spacing={1.5} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6} md={2.4}>
-              <MetricCard label="Duración" value={formatDuration(data?.total_duration_minutes)} icon={<Timer fontSize="small" />} />
+            <Grid item xs={12} sm={6} md={3}>
+              <MetricCard label="Duración" value={formatDuration(durationMinutes)} icon={<Timer fontSize="small" />} />
             </Grid>
-            <Grid item xs={12} sm={6} md={2.4}>
-              <MetricCard label="Distancia" value={`${data?.total_distance_km ?? 0} km`} icon={<Straighten fontSize="small" />} />
+            <Grid item xs={12} sm={6} md={3}>
+              <MetricCard label="Distancia" value={`${distanceKm} km`} icon={<Straighten fontSize="small" />} />
             </Grid>
-            <Grid item xs={12} sm={6} md={2.4}>
+            <Grid item xs={12} sm={6} md={3}>
               <MetricCard
                 label="Elev +"
-                value={`${data?.total_elevation_gain_m ?? 0} m`}
+                value={`${elevationGain} m`}
                 icon={<Terrain fontSize="small" />}
               />
             </Grid>
-            <Grid item xs={12} sm={6} md={2.4}>
-              <MetricCard label="Kcal" value={`${data?.total_calories ?? 0} kcal`} icon={<LocalFireDepartment fontSize="small" />} />
+            <Grid item xs={12} sm={6} md={3}>
+              <MetricCard label="Elev -" value={`${elevationLoss} m`} icon={<Terrain fontSize="small" />} />
             </Grid>
-            <Grid item xs={12} sm={6} md={2.4}>
+            <Grid item xs={12} sm={6} md={3}>
+              <MetricCard label="Elev total" value={`${elevationTotal} m`} icon={<Terrain fontSize="small" />} />
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <MetricCard label="Kcal" value={`${kcal} kcal`} icon={<LocalFireDepartment fontSize="small" />} />
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
               <MetricCard label="Sesiones" value={data?.sessions_count ?? 0} icon={<Layers fontSize="small" />} />
             </Grid>
           </Grid>
