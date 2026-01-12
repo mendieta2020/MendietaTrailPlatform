@@ -9,11 +9,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.exceptions import NotFound
+from rest_framework.settings import api_settings
 
 from analytics.cache import get_range_cache, set_range_cache
 from analytics.models import Alert, DailyActivityAgg, InjuryRiskSnapshot, PMCHistory
 from analytics.pmc_engine import PMC_SPORT_GROUPS, ensure_pmc_materialized
-from analytics.range_utils import parse_iso_week_param
+from analytics.range_utils import max_range_days, parse_date_range_params, parse_iso_week_param
 from core.models import Actividad, Alumno, Entrenamiento, Equipo
 
 
@@ -217,19 +218,51 @@ def _week_summary_core(*, athlete_id: int, start: date, end: date) -> dict:
 
 
 class CoachAthleteWeekSummaryView(APIView):
+    # Usamos exactamente el mismo stack de auth que el resto de endpoints coach (defaults de DRF).
+    # Esto asegura soporte para JWT en cookie (401 solo cuando no hay credenciales).
+    authentication_classes = api_settings.DEFAULT_AUTHENTICATION_CLASSES
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         manual_parameters=[
             openapi.Parameter("week", openapi.IN_QUERY, type=openapi.TYPE_STRING, description="ISO week YYYY-WW"),
+            openapi.Parameter("start_date", openapi.IN_QUERY, type=openapi.TYPE_STRING, description="ISO date YYYY-MM-DD"),
+            openapi.Parameter("end_date", openapi.IN_QUERY, type=openapi.TYPE_STRING, description="ISO date YYYY-MM-DD"),
         ]
     )
     def get(self, request, athlete_id: int):
+        # Nota: devolvemos 401 si falta auth; 404 si el atleta no pertenece al coach autenticado.
         athlete = _require_athlete_for_coach(coach=request.user, athlete_id=int(athlete_id))
-        try:
-            start, end, week = parse_iso_week_param(request.query_params.get("week"))
-        except Exception:
-            return Response({"detail": "Invalid week format. Use week=YYYY-WW"}, status=400)
+        start_param = request.query_params.get("start_date")
+        end_param = request.query_params.get("end_date")
+        week_param = request.query_params.get("week")
+
+        if start_param or end_param:
+            try:
+                start, end, _ = parse_date_range_params(
+                    start_param,
+                    end_param,
+                    default_days=7,
+                    enforce_max_for_custom=True,
+                )
+            except ValueError as exc:
+                reason = str(exc)
+                if reason == "start_end_required":
+                    return Response({"detail": "start_date and end_date must be provided together."}, status=400)
+                if reason == "start_after_end":
+                    return Response({"detail": "start_date must be before end_date."}, status=400)
+                if reason == "range_too_large":
+                    return Response({"detail": "Requested range too large.", "max_days": max_range_days()}, status=400)
+                return Response({"detail": "Invalid date range."}, status=400)
+
+            week = None
+            if (end - start).days == 6 and start.isocalendar()[2] == 1:
+                week = f"{start.isocalendar()[0]}-{start.isocalendar()[1]:02d}"
+        else:
+            try:
+                start, end, week = parse_iso_week_param(week_param)
+            except Exception:
+                return Response({"detail": "Invalid week format. Use week=YYYY-WW"}, status=400)
 
         cached_core = get_range_cache(
             cache_type="WEEK_SUMMARY",
@@ -260,6 +293,7 @@ class CoachAthleteWeekSummaryView(APIView):
 
 
 class CoachGroupWeekSummaryView(APIView):
+    authentication_classes = api_settings.DEFAULT_AUTHENTICATION_CLASSES
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
