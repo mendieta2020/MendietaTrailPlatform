@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from django.db.models import Avg, Case, Count, ExpressionWrapper, F, FloatField, Max, Sum, Value, When
+from django.db.models.functions import Coalesce
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework.permissions import IsAuthenticated
@@ -30,6 +31,43 @@ def _sessions_by_type(*, athlete_id: int, start: date, end: date) -> dict[str, i
         .order_by("-count")
     )
     return {row["tipo_deporte"]: int(row["count"] or 0) for row in qs}
+
+
+def _totals_by_type(*, athlete_id: int, start: date, end: date) -> dict[str, dict]:
+    qs = (
+        Actividad.objects.filter(
+            alumno_id=int(athlete_id),
+            validity=Actividad.Validity.VALID,
+            fecha_inicio__date__range=[start, end],
+        )
+        .values("tipo_deporte")
+        .annotate(
+            sessions_count=Count("id"),
+            distance_m=Coalesce(Sum("distancia"), Value(0.0), output_field=FloatField()),
+            duration_s=Coalesce(Sum("tiempo_movimiento"), Value(0.0), output_field=FloatField()),
+            elev_gain_m=Coalesce(Sum("desnivel_positivo"), Value(0.0), output_field=FloatField()),
+            elev_loss_m=Coalesce(Sum("elev_loss_m"), Value(0.0), output_field=FloatField()),
+            calories_kcal=Coalesce(Sum("calories_kcal"), Value(0.0), output_field=FloatField()),
+        )
+        .order_by("-sessions_count")
+    )
+    totals = {}
+    for row in qs:
+        distance_m = float(row["distance_m"] or 0.0)
+        duration_s = float(row["duration_s"] or 0.0)
+        elev_gain_m = float(row["elev_gain_m"] or 0.0)
+        elev_loss_m = float(row["elev_loss_m"] or 0.0)
+        calories_kcal = float(row["calories_kcal"] or 0.0)
+        totals[row["tipo_deporte"]] = {
+            "distance_km": round(distance_m / 1000.0, 2),
+            "duration_minutes": int(round(duration_s / 60.0)),
+            "kcal": int(round(calories_kcal)),
+            "elevation_gain_m": int(round(elev_gain_m)),
+            "elevation_loss_m": int(round(elev_loss_m)),
+            "elevation_total_m": int(round(elev_gain_m + elev_loss_m)),
+            "sessions_count": int(row["sessions_count"] or 0),
+        }
+    return totals
 
 
 def _require_athlete_for_coach(*, coach, athlete_id: int) -> Alumno:
@@ -112,14 +150,27 @@ def _week_summary_totals(*, athlete_id: int, start: date, end: date) -> dict:
     elev_loss_m = float(activity_agg["elev_loss_m"] or 0.0)
     calories_kcal = float(activity_agg["calories_kcal"] or 0.0)
 
+    distance_km = round(distance_m / 1000.0, 2)
+    duration_minutes = int(round(duration_s / 60.0))
+    elevation_gain_m = int(round(elev_gain_m))
+    elevation_loss_m = int(round(elev_loss_m))
+    kcal = int(round(calories_kcal))
+    elevation_total_m = int(round(elev_gain_m + elev_loss_m))
     return {
-        "total_distance_km": round(distance_m / 1000.0, 2),
-        "total_duration_minutes": int(round(duration_s / 60.0)),
-        "total_elevation_gain_m": int(round(elev_gain_m)),
-        "total_elevation_loss_m": int(round(elev_loss_m)),
-        "total_calories": int(round(calories_kcal)),
+        "distance_km": distance_km,
+        "duration_minutes": duration_minutes,
+        "kcal": kcal,
+        "elevation_gain_m": elevation_gain_m,
+        "elevation_loss_m": elevation_loss_m,
+        "elevation_total_m": elevation_total_m,
+        "total_distance_km": distance_km,
+        "total_duration_minutes": duration_minutes,
+        "total_elevation_gain_m": elevation_gain_m,
+        "total_elevation_loss_m": elevation_loss_m,
+        "total_calories": kcal,
         "sessions_count": int(sessions_count),
         "sessions_by_type": _sessions_by_type(athlete_id=athlete_id, start=start, end=end),
+        "totals_by_type": _totals_by_type(athlete_id=athlete_id, start=start, end=end),
     }
 
 
@@ -211,7 +262,7 @@ class CoachAthleteWeekSummaryView(APIView):
 
     @swagger_auto_schema(
         manual_parameters=[
-            openapi.Parameter("week", openapi.IN_QUERY, type=openapi.TYPE_STRING, description="ISO week YYYY-WW"),
+            openapi.Parameter("week", openapi.IN_QUERY, type=openapi.TYPE_STRING, description="ISO week YYYY-Www"),
             openapi.Parameter("start_date", openapi.IN_QUERY, type=openapi.TYPE_STRING, description="ISO date YYYY-MM-DD"),
             openapi.Parameter("end_date", openapi.IN_QUERY, type=openapi.TYPE_STRING, description="ISO date YYYY-MM-DD"),
         ]
@@ -222,16 +273,18 @@ class CoachAthleteWeekSummaryView(APIView):
         {
           "athlete_id": 7,
           "sport": "ALL",
-          "week": "2026-03",
+          "week": "2026-W03",
           "start_date": "2026-01-12",
           "end_date": "2026-01-18",
-          "total_distance_km": 112.0,
-          "total_duration_minutes": 724,
-          "total_elevation_gain_m": 2797,
-          "total_elevation_loss_m": 2797,
-          "total_calories": 8500,
+          "distance_km": 112.0,
+          "duration_minutes": 724,
+          "kcal": 8500,
+          "elevation_gain_m": 2797,
+          "elevation_loss_m": 2797,
+          "elevation_total_m": 5594,
           "sessions_count": 6,
           "sessions_by_type": {"RUN": 4, "BIKE": 1, "STRENGTH": 1},
+          "totals_by_type": {"RUN": {"distance_km": 90, ...}},
           "pmc": {"fitness": 52.1, "fatigue": 61.4, "form": -9.3, "date": "2026-01-18"},
           "compliance": {"duration": {...}, "distance": {...}, "elev": {...}, "load": {...}},
           "alerts": [...]
@@ -263,12 +316,12 @@ class CoachAthleteWeekSummaryView(APIView):
 
             week = None
             if (end - start).days == 6 and start.isocalendar()[2] == 1:
-                week = f"{start.isocalendar()[0]}-{start.isocalendar()[1]:02d}"
+                week = f"{start.isocalendar()[0]}-W{start.isocalendar()[1]:02d}"
         else:
             try:
                 start, end, week = parse_iso_week_param(week_param)
             except Exception:
-                return Response({"detail": "Invalid week format. Use week=YYYY-WW"}, status=400)
+                return Response({"detail": "Invalid week format. Use week=YYYY-Www"}, status=400)
 
         cached_core = get_range_cache(
             cache_type="WEEK_SUMMARY",
@@ -306,7 +359,7 @@ class CoachGroupWeekSummaryView(APIView):
 
     @swagger_auto_schema(
         manual_parameters=[
-            openapi.Parameter("week", openapi.IN_QUERY, type=openapi.TYPE_STRING, description="ISO week YYYY-WW"),
+            openapi.Parameter("week", openapi.IN_QUERY, type=openapi.TYPE_STRING, description="ISO week YYYY-Www"),
         ]
     )
     def get(self, request, group_id: int):
@@ -314,7 +367,7 @@ class CoachGroupWeekSummaryView(APIView):
         try:
             start, end, week = parse_iso_week_param(request.query_params.get("week"))
         except Exception:
-            return Response({"detail": "Invalid week format. Use week=YYYY-WW"}, status=400)
+            return Response({"detail": "Invalid week format. Use week=YYYY-Www"}, status=400)
 
         athlete_ids = list(Alumno.objects.filter(entrenador=request.user, equipo_id=group.id).values_list("id", flat=True))
         # KPIs group (sum)

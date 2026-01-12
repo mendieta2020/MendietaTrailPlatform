@@ -162,6 +162,18 @@ class WeeklySummaryEndpointTests(TestCase):
         self.assertIsNotNone(access_cookie)
         self.client.cookies[settings.COOKIE_AUTH_ACCESS_NAME] = access_cookie.value
 
+    def _login_with_jwt(self, client=None):
+        api_client = client or self.client
+        response = api_client.post(
+            "/api/token/",
+            {"username": self.coach.username, "password": self.password},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        access = response.data.get("access")
+        self.assertIsNotNone(access)
+        api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
     def test_week_summary_requires_auth(self):
         res = self.client.get(
             f"/api/coach/athletes/{self.alumno.id}/week-summary/?week={self.week}"
@@ -174,8 +186,15 @@ class WeeklySummaryEndpointTests(TestCase):
             f"/api/coach/athletes/{self.alumno.id}/week-summary/?week={self.week}"
         )
         self.assertEqual(res.status_code, 200)
+        self.assertIn("distance_km", res.data)
+        self.assertIn("duration_minutes", res.data)
+        self.assertIn("kcal", res.data)
+        self.assertIn("elevation_gain_m", res.data)
+        self.assertIn("elevation_loss_m", res.data)
+        self.assertIn("elevation_total_m", res.data)
         self.assertIn("total_distance_km", res.data)
         self.assertIn("sessions_by_type", res.data)
+        self.assertIn("totals_by_type", res.data)
         self.assertIn("pmc", res.data)
         self.assertEqual(res.data["sessions_by_type"].get("RUN"), 1)
         self.assertGreater(res.data["total_duration_minutes"], 0)
@@ -191,6 +210,7 @@ class WeeklySummaryEndpointTests(TestCase):
         self.assertIn("total_distance_km", res.data)
         self.assertIn("sessions_by_type", res.data)
         self.assertIn("pmc", res.data)
+        self.assertEqual(res.data["distance_km"], res.data["total_distance_km"])
 
     def test_week_summary_custom_range_too_large(self):
         self._login_with_cookie()
@@ -217,6 +237,7 @@ class WeeklySummaryEndpointTests(TestCase):
         self.assertEqual(res.data["sessions_count"], 0)
         self.assertEqual(res.data["total_distance_km"], 0)
         self.assertEqual(res.data["sessions_by_type"], {})
+        self.assertEqual(res.data["totals_by_type"], {})
 
     def test_week_summary_other_coach_returns_404(self):
         other_coach = User.objects.create_user(username="coach_other", password="pass")
@@ -234,3 +255,21 @@ class WeeklySummaryEndpointTests(TestCase):
             f"/api/coach/athletes/{self.alumno.id}/week-summary/?week={self.week}"
         )
         self.assertEqual(res.status_code, 404)
+
+    def test_week_summary_jwt_allows_access(self):
+        self._login_with_jwt()
+        res = self.client.get(
+            f"/api/coach/athletes/{self.alumno.id}/week-summary/?week={self.week}"
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("distance_km", res.data)
+
+    def test_week_summary_jwt_custom_range_allows_access(self):
+        self._login_with_jwt()
+        start = self.monday.isoformat()
+        end = (self.monday + timedelta(days=6)).isoformat()
+        res = self.client.get(
+            f"/api/coach/athletes/{self.alumno.id}/week-summary/?start_date={start}&end_date={end}"
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("distance_km", res.data)
