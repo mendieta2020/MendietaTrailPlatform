@@ -64,15 +64,25 @@ def get_pmc_for_range(
         alumno_id=alumno_id,
         fecha__range=[start_date, end_date],
         sport__in=list(included_sports),
-    ).values("fecha", "distance_m", "elev_gain_m", "duration_s")
+    ).values("fecha", "distance_m", "elev_gain_m", "elev_loss_m", "elev_total_m", "duration_s", "calories_kcal")
 
     by_date: dict[date, dict] = {}
     for r in agg_rows.iterator(chunk_size=1000):
         d = r["fecha"]
-        prev = by_date.get(d) or {"distance_m": 0.0, "elev_gain_m": 0.0, "duration_s": 0}
+        prev = by_date.get(d) or {
+            "distance_m": 0.0,
+            "elev_gain_m": 0.0,
+            "elev_loss_m": 0.0,
+            "elev_total_m": 0.0,
+            "duration_s": 0,
+            "calories_kcal": 0.0,
+        }
         prev["distance_m"] += float(r.get("distance_m") or 0.0)
         prev["elev_gain_m"] += float(r.get("elev_gain_m") or 0.0)
+        prev["elev_loss_m"] += float(r.get("elev_loss_m") or 0.0)
+        prev["elev_total_m"] += float(r.get("elev_total_m") or 0.0)
         prev["duration_s"] += int(r.get("duration_s") or 0)
+        prev["calories_kcal"] += float(r.get("calories_kcal") or 0.0)
         by_date[d] = prev
 
     opt_rows = (
@@ -81,8 +91,6 @@ def get_pmc_for_range(
         .annotate(d=TruncDate("fecha_inicio"))
         .values("d")
         .annotate(
-            calories_kcal=Sum("calories_kcal"),
-            elev_loss_m=Sum("elev_loss_m"),
             effort=Sum("effort"),
         )
     )
@@ -110,7 +118,14 @@ def get_pmc_for_range(
     for row in pmc_rows:
         d = row["fecha"]
         f_str = d.isoformat()
-        agg = by_date.get(d) or {"distance_m": 0.0, "elev_gain_m": 0.0, "duration_s": 0}
+        agg = by_date.get(d) or {
+            "distance_m": 0.0,
+            "elev_gain_m": 0.0,
+            "elev_loss_m": 0.0,
+            "elev_total_m": 0.0,
+            "duration_s": 0,
+            "calories_kcal": 0.0,
+        }
         opt = opt_by_date.get(d) or {}
         data.append(
             {
@@ -123,8 +138,8 @@ def get_pmc_for_range(
                 "dist": round(float(agg["distance_m"] or 0.0) / 1000.0, 2),
                 "time": int(round(float(agg["duration_s"] or 0) / 60.0)),
                 "elev_gain": int(round(float(agg["elev_gain_m"] or 0.0))),
-                "elev_loss": int(round(float(opt["elev_loss_m"]))) if opt.get("elev_loss_m") is not None else None,
-                "calories": int(round(float(opt["calories_kcal"]))) if opt.get("calories_kcal") is not None else None,
+                "elev_loss": int(round(float(agg["elev_loss_m"] or 0.0))),
+                "calories": int(round(float(agg["calories_kcal"] or 0.0))),
                 "effort": float(opt["effort"]) if opt.get("effort") is not None else None,
                 "race": objetivos_map.get(f_str, None),
             }

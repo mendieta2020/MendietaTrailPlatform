@@ -59,6 +59,8 @@ class DailyActivityAgg(models.Model):
     load = models.FloatField(default=0, help_text="Carga/Esfuerzo del día (TSS/Relative Effort proxy)")
     distance_m = models.FloatField(default=0)
     elev_gain_m = models.FloatField(default=0)
+    elev_loss_m = models.FloatField(default=0)
+    elev_total_m = models.FloatField(default=0)
     duration_s = models.PositiveIntegerField(default=0)
     calories_kcal = models.FloatField(default=0, help_text="Calorías totales del día (kcal). Nunca NULL.")
 

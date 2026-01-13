@@ -434,7 +434,8 @@ def reconcile_activity_with_plan(
 
     dist_real_km = round(float(activity.distancia or 0.0) / 1000.0, 2)
     tiempo_real_min = int(float(activity.tiempo_movimiento or 0.0) / 60.0)
-    desnivel_real_m = int(float(activity.desnivel_positivo or 0.0))
+    elev_gain_m = activity.elev_gain_m if activity.elev_gain_m is not None else activity.desnivel_positivo
+    desnivel_real_m = int(float(elev_gain_m or 0.0))
 
     comparator = PlannedVsActualComparator()
     comparison = comparator.compare(best_match, activity)
@@ -692,6 +693,9 @@ def sincronizar_actividades_strava(user, dias_historial=None):
                     'fecha_inicio': activity.start_date_local,
                     'tipo_deporte': activity.type,
                     'desnivel_positivo': elevacion_m,
+                    'elev_gain_m': float(elevacion_m or 0.0),
+                    'elev_loss_m': 0.0,
+                    'elev_total_m': float(elevacion_m or 0.0),
                     'mapa_polilinea': mapa_str,
                     'datos_brutos': datos_backup
                 }

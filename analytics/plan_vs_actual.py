@@ -28,7 +28,7 @@ class PlannedVsActualComparator:
     def compare(self, planned: Optional[Entrenamiento], activity: Actividad) -> ComparisonResult:
         actual_distance_km = float(activity.distancia or 0.0) / 1000.0
         actual_duration_min = float(activity.tiempo_movimiento or 0) / 60.0
-        actual_elev_m = float(activity.desnivel_positivo or 0.0)
+        actual_elev_m = float(activity.elev_gain_m or activity.desnivel_positivo or 0.0)
 
         metrics: Dict[str, Any] = {
             "actual": {

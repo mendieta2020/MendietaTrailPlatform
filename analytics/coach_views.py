@@ -45,7 +45,7 @@ def _totals_by_type(*, athlete_id: int, start: date, end: date) -> dict[str, dic
             sessions_count=Count("id"),
             distance_m=Coalesce(Sum("distancia"), Value(0.0), output_field=FloatField()),
             duration_s=Coalesce(Sum("tiempo_movimiento"), Value(0.0), output_field=FloatField()),
-            elev_gain_m=Coalesce(Sum("desnivel_positivo"), Value(0.0), output_field=FloatField()),
+            elev_gain_m=Coalesce(Sum("elev_gain_m"), Value(0.0), output_field=FloatField()),
             elev_loss_m=Coalesce(Sum("elev_loss_m"), Value(0.0), output_field=FloatField()),
             calories_kcal=Coalesce(Sum("calories_kcal"), Value(0.0), output_field=FloatField()),
         )
@@ -137,9 +137,8 @@ def _week_summary_totals(*, athlete_id: int, start: date, end: date) -> dict:
         duration_s=Sum("duration_s"),
         distance_m=Sum("distance_m"),
         elev_gain_m=Sum("elev_gain_m"),
-    )
-    activity_agg = activities.aggregate(
         elev_loss_m=Sum("elev_loss_m"),
+        elev_total_m=Sum("elev_total_m"),
         calories_kcal=Sum("calories_kcal"),
     )
     sessions_count = activities.count()
@@ -147,15 +146,16 @@ def _week_summary_totals(*, athlete_id: int, start: date, end: date) -> dict:
     duration_s = float(agg["duration_s"] or 0.0)
     distance_m = float(agg["distance_m"] or 0.0)
     elev_gain_m = float(agg["elev_gain_m"] or 0.0)
-    elev_loss_m = float(activity_agg["elev_loss_m"] or 0.0)
-    calories_kcal = float(activity_agg["calories_kcal"] or 0.0)
+    elev_loss_m = float(agg["elev_loss_m"] or 0.0)
+    elev_total_m = float(agg["elev_total_m"] or (elev_gain_m + elev_loss_m))
+    calories_kcal = float(agg["calories_kcal"] or 0.0)
 
     distance_km = round(distance_m / 1000.0, 2)
     duration_minutes = int(round(duration_s / 60.0))
     elevation_gain_m = int(round(elev_gain_m))
     elevation_loss_m = int(round(elev_loss_m))
     kcal = int(round(calories_kcal))
-    elevation_total_m = int(round(elev_gain_m + elev_loss_m))
+    elevation_total_m = int(round(elev_total_m))
     return {
         "distance_km": distance_km,
         "duration_minutes": duration_minutes,
@@ -167,6 +167,7 @@ def _week_summary_totals(*, athlete_id: int, start: date, end: date) -> dict:
         "total_duration_minutes": duration_minutes,
         "total_elevation_gain_m": elevation_gain_m,
         "total_elevation_loss_m": elevation_loss_m,
+        "total_elevation_total_m": elevation_total_m,
         "total_calories": kcal,
         "sessions_count": int(sessions_count),
         "sessions_by_type": _sessions_by_type(athlete_id=athlete_id, start=start, end=end),
@@ -379,7 +380,7 @@ class CoachGroupWeekSummaryView(APIView):
         kpi_agg = acts.aggregate(
             duration_s=Sum("tiempo_movimiento"),
             distance_m=Sum("distancia"),
-            elev_gain_m=Sum("desnivel_positivo"),
+            elev_gain_m=Sum("elev_gain_m"),
             elev_loss_m=Sum("elev_loss_m"),
             calories_kcal=Sum("calories_kcal"),
             effort=Sum("effort"),
