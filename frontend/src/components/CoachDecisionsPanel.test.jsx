@@ -68,7 +68,9 @@ describe('CoachDecisionsPanel', () => {
     expect(container.textContent).toContain('RUN: 1');
     expect(container.textContent).toContain('866 kcal');
     expect(container.textContent).toContain('Trabajo por deporte');
-    expect(container.textContent).toContain('Fuerza');
+    expect(container.textContent).toContain('Trail');
+    expect(container.textContent).toContain('Otras actividades');
+    expect(container.textContent).toContain('Strength / Functional');
     expect(container.textContent).toContain('1h 30m');
     expect(container.textContent).toContain('600 kcal');
     expect(container.textContent).toContain('280');
@@ -88,6 +90,23 @@ describe('CoachDecisionsPanel', () => {
 
     expect(container.textContent).toContain('14.01 km');
     expect(container.textContent).not.toContain('Trabajo por deporte');
+    expect(container.textContent).not.toContain('Otras actividades');
+  });
+
+  it('hides non-distance section when per_sport_totals is empty', async () => {
+    const payload = { ...weekSummaryFixture, per_sport_totals: {} };
+    client.get.mockResolvedValueOnce({
+      data: payload,
+    });
+
+    await act(async () => {
+      root.render(<CoachDecisionsPanel athleteId={7} />);
+      await flushPromises();
+    });
+
+    expect(container.textContent).toContain('14.01 km');
+    expect(container.textContent).not.toContain('Trabajo por deporte');
+    expect(container.textContent).not.toContain('Otras actividades');
   });
 
   it('shows empty state for empty payloads', async () => {
