@@ -13,15 +13,7 @@ import {
 import { LocalFireDepartment, Terrain, Timer, Straighten, Layers } from '@mui/icons-material';
 import { getISOWeek, getISOWeekYear } from 'date-fns';
 import client from '../api/client';
-
-const SPORT_META = {
-  TRAIL: { label: 'Trail' },
-  RUN: { label: 'Running' },
-  BIKE: { label: 'Ciclismo' },
-  WALK: { label: 'Caminata' },
-  STRENGTH: { label: 'Fuerza' },
-  FUNCTIONAL: { label: 'Funcional' },
-};
+import { getSportLabel, splitPerSportTotals } from './sportsConfig';
 
 function isoWeekString(d = new Date()) {
   const year = getISOWeekYear(d);
@@ -72,10 +64,6 @@ function formatLoadValue(load) {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
-function sportLabel(code) {
-  return SPORT_META[code]?.label || code;
-}
-
 function normalizeWeekSummary(payload) {
   if (!payload) return null;
   const distanceKm = payload.total_distance_km ?? payload.distance_km ?? payload.distanceKm;
@@ -95,7 +83,7 @@ function normalizeWeekSummary(payload) {
     const entry = totals || {};
     acc[code] = {
       code,
-      label: sportLabel(code),
+      label: getSportLabel(code),
       durationMinutes: entry.duration_minutes ?? entry.durationMinutes ?? null,
       caloriesKcal: entry.calories_kcal ?? entry.caloriesKcal ?? null,
       load: entry.load ?? null,
@@ -135,6 +123,68 @@ function hasWeekSummaryData(summary) {
   const hasTotals = totals.some((value) => Number.isFinite(value) && value > 0);
   const sessionsCount = Number(summary.sessionsCount ?? 0);
   return sessionsCount > 0 || hasTotals;
+}
+
+function SportTotalsGrid({ sports }) {
+  return (
+    <Grid container spacing={1.5}>
+      {sports.map((sport) => (
+        <Grid item xs={12} sm={6} md={4} key={sport.code}>
+          <Paper sx={{ p: 2, borderRadius: 2, border: '1px solid #E2E8F0' }}>
+            <Stack spacing={0.75}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#0F172A' }}>
+                {sport.label}
+              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.5 }}>
+                <Typography variant="body2" sx={{ color: '#475569' }}>
+                  Duración
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#0F172A', fontWeight: 600 }}>
+                  {formatDurationValue(sport.durationMinutes)}
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.5 }}>
+                <Typography variant="body2" sx={{ color: '#475569' }}>
+                  Calorías
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#0F172A', fontWeight: 600 }}>
+                  {Number.isFinite(sport.caloriesKcal) ? `${sport.caloriesKcal} kcal` : '—'}
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.5 }}>
+                <Typography variant="body2" sx={{ color: '#475569' }}>
+                  Load
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#0F172A', fontWeight: 600 }}>
+                  {formatLoadValue(sport.load)}
+                </Typography>
+              </Box>
+              {Number.isFinite(sport.distanceKm) && (
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.5 }}>
+                  <Typography variant="body2" sx={{ color: '#475569' }}>
+                    Distancia
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#0F172A', fontWeight: 600 }}>
+                    {sport.distanceKm} km
+                  </Typography>
+                </Box>
+              )}
+              {Number.isFinite(sport.elevationGainM) && (
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.5 }}>
+                  <Typography variant="body2" sx={{ color: '#475569' }}>
+                    Desnivel +
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#0F172A', fontWeight: 600 }}>
+                    {sport.elevationGainM} m
+                  </Typography>
+                </Box>
+              )}
+            </Stack>
+          </Paper>
+        </Grid>
+      ))}
+    </Grid>
+  );
 }
 
 export default function CoachDecisionsPanel({ athleteId }) {
@@ -215,7 +265,7 @@ export default function CoachDecisionsPanel({ athleteId }) {
   const displayRangeStart = rangeStart || '—';
   const displayRangeEnd = rangeEnd || '—';
   const perSportTotals = summary?.perSportTotals || {};
-  const perSportEntries = Object.values(perSportTotals);
+  const { distanceTotals, nonDistanceTotals } = splitPerSportTotals(perSportTotals);
 
   return (
     <Paper sx={{ p: 3, borderRadius: 3, mb: 4, border: '1px solid #E2E8F0', boxShadow: '0 4px 18px rgba(0,0,0,0.04)' }}>
@@ -285,68 +335,21 @@ export default function CoachDecisionsPanel({ athleteId }) {
             )}
           </Box>
 
-          {perSportEntries.length > 0 && (
+          {distanceTotals.length > 0 && (
             <Box sx={{ mb: 2 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#0F172A', mb: 1 }}>
                 Trabajo por deporte
               </Typography>
-              <Grid container spacing={1.5}>
-                {perSportEntries.map((sport) => (
-                  <Grid item xs={12} sm={6} md={4} key={sport.code}>
-                    <Paper sx={{ p: 2, borderRadius: 2, border: '1px solid #E2E8F0' }}>
-                      <Stack spacing={0.75}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#0F172A' }}>
-                          {sport.label}
-                        </Typography>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.5 }}>
-                          <Typography variant="body2" sx={{ color: '#475569' }}>
-                            Duración
-                          </Typography>
-                          <Typography variant="body2" sx={{ color: '#0F172A', fontWeight: 600 }}>
-                            {formatDurationValue(sport.durationMinutes)}
-                          </Typography>
-                        </Box>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.5 }}>
-                          <Typography variant="body2" sx={{ color: '#475569' }}>
-                            Calorías
-                          </Typography>
-                          <Typography variant="body2" sx={{ color: '#0F172A', fontWeight: 600 }}>
-                            {Number.isFinite(sport.caloriesKcal) ? `${sport.caloriesKcal} kcal` : '—'}
-                          </Typography>
-                        </Box>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.5 }}>
-                          <Typography variant="body2" sx={{ color: '#475569' }}>
-                            Load
-                          </Typography>
-                          <Typography variant="body2" sx={{ color: '#0F172A', fontWeight: 600 }}>
-                            {formatLoadValue(sport.load)}
-                          </Typography>
-                        </Box>
-                        {Number.isFinite(sport.distanceKm) && (
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.5 }}>
-                            <Typography variant="body2" sx={{ color: '#475569' }}>
-                              Distancia
-                            </Typography>
-                            <Typography variant="body2" sx={{ color: '#0F172A', fontWeight: 600 }}>
-                              {sport.distanceKm} km
-                            </Typography>
-                          </Box>
-                        )}
-                        {Number.isFinite(sport.elevationGainM) && (
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.5 }}>
-                            <Typography variant="body2" sx={{ color: '#475569' }}>
-                              Desnivel +
-                            </Typography>
-                            <Typography variant="body2" sx={{ color: '#0F172A', fontWeight: 600 }}>
-                              {sport.elevationGainM} m
-                            </Typography>
-                          </Box>
-                        )}
-                      </Stack>
-                    </Paper>
-                  </Grid>
-                ))}
-              </Grid>
+              <SportTotalsGrid sports={distanceTotals} />
+            </Box>
+          )}
+
+          {nonDistanceTotals.length > 0 && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#0F172A', mb: 1 }}>
+                Otras actividades
+              </Typography>
+              <SportTotalsGrid sports={nonDistanceTotals} />
             </Box>
           )}
 

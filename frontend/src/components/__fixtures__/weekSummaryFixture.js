@@ -22,7 +22,7 @@ const weekSummaryFixture = {
       elevation_loss_m: 3110,
       elevation_total_m: 5907,
     },
-    STRENGTH: {
+    OTHER: {
       duration_minutes: 90,
       calories_kcal: 600,
       load: 280,
