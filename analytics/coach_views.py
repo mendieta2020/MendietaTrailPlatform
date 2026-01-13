@@ -12,8 +12,8 @@ from rest_framework.views import APIView
 from rest_framework.exceptions import NotFound
 from rest_framework.settings import api_settings
 
-from analytics.cache import get_range_cache, set_range_cache
-from analytics.models import Alert, DailyActivityAgg, InjuryRiskSnapshot, PMCHistory
+from analytics.cache import is_cache_fresh, set_range_cache
+from analytics.models import Alert, AnalyticsRangeCache, DailyActivityAgg, InjuryRiskSnapshot, PMCHistory
 from analytics.pmc_engine import PMC_SPORT_GROUPS, ensure_pmc_materialized
 from analytics.range_utils import max_range_days, parse_date_range_params, parse_iso_week_param
 from core.models import Actividad, Alumno, Entrenamiento, Equipo
@@ -34,22 +34,19 @@ def _sessions_by_type(*, athlete_id: int, start: date, end: date) -> dict[str, i
 
 
 def _totals_by_type(*, athlete_id: int, start: date, end: date) -> dict[str, dict]:
+    sessions_by_type = _sessions_by_type(athlete_id=athlete_id, start=start, end=end)
     qs = (
-        Actividad.objects.filter(
-            alumno_id=int(athlete_id),
-            validity=Actividad.Validity.VALID,
-            fecha_inicio__date__range=[start, end],
-        )
-        .values("tipo_deporte")
+        DailyActivityAgg.objects.filter(alumno_id=int(athlete_id), fecha__range=[start, end])
+        .values("sport")
         .annotate(
-            sessions_count=Count("id"),
-            distance_m=Coalesce(Sum("distancia"), Value(0.0), output_field=FloatField()),
-            duration_s=Coalesce(Sum("tiempo_movimiento"), Value(0.0), output_field=FloatField()),
+            distance_m=Coalesce(Sum("distance_m"), Value(0.0), output_field=FloatField()),
+            duration_s=Coalesce(Sum("duration_s"), Value(0.0), output_field=FloatField()),
             elev_gain_m=Coalesce(Sum("elev_gain_m"), Value(0.0), output_field=FloatField()),
             elev_loss_m=Coalesce(Sum("elev_loss_m"), Value(0.0), output_field=FloatField()),
+            elev_total_m=Coalesce(Sum("elev_total_m"), Value(0.0), output_field=FloatField()),
             calories_kcal=Coalesce(Sum("calories_kcal"), Value(0.0), output_field=FloatField()),
         )
-        .order_by("-sessions_count")
+        .order_by("sport")
     )
     totals = {}
     for row in qs:
@@ -57,15 +54,17 @@ def _totals_by_type(*, athlete_id: int, start: date, end: date) -> dict[str, dic
         duration_s = float(row["duration_s"] or 0.0)
         elev_gain_m = float(row["elev_gain_m"] or 0.0)
         elev_loss_m = float(row["elev_loss_m"] or 0.0)
+        elev_total_m = float(row["elev_total_m"] or (elev_gain_m + elev_loss_m))
         calories_kcal = float(row["calories_kcal"] or 0.0)
-        totals[row["tipo_deporte"]] = {
+        sport = row["sport"]
+        totals[sport] = {
             "distance_km": round(distance_m / 1000.0, 2),
             "duration_minutes": int(round(duration_s / 60.0)),
             "kcal": int(round(calories_kcal)),
             "elevation_gain_m": int(round(elev_gain_m)),
             "elevation_loss_m": int(round(elev_loss_m)),
-            "elevation_total_m": int(round(elev_gain_m + elev_loss_m)),
-            "sessions_count": int(row["sessions_count"] or 0),
+            "elevation_total_m": int(round(elev_total_m)),
+            "sessions_count": int(sessions_by_type.get(sport, 0)),
         }
     return totals
 
@@ -327,13 +326,27 @@ class CoachAthleteWeekSummaryView(APIView):
             except Exception:
                 return Response({"detail": "Invalid week format. Use week=YYYY-Www"}, status=400)
 
-        cached_core = get_range_cache(
-            cache_type="WEEK_SUMMARY",
-            alumno_id=athlete.id,
-            sport="ALL",
-            start_date=start,
-            end_date=end,
+        daily_qs = DailyActivityAgg.objects.filter(alumno_id=athlete.id, fecha__range=[start, end])
+        if not daily_qs.exists():
+            raise NotFound("No analytics data for this week.")
+
+        latest_daily_update = daily_qs.aggregate(latest=Max("updated_at")).get("latest")
+        cache_record = (
+            AnalyticsRangeCache.objects.filter(
+                cache_type="WEEK_SUMMARY",
+                alumno_id=athlete.id,
+                sport="ALL",
+                start_date=start,
+                end_date=end,
+            )
+            .only("payload", "last_computed_at")
+            .first()
         )
+        cached_core = None
+        if cache_record and is_cache_fresh(cache_record):
+            if not latest_daily_update or cache_record.last_computed_at >= latest_daily_update:
+                cached_core = cache_record.payload
+
         if cached_core is None:
             cached_core = _week_summary_core(athlete_id=athlete.id, start=start, end=end)
             set_range_cache(

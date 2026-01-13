@@ -69,9 +69,13 @@
 ## Analytics: rangos y caché (PMC / week-summary)
 - **Rangos explícitos**: `/api/analytics/pmc/` acepta `start_date` y `end_date` (ISO) para acotar cómputo.
 - **Week summary**: `/api/coach/athletes/{id}/week-summary/?week=YYYY-WW` deriva rango ISO y reutiliza la misma lógica.
+- **Flujo end-to-end week summary**: `Strava` → `core.Actividad` → `analytics.DailyActivityAgg` → (cache opcional `AnalyticsRangeCache`) → `CoachAthleteWeekSummaryView` → `CoachDecisionsPanel`.
+- **SoT**: `DailyActivityAgg` es la fuente de verdad para distancia, duración, elevación (gain/loss/total), calorías y carga.
 - **Caché por atleta + rango**: `AnalyticsRangeCache` persiste payload por `(alumno, cache_type, sport, start_date, end_date)`.
 - **TTL configurable**: `ANALYTICS_RANGE_CACHE_TTL_SECONDS` controla frescura (default 6h).
+- **Invalidación**: `recompute_daily_analytics` elimina caché de week-summary desde `start_date` para evitar lecturas stale; el view invalida si `DailyActivityAgg.updated_at` es más reciente que `last_computed_at`.
 - **Límite de ventana**: `ANALYTICS_MAX_RANGE_DAYS` limita rangos solicitados (fail-closed con 400 si excede).
+- **No data**: si no hay filas de `DailyActivityAgg` en el rango, el endpoint responde 404 (fail-closed, sin ceros falsos).
 - **Payload week-summary (coach)**:
   ```json
   {
@@ -93,3 +97,4 @@
     "alerts": []
   }
   ```
+- **Legacy aliases**: se mantienen campos históricos (`distance_km`, `duration_minutes`, `kcal`, `total_calories`, `elevation_*`) pero los consumidores deben priorizar `total_*`.
