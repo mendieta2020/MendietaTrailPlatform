@@ -69,6 +69,52 @@ def _totals_by_type(*, athlete_id: int, start: date, end: date) -> dict[str, dic
     return totals
 
 
+_DISTANCE_SPORTS = {"RUN", "TRAIL", "BIKE", "WALK"}
+
+
+def _per_sport_totals(*, athlete_id: int, start: date, end: date) -> dict[str, dict]:
+    qs = (
+        DailyActivityAgg.objects.filter(alumno_id=int(athlete_id), fecha__range=[start, end])
+        .values("sport")
+        .annotate(
+            distance_m=Coalesce(Sum("distance_m"), Value(0.0), output_field=FloatField()),
+            duration_s=Coalesce(Sum("duration_s"), Value(0.0), output_field=FloatField()),
+            elev_gain_m=Coalesce(Sum("elev_gain_m"), Value(0.0), output_field=FloatField()),
+            elev_loss_m=Coalesce(Sum("elev_loss_m"), Value(0.0), output_field=FloatField()),
+            elev_total_m=Coalesce(Sum("elev_total_m"), Value(0.0), output_field=FloatField()),
+            calories_kcal=Coalesce(Sum("calories_kcal"), Value(0.0), output_field=FloatField()),
+            load=Coalesce(Sum("load"), Value(0.0), output_field=FloatField()),
+        )
+        .order_by("sport")
+    )
+    totals: dict[str, dict] = {}
+    for row in qs:
+        sport = row["sport"]
+        duration_s = float(row["duration_s"] or 0.0)
+        calories_kcal = float(row["calories_kcal"] or 0.0)
+        load = float(row["load"] or 0.0)
+        payload = {
+            "duration_minutes": int(round(duration_s / 60.0)),
+            "calories_kcal": int(round(calories_kcal)),
+            "load": round(load, 2),
+        }
+        if sport in _DISTANCE_SPORTS:
+            distance_m = float(row["distance_m"] or 0.0)
+            elev_gain_m = float(row["elev_gain_m"] or 0.0)
+            elev_loss_m = float(row["elev_loss_m"] or 0.0)
+            elev_total_m = float(row["elev_total_m"] or (elev_gain_m + elev_loss_m))
+            payload.update(
+                {
+                    "distance_km": round(distance_m / 1000.0, 2),
+                    "elevation_gain_m": int(round(elev_gain_m)),
+                    "elevation_loss_m": int(round(elev_loss_m)),
+                    "elevation_total_m": int(round(elev_total_m)),
+                }
+            )
+        totals[sport] = payload
+    return totals
+
+
 def _require_athlete_for_coach(*, coach, athlete_id: int) -> Alumno:
     try:
         return Alumno.objects.select_related("equipo").get(id=int(athlete_id), entrenador=coach)
@@ -172,6 +218,7 @@ def _week_summary_totals(*, athlete_id: int, start: date, end: date) -> dict:
         "sessions_count": int(sessions_count),
         "sessions_by_type": _sessions_by_type(athlete_id=athlete_id, start=start, end=end),
         "totals_by_type": _totals_by_type(athlete_id=athlete_id, start=start, end=end),
+        "per_sport_totals": _per_sport_totals(athlete_id=athlete_id, start=start, end=end),
     }
 
 
@@ -288,6 +335,7 @@ class CoachAthleteWeekSummaryView(APIView):
           "sessions_count": 6,
           "sessions_by_type": {"RUN": 4, "BIKE": 1, "STRENGTH": 1},
           "totals_by_type": {"RUN": {"distance_km": 90, ...}},
+          "per_sport_totals": {"RUN": {"distance_km": 90, "duration_minutes": 420, "load": 450.5}},
           "pmc": {"fitness": 52.1, "fatigue": 61.4, "form": -9.3, "date": "2026-01-18"},
           "compliance": {"duration": {...}, "distance": {...}, "elev": {...}, "load": {...}},
           "alerts": [...]

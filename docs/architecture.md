@@ -92,9 +92,36 @@
     "total_calories_kcal": 8500,
     "sessions_count": 6,
     "sessions_by_type": { "RUN": 4, "BIKE": 1, "STRENGTH": 1 },
+    "per_sport_totals": {
+      "RUN": {
+        "distance_km": 90,
+        "duration_minutes": 420,
+        "calories_kcal": 5200,
+        "load": 450.5,
+        "elevation_gain_m": 2200,
+        "elevation_loss_m": 2150,
+        "elevation_total_m": 4350
+      },
+      "STRENGTH": {
+        "duration_minutes": 60,
+        "calories_kcal": 400,
+        "load": 55.0
+      }
+    },
     "pmc": { "fitness": 52.1, "fatigue": 61.4, "form": -9.3, "date": "2026-01-18" },
     "compliance": { "duration": { "planned": 120, "actual": 110, "pct": 92 }, "distance": { "planned": 50, "actual": 45 } },
     "alerts": []
   }
   ```
 - **Legacy aliases**: se mantienen campos históricos (`distance_km`, `duration_minutes`, `kcal`, `total_calories`, `elevation_*`) pero los consumidores deben priorizar `total_*`.
+- **Per-sport totals (`per_sport_totals`)**:
+  - **Fuente**: agregaciones de `DailyActivityAgg` dentro del rango semanal (no usa `Actividad` directo).
+  - **Forma**: diccionario `{ "<SPORT>": { ... } }` con una entrada por `DailyActivityAgg.sport`.
+  - **Campos comunes**:
+    - `duration_minutes` (int): suma de `duration_s` convertida a minutos redondeados.
+    - `calories_kcal` (int): suma de calorías redondeadas.
+    - `load` (float): suma de carga (redondeada a 2 decimales).
+  - **Deportes de distancia** (`RUN`, `TRAIL`, `BIKE`, `WALK`):
+    - Incluyen `distance_km`, `elevation_gain_m`, `elevation_loss_m`, `elevation_total_m`.
+  - **Deportes sin distancia** (ej. `STRENGTH`, `FUNCTIONAL`):
+    - No incluyen `distance_km` ni elevaciones; se tratan como métricas de tiempo + carga.
