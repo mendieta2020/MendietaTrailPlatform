@@ -12,6 +12,22 @@ const weekSummaryFixture = {
   sessions_count: 1,
   sessions_by_type: { RUN: 1 },
   totals_by_type: { RUN: { distance_km: 14.01 } },
+  per_sport_totals: {
+    TRAIL: {
+      duration_minutes: 615,
+      calories_kcal: 6996,
+      load: 1460.3,
+      distance_km: 112.08,
+      elevation_gain_m: 2797,
+      elevation_loss_m: 3110,
+      elevation_total_m: 5907,
+    },
+    STRENGTH: {
+      duration_minutes: 90,
+      calories_kcal: 600,
+      load: 280,
+    },
+  },
   compliance: {},
   alerts: [],
 };

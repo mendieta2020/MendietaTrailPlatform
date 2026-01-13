@@ -14,6 +14,15 @@ import { LocalFireDepartment, Terrain, Timer, Straighten, Layers } from '@mui/ic
 import { getISOWeek, getISOWeekYear } from 'date-fns';
 import client from '../api/client';
 
+const SPORT_META = {
+  TRAIL: { label: 'Trail' },
+  RUN: { label: 'Running' },
+  BIKE: { label: 'Ciclismo' },
+  WALK: { label: 'Caminata' },
+  STRENGTH: { label: 'Fuerza' },
+  FUNCTIONAL: { label: 'Funcional' },
+};
+
 function isoWeekString(d = new Date()) {
   const year = getISOWeekYear(d);
   const week = getISOWeek(d);
@@ -52,6 +61,21 @@ function formatDuration(minutes) {
   return `${hours}h ${mins}m`;
 }
 
+function formatDurationValue(minutes) {
+  if (!Number.isFinite(minutes)) return '—';
+  return formatDuration(minutes);
+}
+
+function formatLoadValue(load) {
+  if (!Number.isFinite(load)) return '—';
+  const rounded = Math.round(load * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+function sportLabel(code) {
+  return SPORT_META[code]?.label || code;
+}
+
 function normalizeWeekSummary(payload) {
   if (!payload) return null;
   const distanceKm = payload.total_distance_km ?? payload.distance_km ?? payload.distanceKm;
@@ -66,6 +90,22 @@ function normalizeWeekSummary(payload) {
   const caloriesKcal = payload.total_calories_kcal ?? payload.total_calories ?? payload.kcal ?? payload.caloriesKcal;
   const sessionsCount = payload.sessions_count ?? payload.sessionsCount;
   const sessionsByType = payload.sessions_by_type ?? payload.sessionsByType ?? {};
+  const rawPerSportTotals = payload.per_sport_totals ?? payload.perSportTotals ?? {};
+  const perSportTotals = Object.entries(rawPerSportTotals || {}).reduce((acc, [code, totals]) => {
+    const entry = totals || {};
+    acc[code] = {
+      code,
+      label: sportLabel(code),
+      durationMinutes: entry.duration_minutes ?? entry.durationMinutes ?? null,
+      caloriesKcal: entry.calories_kcal ?? entry.caloriesKcal ?? null,
+      load: entry.load ?? null,
+      distanceKm: entry.distance_km ?? entry.distanceKm ?? null,
+      elevationGainM: entry.elevation_gain_m ?? entry.elevationGainM ?? null,
+      elevationLossM: entry.elevation_loss_m ?? entry.elevationLossM ?? null,
+      elevationTotalM: entry.elevation_total_m ?? entry.elevationTotalM ?? null,
+    };
+    return acc;
+  }, {});
 
   return {
     ...payload,
@@ -77,6 +117,7 @@ function normalizeWeekSummary(payload) {
     caloriesKcal,
     sessionsCount,
     sessionsByType,
+    perSportTotals,
   };
 }
 
@@ -173,6 +214,8 @@ export default function CoachDecisionsPanel({ athleteId }) {
   const rangeEnd = summary?.end_date || summary?.range?.end;
   const displayRangeStart = rangeStart || '—';
   const displayRangeEnd = rangeEnd || '—';
+  const perSportTotals = summary?.perSportTotals || {};
+  const perSportEntries = Object.values(perSportTotals);
 
   return (
     <Paper sx={{ p: 3, borderRadius: 3, mb: 4, border: '1px solid #E2E8F0', boxShadow: '0 4px 18px rgba(0,0,0,0.04)' }}>
@@ -241,6 +284,71 @@ export default function CoachDecisionsPanel({ athleteId }) {
               </Stack>
             )}
           </Box>
+
+          {perSportEntries.length > 0 && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#0F172A', mb: 1 }}>
+                Trabajo por deporte
+              </Typography>
+              <Grid container spacing={1.5}>
+                {perSportEntries.map((sport) => (
+                  <Grid item xs={12} sm={6} md={4} key={sport.code}>
+                    <Paper sx={{ p: 2, borderRadius: 2, border: '1px solid #E2E8F0' }}>
+                      <Stack spacing={0.75}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#0F172A' }}>
+                          {sport.label}
+                        </Typography>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.5 }}>
+                          <Typography variant="body2" sx={{ color: '#475569' }}>
+                            Duración
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: '#0F172A', fontWeight: 600 }}>
+                            {formatDurationValue(sport.durationMinutes)}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.5 }}>
+                          <Typography variant="body2" sx={{ color: '#475569' }}>
+                            Calorías
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: '#0F172A', fontWeight: 600 }}>
+                            {Number.isFinite(sport.caloriesKcal) ? `${sport.caloriesKcal} kcal` : '—'}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.5 }}>
+                          <Typography variant="body2" sx={{ color: '#475569' }}>
+                            Load
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: '#0F172A', fontWeight: 600 }}>
+                            {formatLoadValue(sport.load)}
+                          </Typography>
+                        </Box>
+                        {Number.isFinite(sport.distanceKm) && (
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.5 }}>
+                            <Typography variant="body2" sx={{ color: '#475569' }}>
+                              Distancia
+                            </Typography>
+                            <Typography variant="body2" sx={{ color: '#0F172A', fontWeight: 600 }}>
+                              {sport.distanceKm} km
+                            </Typography>
+                          </Box>
+                        )}
+                        {Number.isFinite(sport.elevationGainM) && (
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.5 }}>
+                            <Typography variant="body2" sx={{ color: '#475569' }}>
+                              Desnivel +
+                            </Typography>
+                            <Typography variant="body2" sx={{ color: '#0F172A', fontWeight: 600 }}>
+                              {sport.elevationGainM} m
+                            </Typography>
+                          </Box>
+                        )}
+                      </Stack>
+                    </Paper>
+                  </Grid>
+                ))}
+              </Grid>
+            </Box>
+          )}
 
           <Grid container spacing={2}>
             <Grid item xs={12} md={5}>
