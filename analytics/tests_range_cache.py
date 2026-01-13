@@ -149,6 +149,7 @@ class WeeklySummaryEndpointTests(TestCase):
             distance_m=5000,
             elev_gain_m=140,
             duration_s=1800,
+            calories_kcal=450,
         )
 
     def _login_with_cookie(self):

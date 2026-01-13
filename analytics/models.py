@@ -60,6 +60,7 @@ class DailyActivityAgg(models.Model):
     distance_m = models.FloatField(default=0)
     elev_gain_m = models.FloatField(default=0)
     duration_s = models.PositiveIntegerField(default=0)
+    calories_kcal = models.FloatField(default=0, help_text="Calorías totales del día (kcal). Nunca NULL.")
 
     updated_at = models.DateTimeField(auto_now=True)
 
