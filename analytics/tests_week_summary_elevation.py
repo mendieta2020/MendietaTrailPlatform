@@ -7,6 +7,7 @@ from django.conf import settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from analytics.models import AnalyticsRangeCache
 from core.models import Actividad, Alumno
 
 
@@ -112,3 +113,70 @@ class WeekSummaryElevationTests(TestCase):
         self.assertEqual(res.data["total_elevation_loss_m"], 430)
         self.assertEqual(res.data["total_elevation_total_m"], 930)
         self.assertEqual(res.data["total_calories_kcal"], 2000)
+
+    def test_week_summary_ignores_stale_cache_when_daily_aggs_updated(self):
+        call_command(
+            "recompute_daily_analytics",
+            "--alumno-id",
+            str(self.alumno.id),
+            "--entrenador-id",
+            str(self.coach.id),
+            "--start-date",
+            self.week_start.isoformat(),
+        )
+
+        AnalyticsRangeCache.objects.create(
+            alumno=self.alumno,
+            cache_type=AnalyticsRangeCache.CacheType.WEEK_SUMMARY,
+            sport="ALL",
+            start_date=self.week_start,
+            end_date=self.week_start + timedelta(days=6),
+            payload={
+                "distance_km": 0,
+                "duration_minutes": 0,
+                "kcal": 0,
+                "elevation_gain_m": 0,
+                "elevation_loss_m": 0,
+                "elevation_total_m": 0,
+                "total_distance_km": 0,
+                "total_duration_minutes": 0,
+                "total_elevation_gain_m": 0,
+                "total_elevation_loss_m": 0,
+                "total_elevation_total_m": 0,
+                "total_calories": 0,
+                "total_calories_kcal": 0,
+                "sessions_count": 0,
+                "sessions_by_type": {},
+                "totals_by_type": {},
+                "pmc": {},
+                "compliance": {},
+            },
+            last_computed_at=timezone.now() - timedelta(hours=1),
+        )
+
+        self._login()
+        res = self.client.get(
+            f"/api/coach/athletes/{self.alumno.id}/week-summary/?week={self.week}"
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["total_distance_km"], 30.0)
+        self.assertEqual(res.data["total_duration_minutes"], 150)
+        self.assertEqual(res.data["total_elevation_gain_m"], 500)
+        self.assertEqual(res.data["total_elevation_loss_m"], 430)
+        self.assertEqual(res.data["total_elevation_total_m"], 930)
+        self.assertEqual(res.data["total_calories_kcal"], 2000)
+        self.assertEqual(res.data["sessions_count"], 2)
+
+    def test_week_summary_returns_404_when_no_daily_aggs(self):
+        empty_athlete = Alumno.objects.create(
+            entrenador=self.coach,
+            nombre="Nico",
+            apellido="Empty",
+            email="nico_empty@test.com",
+        )
+
+        self._login()
+        res = self.client.get(
+            f"/api/coach/athletes/{empty_athlete.id}/week-summary/?week={self.week}"
+        )
+        self.assertEqual(res.status_code, 404)

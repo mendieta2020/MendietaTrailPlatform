@@ -69,7 +69,7 @@ describe('CoachDecisionsPanel', () => {
     expect(container.textContent).toContain('866 kcal');
   });
 
-  it('renders zero state without error', async () => {
+  it('shows empty state for empty payloads', async () => {
     client.get.mockResolvedValueOnce({
       data: {
         week: '2026-W03',
@@ -93,8 +93,7 @@ describe('CoachDecisionsPanel', () => {
       await flushPromises();
     });
 
-    expect(container.textContent).toContain('0 km');
-    expect(container.textContent).toContain('0h 0m');
+    expect(container.textContent).toContain('Sin datos para esta semana');
     expect(container.textContent).not.toContain('No se pudo cargar');
   });
 

@@ -80,6 +80,22 @@ function normalizeWeekSummary(payload) {
   };
 }
 
+function hasWeekSummaryData(summary) {
+  if (!summary) return false;
+  if (summary.no_data === true) return false;
+  const totals = [
+    summary.distanceKm,
+    summary.durationMin,
+    summary.elevationGain,
+    summary.elevationLoss,
+    summary.elevationTotal,
+    summary.caloriesKcal,
+  ];
+  const hasTotals = totals.some((value) => Number.isFinite(value) && value > 0);
+  const sessionsCount = Number(summary.sessionsCount ?? 0);
+  return sessionsCount > 0 || hasTotals;
+}
+
 export default function CoachDecisionsPanel({ athleteId }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -98,6 +114,12 @@ export default function CoachDecisionsPanel({ athleteId }) {
         setEmptyState(false);
         const resp = await client.get(`/api/coach/athletes/${athleteId}/week-summary/`, { params: { week } });
         if (cancelled) return;
+        const normalized = normalizeWeekSummary(resp.data);
+        if (!hasWeekSummaryData(normalized)) {
+          setEmptyState(true);
+          setData(null);
+          return;
+        }
         setData(resp.data);
       } catch (e) {
         if (cancelled) return;

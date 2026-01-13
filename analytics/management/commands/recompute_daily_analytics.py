@@ -3,6 +3,7 @@ from datetime import date
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
+from analytics.models import AnalyticsRangeCache
 from analytics.pmc_engine import build_daily_aggs_for_alumno, recompute_pmc_for_alumno
 from core.models import Alumno
 
@@ -41,6 +42,11 @@ class Command(BaseCommand):
 
         aggs_count = build_daily_aggs_for_alumno(alumno_id=alumno_id, start_date=start_date)
         pmc_stats = recompute_pmc_for_alumno(alumno_id=alumno_id, start_date=start_date)
+        AnalyticsRangeCache.objects.filter(
+            alumno_id=alumno_id,
+            cache_type=AnalyticsRangeCache.CacheType.WEEK_SUMMARY,
+            end_date__gte=start_date,
+        ).delete()
 
         self.stdout.write(
             self.style.SUCCESS(
