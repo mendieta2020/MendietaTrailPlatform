@@ -52,6 +52,34 @@ function formatDuration(minutes) {
   return `${hours}h ${mins}m`;
 }
 
+function normalizeWeekSummary(payload) {
+  if (!payload) return null;
+  const distanceKm = payload.total_distance_km ?? payload.distance_km ?? payload.distanceKm;
+  const durationMin = payload.total_duration_minutes ?? payload.duration_minutes ?? payload.durationMin;
+  const elevationGain = payload.total_elevation_gain_m ?? payload.elevation_gain_m ?? payload.elevationGain;
+  const elevationLoss = payload.total_elevation_loss_m ?? payload.elevation_loss_m ?? payload.elevationLoss;
+  const elevationTotal =
+    payload.total_elevation_total_m ??
+    payload.elevation_total_m ??
+    payload.elevationTotal ??
+    (Number.isFinite(elevationGain) && Number.isFinite(elevationLoss) ? elevationGain + elevationLoss : undefined);
+  const caloriesKcal = payload.total_calories_kcal ?? payload.total_calories ?? payload.kcal ?? payload.caloriesKcal;
+  const sessionsCount = payload.sessions_count ?? payload.sessionsCount;
+  const sessionsByType = payload.sessions_by_type ?? payload.sessionsByType ?? {};
+
+  return {
+    ...payload,
+    distanceKm,
+    durationMin,
+    elevationGain,
+    elevationLoss,
+    elevationTotal,
+    caloriesKcal,
+    sessionsCount,
+    sessionsByType,
+  };
+}
+
 export default function CoachDecisionsPanel({ athleteId }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -59,6 +87,7 @@ export default function CoachDecisionsPanel({ athleteId }) {
   const [data, setData] = useState(null);
 
   const week = useMemo(() => isoWeekString(new Date()), []);
+  const summary = useMemo(() => normalizeWeekSummary(data), [data]);
 
   useEffect(() => {
     let cancelled = false;
@@ -110,16 +139,16 @@ export default function CoachDecisionsPanel({ athleteId }) {
     }
   }
 
-  const c = data?.compliance || {};
-  const sessionsByType = data?.sessions_by_type || {};
-  const durationMinutes = data?.duration_minutes ?? data?.total_duration_minutes ?? 0;
-  const distanceKm = data?.distance_km ?? data?.total_distance_km ?? 0;
-  const kcal = data?.kcal ?? data?.total_calories ?? 0;
-  const elevationGain = data?.elevation_gain_m ?? data?.total_elevation_gain_m ?? 0;
-  const elevationLoss = data?.elevation_loss_m ?? data?.total_elevation_loss_m ?? 0;
-  const elevationTotal = data?.elevation_total_m ?? elevationGain + elevationLoss;
-  const rangeStart = data?.start_date || data?.range?.start;
-  const rangeEnd = data?.end_date || data?.range?.end;
+  const c = summary?.compliance || {};
+  const sessionsByType = summary?.sessionsByType || {};
+  const durationMinutes = summary?.durationMin ?? 0;
+  const distanceKm = summary?.distanceKm ?? 0;
+  const kcal = summary?.caloriesKcal ?? 0;
+  const elevationGain = summary?.elevationGain ?? 0;
+  const elevationLoss = summary?.elevationLoss ?? 0;
+  const elevationTotal = summary?.elevationTotal ?? 0;
+  const rangeStart = summary?.start_date || summary?.range?.start;
+  const rangeEnd = summary?.end_date || summary?.range?.end;
   const displayRangeStart = rangeStart || '—';
   const displayRangeEnd = rangeEnd || '—';
 
@@ -133,7 +162,7 @@ export default function CoachDecisionsPanel({ athleteId }) {
             </Typography>
           </Stack>
           <Typography variant="caption" sx={{ color: '#64748B' }}>
-            Semana {data?.week || week} · {displayRangeStart} → {displayRangeEnd}
+            Semana {summary?.week || week} · {displayRangeStart} → {displayRangeEnd}
           </Typography>
         </Box>
         {loading && <Chip size="small" label="Cargando…" />}
@@ -168,7 +197,7 @@ export default function CoachDecisionsPanel({ athleteId }) {
               <MetricCard label="Kcal" value={`${kcal} kcal`} icon={<LocalFireDepartment fontSize="small" />} />
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <MetricCard label="Sesiones" value={data?.sessions_count ?? 0} icon={<Layers fontSize="small" />} />
+              <MetricCard label="Sesiones" value={summary?.sessionsCount ?? 0} icon={<Layers fontSize="small" />} />
             </Grid>
           </Grid>
 
