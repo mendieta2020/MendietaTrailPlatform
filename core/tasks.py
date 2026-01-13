@@ -22,6 +22,7 @@ from .models import (
     ExternalIdentity,
 )
 from analytics.models import HistorialFitness 
+from core.calories import compute_calories_kcal
 
 # Logger profesional para monitoreo (Sentry/Datadog ready)
 logger = logging.getLogger(__name__)
@@ -1137,10 +1138,20 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
     source_object_id = mapped.pop("source_object_id")
     payload_sanitized = bool(activity.get("raw_sanitized"))
 
+    calories_kcal = compute_calories_kcal(
+        {
+            **mapped,
+            "tipo_deporte": normalized["tipo_deporte"],
+            "alumno": alumno,
+            "strava_sport_type": activity.get("strava_sport_type") or activity.get("type"),
+        }
+    )
+
     load_fields = build_canonical_load_fields(activity=activity, alumno=alumno, sport_type=normalized["tipo_deporte"])
     defaults = {
         **mapped,
         **load_fields,
+        "calories_kcal": float(calories_kcal or 0.0),
         "validity": Actividad.Validity.DISCARDED if invalid_reason else Actividad.Validity.VALID,
         "invalid_reason": invalid_reason or "",
     }

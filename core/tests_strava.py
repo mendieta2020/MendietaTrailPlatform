@@ -255,9 +255,9 @@ class StravaIngestionRobustTests(TestCase):
         self.assertEqual(Entrenamiento.objects.filter(strava_id="555").count(), 1)
         self.assertEqual(SessionComparison.objects.filter(activity=act).count(), 1)
 
-    def test_missing_calories_keeps_none(self):
+    def test_missing_calories_is_estimated(self):
         """
-        Requisito: NO guardar 0 como faltante. Si Strava no trae calories => NULL/None.
+        Si Strava no trae calories, estimamos kcal para evitar NULL en analytics.
         """
         start = datetime.now(dt_timezone.utc)
         a = _FakeStravaActivity(
@@ -276,7 +276,8 @@ class StravaIngestionRobustTests(TestCase):
             process_strava_event.delay(e.id)
 
         act = Actividad.objects.get(strava_id=7001)
-        self.assertIsNone(act.calories_kcal)
+        self.assertIsNotNone(act.calories_kcal)
+        self.assertGreater(act.calories_kcal, 0)
 
     def test_elev_loss_computed_when_alt_stream_present(self):
         """

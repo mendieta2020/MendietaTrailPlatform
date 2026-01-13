@@ -8,6 +8,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from analytics.models import DailyActivityAgg, HistorialFitness, PMCHistory
+from core.calories import compute_calories_kcal
 from core.models import Actividad
 
 
@@ -87,6 +88,7 @@ class DailyAggRow:
     distance_m: float
     elev_gain_m: float
     duration_s: int
+    calories_kcal: float
 
 
 def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
@@ -107,6 +109,8 @@ def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
             "tiempo_movimiento",
             "datos_brutos",
             "canonical_load",
+            "calories_kcal",
+            "alumno__peso",
         )
     )
 
@@ -118,11 +122,12 @@ def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
         elev_m = float(a.get("desnivel_positivo") or 0.0)
         dur_s = int(a.get("tiempo_movimiento") or 0)
         load = float(_extract_activity_load(a.get("datos_brutos") or {}, dur_s, a.get("canonical_load")) or 0.0)
+        calories_kcal = compute_calories_kcal(a)
 
         key = (d, sport)
         prev = by_key.get(key)
         if prev is None:
-            by_key[key] = DailyAggRow(d, sport, load, distance_m, elev_m, dur_s)
+            by_key[key] = DailyAggRow(d, sport, load, distance_m, elev_m, dur_s, float(calories_kcal or 0.0))
         else:
             by_key[key] = DailyAggRow(
                 d,
@@ -131,6 +136,7 @@ def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
                 prev.distance_m + distance_m,
                 prev.elev_gain_m + elev_m,
                 prev.duration_s + dur_s,
+                prev.calories_kcal + float(calories_kcal or 0.0),
             )
 
     rows = list(by_key.values())
@@ -146,6 +152,7 @@ def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
                     distance_m=float(r.distance_m or 0.0),
                     elev_gain_m=float(r.elev_gain_m or 0.0),
                     duration_s=int(r.duration_s or 0),
+                    calories_kcal=float(r.calories_kcal or 0.0),
                 )
                 for r in rows
             ],
