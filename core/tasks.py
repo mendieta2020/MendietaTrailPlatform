@@ -1279,7 +1279,7 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
         entreno.tipo_actividad = _map_strava_type_to_core(activity.get("tipo_deporte") or activity.get("type"))
         entreno.distancia_real_km = round(float(activity.get("distance_m") or 0.0) / 1000.0, 2)
         entreno.tiempo_real_min = int(round(float(activity.get("moving_time_s") or 0) / 60.0))
-        entreno.desnivel_real_m = int(round(float(activity.get("elevation_m") or 0.0)))
+        entreno.desnivel_real_m = int(round(float(getattr(actividad_obj, "elev_gain_m", 0.0) or 0.0)))
         if accion.startswith("CREATED") or entreno.titulo == "Entrenamiento":
             entreno.titulo = activity.get("name") or entreno.titulo
         entreno.save()

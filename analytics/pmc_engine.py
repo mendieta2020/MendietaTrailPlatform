@@ -87,6 +87,8 @@ class DailyAggRow:
     load: float
     distance_m: float
     elev_gain_m: float
+    elev_loss_m: float
+    elev_total_m: float
     duration_s: int
     calories_kcal: float
 
@@ -106,6 +108,8 @@ def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
             "tipo_deporte",
             "distancia",
             "desnivel_positivo",
+            "elev_gain_m",
+            "elev_loss_m",
             "tiempo_movimiento",
             "datos_brutos",
             "canonical_load",
@@ -119,7 +123,9 @@ def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
         d = _to_localdate(a["fecha_inicio"])
         sport = _normalize_business_sport(a.get("tipo_deporte"))
         distance_m = float(a.get("distancia") or 0.0)
-        elev_m = float(a.get("desnivel_positivo") or 0.0)
+        elev_gain_m = float(a.get("elev_gain_m") or a.get("desnivel_positivo") or 0.0)
+        elev_loss_m = float(a.get("elev_loss_m") or 0.0)
+        elev_total_m = elev_gain_m + elev_loss_m
         dur_s = int(a.get("tiempo_movimiento") or 0)
         load = float(_extract_activity_load(a.get("datos_brutos") or {}, dur_s, a.get("canonical_load")) or 0.0)
         calories_kcal = compute_calories_kcal(a)
@@ -127,14 +133,26 @@ def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
         key = (d, sport)
         prev = by_key.get(key)
         if prev is None:
-            by_key[key] = DailyAggRow(d, sport, load, distance_m, elev_m, dur_s, float(calories_kcal or 0.0))
+            by_key[key] = DailyAggRow(
+                d,
+                sport,
+                load,
+                distance_m,
+                elev_gain_m,
+                elev_loss_m,
+                elev_total_m,
+                dur_s,
+                float(calories_kcal or 0.0),
+            )
         else:
             by_key[key] = DailyAggRow(
                 d,
                 sport,
                 prev.load + load,
                 prev.distance_m + distance_m,
-                prev.elev_gain_m + elev_m,
+                prev.elev_gain_m + elev_gain_m,
+                prev.elev_loss_m + elev_loss_m,
+                prev.elev_total_m + elev_total_m,
                 prev.duration_s + dur_s,
                 prev.calories_kcal + float(calories_kcal or 0.0),
             )
@@ -151,6 +169,8 @@ def build_daily_aggs_for_alumno(*, alumno_id: int, start_date: date) -> int:
                     load=float(r.load or 0.0),
                     distance_m=float(r.distance_m or 0.0),
                     elev_gain_m=float(r.elev_gain_m or 0.0),
+                    elev_loss_m=float(r.elev_loss_m or 0.0),
+                    elev_total_m=float(r.elev_total_m or 0.0),
                     duration_s=int(r.duration_s or 0),
                     calories_kcal=float(r.calories_kcal or 0.0),
                 )

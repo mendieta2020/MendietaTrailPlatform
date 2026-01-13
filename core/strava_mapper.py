@@ -185,8 +185,28 @@ def map_strava_activity_to_actividad(strava_activity_json: dict) -> dict:
             if effort is not None:
                 break
 
+    def _extract_raw_metric(raw_payload: dict, keys: tuple[str, ...]) -> float | None:
+        for key in keys:
+            if key in raw_payload:
+                value = _to_float_or_none(raw_payload.get(key))
+                if value is not None:
+                    return value
+        return None
+
     elev_loss_m = _to_float_or_none(strava_activity_json.get("elev_loss_m"))
     elev_gain_m = _to_float_or_none(strava_activity_json.get("elevation_m"))
+
+    raw_gain = _extract_raw_metric(raw, ("total_elevation_gain", "elev_gain_m", "elevation_gain", "elevation_m"))
+    raw_loss = _extract_raw_metric(raw, ("total_elevation_loss", "elev_loss_m", "elevation_loss", "elev_loss"))
+
+    if elev_gain_m is None:
+        elev_gain_m = raw_gain
+    if elev_loss_m is None:
+        elev_loss_m = raw_loss
+
+    elev_gain_m = max(float(elev_gain_m), 0.0) if elev_gain_m is not None else 0.0
+    elev_loss_m = max(float(elev_loss_m), 0.0) if elev_loss_m is not None else 0.0
+    elev_total_m = elev_gain_m + elev_loss_m
 
     return {
         "source": "strava",
@@ -203,8 +223,10 @@ def map_strava_activity_to_actividad(strava_activity_json: dict) -> dict:
         # para UX consistente; si no viene, usamos type crudo por compat.
         "tipo_deporte": strava_activity_json.get("tipo_deporte") or (strava_activity_json.get("type") or ""),
         "strava_sport_type": raw_sport_type,
-        "desnivel_positivo": float(elev_gain_m) if elev_gain_m is not None else None,
-        "elev_loss_m": float(elev_loss_m) if elev_loss_m is not None else None,
+        "desnivel_positivo": float(elev_gain_m),
+        "elev_gain_m": float(elev_gain_m),
+        "elev_loss_m": float(elev_loss_m),
+        "elev_total_m": float(elev_total_m),
         "calories_kcal": float(calories_kcal) if calories_kcal is not None else None,
         "effort": float(effort) if effort is not None else None,
         "ritmo_promedio": (distance_m / moving_s) if (distance_m > 0 and moving_s > 0) else None,

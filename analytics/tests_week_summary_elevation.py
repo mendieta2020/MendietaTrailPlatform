@@ -1,0 +1,108 @@
+from datetime import date, datetime, timedelta
+
+from django.contrib.auth import get_user_model
+from django.core.management import call_command
+from django.test import TestCase
+from django.conf import settings
+from django.utils import timezone
+from rest_framework.test import APIClient
+
+from core.models import Actividad, Alumno
+
+
+User = get_user_model()
+
+
+class WeekSummaryElevationTests(TestCase):
+    def setUp(self):
+        self.password = "pass123"
+        self.coach = User.objects.create_user(username="coach_week_elev", password=self.password)
+        self.alumno = Alumno.objects.create(
+            entrenador=self.coach,
+            nombre="Lia",
+            apellido="Week",
+            email="lia_week@test.com",
+        )
+        self.client = APIClient()
+
+        self.week_start = date(2026, 1, 12)
+        self.week = f"{self.week_start.isocalendar()[0]}-W{self.week_start.isocalendar()[1]:02d}"
+
+        start_dt = timezone.make_aware(datetime.combine(self.week_start, datetime.min.time()))
+        Actividad.objects.create(
+            usuario=self.coach,
+            alumno=self.alumno,
+            source="strava",
+            source_object_id="week-1",
+            source_hash="",
+            strava_id=9001,
+            strava_sport_type="Run",
+            nombre="Week Run 1",
+            distancia=10000,
+            tiempo_movimiento=3600,
+            fecha_inicio=start_dt,
+            tipo_deporte="RUN",
+            desnivel_positivo=200,
+            elev_gain_m=200,
+            elev_loss_m=150,
+            elev_total_m=350,
+            calories_kcal=800,
+            validity=Actividad.Validity.VALID,
+        )
+        Actividad.objects.create(
+            usuario=self.coach,
+            alumno=self.alumno,
+            source="strava",
+            source_object_id="week-2",
+            source_hash="",
+            strava_id=9002,
+            strava_sport_type="Ride",
+            nombre="Week Ride",
+            distancia=20000,
+            tiempo_movimiento=5400,
+            fecha_inicio=start_dt + timedelta(days=2),
+            tipo_deporte="BIKE",
+            desnivel_positivo=300,
+            elev_gain_m=300,
+            elev_loss_m=280,
+            elev_total_m=580,
+            calories_kcal=1200,
+            validity=Actividad.Validity.VALID,
+        )
+
+    def _login(self):
+        response = self.client.post(
+            "/api/token/",
+            {"username": self.coach.username, "password": self.password},
+            format="json",
+        )
+        access_cookie = response.cookies.get(settings.COOKIE_AUTH_ACCESS_NAME)
+        if access_cookie:
+            self.client.cookies[settings.COOKIE_AUTH_ACCESS_NAME] = access_cookie.value
+        else:
+            access = response.data.get("access")
+            self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+    def test_week_summary_includes_elevation_and_calories(self):
+        call_command(
+            "recompute_daily_analytics",
+            "--alumno-id",
+            str(self.alumno.id),
+            "--entrenador-id",
+            str(self.coach.id),
+            "--start-date",
+            self.week_start.isoformat(),
+        )
+
+        self._login()
+        res = self.client.get(
+            f"/api/coach/athletes/{self.alumno.id}/week-summary/?week={self.week}"
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["sessions_count"], 2)
+        self.assertEqual(res.data["distance_km"], 30.0)
+        self.assertEqual(res.data["duration_minutes"], 150)
+        self.assertEqual(res.data["elevation_gain_m"], 500)
+        self.assertEqual(res.data["elevation_loss_m"], 430)
+        self.assertEqual(res.data["elevation_total_m"], 930)
+        self.assertEqual(res.data["kcal"], 2000)

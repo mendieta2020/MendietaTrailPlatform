@@ -305,6 +305,54 @@ class StravaIngestionRobustTests(TestCase):
         act = Actividad.objects.get(strava_id=7002)
         self.assertIsNotNone(act.elev_loss_m)
         self.assertAlmostEqual(float(act.elev_loss_m), 12.5, places=1)
+        self.assertAlmostEqual(float(act.elev_gain_m), 200.0, places=1)
+        self.assertAlmostEqual(float(act.elev_total_m), 212.5, places=1)
+
+    def test_elevation_policy_gain_only_defaults_loss(self):
+        start = datetime.now(dt_timezone.utc)
+        a = _FakeStravaActivity(
+            activity_id=7003,
+            athlete_id=111,
+            name="Gain Only Run",
+            type_="Run",
+            start=start,
+            distance_m=6000,
+            moving_time_s=1800,
+            elev_m=150,
+            calories_kcal=320,
+        )
+        e = self._mk_event(uid="e_gain_only", owner_id=111, object_id=7003, aspect="create")
+        with patch("core.services.obtener_cliente_strava", return_value=_FakeStravaClient(a)):
+            process_strava_event.delay(e.id)
+
+        act = Actividad.objects.get(strava_id=7003)
+        self.assertAlmostEqual(float(act.elev_gain_m), 150.0, places=1)
+        self.assertAlmostEqual(float(act.elev_loss_m), 0.0, places=1)
+        self.assertAlmostEqual(float(act.elev_total_m), 150.0, places=1)
+        self.assertAlmostEqual(float(act.calories_kcal), 320.0, places=1)
+
+    def test_elevation_policy_missing_data_defaults_to_zero(self):
+        start = datetime.now(dt_timezone.utc)
+        a = _FakeStravaActivity(
+            activity_id=7004,
+            athlete_id=111,
+            name="No Elevation Run",
+            type_="Run",
+            start=start,
+            distance_m=4000,
+            moving_time_s=1200,
+            elev_m=None,
+            calories_kcal=None,
+        )
+        e = self._mk_event(uid="e_no_elev", owner_id=111, object_id=7004, aspect="create")
+        with patch("core.services.obtener_cliente_strava", return_value=_FakeStravaClient(a)):
+            process_strava_event.delay(e.id)
+
+        act = Actividad.objects.get(strava_id=7004)
+        self.assertAlmostEqual(float(act.elev_gain_m), 0.0, places=1)
+        self.assertAlmostEqual(float(act.elev_loss_m), 0.0, places=1)
+        self.assertAlmostEqual(float(act.elev_total_m), 0.0, places=1)
+        self.assertIsNotNone(act.calories_kcal)
 
     def test_raw_json_datetime_is_sanitized_before_saving(self):
         """

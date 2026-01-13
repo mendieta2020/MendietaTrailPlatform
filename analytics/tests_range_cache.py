@@ -137,7 +137,9 @@ class WeeklySummaryEndpointTests(TestCase):
             tiempo_movimiento=1800,
             fecha_inicio=start_dt,
             tipo_deporte="RUN",
+            elev_gain_m=140,
             elev_loss_m=120,
+            elev_total_m=260,
             calories_kcal=450,
             source=Actividad.Source.STRAVA,
         )
@@ -148,6 +150,8 @@ class WeeklySummaryEndpointTests(TestCase):
             load=45,
             distance_m=5000,
             elev_gain_m=140,
+            elev_loss_m=120,
+            elev_total_m=260,
             duration_s=1800,
             calories_kcal=450,
         )

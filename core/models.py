@@ -394,7 +394,9 @@ class Actividad(models.Model):
     tipo_deporte = models.CharField(max_length=50)
     # `None` representa "dato faltante". NO usar 0 como faltante (kcal/elev/etc).
     desnivel_positivo = models.FloatField(null=True, blank=True)
+    elev_gain_m = models.FloatField(default=0.0, help_text="Sumatoria de ascenso (metros).")
     elev_loss_m = models.FloatField(null=True, blank=True, help_text="Sumatoria de descenso (metros). NULL si faltante.")
+    elev_total_m = models.FloatField(default=0.0, help_text="Elevación total (ascenso + descenso).")
     calories_kcal = models.FloatField(null=True, blank=True, help_text="Calorías (kcal). NULL si faltante.")
     effort = models.FloatField(
         null=True,
