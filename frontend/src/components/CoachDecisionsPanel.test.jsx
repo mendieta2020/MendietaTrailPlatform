@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createRoot } from 'react-dom/client';
 
 import CoachDecisionsPanel from './CoachDecisionsPanel';
+import weekSummaryFixture from './__fixtures__/weekSummaryFixture';
 
 vi.mock('../api/client', () => ({
   default: {
@@ -50,23 +51,9 @@ describe('CoachDecisionsPanel', () => {
     vi.clearAllMocks();
   });
 
-  it('renders weekly summary metrics', async () => {
+  it('renders weekly summary metrics from totals payload', async () => {
     client.get.mockResolvedValueOnce({
-      data: {
-        week: '2026-W03',
-        start_date: '2026-01-12',
-        end_date: '2026-01-18',
-        distance_km: 112,
-        duration_minutes: 724,
-        elevation_gain_m: 2797,
-        elevation_loss_m: 300,
-        elevation_total_m: 3097,
-        kcal: 8500,
-        sessions_count: 6,
-        sessions_by_type: { RUN: 4, BIKE: 1, STRENGTH: 1 },
-        compliance: {},
-        alerts: [],
-      },
+      data: weekSummaryFixture,
     });
 
     await act(async () => {
@@ -74,11 +61,12 @@ describe('CoachDecisionsPanel', () => {
       await flushPromises();
     });
 
-    expect(container.textContent).toContain('112 km');
-    expect(container.textContent).toContain('12h 4m');
+    expect(container.textContent).toContain('14.01 km');
+    expect(container.textContent).toContain('1h 20m');
     expect(container.textContent).toContain('Elev -');
     expect(container.textContent).toContain('Sesiones');
-    expect(container.textContent).toContain('RUN: 4');
+    expect(container.textContent).toContain('RUN: 1');
+    expect(container.textContent).toContain('866 kcal');
   });
 
   it('renders zero state without error', async () => {
