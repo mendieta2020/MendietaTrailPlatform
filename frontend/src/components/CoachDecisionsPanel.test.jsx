@@ -64,6 +64,8 @@ describe('CoachDecisionsPanel', () => {
     expect(container.textContent).toContain('14.01 km');
     expect(container.textContent).toContain('1h 20m');
     expect(container.textContent).toContain('Elev -');
+    expect(container.textContent).toContain('Fuerza');
+    expect(container.textContent).toContain('2h 15m');
     expect(container.textContent).toContain('Sesiones');
     expect(container.textContent).toContain('RUN: 1');
     expect(container.textContent).toContain('866 kcal');
@@ -74,6 +76,7 @@ describe('CoachDecisionsPanel', () => {
     expect(container.textContent).toContain('1h 30m');
     expect(container.textContent).toContain('600 kcal');
     expect(container.textContent).toContain('280');
+    expect(container.textContent).not.toContain('Elev total');
   });
 
   it('renders without per_sport_totals data', async () => {
@@ -89,6 +92,8 @@ describe('CoachDecisionsPanel', () => {
     });
 
     expect(container.textContent).toContain('14.01 km');
+    expect(container.textContent).toContain('Fuerza');
+    expect(container.textContent).toContain('0 min');
     expect(container.textContent).not.toContain('Trabajo por deporte');
     expect(container.textContent).not.toContain('Otras actividades');
   });
@@ -105,6 +110,8 @@ describe('CoachDecisionsPanel', () => {
     });
 
     expect(container.textContent).toContain('14.01 km');
+    expect(container.textContent).toContain('Fuerza');
+    expect(container.textContent).toContain('0 min');
     expect(container.textContent).not.toContain('Trabajo por deporte');
     expect(container.textContent).not.toContain('Otras actividades');
   });

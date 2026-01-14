@@ -14,7 +14,7 @@ from rest_framework.settings import api_settings
 
 from analytics.cache import is_cache_fresh, set_range_cache
 from analytics.models import Alert, AnalyticsRangeCache, DailyActivityAgg, InjuryRiskSnapshot, PMCHistory
-from analytics.pmc_engine import PMC_SPORT_GROUPS, ensure_pmc_materialized
+from analytics.pmc_engine import PMC_SPORT_GROUPS, _normalize_business_sport, ensure_pmc_materialized
 from analytics.range_utils import max_range_days, parse_date_range_params, parse_iso_week_param
 from core.models import Actividad, Alumno, Entrenamiento, Equipo
 
@@ -70,9 +70,35 @@ def _totals_by_type(*, athlete_id: int, start: date, end: date) -> dict[str, dic
 
 
 _DISTANCE_SPORTS = {"RUN", "TRAIL", "BIKE", "WALK"}
+_NON_DISTANCE_SPORTS = {"STRENGTH", "FUNCTIONAL", "WORKOUT", "CARDIO", "OTHER"}
+
+
+def _normalize_summary_sport(raw_sport: str | None) -> str:
+    st = str(raw_sport or "").strip().upper()
+    if st in _NON_DISTANCE_SPORTS:
+        return st
+    return _normalize_business_sport(st)
+
+
+def _sessions_by_summary_sport(*, athlete_id: int, start: date, end: date) -> dict[str, int]:
+    qs = (
+        Actividad.objects.filter(
+            alumno_id=int(athlete_id),
+            validity=Actividad.Validity.VALID,
+            fecha_inicio__date__range=[start, end],
+        )
+        .values("tipo_deporte")
+        .annotate(count=Count("id"))
+    )
+    sessions: dict[str, int] = {}
+    for row in qs:
+        sport = _normalize_summary_sport(row["tipo_deporte"])
+        sessions[sport] = sessions.get(sport, 0) + int(row["count"] or 0)
+    return sessions
 
 
 def _per_sport_totals(*, athlete_id: int, start: date, end: date) -> dict[str, dict]:
+    sessions_by_type = _sessions_by_summary_sport(athlete_id=athlete_id, start=start, end=end)
     qs = (
         DailyActivityAgg.objects.filter(alumno_id=int(athlete_id), fecha__range=[start, end])
         .values("sport")
@@ -94,6 +120,8 @@ def _per_sport_totals(*, athlete_id: int, start: date, end: date) -> dict[str, d
         calories_kcal = float(row["calories_kcal"] or 0.0)
         load = float(row["load"] or 0.0)
         payload = {
+            "sessions": int(sessions_by_type.get(sport, 0)),
+            "duration_s": int(round(duration_s)),
             "duration_minutes": int(round(duration_s / 60.0)),
             "calories_kcal": int(round(calories_kcal)),
             "load": round(load, 2),
@@ -112,6 +140,15 @@ def _per_sport_totals(*, athlete_id: int, start: date, end: date) -> dict[str, d
                 }
             )
         totals[sport] = payload
+    for sport in _NON_DISTANCE_SPORTS:
+        if sport not in totals:
+            totals[sport] = {
+                "sessions": int(sessions_by_type.get(sport, 0)),
+                "duration_s": 0,
+                "duration_minutes": 0,
+                "calories_kcal": 0,
+                "load": 0.0,
+            }
     return totals
 
 

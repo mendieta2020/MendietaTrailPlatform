@@ -10,7 +10,7 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
-import { LocalFireDepartment, Terrain, Timer, Straighten, Layers } from '@mui/icons-material';
+import { LocalFireDepartment, Terrain, Timer, Straighten, Layers, FitnessCenter } from '@mui/icons-material';
 import { getISOWeek, getISOWeekYear } from 'date-fns';
 import client from '../api/client';
 import { getSportLabel, splitPerSportTotals } from './sportsConfig';
@@ -64,6 +64,16 @@ function formatLoadValue(load) {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
+function formatStrengthDuration(seconds) {
+  const totalMinutes = Number.isFinite(seconds) ? Math.max(0, Math.round(seconds / 60)) : 0;
+  if (totalMinutes < 60) {
+    return `${totalMinutes} min`;
+  }
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  return `${hours}h ${mins}m`;
+}
+
 function normalizeWeekSummary(payload) {
   if (!payload) return null;
   const distanceKm = payload.total_distance_km ?? payload.distance_km ?? payload.distanceKm;
@@ -85,6 +95,7 @@ function normalizeWeekSummary(payload) {
       code,
       label: getSportLabel(code),
       durationMinutes: entry.duration_minutes ?? entry.durationMinutes ?? null,
+      durationSeconds: entry.duration_s ?? entry.durationSeconds ?? null,
       caloriesKcal: entry.calories_kcal ?? entry.caloriesKcal ?? null,
       load: entry.load ?? null,
       distanceKm: entry.distance_km ?? entry.distanceKm ?? null,
@@ -259,13 +270,22 @@ export default function CoachDecisionsPanel({ athleteId }) {
   const kcal = summary?.caloriesKcal ?? 0;
   const elevationGain = summary?.elevationGain ?? 0;
   const elevationLoss = summary?.elevationLoss ?? 0;
-  const elevationTotal = summary?.elevationTotal ?? 0;
   const rangeStart = summary?.start_date || summary?.range?.start;
   const rangeEnd = summary?.end_date || summary?.range?.end;
   const displayRangeStart = rangeStart || '—';
   const displayRangeEnd = rangeEnd || '—';
   const perSportTotals = summary?.perSportTotals || {};
   const { distanceTotals, nonDistanceTotals } = splitPerSportTotals(perSportTotals);
+  const strengthDurationSeconds = nonDistanceTotals.reduce((acc, sport) => {
+    if (Number.isFinite(sport.durationSeconds)) {
+      return acc + sport.durationSeconds;
+    }
+    if (Number.isFinite(sport.durationMinutes)) {
+      return acc + sport.durationMinutes * 60;
+    }
+    return acc;
+  }, 0);
+  const strengthDurationLabel = formatStrengthDuration(strengthDurationSeconds);
 
   return (
     <Paper sx={{ p: 3, borderRadius: 3, mb: 4, border: '1px solid #E2E8F0', boxShadow: '0 4px 18px rgba(0,0,0,0.04)' }}>
@@ -306,7 +326,7 @@ export default function CoachDecisionsPanel({ athleteId }) {
               <MetricCard label="Elev -" value={`${elevationLoss} m`} icon={<Terrain fontSize="small" />} />
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <MetricCard label="Elev total" value={`${elevationTotal} m`} icon={<Terrain fontSize="small" />} />
+              <MetricCard label="Fuerza" value={strengthDurationLabel} icon={<FitnessCenter fontSize="small" />} />
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
               <MetricCard label="Kcal" value={`${kcal} kcal`} icon={<LocalFireDepartment fontSize="small" />} />
