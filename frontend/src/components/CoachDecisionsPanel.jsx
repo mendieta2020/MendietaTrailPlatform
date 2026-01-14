@@ -28,11 +28,85 @@ function severityChipColor(sev) {
   return 'default';
 }
 
-function MetricCard({ label, value, icon }) {
+const METRIC_STYLES = {
+  time: {
+    background: '#F8FAFC',
+    border: '#E2E8F0',
+    iconColor: '#0F172A',
+    iconBackground: '#E2E8F0',
+  },
+  distance: {
+    background: '#EFF6FF',
+    border: '#BFDBFE',
+    iconColor: '#1D4ED8',
+    iconBackground: '#DBEAFE',
+  },
+  elev: {
+    background: '#E0F2FE',
+    border: '#BAE6FD',
+    iconColor: '#0284C7',
+    iconBackground: '#CFFAFE',
+  },
+  strength: {
+    background: '#F5F3FF',
+    border: '#DDD6FE',
+    iconColor: '#7C3AED',
+    iconBackground: '#EDE9FE',
+  },
+  energy: {
+    background: '#FFF7ED',
+    border: '#FED7AA',
+    iconColor: '#F97316',
+    iconBackground: '#FFEDD5',
+  },
+  sessions: {
+    background: '#F8FAFC',
+    border: '#E2E8F0',
+    iconColor: '#475569',
+    iconBackground: '#E2E8F0',
+  },
+};
+
+const getMetricChipStyles = (accent) => METRIC_STYLES[accent] || METRIC_STYLES.time;
+
+const METRICS = [
+  { key: 'duration', label: 'Duración', icon: Timer, accent: 'time' },
+  { key: 'distance', label: 'Distancia', icon: Straighten, accent: 'distance' },
+  { key: 'elevGain', label: 'Elev +', icon: Terrain, accent: 'elev' },
+  { key: 'elevLoss', label: 'Elev -', icon: Terrain, accent: 'elev' },
+  { key: 'strength', label: 'Fuerza', icon: FitnessCenter, accent: 'strength' },
+  { key: 'kcal', label: 'Kcal', icon: LocalFireDepartment, accent: 'energy' },
+  { key: 'sessions', label: 'Sesiones', icon: Layers, accent: 'sessions' },
+];
+
+function MetricCard({ label, value, icon: Icon, accent }) {
+  const styles = getMetricChipStyles(accent);
   return (
-    <Paper sx={{ p: 2, borderRadius: 2, border: '1px solid #E2E8F0', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+    <Paper
+      sx={{
+        p: 2,
+        borderRadius: 2,
+        border: `1px solid ${styles.border}`,
+        backgroundColor: styles.background,
+        boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
+      }}
+    >
       <Stack direction="row" spacing={1.5} alignItems="center">
-        <Box sx={{ color: '#0F172A', display: 'flex', alignItems: 'center' }}>{icon}</Box>
+        <Box
+          sx={{
+            color: styles.iconColor,
+            backgroundColor: styles.iconBackground,
+            width: 36,
+            height: 36,
+            borderRadius: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <Icon fontSize="small" />
+        </Box>
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 700, letterSpacing: 0.3 }}>
             {label}
@@ -275,7 +349,7 @@ export default function CoachDecisionsPanel({ athleteId }) {
   const displayRangeStart = rangeStart || '—';
   const displayRangeEnd = rangeEnd || '—';
   const perSportTotals = summary?.perSportTotals || {};
-  const { distanceTotals, nonDistanceTotals } = splitPerSportTotals(perSportTotals);
+  const { nonDistanceTotals } = splitPerSportTotals(perSportTotals);
   const strengthDurationSeconds = nonDistanceTotals.reduce((acc, sport) => {
     if (Number.isFinite(sport.durationSeconds)) {
       return acc + sport.durationSeconds;
@@ -309,31 +383,28 @@ export default function CoachDecisionsPanel({ athleteId }) {
       {!error && !emptyState && (
         <>
           <Grid container spacing={1.5} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6} md={3}>
-              <MetricCard label="Duración" value={formatDuration(durationMinutes)} icon={<Timer fontSize="small" />} />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <MetricCard label="Distancia" value={`${distanceKm} km`} icon={<Straighten fontSize="small" />} />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <MetricCard
-                label="Elev +"
-                value={`${elevationGain} m`}
-                icon={<Terrain fontSize="small" />}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <MetricCard label="Elev -" value={`${elevationLoss} m`} icon={<Terrain fontSize="small" />} />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <MetricCard label="Fuerza" value={strengthDurationLabel} icon={<FitnessCenter fontSize="small" />} />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <MetricCard label="Kcal" value={`${kcal} kcal`} icon={<LocalFireDepartment fontSize="small" />} />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <MetricCard label="Sesiones" value={summary?.sessionsCount ?? 0} icon={<Layers fontSize="small" />} />
-            </Grid>
+            {METRICS.map((metric) => {
+              const valueMap = {
+                duration: formatDuration(durationMinutes),
+                distance: `${distanceKm} km`,
+                elevGain: `${elevationGain} m`,
+                elevLoss: `${elevationLoss} m`,
+                strength: strengthDurationLabel,
+                kcal: `${kcal} kcal`,
+                sessions: summary?.sessionsCount ?? 0,
+              };
+
+              return (
+                <Grid item xs={12} sm={6} md={3} key={metric.key}>
+                  <MetricCard
+                    label={metric.label}
+                    value={valueMap[metric.key]}
+                    icon={metric.icon}
+                    accent={metric.accent}
+                  />
+                </Grid>
+              );
+            })}
           </Grid>
 
           <Divider sx={{ my: 2 }} />
@@ -355,14 +426,7 @@ export default function CoachDecisionsPanel({ athleteId }) {
             )}
           </Box>
 
-          {distanceTotals.length > 0 && (
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#0F172A', mb: 1 }}>
-                Trabajo por deporte
-              </Typography>
-              <SportTotalsGrid sports={distanceTotals} />
-            </Box>
-          )}
+          {/* TODO: reactivar resumen de trabajo por deporte cuando se vuelva a mostrar en el panel. */}
 
           {nonDistanceTotals.length > 0 && (
             <Box sx={{ mb: 2 }}>
