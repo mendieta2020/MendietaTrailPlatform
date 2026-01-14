@@ -15,6 +15,7 @@ const weekSummaryFixture = {
   per_sport_totals: {
     TRAIL: {
       duration_minutes: 615,
+      duration_s: 36900,
       calories_kcal: 6996,
       load: 1460.3,
       distance_km: 112.08,
@@ -22,8 +23,15 @@ const weekSummaryFixture = {
       elevation_loss_m: 3110,
       elevation_total_m: 5907,
     },
+    STRENGTH: {
+      duration_minutes: 45,
+      duration_s: 2700,
+      calories_kcal: 300,
+      load: 120,
+    },
     OTHER: {
       duration_minutes: 90,
+      duration_s: 5400,
       calories_kcal: 600,
       load: 280,
     },

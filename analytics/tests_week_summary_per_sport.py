@@ -145,16 +145,55 @@ class WeekSummaryPerSportTotalsTests(TestCase):
         per_sport = res.data["per_sport_totals"]
         self.assertEqual(per_sport["RUN"]["distance_km"], 15.0)
         self.assertEqual(per_sport["RUN"]["duration_minutes"], 90)
+        self.assertEqual(per_sport["RUN"]["duration_s"], 5400)
+        self.assertEqual(per_sport["RUN"]["sessions"], 2)
         self.assertEqual(per_sport["RUN"]["calories_kcal"], 1200)
         self.assertEqual(per_sport["RUN"]["load"], 180.0)
 
         self.assertEqual(per_sport["STRENGTH"]["duration_minutes"], 45)
+        self.assertEqual(per_sport["STRENGTH"]["duration_s"], 2700)
+        self.assertEqual(per_sport["STRENGTH"]["sessions"], 1)
         self.assertEqual(per_sport["STRENGTH"]["calories_kcal"], 500)
         self.assertEqual(per_sport["STRENGTH"]["load"], 90.0)
         self.assertNotIn("distance_km", per_sport["STRENGTH"])
         self.assertNotIn("elevation_gain_m", per_sport["STRENGTH"])
         self.assertNotIn("elevation_loss_m", per_sport["STRENGTH"])
         self.assertNotIn("elevation_total_m", per_sport["STRENGTH"])
+
+    def test_week_summary_includes_empty_strength_totals(self):
+        start_dt = timezone.make_aware(datetime.combine(self.week_start, datetime.min.time()))
+        self._create_activity(
+            start_dt=start_dt,
+            sport="RUN",
+            distancia=5000,
+            tiempo_movimiento=1800,
+            elev_gain=100,
+            elev_loss=80,
+            calories=400,
+        )
+
+        DailyActivityAgg.objects.create(
+            alumno=self.alumno,
+            fecha=self.week_start,
+            sport="RUN",
+            load=60.0,
+            distance_m=5000,
+            elev_gain_m=100,
+            elev_loss_m=80,
+            elev_total_m=180,
+            duration_s=1800,
+            calories_kcal=400,
+        )
+
+        self._login()
+        res = self.client.get(
+            f"/api/coach/athletes/{self.alumno.id}/week-summary/?week={self.week}"
+        )
+        self.assertEqual(res.status_code, 200)
+        per_sport = res.data["per_sport_totals"]
+        self.assertIn("STRENGTH", per_sport)
+        self.assertEqual(per_sport["STRENGTH"]["duration_s"], 0)
+        self.assertEqual(per_sport["STRENGTH"]["sessions"], 0)
 
     def test_week_summary_without_daily_aggs_has_no_per_sport_totals(self):
         empty_athlete = Alumno.objects.create(
