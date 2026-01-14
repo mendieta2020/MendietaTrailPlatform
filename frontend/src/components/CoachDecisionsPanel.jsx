@@ -30,40 +30,70 @@ function severityChipColor(sev) {
 
 const METRIC_STYLES = {
   time: {
-    background: '#F8FAFC',
-    border: '#E2E8F0',
-    iconColor: '#0F172A',
-    iconBackground: '#E2E8F0',
+    container: {
+      backgroundColor: '#F8FAFC',
+      borderColor: '#E2E8F0',
+      boxShadow: '0 2px 10px rgba(15, 23, 42, 0.04)',
+    },
+    icon: {
+      color: '#0F172A',
+      backgroundColor: '#E2E8F0',
+    },
   },
   distance: {
-    background: '#EFF6FF',
-    border: '#BFDBFE',
-    iconColor: '#1D4ED8',
-    iconBackground: '#DBEAFE',
+    container: {
+      backgroundColor: '#EFF6FF',
+      borderColor: '#BFDBFE',
+      boxShadow: '0 2px 10px rgba(29, 78, 216, 0.08)',
+    },
+    icon: {
+      color: '#1D4ED8',
+      backgroundColor: '#DBEAFE',
+    },
   },
   elev: {
-    background: '#E0F2FE',
-    border: '#BAE6FD',
-    iconColor: '#0284C7',
-    iconBackground: '#CFFAFE',
+    container: {
+      backgroundColor: '#E0F2FE',
+      borderColor: '#BAE6FD',
+      boxShadow: '0 2px 10px rgba(2, 132, 199, 0.08)',
+    },
+    icon: {
+      color: '#0284C7',
+      backgroundColor: '#CFFAFE',
+    },
   },
   strength: {
-    background: '#F5F3FF',
-    border: '#DDD6FE',
-    iconColor: '#7C3AED',
-    iconBackground: '#EDE9FE',
+    container: {
+      backgroundColor: '#F5F3FF',
+      borderColor: '#DDD6FE',
+      boxShadow: '0 2px 10px rgba(124, 58, 237, 0.08)',
+    },
+    icon: {
+      color: '#7C3AED',
+      backgroundColor: '#EDE9FE',
+    },
   },
   energy: {
-    background: '#FFF7ED',
-    border: '#FED7AA',
-    iconColor: '#F97316',
-    iconBackground: '#FFEDD5',
+    container: {
+      backgroundColor: '#FFF7ED',
+      borderColor: '#FED7AA',
+      boxShadow: '0 2px 10px rgba(249, 115, 22, 0.08)',
+    },
+    icon: {
+      color: '#F97316',
+      backgroundColor: '#FFEDD5',
+    },
   },
   sessions: {
-    background: '#F8FAFC',
-    border: '#E2E8F0',
-    iconColor: '#475569',
-    iconBackground: '#E2E8F0',
+    container: {
+      backgroundColor: '#F1F5F9',
+      borderColor: '#E2E8F0',
+      boxShadow: '0 2px 10px rgba(71, 85, 105, 0.05)',
+    },
+    icon: {
+      color: '#475569',
+      backgroundColor: '#E2E8F0',
+    },
   },
 };
 
@@ -86,18 +116,19 @@ function MetricCard({ label, value, icon: Icon, accent }) {
       sx={{
         p: 2,
         borderRadius: 2,
-        border: `1px solid ${styles.border}`,
-        backgroundColor: styles.background,
-        boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
+        border: '1px solid',
+        borderColor: styles.container.borderColor,
+        backgroundColor: styles.container.backgroundColor,
+        boxShadow: styles.container.boxShadow,
       }}
     >
       <Stack direction="row" spacing={1.5} alignItems="center">
         <Box
           sx={{
-            color: styles.iconColor,
-            backgroundColor: styles.iconBackground,
-            width: 36,
-            height: 36,
+            color: styles.icon.color,
+            backgroundColor: styles.icon.backgroundColor,
+            width: 40,
+            height: 40,
             borderRadius: '12px',
             display: 'flex',
             alignItems: 'center',
@@ -105,7 +136,7 @@ function MetricCard({ label, value, icon: Icon, accent }) {
             flexShrink: 0,
           }}
         >
-          <Icon fontSize="small" />
+          <Icon fontSize="medium" />
         </Box>
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 700, letterSpacing: 0.3 }}>
@@ -344,6 +375,7 @@ export default function CoachDecisionsPanel({ athleteId }) {
   const kcal = summary?.caloriesKcal ?? 0;
   const elevationGain = summary?.elevationGain ?? 0;
   const elevationLoss = summary?.elevationLoss ?? 0;
+  const sessionsCount = summary?.sessionsCount ?? 0;
   const rangeStart = summary?.start_date || summary?.range?.start;
   const rangeEnd = summary?.end_date || summary?.range?.end;
   const displayRangeStart = rangeStart || '—';
@@ -360,6 +392,26 @@ export default function CoachDecisionsPanel({ athleteId }) {
     return acc;
   }, 0);
   const strengthDurationLabel = formatStrengthDuration(strengthDurationSeconds);
+  const metricValues = useMemo(
+    () => ({
+      duration: formatDuration(durationMinutes),
+      distance: `${distanceKm} km`,
+      elevGain: `${elevationGain} m`,
+      elevLoss: `${elevationLoss} m`,
+      strength: strengthDurationLabel,
+      kcal: `${kcal} kcal`,
+      sessions: sessionsCount,
+    }),
+    [
+      durationMinutes,
+      distanceKm,
+      elevationGain,
+      elevationLoss,
+      strengthDurationLabel,
+      kcal,
+      sessionsCount,
+    ],
+  );
 
   return (
     <Paper sx={{ p: 3, borderRadius: 3, mb: 4, border: '1px solid #E2E8F0', boxShadow: '0 4px 18px rgba(0,0,0,0.04)' }}>
@@ -384,21 +436,11 @@ export default function CoachDecisionsPanel({ athleteId }) {
         <>
           <Grid container spacing={1.5} sx={{ mt: 1 }}>
             {METRICS.map((metric) => {
-              const valueMap = {
-                duration: formatDuration(durationMinutes),
-                distance: `${distanceKm} km`,
-                elevGain: `${elevationGain} m`,
-                elevLoss: `${elevationLoss} m`,
-                strength: strengthDurationLabel,
-                kcal: `${kcal} kcal`,
-                sessions: summary?.sessionsCount ?? 0,
-              };
-
               return (
                 <Grid item xs={12} sm={6} md={3} key={metric.key}>
                   <MetricCard
                     label={metric.label}
-                    value={valueMap[metric.key]}
+                    value={metricValues[metric.key]}
                     icon={metric.icon}
                     accent={metric.accent}
                   />
@@ -426,7 +468,7 @@ export default function CoachDecisionsPanel({ athleteId }) {
             )}
           </Box>
 
-          {/* TODO: reactivar resumen de trabajo por deporte cuando se vuelva a mostrar en el panel. */}
+          {/* TODO: reactivar la sección "Trabajo por deporte" cuando vuelva a mostrarse en el panel. */}
 
           {nonDistanceTotals.length > 0 && (
             <Box sx={{ mb: 2 }}>

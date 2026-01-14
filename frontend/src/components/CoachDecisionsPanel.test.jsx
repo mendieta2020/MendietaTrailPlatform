@@ -30,6 +30,7 @@ function setupMatchMedia() {
 }
 
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
+const METRIC_LABELS = ['Duración', 'Distancia', 'Elev +', 'Elev -', 'Fuerza', 'Kcal', 'Sesiones'];
 
 describe('CoachDecisionsPanel', () => {
   let container;
@@ -63,14 +64,10 @@ describe('CoachDecisionsPanel', () => {
 
     expect(container.textContent).toContain('14.01 km');
     expect(container.textContent).toContain('1h 20m');
-    expect(container.textContent).toContain('Duración');
-    expect(container.textContent).toContain('Distancia');
-    expect(container.textContent).toContain('Elev +');
-    expect(container.textContent).toContain('Elev -');
-    expect(container.textContent).toContain('Fuerza');
-    expect(container.textContent).toContain('Kcal');
+    METRIC_LABELS.forEach((label) => {
+      expect(container.textContent).toContain(label);
+    });
     expect(container.textContent).toContain('2h 15m');
-    expect(container.textContent).toContain('Sesiones');
     expect(container.textContent).toContain('RUN: 1');
     expect(container.textContent).toContain('866 kcal');
     expect(container.textContent).not.toContain('Trabajo por deporte');
