@@ -63,14 +63,18 @@ describe('CoachDecisionsPanel', () => {
 
     expect(container.textContent).toContain('14.01 km');
     expect(container.textContent).toContain('1h 20m');
+    expect(container.textContent).toContain('Duración');
+    expect(container.textContent).toContain('Distancia');
+    expect(container.textContent).toContain('Elev +');
     expect(container.textContent).toContain('Elev -');
     expect(container.textContent).toContain('Fuerza');
+    expect(container.textContent).toContain('Kcal');
     expect(container.textContent).toContain('2h 15m');
     expect(container.textContent).toContain('Sesiones');
     expect(container.textContent).toContain('RUN: 1');
     expect(container.textContent).toContain('866 kcal');
-    expect(container.textContent).toContain('Trabajo por deporte');
-    expect(container.textContent).toContain('Trail');
+    expect(container.textContent).not.toContain('Trabajo por deporte');
+    expect(container.textContent).not.toContain('Trail');
     expect(container.textContent).toContain('Otras actividades');
     expect(container.textContent).toContain('Strength / Functional');
     expect(container.textContent).toContain('1h 30m');
