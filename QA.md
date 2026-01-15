@@ -14,13 +14,31 @@ python manage.py test core analytics
 
 ```bash
 curl -i -H "Authorization: Bearer <TOKEN>" \
-  "http://localhost:8000/api/analytics/pmc/?alumno_id=<ATHLETE_ID_B>"
+  "http://localhost:8000/api/analytics/summary/?athlete_id=<ATHLETE_ID_A>"
+# Expect: HTTP/1.1 200
+```
+
+```bash
+curl -i -H "Authorization: Bearer <TOKEN>" \
+  "http://localhost:8000/api/analytics/summary/?athlete_id=<ATHLETE_ID_B>"
 # Expect: HTTP/1.1 404
 ```
 
 ```bash
 curl -i -H "Authorization: Bearer <TOKEN>" \
   "http://localhost:8000/api/analytics/summary/?alumno_id=<ATHLETE_ID_B>"
+# Expect: HTTP/1.1 404
+```
+
+```bash
+curl -i -H "Authorization: Bearer <TOKEN>" \
+  "http://localhost:8000/api/analytics/pmc/?athlete_id=<ATHLETE_ID_B>"
+# Expect: HTTP/1.1 404
+```
+
+```bash
+curl -i -H "Authorization: Bearer <TOKEN>" \
+  "http://localhost:8000/api/analytics/pmc/?alumno_id=<ATHLETE_ID_B>"
 # Expect: HTTP/1.1 404
 ```
 
