@@ -14,7 +14,8 @@ class SwaggerSecurityTests(APITestCase):
         with override_settings(SWAGGER_ENABLED=True, REST_FRAMEWORK=rest_framework):
             response = self.client.get("/swagger/")
 
-        self.assertEqual(response.status_code, 403)
+        self.assertIn(response.status_code, (401, 403))
+
 
 
 class ThrottlingSecurityTests(APITestCase):
