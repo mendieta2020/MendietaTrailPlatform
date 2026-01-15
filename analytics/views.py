@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
+from rest_framework.exceptions import NotFound
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -13,7 +14,8 @@ from analytics.models import DailyActivityAgg
 from analytics.pmc import get_pmc_for_range
 from analytics.pmc_engine import PMC_SPORT_GROUPS, ensure_pmc_materialized
 from analytics.range_utils import max_range_days, parse_date_range_params
-from core.models import Actividad, Alumno, Entrenamiento, InscripcionCarrera
+from core.models import Actividad, Entrenamiento, InscripcionCarrera
+from core.tenancy import require_athlete_for_user
 
 from analytics.models import AlertaRendimiento
 from analytics.serializers import AlertaRendimientoSerializer
@@ -52,9 +54,8 @@ class PMCDataView(APIView):
                     if not alumno_id:
                         return Response([], status=200)
 
-                # 🔒 Validación anti fuga
-                if not Alumno.objects.filter(id=alumno_id, entrenador=user).exists():
-                    return Response([], status=200)
+                # 🔒 Validación anti fuga (fail-closed 404)
+                alumno_id = require_athlete_for_user(user=user, athlete_id=alumno_id).id
 
             alumno_id = int(alumno_id)
 
@@ -106,6 +107,8 @@ class PMCDataView(APIView):
             )
             return Response(data, status=status.HTTP_200_OK)
 
+        except NotFound:
+            raise
         except Exception as e:
             logger.exception("analytics.pmc.error", extra={"error": str(e)})
             # Devolvemos array vacío para NO ROMPER el frontend
@@ -137,8 +140,7 @@ class AnalyticsSummaryView(APIView):
                 )
                 if not alumno_id:
                     return Response({"alumno_id": None, "ranges": {}, "last_days": []}, status=200)
-            if not Alumno.objects.filter(id=alumno_id, entrenador=user).exists():
-                return Response({"alumno_id": None, "ranges": {}, "last_days": []}, status=200)
+            alumno_id = require_athlete_for_user(user=user, athlete_id=alumno_id).id
 
         alumno_id = int(alumno_id)
         ensure_pmc_materialized(alumno_id=alumno_id)
@@ -258,6 +260,7 @@ class AlertaRendimientoViewSet(viewsets.ReadOnlyModelViewSet):
         alumno_id = self.request.query_params.get("alumno_id")
         if alumno_id:
             try:
+                require_athlete_for_user(user=user, athlete_id=alumno_id)
                 qs = qs.filter(alumno_id=int(alumno_id))
             except (TypeError, ValueError):
                 logger.warning(

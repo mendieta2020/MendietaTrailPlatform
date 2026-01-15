@@ -30,6 +30,7 @@ from analytics.serializers import InjuryRiskSnapshotSerializer
 
 # Permisos multi-tenant (coach-scoped)
 from .permissions import IsCoachUser
+from .tenancy import require_athlete_for_user
 
 # Importamos Serializadores
 from .serializers import (
@@ -564,6 +565,13 @@ class ActividadViewSet(TenantModelViewSet):
     search_fields = ["nombre"]
     ordering_fields = ["fecha_inicio", "distancia", "tiempo_movimiento"]
     ordering = ["-fecha_inicio"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        athlete_id = self.request.query_params.get("athlete_id") or self.request.query_params.get("alumno_id")
+        if athlete_id:
+            require_athlete_for_user(user=self.request.user, athlete_id=athlete_id)
+        return qs
 
     @action(detail=False, methods=["get"], url_path="raw", permission_classes=[permissions.IsAdminUser])
     def raw(self, request):
