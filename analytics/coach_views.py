@@ -17,6 +17,7 @@ from analytics.models import Alert, AnalyticsRangeCache, DailyActivityAgg, Injur
 from analytics.pmc_engine import PMC_SPORT_GROUPS, _normalize_business_sport, ensure_pmc_materialized
 from analytics.range_utils import max_range_days, parse_date_range_params, parse_iso_week_param
 from core.models import Actividad, Alumno, Entrenamiento, Equipo
+from core.tenancy import require_athlete_for_user
 
 
 def _sessions_by_type(*, athlete_id: int, start: date, end: date) -> dict[str, int]:
@@ -153,10 +154,7 @@ def _per_sport_totals(*, athlete_id: int, start: date, end: date) -> dict[str, d
 
 
 def _require_athlete_for_coach(*, coach, athlete_id: int) -> Alumno:
-    try:
-        return Alumno.objects.select_related("equipo").get(id=int(athlete_id), entrenador=coach)
-    except Alumno.DoesNotExist as exc:
-        raise NotFound("Athlete not found") from exc
+    return require_athlete_for_user(user=coach, athlete_id=athlete_id)
 
 
 def _require_group_for_coach(*, coach, group_id: int) -> Equipo:

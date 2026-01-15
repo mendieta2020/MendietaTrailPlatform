@@ -111,9 +111,12 @@ class TenantIsolationPMCTests(TestCase):
     def test_pmc_denies_cross_tenant_alumno_id(self):
         self.client.force_authenticate(user=self.coach1)
         res = self.client.get(f"/api/analytics/pmc/?alumno_id={self.alumno2.id}")
-        self.assertEqual(res.status_code, 200)
-        # anti-fuga: debe ocultar (respuesta vacía, sin 403 para no romper frontend)
-        self.assertEqual(res.data, [])
+        self.assertEqual(res.status_code, 404)
+
+    def test_summary_denies_cross_tenant_alumno_id(self):
+        self.client.force_authenticate(user=self.coach1)
+        res = self.client.get(f"/api/analytics/summary/?alumno_id={self.alumno2.id}")
+        self.assertEqual(res.status_code, 404)
 
 
 class ActividadFilterTests(TestCase):
@@ -198,9 +201,7 @@ class ActividadFilterTests(TestCase):
     def test_actividad_filters_enforce_tenant_scope(self):
         self.client.force_authenticate(user=self.coach1)
         res = self.client.get("/api/activities/", {"athlete_id": self.alumno2.id})
-        self.assertEqual(res.status_code, 200)
-        results = _api_list_results(res)
-        self.assertEqual(results, [])
+        self.assertEqual(res.status_code, 404)
 
     def test_actividad_filters_has_training(self):
         self.client.force_authenticate(user=self.coach1)
