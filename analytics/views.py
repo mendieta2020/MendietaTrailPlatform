@@ -23,6 +23,27 @@ from analytics.pagination import OptionalPageNumberPagination
 
 logger = logging.getLogger(__name__)
 
+
+def _resolve_requested_athlete_id(request):
+    athlete_id = request.query_params.get("athlete_id")
+    alumno_id = request.query_params.get("alumno_id")
+
+    if athlete_id is not None and alumno_id is not None:
+        athlete = require_athlete_for_user(user=request.user, athlete_id=athlete_id)
+        alumno = require_athlete_for_user(user=request.user, athlete_id=alumno_id)
+        if athlete.id != alumno.id:
+            raise NotFound("Athlete not found")
+        return athlete.id
+
+    if athlete_id is not None:
+        return require_athlete_for_user(user=request.user, athlete_id=athlete_id).id
+
+    if alumno_id is not None:
+        return require_athlete_for_user(user=request.user, athlete_id=alumno_id).id
+
+    return None
+
+
 class PMCDataView(APIView):
     """
     API Científica 6.0 (Full Elite Data - Sanitized).
@@ -34,16 +55,16 @@ class PMCDataView(APIView):
         end_param = request.query_params.get("end_date")
         try:
             user = request.user
-            alumno_id = request.query_params.get("alumno_id")
             sport_filter = (request.query_params.get("sport") or "ALL").upper().strip()
             sport_filter = sport_filter if sport_filter in {"ALL", "RUN", "BIKE"} else "ALL"
 
             is_athlete = hasattr(user, "perfil_alumno")
+            requested_athlete_id = _resolve_requested_athlete_id(request)
 
             if is_athlete:
-                alumno_id = user.perfil_alumno.id
+                alumno_id = requested_athlete_id or user.perfil_alumno.id
             else:
-                if not alumno_id:
+                if requested_athlete_id is None:
                     alumno_id = (
                         Actividad.objects.filter(alumno__entrenador=user)
                         .values_list("alumno_id", flat=True)
@@ -53,9 +74,9 @@ class PMCDataView(APIView):
                     )
                     if not alumno_id:
                         return Response([], status=200)
-
-                # 🔒 Validación anti fuga (fail-closed 404)
-                alumno_id = require_athlete_for_user(user=user, athlete_id=alumno_id).id
+                    alumno_id = require_athlete_for_user(user=user, athlete_id=alumno_id).id
+                else:
+                    alumno_id = requested_athlete_id
 
             alumno_id = int(alumno_id)
 
@@ -125,13 +146,13 @@ class AnalyticsSummaryView(APIView):
 
     def get(self, request):
         user = request.user
-        alumno_id = request.query_params.get("alumno_id")
         is_athlete = hasattr(user, "perfil_alumno")
+        requested_athlete_id = _resolve_requested_athlete_id(request)
 
         if is_athlete:
-            alumno_id = user.perfil_alumno.id
+            alumno_id = requested_athlete_id or user.perfil_alumno.id
         else:
-            if not alumno_id:
+            if requested_athlete_id is None:
                 alumno_id = (
                     Actividad.objects.filter(alumno__entrenador=user)
                     .values_list("alumno_id", flat=True)
@@ -140,7 +161,9 @@ class AnalyticsSummaryView(APIView):
                 )
                 if not alumno_id:
                     return Response({"alumno_id": None, "ranges": {}, "last_days": []}, status=200)
-            alumno_id = require_athlete_for_user(user=user, athlete_id=alumno_id).id
+                alumno_id = require_athlete_for_user(user=user, athlete_id=alumno_id).id
+            else:
+                alumno_id = requested_athlete_id
 
         alumno_id = int(alumno_id)
         ensure_pmc_materialized(alumno_id=alumno_id)

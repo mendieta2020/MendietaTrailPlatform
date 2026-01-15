@@ -22,6 +22,13 @@ class PMCRangeCacheTests(TestCase):
             apellido="Range",
             email="ana_range@test.com",
         )
+        self.other_coach = User.objects.create_user(username="coach_range_other", password="x")
+        self.other_alumno = Alumno.objects.create(
+            entrenador=self.other_coach,
+            nombre="Otto",
+            apellido="Other",
+            email="otto_other@test.com",
+        )
         self.client.force_authenticate(user=self.coach)
         self.today = timezone.localdate()
 
@@ -100,6 +107,21 @@ class PMCRangeCacheTests(TestCase):
         )
         self.assertEqual(res3.status_code, 200)
         self.assertEqual(res3.data[0]["ctl"], 99.0)
+
+    def test_pmc_athlete_id_valid_returns_200(self):
+        res = self.client.get(f"/api/analytics/pmc/?athlete_id={self.alumno.id}")
+        self.assertEqual(res.status_code, 200)
+        self.assertGreaterEqual(len(res.data), 1)
+
+    def test_pmc_athlete_id_cross_tenant_returns_404(self):
+        res = self.client.get(f"/api/analytics/pmc/?athlete_id={self.other_alumno.id}")
+        self.assertEqual(res.status_code, 404)
+
+    def test_pmc_mismatched_ids_return_404(self):
+        res = self.client.get(
+            f"/api/analytics/pmc/?athlete_id={self.alumno.id}&alumno_id={self.other_alumno.id}"
+        )
+        self.assertEqual(res.status_code, 404)
 
 
 @override_settings(
