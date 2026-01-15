@@ -21,6 +21,7 @@ class SwaggerSecurityTests(APITestCase):
 class ThrottlingSecurityTests(APITestCase):
     def setUp(self):
         cache.clear()
+        self.client.defaults["REMOTE_ADDR"] = "203.0.113.10"
         self.user = get_user_model().objects.create_user(
             username="coach",
             password="test-pass-123",
@@ -31,6 +32,12 @@ class ThrottlingSecurityTests(APITestCase):
 
     def _rest_framework_with_rates(self, rates):
         rest_framework = settings.REST_FRAMEWORK.copy()
+        rest_framework["DEFAULT_THROTTLE_CLASSES"] = [
+            "core.throttling.TokenEndpointRateThrottle",
+            "core.throttling.StravaWebhookRateThrottle",
+            "core.throttling.CoachEndpointRateThrottle",
+            "core.throttling.AnalyticsEndpointRateThrottle",
+        ]
         rest_framework["DEFAULT_THROTTLE_RATES"] = rates
         return rest_framework
 
@@ -49,11 +56,13 @@ class ThrottlingSecurityTests(APITestCase):
                 "/api/token/",
                 {"username": "coach", "password": "test-pass-123"},
                 format="json",
+                HTTP_X_FORWARDED_FOR="203.0.113.10",
             )
             response_limited = self.client.post(
                 "/api/token/",
                 {"username": "coach", "password": "test-pass-123"},
                 format="json",
+                HTTP_X_FORWARDED_FOR="203.0.113.10",
             )
 
         self.assertEqual(response_ok.status_code, 200)
@@ -83,11 +92,13 @@ class ThrottlingSecurityTests(APITestCase):
                     "/webhooks/strava/",
                     data=json.dumps(payload),
                     content_type="application/json",
+                    HTTP_X_FORWARDED_FOR="203.0.113.10",
                 )
                 response_limited = self.client.post(
                     "/webhooks/strava/",
                     data=json.dumps(payload),
                     content_type="application/json",
+                    HTTP_X_FORWARDED_FOR="203.0.113.10",
                 )
 
         self.assertEqual(response_ok.status_code, 200)
