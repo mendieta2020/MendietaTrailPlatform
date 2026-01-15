@@ -10,11 +10,28 @@ from rest_framework.test import APITestCase
 
 class SwaggerSecurityTests(APITestCase):
     def test_swagger_denies_non_staff_when_enabled(self):
-        rest_framework = settings.REST_FRAMEWORK.copy()
-        with override_settings(SWAGGER_ENABLED=True, REST_FRAMEWORK=rest_framework):
-            response = self.client.get("/swagger/")
+        user_model = get_user_model()
+        user = user_model.objects.create_user(
+            username="viewer",
+            password="test-pass-123",
+        )
+        staff_user = user_model.objects.create_user(
+            username="admin",
+            password="test-pass-123",
+            is_staff=True,
+        )
 
-        self.assertEqual(response.status_code, 403)
+        with override_settings(SWAGGER_ENABLED=True):
+            response_anonymous = self.client.get("/swagger/")
+            self.client.force_authenticate(user=user)
+            response_non_staff = self.client.get("/swagger/")
+            self.client.force_authenticate(user=staff_user)
+            response_staff = self.client.get("/swagger/")
+            self.client.force_authenticate(user=None)
+
+        self.assertEqual(response_anonymous.status_code, 401)
+        self.assertEqual(response_non_staff.status_code, 403)
+        self.assertEqual(response_staff.status_code, 200)
 
 
 class ThrottlingSecurityTests(APITestCase):
@@ -24,6 +41,7 @@ class ThrottlingSecurityTests(APITestCase):
             username="coach",
             password="test-pass-123",
         )
+        self.client.defaults["REMOTE_ADDR"] = "203.0.113.10"
 
     def tearDown(self):
         cache.clear()

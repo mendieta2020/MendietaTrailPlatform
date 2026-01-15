@@ -10,6 +10,7 @@ from django.db import IntegrityError
 from django.db.models import F
 from django.utils import timezone
 from rest_framework.permissions import AllowAny
+from rest_framework.settings import api_settings
 from rest_framework.views import APIView
 
 from core.models import StravaWebhookEvent
@@ -327,6 +328,7 @@ def strava_webhook(request):
 class StravaWebhookView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = api_settings.DEFAULT_THROTTLE_CLASSES
 
     def get(self, request, *args, **kwargs):
         return strava_webhook(request._request)
