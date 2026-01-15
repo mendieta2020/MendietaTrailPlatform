@@ -52,6 +52,14 @@ class ThrottlingSecurityTests(APITestCase):
         )
 
         with override_settings(REST_FRAMEWORK=rest_framework):
+            self.assertEqual(
+                settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["token"],
+                "1/min",
+            )
+            self.assertIn(
+                "core.throttling.TokenEndpointRateThrottle",
+                settings.REST_FRAMEWORK["DEFAULT_THROTTLE_CLASSES"],
+            )
             response_ok = self.client.post(
                 "/api/token/",
                 {"username": "coach", "password": "test-pass-123"},
@@ -87,6 +95,14 @@ class ThrottlingSecurityTests(APITestCase):
         }
 
         with override_settings(REST_FRAMEWORK=rest_framework):
+            self.assertEqual(
+                settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["strava_webhook"],
+                "1/min",
+            )
+            self.assertIn(
+                "core.throttling.StravaWebhookRateThrottle",
+                settings.REST_FRAMEWORK["DEFAULT_THROTTLE_CLASSES"],
+            )
             with patch("core.webhooks.process_strava_event.delay") as delay_mock:
                 response_ok = self.client.post(
                     "/webhooks/strava/",
