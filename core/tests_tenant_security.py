@@ -84,6 +84,26 @@ class TenantSecurityAPITests(TestCase):
         res = self.client.get(f"/api/alumnos/{self.alumno_b.id}/actividades/")
         self.assertEqual(res.status_code, 404)
 
+    def test_activities_filter_denies_cross_tenant_athlete_id(self):
+        self.client.force_authenticate(user=self.coach_a)
+        res = self.client.get("/api/activities/", {"athlete_id": self.alumno_b.id})
+        self.assertEqual(res.status_code, 404)
+
+    def test_analytics_pmc_denies_cross_tenant_alumno_id(self):
+        self.client.force_authenticate(user=self.coach_a)
+        res = self.client.get(f"/api/analytics/pmc/?alumno_id={self.alumno_b.id}")
+        self.assertEqual(res.status_code, 404)
+
+    def test_analytics_summary_denies_cross_tenant_alumno_id(self):
+        self.client.force_authenticate(user=self.coach_a)
+        res = self.client.get(f"/api/analytics/summary/?alumno_id={self.alumno_b.id}")
+        self.assertEqual(res.status_code, 404)
+
+    def test_analytics_alerts_denies_cross_tenant_alumno_id(self):
+        self.client.force_authenticate(user=self.coach_a)
+        res = self.client.get(f"/api/analytics/alerts/?alumno_id={self.alumno_b.id}")
+        self.assertEqual(res.status_code, 404)
+
     def test_fail_closed_when_model_has_no_tenant_field(self):
         self.client.force_authenticate(user=self.coach_a)
         res = self.client.get("/api/carreras/")
