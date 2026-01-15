@@ -410,9 +410,6 @@ class CoachAthleteWeekSummaryView(APIView):
                 return Response({"detail": "Invalid week format. Use week=YYYY-Www"}, status=400)
 
         daily_qs = DailyActivityAgg.objects.filter(alumno_id=athlete.id, fecha__range=[start, end])
-        if not daily_qs.exists():
-            raise NotFound("No analytics data for this week.")
-
         latest_daily_update = daily_qs.aggregate(latest=Max("updated_at")).get("latest")
         cache_record = (
             AnalyticsRangeCache.objects.filter(
