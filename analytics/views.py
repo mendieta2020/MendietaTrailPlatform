@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -13,7 +14,8 @@ from analytics.models import DailyActivityAgg
 from analytics.pmc import get_pmc_for_range
 from analytics.pmc_engine import PMC_SPORT_GROUPS, ensure_pmc_materialized
 from analytics.range_utils import max_range_days, parse_date_range_params
-from core.models import Actividad, Alumno, Entrenamiento, InscripcionCarrera
+from core.models import Actividad, Entrenamiento, InscripcionCarrera
+from core.tenancy import require_athlete_for_user
 
 from analytics.models import AlertaRendimiento
 from analytics.serializers import AlertaRendimientoSerializer
@@ -32,16 +34,18 @@ class PMCDataView(APIView):
         end_param = request.query_params.get("end_date")
         try:
             user = request.user
-            alumno_id = request.query_params.get("alumno_id")
+            alumno_param = request.query_params.get("alumno_id")
             sport_filter = (request.query_params.get("sport") or "ALL").upper().strip()
             sport_filter = sport_filter if sport_filter in {"ALL", "RUN", "BIKE"} else "ALL"
 
             is_athlete = hasattr(user, "perfil_alumno")
 
             if is_athlete:
+                if alumno_param:
+                    require_athlete_for_user(user=user, athlete_id=alumno_param)
                 alumno_id = user.perfil_alumno.id
             else:
-                if not alumno_id:
+                if not alumno_param:
                     alumno_id = (
                         Actividad.objects.filter(alumno__entrenador=user)
                         .values_list("alumno_id", flat=True)
@@ -51,10 +55,9 @@ class PMCDataView(APIView):
                     )
                     if not alumno_id:
                         return Response([], status=200)
-
-                # 🔒 Validación anti fuga
-                if not Alumno.objects.filter(id=alumno_id, entrenador=user).exists():
-                    return Response([], status=200)
+                else:
+                    alumno = require_athlete_for_user(user=user, athlete_id=alumno_param)
+                    alumno_id = alumno.id
 
             alumno_id = int(alumno_id)
 
@@ -106,6 +109,8 @@ class PMCDataView(APIView):
             )
             return Response(data, status=status.HTTP_200_OK)
 
+        except (NotFound, PermissionDenied):
+            raise
         except Exception as e:
             logger.exception("analytics.pmc.error", extra={"error": str(e)})
             # Devolvemos array vacío para NO ROMPER el frontend
@@ -122,13 +127,15 @@ class AnalyticsSummaryView(APIView):
 
     def get(self, request):
         user = request.user
-        alumno_id = request.query_params.get("alumno_id")
+        alumno_param = request.query_params.get("alumno_id")
         is_athlete = hasattr(user, "perfil_alumno")
 
         if is_athlete:
+            if alumno_param:
+                require_athlete_for_user(user=user, athlete_id=alumno_param)
             alumno_id = user.perfil_alumno.id
         else:
-            if not alumno_id:
+            if not alumno_param:
                 alumno_id = (
                     Actividad.objects.filter(alumno__entrenador=user)
                     .values_list("alumno_id", flat=True)
@@ -137,8 +144,9 @@ class AnalyticsSummaryView(APIView):
                 )
                 if not alumno_id:
                     return Response({"alumno_id": None, "ranges": {}, "last_days": []}, status=200)
-            if not Alumno.objects.filter(id=alumno_id, entrenador=user).exists():
-                return Response({"alumno_id": None, "ranges": {}, "last_days": []}, status=200)
+            else:
+                alumno = require_athlete_for_user(user=user, athlete_id=alumno_param)
+                alumno_id = alumno.id
 
         alumno_id = int(alumno_id)
         ensure_pmc_materialized(alumno_id=alumno_id)
@@ -257,14 +265,8 @@ class AlertaRendimientoViewSet(viewsets.ReadOnlyModelViewSet):
         # Filtros por querystring
         alumno_id = self.request.query_params.get("alumno_id")
         if alumno_id:
-            try:
-                qs = qs.filter(alumno_id=int(alumno_id))
-            except (TypeError, ValueError):
-                logger.warning(
-                    "analytics.alerts.invalid_param",
-                    extra={"param": "alumno_id", "value": str(alumno_id), "user_id": getattr(user, "id", None)},
-                )
-                pass
+            athlete = require_athlete_for_user(user=user, athlete_id=alumno_id)
+            qs = qs.filter(alumno_id=athlete.id)
 
         visto = self.request.query_params.get("visto_por_coach")
         if visto is not None:
