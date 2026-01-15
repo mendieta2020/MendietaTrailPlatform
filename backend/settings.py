@@ -129,6 +129,7 @@ INSTALLED_APPS = [
     'nested_admin',
     'rest_framework',
     'rest_framework_simplejwt', # <--- NUEVO: JWT
+    'rest_framework_simplejwt.token_blacklist',
     'django_filters',           # <--- FILTROS AVANZADOS API
     'drf_yasg',
     'corsheaders', 
@@ -247,6 +248,11 @@ SWAGGER_SETTINGS = {
         'Bearer': {'type': 'apiKey', 'name': 'Authorization', 'in': 'header'}
     }
 }
+SWAGGER_ENABLED = get_env_variable(
+    "SWAGGER_ENABLED",
+    default=("True" if DEBUG else "False"),
+    required=False,
+) == "True"
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -258,6 +264,18 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated', # 🔒 CERRADO POR DEFECTO
     ),
     'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend'],
+    "DEFAULT_THROTTLE_CLASSES": (
+        "core.throttling.TokenEndpointRateThrottle",
+        "core.throttling.StravaWebhookRateThrottle",
+        "core.throttling.CoachEndpointRateThrottle",
+        "core.throttling.AnalyticsEndpointRateThrottle",
+    ),
+    "DEFAULT_THROTTLE_RATES": {
+        "token": "20/min",
+        "strava_webhook": "120/min",
+        "coach": "600/min",
+        "analytics": "600/min",
+    },
     # Paginación global (Semana 1)
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 50,

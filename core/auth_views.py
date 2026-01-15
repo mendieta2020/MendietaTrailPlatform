@@ -1,6 +1,7 @@
 from django.conf import settings
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.settings import api_settings
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
@@ -63,6 +64,7 @@ def _clear_auth_cookies(response):
 
 class CookieTokenObtainPairView(TokenObtainPairView):
     permission_classes = [AllowAny]
+    throttle_classes = api_settings.DEFAULT_THROTTLE_CLASSES
 
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
@@ -77,6 +79,7 @@ class CookieTokenObtainPairView(TokenObtainPairView):
 
 class CookieTokenRefreshView(TokenRefreshView):
     permission_classes = [AllowAny]
+    throttle_classes = api_settings.DEFAULT_THROTTLE_CLASSES
 
     def post(self, request, *args, **kwargs):
         if getattr(settings, "USE_COOKIE_AUTH", False) and "refresh" not in request.data:
@@ -98,6 +101,7 @@ class CookieTokenRefreshView(TokenRefreshView):
 
 class CookieLogoutView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = api_settings.DEFAULT_THROTTLE_CLASSES
 
     def post(self, request):
         response = Response({"detail": "logout"}, status=200)

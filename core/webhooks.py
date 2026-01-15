@@ -9,6 +9,8 @@ from django.views.decorators.http import require_http_methods
 from django.db import IntegrityError
 from django.db.models import F
 from django.utils import timezone
+from rest_framework.permissions import AllowAny
+from rest_framework.views import APIView
 
 from core.models import StravaWebhookEvent
 from core.tasks import process_strava_event
@@ -320,3 +322,14 @@ def strava_webhook(request):
 
     # Si por alguna razón milagrosa llega aquí (no debería por el decorador), devolvemos 405
     return HttpResponse(status=405)
+
+
+class StravaWebhookView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request, *args, **kwargs):
+        return strava_webhook(request._request)
+
+    def post(self, request, *args, **kwargs):
+        return strava_webhook(request._request)

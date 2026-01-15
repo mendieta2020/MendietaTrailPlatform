@@ -11,12 +11,12 @@ from core.strava_oauth_views import oauth2_callback as strava_oauth2_callback
 from core.strava_oauth_views import oauth2_login as strava_oauth2_login
 
 # --- Importamos el Webhook Listener ---
-from core.webhooks import strava_webhook
+from core.webhooks import StravaWebhookView
 
 # --- Importaciones para Documentación (Swagger) y Autenticación (JWT) ---
-from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
+from core.permissions import SwaggerAccessPermission
 from core.auth_views import (
     CookieLogoutView,
     CookieTokenObtainPairView,
@@ -39,8 +39,8 @@ schema_view = get_schema_view(
       contact=openapi.Contact(email="admin@mendieta.com"),
       license=openapi.License(name="BSD License"),
    ),
-   public=True,
-   permission_classes=(permissions.AllowAny,),
+   public=False,
+   permission_classes=(SwaggerAccessPermission,),
 )
 
 urlpatterns = [
@@ -70,7 +70,7 @@ urlpatterns = [
     # ============================================================== 
     # 5. WEBHOOKS (La "Oreja" del sistema)
     # ==============================================================
-    path('webhooks/strava/', strava_webhook, name='strava_webhook'),
+    path('webhooks/strava/', StravaWebhookView.as_view(), name='strava_webhook'),
 
     # ==============================================================
     # 6. API REST ENDPOINTS (El Corazón del SaaS React)
