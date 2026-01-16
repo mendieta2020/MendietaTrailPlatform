@@ -9,15 +9,14 @@ from drf_yasg.utils import swagger_auto_schema
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.exceptions import NotFound
 from rest_framework.settings import api_settings
 
 from analytics.cache import is_cache_fresh, set_range_cache
 from analytics.models import Alert, AnalyticsRangeCache, DailyActivityAgg, InjuryRiskSnapshot, PMCHistory
 from analytics.pmc_engine import PMC_SPORT_GROUPS, _normalize_business_sport, ensure_pmc_materialized
 from analytics.range_utils import max_range_days, parse_date_range_params, parse_iso_week_param
-from core.models import Actividad, Alumno, Entrenamiento, Equipo
-from core.tenancy import require_athlete_for_user
+from core.models import Actividad, Alumno, Entrenamiento
+from core.tenancy import CoachTenantAPIViewMixin
 
 
 def _sessions_by_type(*, athlete_id: int, start: date, end: date) -> dict[str, int]:
@@ -151,17 +150,6 @@ def _per_sport_totals(*, athlete_id: int, start: date, end: date) -> dict[str, d
                 "load": 0.0,
             }
     return totals
-
-
-def _require_athlete_for_coach(*, coach, athlete_id: int) -> Alumno:
-    return require_athlete_for_user(user=coach, athlete_id=athlete_id)
-
-
-def _require_group_for_coach(*, coach, group_id: int) -> Equipo:
-    try:
-        return Equipo.objects.get(id=int(group_id), entrenador=coach)
-    except Equipo.DoesNotExist as exc:
-        raise NotFound("Group not found") from exc
 
 
 def _severity_order_case(field_name: str = "severity"):
@@ -337,7 +325,7 @@ def _week_summary_core(*, athlete_id: int, start: date, end: date) -> dict:
     }
 
 
-class CoachAthleteWeekSummaryView(APIView):
+class CoachAthleteWeekSummaryView(CoachTenantAPIViewMixin, APIView):
     # Usamos exactamente el mismo stack de auth que el resto de endpoints coach (defaults de DRF).
     # Esto asegura soporte para JWT en cookie (401 solo cuando no hay credenciales).
     authentication_classes = api_settings.DEFAULT_AUTHENTICATION_CLASSES
@@ -377,7 +365,7 @@ class CoachAthleteWeekSummaryView(APIView):
         }
         """
         # Nota: devolvemos 401 si falta auth; 404 si el atleta no pertenece al coach autenticado.
-        athlete = _require_athlete_for_coach(coach=request.user, athlete_id=int(athlete_id))
+        athlete = self.require_athlete(request, athlete_id)
         start_param = request.query_params.get("start_date")
         end_param = request.query_params.get("end_date")
         week_param = request.query_params.get("week")
@@ -450,7 +438,7 @@ class CoachAthleteWeekSummaryView(APIView):
         return Response(data, status=200)
 
 
-class CoachGroupWeekSummaryView(APIView):
+class CoachGroupWeekSummaryView(CoachTenantAPIViewMixin, APIView):
     authentication_classes = api_settings.DEFAULT_AUTHENTICATION_CLASSES
     permission_classes = [IsAuthenticated]
 
@@ -460,7 +448,7 @@ class CoachGroupWeekSummaryView(APIView):
         ]
     )
     def get(self, request, group_id: int):
-        group = _require_group_for_coach(coach=request.user, group_id=int(group_id))
+        group = self.require_group(request, group_id)
         try:
             start, end, week = parse_iso_week_param(request.query_params.get("week"))
         except Exception:
@@ -626,7 +614,7 @@ class CoachGroupWeekSummaryView(APIView):
         )
 
 
-class CoachAthleteAlertsListView(APIView):
+class CoachAthleteAlertsListView(CoachTenantAPIViewMixin, APIView):
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
@@ -636,12 +624,12 @@ class CoachAthleteAlertsListView(APIView):
         ]
     )
     def get(self, request, athlete_id: int):
-        _require_athlete_for_coach(coach=request.user, athlete_id=int(athlete_id))
+        athlete = self.require_athlete(request, athlete_id)
         status_param = (request.query_params.get("status") or "open").strip().lower()
         limit = int(request.query_params.get("limit") or 50)
         limit = max(1, min(limit, 200))
 
-        qs = Alert.objects.filter(entrenador=request.user, alumno_id=int(athlete_id))
+        qs = Alert.objects.filter(entrenador=request.user, alumno_id=athlete.id)
         if status_param != "all":
             qs = qs.filter(status=Alert.Status.OPEN)
 
@@ -661,12 +649,12 @@ class CoachAthleteAlertsListView(APIView):
             for a in qs
         ]
         return Response(
-            {"athlete_id": int(athlete_id), "status": status_param, "limit": limit, "results": items},
+            {"athlete_id": athlete.id, "status": status_param, "limit": limit, "results": items},
             status=200,
         )
 
 
-class CoachAlertPatchView(APIView):
+class CoachAlertPatchView(CoachTenantAPIViewMixin, APIView):
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(

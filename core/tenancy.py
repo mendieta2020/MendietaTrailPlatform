@@ -1,6 +1,6 @@
 from rest_framework.exceptions import NotFound
 
-from core.models import Alumno
+from core.models import Alumno, Equipo
 
 
 _NOT_FOUND_MESSAGE = "Athlete not found"
@@ -31,3 +31,26 @@ def require_athlete_for_user(*, user, athlete_id) -> Alumno:
         return Alumno.objects.select_related("equipo").get(id=athlete_id_int, entrenador=user)
     except Alumno.DoesNotExist as exc:
         raise NotFound(_NOT_FOUND_MESSAGE) from exc
+
+
+class CoachTenantAPIViewMixin:
+    def require_athlete(self, request, athlete_id) -> Alumno:
+        if getattr(self, "swagger_fake_view", False):
+            try:
+                athlete_id_int = int(athlete_id)
+            except (TypeError, ValueError):
+                athlete_id_int = 0
+            return Alumno(id=athlete_id_int)
+        return require_athlete_for_user(user=request.user, athlete_id=athlete_id)
+
+    def require_group(self, request, group_id) -> Equipo:
+        if getattr(self, "swagger_fake_view", False):
+            try:
+                group_id_int = int(group_id)
+            except (TypeError, ValueError):
+                group_id_int = 0
+            return Equipo(id=group_id_int)
+        try:
+            return Equipo.objects.get(id=int(group_id), entrenador=request.user)
+        except Equipo.DoesNotExist as exc:
+            raise NotFound("Group not found") from exc
