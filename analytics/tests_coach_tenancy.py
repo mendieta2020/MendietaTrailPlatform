@@ -60,6 +60,8 @@ class CoachTenancyEndpointsTests(TestCase):
         res = self.client.get(f"/api/coach/athletes/{self.alumno.id}/alerts/")
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.data["athlete_id"], self.alumno.id)
+        self.assertGreaterEqual(len(res.data["results"]), 1)
+        self.assertEqual(res.data["results"][0]["id"], self.alert.id)
 
     def test_alerts_list_cross_tenant_returns_404(self):
         res = self.client.get(f"/api/coach/athletes/{self.other_alumno.id}/alerts/")
@@ -74,6 +76,8 @@ class CoachTenancyEndpointsTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.data["id"], self.alert.id)
         self.assertTrue(res.data["visto_por_coach"])
+        self.alert.refresh_from_db()
+        self.assertTrue(self.alert.visto_por_coach)
 
     def test_alert_patch_cross_tenant_returns_404(self):
         res = self.client.patch(

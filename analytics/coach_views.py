@@ -4,6 +4,7 @@ from datetime import date, timedelta
 
 from django.db.models import Avg, Case, Count, ExpressionWrapper, F, FloatField, Max, Sum, Value, When
 from django.db.models.functions import Coalesce
+from django.shortcuts import get_object_or_404
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework.permissions import IsAuthenticated
@@ -193,6 +194,23 @@ def _alerts_top_for_athlete(*, coach, athlete_id: int, limit: int = 5) -> list[d
         }
         for a in qs
     ]
+
+
+def _alert_queryset_for_user(user):
+    """
+    Coach-scoped alert queryset. Fail-closed:
+    - superuser/staff => all alerts
+    - athlete profile => only own alerts
+    - coach => alerts for athletes owned by that coach
+    """
+    qs = Alert.objects.select_related("alumno")
+    if not user or not getattr(user, "is_authenticated", False):
+        return qs.none()
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return qs
+    if hasattr(user, "perfil_alumno") and getattr(user, "perfil_alumno", None):
+        return qs.filter(alumno=user.perfil_alumno)
+    return qs.filter(alumno__entrenador=user)
 
 
 def _week_summary_totals(*, athlete_id: int, start: date, end: date) -> dict:
@@ -629,7 +647,7 @@ class CoachAthleteAlertsListView(CoachTenantAPIViewMixin, APIView):
         limit = int(request.query_params.get("limit") or 50)
         limit = max(1, min(limit, 200))
 
-        qs = Alert.objects.filter(entrenador=request.user, alumno_id=athlete.id)
+        qs = _alert_queryset_for_user(request.user).filter(alumno_id=athlete.id)
         if status_param != "all":
             qs = qs.filter(status=Alert.Status.OPEN)
 
@@ -655,6 +673,11 @@ class CoachAthleteAlertsListView(CoachTenantAPIViewMixin, APIView):
 
 
 class CoachAlertPatchView(CoachTenantAPIViewMixin, APIView):
+    """
+    PATCH visto_por_coach for a coach-scoped alert.
+    Cross-tenant access returns 404 to avoid leaking existence.
+    """
+
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
@@ -669,10 +692,7 @@ class CoachAlertPatchView(CoachTenantAPIViewMixin, APIView):
         if not isinstance(visto, bool):
             return Response({"detail": "visto_por_coach must be boolean"}, status=400)
 
-        updated = (
-            Alert.objects.filter(id=int(alert_id), entrenador=request.user)
-            .update(visto_por_coach=bool(visto))
-        )
-        if not updated:
-            return Response({"detail": "Not found"}, status=404)
-        return Response({"id": int(alert_id), "visto_por_coach": bool(visto)}, status=200)
+        alert = get_object_or_404(_alert_queryset_for_user(request.user), id=int(alert_id))
+        alert.visto_por_coach = bool(visto)
+        alert.save(update_fields=["visto_por_coach"])
+        return Response({"id": alert.id, "visto_por_coach": alert.visto_por_coach}, status=200)
