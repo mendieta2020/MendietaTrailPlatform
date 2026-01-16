@@ -125,11 +125,16 @@ class VideoUploadViewSet(TenantModelViewSet):
     parser_classes = (MultiPartParser, FormParser) # Habilita subida de archivos
     permission_classes = [permissions.IsAuthenticated, IsCoachUser]
 
+    def perform_create(self, serializer):
+        # Multi-tenant (coach-scoped): el uploader define el tenant del video
+        serializer.save(uploaded_by=self.request.user)
+
     def create(self, request, *args, **kwargs):
         # 1. Validar y Guardar
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        video = serializer.save(uploaded_by=request.user)
+        self.perform_create(serializer)
+        video = serializer.instance
         
         # 2. Construir URL Absoluta (Para que funcione en el reproductor)
         # Ej: http://localhost:8000/media/videos_ejercicios/sentadilla.mp4
@@ -188,7 +193,17 @@ class AlumnoViewSet(TenantModelViewSet):
     ordering_fields = ['nombre', 'fecha_ultimo_pago']
 
     def get_queryset(self):
-        qs = super().get_queryset().select_related("sync_state")
+        qs = (
+            super()
+            .get_queryset()
+            .select_related("entrenador", "sync_state", "equipo")
+        )
+
+        # Compat: si existe relación M2M "equipos" (deploys viejos), la prefetcheamos.
+        # En el modelo actual `Alumno` usa FK `equipo`, por eso también hacemos select_related arriba.
+        alumno_field_names = {f.name for f in Alumno._meta.get_fields()}
+        if "equipos" in alumno_field_names:
+            qs = qs.prefetch_related("equipos")
 
         # Contexto coach (para filtrar snapshots por tenant cuando aplique)
         user = self.request.user
