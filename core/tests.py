@@ -21,6 +21,35 @@ def _api_list_results(res):
     return res.data
 
 
+class AthleteAliasTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.coach = User.objects.create_user(username="coach_alias", password="x")
+        self.alumno = Alumno.objects.create(
+            entrenador=self.coach,
+            nombre="Ana",
+            apellido="Alias",
+            email="ana_alias@test.com",
+        )
+        self.client.force_authenticate(user=self.coach)
+
+    def test_alumnos_and_athletes_endpoints_match(self):
+        alumnos_res = self.client.get("/api/alumnos/")
+        athletes_res = self.client.get("/api/athletes/")
+        self.assertEqual(alumnos_res.status_code, 200)
+        self.assertEqual(athletes_res.status_code, 200)
+
+        alumnos_ids = {item["id"] for item in _api_list_results(alumnos_res)}
+        athletes_ids = {item["id"] for item in _api_list_results(athletes_res)}
+        self.assertEqual(alumnos_ids, athletes_ids)
+
+        alumno_detail = self.client.get(f"/api/alumnos/{self.alumno.id}/")
+        athlete_detail = self.client.get(f"/api/athletes/{self.alumno.id}/")
+        self.assertEqual(alumno_detail.status_code, 200)
+        self.assertEqual(athlete_detail.status_code, 200)
+        self.assertEqual(alumno_detail.data["id"], athlete_detail.data["id"])
+
+
 class InjuryRiskAPITests(TestCase):
     def setUp(self):
         self.client = APIClient()

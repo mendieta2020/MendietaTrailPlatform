@@ -18,6 +18,9 @@ Plataforma SaaS para entrenamiento de deportes de resistencia (trail/running/cic
 - `analytics/` métricas/engine de performance
 - `frontend/` UI React
 
+## Release notes (dev)
+- Coach alerts ahora soportan el marcado de visto para alertas de rendimiento y alertas de decisión (scoped por coach).
+
 ## Cómo correr (dev)
 
 ### Backend
@@ -29,6 +32,13 @@ python3 -m venv venv
 pip install -r requirements.txt
 python3 manage.py migrate
 python3 manage.py runserver
+```
+
+### Utilidad dev: listar URLs
+
+```bash
+python3 manage.py show_urls
+python3 manage.py show_urls --filter "api/coach/alerts"
 ```
 
 ## Strava OAuth (login social) - Local
