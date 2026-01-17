@@ -13,7 +13,8 @@ from rest_framework.views import APIView
 from rest_framework.settings import api_settings
 
 from analytics.cache import is_cache_fresh, set_range_cache
-from analytics.models import Alert, AnalyticsRangeCache, DailyActivityAgg, InjuryRiskSnapshot, PMCHistory
+from analytics.models import AlertaRendimiento, Alert, AnalyticsRangeCache, DailyActivityAgg, InjuryRiskSnapshot, PMCHistory
+from analytics.serializers import AlertaRendimientoSerializer
 from analytics.pmc_engine import PMC_SPORT_GROUPS, _normalize_business_sport, ensure_pmc_materialized
 from analytics.range_utils import max_range_days, parse_date_range_params, parse_iso_week_param
 from core.models import Actividad, Alumno, Entrenamiento
@@ -204,6 +205,23 @@ def _alert_queryset_for_user(user):
     - coach => alerts for athletes owned by that coach
     """
     qs = Alert.objects.select_related("alumno")
+    if not user or not getattr(user, "is_authenticated", False):
+        return qs.none()
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return qs
+    if hasattr(user, "perfil_alumno") and getattr(user, "perfil_alumno", None):
+        return qs.filter(alumno=user.perfil_alumno)
+    return qs.filter(alumno__entrenador=user)
+
+
+def _performance_alert_queryset_for_user(user):
+    """
+    Coach-scoped performance alert queryset (AlertaRendimiento). Fail-closed:
+    - superuser/staff => all alerts
+    - athlete profile => only own alerts
+    - coach => alerts for athletes owned by that coach
+    """
+    qs = AlertaRendimiento.objects.select_related("alumno")
     if not user or not getattr(user, "is_authenticated", False):
         return qs.none()
     if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
@@ -647,25 +665,13 @@ class CoachAthleteAlertsListView(CoachTenantAPIViewMixin, APIView):
         limit = int(request.query_params.get("limit") or 50)
         limit = max(1, min(limit, 200))
 
-        qs = _alert_queryset_for_user(request.user).filter(alumno_id=athlete.id)
-        if status_param != "all":
-            qs = qs.filter(status=Alert.Status.OPEN)
+        qs = _performance_alert_queryset_for_user(request.user).filter(alumno_id=athlete.id)
 
-        qs = qs.annotate(sev_order=_severity_order_case()).order_by("-sev_order", "-created_at", "-id")[:limit]
-        items = [
-            {
-                "id": a.id,
-                "type": a.type,
-                "severity": a.severity,
-                "status": a.status,
-                "message": a.message,
-                "recommended_action": a.recommended_action,
-                "evidence_json": a.evidence_json,
-                "visto_por_coach": bool(a.visto_por_coach),
-                "created_at": a.created_at.isoformat() if a.created_at else None,
-            }
-            for a in qs
-        ]
+        if status_param not in {"open", "all"}:
+            status_param = "open"
+
+        qs = qs.order_by("-fecha", "-id")[:limit]
+        items = AlertaRendimientoSerializer(qs, many=True).data
         return Response(
             {"athlete_id": athlete.id, "status": status_param, "limit": limit, "results": items},
             status=200,
@@ -692,7 +698,15 @@ class CoachAlertPatchView(CoachTenantAPIViewMixin, APIView):
         if not isinstance(visto, bool):
             return Response({"detail": "visto_por_coach must be boolean"}, status=400)
 
-        alert = get_object_or_404(_alert_queryset_for_user(request.user), id=int(alert_id))
-        alert.visto_por_coach = bool(visto)
-        alert.save(update_fields=["visto_por_coach"])
-        return Response({"id": alert.id, "visto_por_coach": alert.visto_por_coach}, status=200)
+        alert = _alert_queryset_for_user(request.user).filter(id=int(alert_id)).first()
+        if alert is not None:
+            alert.visto_por_coach = bool(visto)
+            alert.save(update_fields=["visto_por_coach"])
+            return Response({"id": alert.id, "visto_por_coach": alert.visto_por_coach}, status=200)
+
+        perf_alert = _performance_alert_queryset_for_user(request.user).filter(id=int(alert_id)).first()
+        if perf_alert is None:
+            return Response({"detail": "Not found."}, status=404)
+        perf_alert.visto_por_coach = bool(visto)
+        perf_alert.save(update_fields=["visto_por_coach"])
+        return Response({"id": perf_alert.id, "visto_por_coach": perf_alert.visto_por_coach}, status=200)
