@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import logging
 from datetime import date, timedelta
 
 from django.db.models import Avg, Case, Count, ExpressionWrapper, F, FloatField, Max, Sum, Value, When
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
+from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -14,11 +17,15 @@ from rest_framework.settings import api_settings
 
 from analytics.cache import is_cache_fresh, set_range_cache
 from analytics.models import AlertaRendimiento, Alert, AnalyticsRangeCache, DailyActivityAgg, InjuryRiskSnapshot, PMCHistory
+from analytics.pagination import CoachPlanningPagination
 from analytics.serializers import AlertaRendimientoSerializer
 from analytics.pmc_engine import PMC_SPORT_GROUPS, _normalize_business_sport, ensure_pmc_materialized
 from analytics.range_utils import max_range_days, parse_date_range_params, parse_iso_week_param
 from core.models import Actividad, Alumno, Entrenamiento
+from core.serializers import PlanningSessionSerializer, PlanningSessionWriteSerializer
 from core.tenancy import CoachTenantAPIViewMixin
+
+logger = logging.getLogger(__name__)
 
 
 def _sessions_by_type(*, athlete_id: int, start: date, end: date) -> dict[str, int]:
@@ -361,6 +368,94 @@ def _week_summary_core(*, athlete_id: int, start: date, end: date) -> dict:
     }
 
 
+_PLANNING_DEFAULT_DAYS = 42
+_PLANNING_MAX_DAYS = 84
+
+
+def _get_request_id(request) -> str | None:
+    meta = getattr(request, "META", {}) or {}
+    return meta.get("HTTP_X_REQUEST_ID") or meta.get("HTTP_X_CORRELATION_ID")
+
+
+def _parse_planning_range(request) -> tuple[date, date]:
+    start_param = request.query_params.get("from")
+    end_param = request.query_params.get("to")
+    if start_param or end_param:
+        if not (start_param and end_param):
+            raise ValueError("from_to_required")
+        start = date.fromisoformat(str(start_param))
+        end = date.fromisoformat(str(end_param))
+    else:
+        end = timezone.localdate()
+        start = end - timedelta(days=_PLANNING_DEFAULT_DAYS - 1)
+    if start > end:
+        raise ValueError("start_after_end")
+    range_days = (end - start).days + 1
+    if range_days > _PLANNING_MAX_DAYS:
+        raise ValueError("range_too_large")
+    return start, end
+
+
+def _build_compliance_summary(*, athlete_id: int, start: date, end: date) -> dict:
+    plan_qs = Entrenamiento.objects.filter(alumno_id=int(athlete_id), fecha_asignada__range=[start, end])
+    plan_agg = plan_qs.aggregate(
+        duration_min=Coalesce(Sum("tiempo_planificado_min"), Value(0.0), output_field=FloatField()),
+        distance_km=Coalesce(Sum("distancia_planificada_km"), Value(0.0), output_field=FloatField()),
+        elev_m=Coalesce(Sum("desnivel_planificado_m"), Value(0.0), output_field=FloatField()),
+    )
+    plan_load_qs = plan_qs.filter(tiempo_planificado_min__isnull=False).annotate(
+        load=ExpressionWrapper(
+            F("tiempo_planificado_min") * (Value(1.0) + (F("rpe_planificado") / Value(10.0))),
+            output_field=FloatField(),
+        )
+    )
+    plan_load = plan_load_qs.aggregate(v=Coalesce(Sum("load"), Value(0.0), output_field=FloatField())).get("v") or 0.0
+
+    actual_agg = DailyActivityAgg.objects.filter(alumno_id=int(athlete_id), fecha__range=[start, end]).aggregate(
+        duration_s=Coalesce(Sum("duration_s"), Value(0.0), output_field=FloatField()),
+        distance_m=Coalesce(Sum("distance_m"), Value(0.0), output_field=FloatField()),
+        elev_gain_m=Coalesce(Sum("elev_gain_m"), Value(0.0), output_field=FloatField()),
+        load=Coalesce(Sum("load"), Value(0.0), output_field=FloatField()),
+    )
+
+    planned_totals = {
+        "duration_s": int(round(float(plan_agg["duration_min"] or 0.0) * 60.0)),
+        "distance_m": int(round(float(plan_agg["distance_km"] or 0.0) * 1000.0)),
+        "elev_pos_m": int(round(float(plan_agg["elev_m"] or 0.0))),
+        "load": round(float(plan_load or 0.0), 2),
+    }
+    actual_totals = {
+        "duration_s": int(round(float(actual_agg["duration_s"] or 0.0))),
+        "distance_m": int(round(float(actual_agg["distance_m"] or 0.0))),
+        "elev_pos_m": int(round(float(actual_agg["elev_gain_m"] or 0.0))),
+        "load": round(float(actual_agg["load"] or 0.0), 2),
+    }
+
+    deltas = {}
+    compliance_pct = {}
+    for key in planned_totals:
+        planned_value = float(planned_totals[key])
+        actual_value = float(actual_totals[key])
+        deltas[key] = round(actual_value - planned_value, 2)
+        if planned_value <= 0:
+            compliance_pct[key] = 0.0
+        else:
+            compliance_pct[key] = round((actual_value / planned_value) * 100.0, 1)
+
+    return {
+        "planned_totals": planned_totals,
+        "actual_totals": actual_totals,
+        "deltas": deltas,
+        "compliance_pct": compliance_pct,
+        "top_anomalies": [],
+        "data_source": {
+            "planned": "entrenamiento",
+            "actual": "daily_activity_agg",
+            "generated_at": timezone.now().isoformat(),
+        },
+    }
+
+
 class CoachAthleteWeekSummaryView(CoachTenantAPIViewMixin, APIView):
     # Usamos exactamente el mismo stack de auth que el resto de endpoints coach (defaults de DRF).
     # Esto asegura soporte para JWT en cookie (401 solo cuando no hay credenciales).
@@ -472,6 +567,138 @@ class CoachAthleteWeekSummaryView(CoachTenantAPIViewMixin, APIView):
             "alerts": _alerts_top_for_athlete(coach=request.user, athlete_id=athlete.id, limit=5),
         }
         return Response(data, status=200)
+
+
+class CoachAthletePlanningView(CoachTenantAPIViewMixin, generics.GenericAPIView):
+    authentication_classes = api_settings.DEFAULT_AUTHENTICATION_CLASSES
+    permission_classes = [IsAuthenticated]
+    throttle_classes = api_settings.DEFAULT_THROTTLE_CLASSES
+    pagination_class = CoachPlanningPagination
+
+    def get_serializer_class(self):
+        if self.request.method == "GET":
+            return PlanningSessionSerializer
+        return PlanningSessionWriteSerializer
+
+    def get(self, request, athlete_id: int):
+        athlete = self.require_athlete(request, athlete_id)
+        try:
+            start, end = _parse_planning_range(request)
+        except ValueError as exc:
+            reason = str(exc)
+            if reason == "from_to_required":
+                return Response({"detail": "from and to must be provided together."}, status=400)
+            if reason == "start_after_end":
+                return Response({"detail": "from must be before to."}, status=400)
+            if reason == "range_too_large":
+                return Response({"detail": "Requested range too large.", "max_days": _PLANNING_MAX_DAYS}, status=400)
+            return Response({"detail": "Invalid date range."}, status=400)
+
+        qs = (
+            Entrenamiento.objects.filter(alumno_id=athlete.id, fecha_asignada__range=[start, end])
+            .select_related("alumno")
+            .order_by("fecha_asignada", "id")
+        )
+        page = self.paginate_queryset(qs)
+        serializer = PlanningSessionSerializer(page, many=True, context={"request": request})
+        response = self.get_paginated_response(serializer.data)
+        response.data["version"] = "v1"
+        response.data["athlete_id"] = athlete.id
+        response.data["from"] = str(start)
+        response.data["to"] = str(end)
+        return response
+
+    def post(self, request, athlete_id: int):
+        athlete = self.require_athlete(request, athlete_id)
+        data = request.data.copy()
+        if "alumno" in data and str(data.get("alumno")) != str(athlete.id):
+            return Response({"detail": "alumno must match athlete in path."}, status=400)
+        data["alumno"] = athlete.id
+        serializer = PlanningSessionWriteSerializer(data=data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        planned = serializer.save()
+        logger.info(
+            "coach.planning.create",
+            extra={
+                "coach_id": request.user.id,
+                "athlete_id": athlete.id,
+                "planned_id": planned.id,
+                "request_id": _get_request_id(request),
+            },
+        )
+        out = PlanningSessionSerializer(planned, context={"request": request}).data
+        return Response({"version": "v1", "data": out}, status=status.HTTP_201_CREATED)
+
+
+class CoachPlanningDetailView(CoachTenantAPIViewMixin, APIView):
+    authentication_classes = api_settings.DEFAULT_AUTHENTICATION_CLASSES
+    permission_classes = [IsAuthenticated]
+    throttle_classes = api_settings.DEFAULT_THROTTLE_CLASSES
+
+    def patch(self, request, planned_id: int):
+        user = request.user
+        qs = Entrenamiento.objects.select_related("alumno")
+        if not getattr(user, "is_staff", False) and not getattr(user, "is_superuser", False):
+            qs = qs.filter(alumno__entrenador=user)
+        planned = get_object_or_404(qs, id=int(planned_id))
+        data = request.data.copy()
+        if "alumno" in data and str(data.get("alumno")) != str(planned.alumno_id):
+            return Response({"detail": "alumno cannot be changed."}, status=400)
+        serializer = PlanningSessionWriteSerializer(planned, data=data, partial=True, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        planned = serializer.save(alumno=planned.alumno)
+        logger.info(
+            "coach.planning.update",
+            extra={
+                "coach_id": request.user.id,
+                "athlete_id": planned.alumno_id,
+                "planned_id": planned.id,
+                "request_id": _get_request_id(request),
+            },
+        )
+        out = PlanningSessionSerializer(planned, context={"request": request}).data
+        return Response({"version": "v1", "data": out}, status=200)
+
+
+class CoachAthleteComplianceSummaryView(CoachTenantAPIViewMixin, APIView):
+    authentication_classes = api_settings.DEFAULT_AUTHENTICATION_CLASSES
+    permission_classes = [IsAuthenticated]
+    throttle_classes = api_settings.DEFAULT_THROTTLE_CLASSES
+
+    def get(self, request, athlete_id: int):
+        athlete = self.require_athlete(request, athlete_id)
+        try:
+            start, end = _parse_planning_range(request)
+        except ValueError as exc:
+            reason = str(exc)
+            if reason == "from_to_required":
+                return Response({"detail": "from and to must be provided together."}, status=400)
+            if reason == "start_after_end":
+                return Response({"detail": "from must be before to."}, status=400)
+            if reason == "range_too_large":
+                return Response({"detail": "Requested range too large.", "max_days": _PLANNING_MAX_DAYS}, status=400)
+            return Response({"detail": "Invalid date range."}, status=400)
+
+        summary = _build_compliance_summary(athlete_id=athlete.id, start=start, end=end)
+        logger.info(
+            "coach.compliance.summary",
+            extra={
+                "coach_id": request.user.id,
+                "athlete_id": athlete.id,
+                "date_range": {"from": str(start), "to": str(end)},
+                "request_id": _get_request_id(request),
+            },
+        )
+        return Response(
+            {
+                "version": "v1",
+                "athlete_id": athlete.id,
+                "from": str(start),
+                "to": str(end),
+                **summary,
+            },
+            status=200,
+        )
 
 
 class CoachGroupWeekSummaryView(CoachTenantAPIViewMixin, APIView):

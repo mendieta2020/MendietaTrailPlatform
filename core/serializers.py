@@ -92,6 +92,96 @@ class EntrenamientoSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("No autorizado.")
         return alumno
 
+
+class PlanningSessionSerializer(serializers.ModelSerializer):
+    athlete_id = serializers.IntegerField(source="alumno_id", read_only=True)
+    date = serializers.DateField(source="fecha_asignada")
+    sport = serializers.CharField(source="tipo_actividad")
+    title = serializers.CharField(source="titulo")
+    description = serializers.CharField(source="descripcion_detallada", allow_blank=True, allow_null=True)
+    structure = serializers.JSONField(source="estructura")
+    planned_metrics = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Entrenamiento
+        fields = [
+            "id",
+            "athlete_id",
+            "date",
+            "sport",
+            "title",
+            "description",
+            "structure",
+            "planned_metrics",
+            "status",
+        ]
+
+    def get_status(self, obj):
+        return "completed" if obj.completado else "planned"
+
+    def get_planned_metrics(self, obj):
+        duration_min = obj.tiempo_planificado_min
+        distance_km = obj.distancia_planificada_km
+        elev_m = obj.desnivel_planificado_m
+        rpe = obj.rpe_planificado or 0
+        duration_s = int(duration_min * 60) if duration_min is not None else None
+        distance_m = int(round(float(distance_km) * 1000.0)) if distance_km is not None else None
+        elev_pos_m = int(elev_m) if elev_m is not None else None
+        load = None
+        if duration_min is not None:
+            load = round(float(duration_min) * (1.0 + (float(rpe) / 10.0)), 2)
+        return {
+            "duration_s": duration_s,
+            "distance_m": distance_m,
+            "elev_pos_m": elev_pos_m,
+            "load": load,
+        }
+
+
+class PlanningSessionWriteSerializer(serializers.ModelSerializer):
+    status = serializers.ChoiceField(choices=["planned", "completed"], required=False)
+
+    class Meta:
+        model = Entrenamiento
+        fields = [
+            "alumno",
+            "fecha_asignada",
+            "tipo_actividad",
+            "titulo",
+            "descripcion_detallada",
+            "estructura",
+            "distancia_planificada_km",
+            "tiempo_planificado_min",
+            "desnivel_planificado_m",
+            "rpe_planificado",
+            "status",
+        ]
+        extra_kwargs = {
+            "estructura": {"required": False},
+            "descripcion_detallada": {"required": False},
+        }
+
+    def validate_alumno(self, alumno: Alumno):
+        """
+        Multi-tenant: un coach no puede crear/editar entrenamientos de atletas ajenos.
+        """
+        request = self.context.get("request")
+        if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
+            return alumno
+        user = request.user
+        if hasattr(user, "perfil_alumno") and not user.is_staff:
+            raise serializers.ValidationError("No autorizado.")
+        if alumno.entrenador_id and alumno.entrenador_id != user.id and not user.is_staff:
+            raise serializers.ValidationError("No autorizado.")
+        return alumno
+
+    def validate(self, attrs):
+        status = attrs.pop("status", None)
+        if status is not None:
+            attrs["completado"] = status == "completed"
+        return attrs
+
 # ==============================================================================
 #  2. GESTIÓN FINANCIERA
 # ==============================================================================
