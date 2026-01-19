@@ -5,7 +5,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from analytics.models import AlertaRendimiento, Alert
-from core.models import Alumno
+from core.models import Alumno, Entrenamiento
 
 User = get_user_model()
 
@@ -129,3 +129,109 @@ class CoachTenancyEndpointsTests(TestCase):
             format="json",
         )
         self.assertEqual(perf_res.status_code, 404)
+
+
+class CoachPlanningComplianceTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.coach = User.objects.create_user(username="coach_planning", password="pass")
+        self.other_coach = User.objects.create_user(username="coach_planning_other", password="pass")
+        self.alumno = Alumno.objects.create(
+            entrenador=self.coach,
+            nombre="Ana",
+            apellido="Planning",
+            email="ana_planning@test.com",
+        )
+        self.other_alumno = Alumno.objects.create(
+            entrenador=self.other_coach,
+            nombre="Omar",
+            apellido="Other",
+            email="omar_planning@test.com",
+        )
+        self.empty_alumno = Alumno.objects.create(
+            entrenador=self.coach,
+            nombre="Eva",
+            apellido="Empty",
+            email="eva_empty@test.com",
+        )
+        self.client.force_authenticate(user=self.coach)
+        self.start = date(2026, 1, 1)
+        self.end = date(2026, 1, 7)
+        self.plan = Entrenamiento.objects.create(
+            alumno=self.alumno,
+            fecha_asignada=self.start,
+            titulo="Plan A",
+            tipo_actividad="RUN",
+            tiempo_planificado_min=45,
+            distancia_planificada_km=8,
+            desnivel_planificado_m=300,
+        )
+        self.other_plan = Entrenamiento.objects.create(
+            alumno=self.other_alumno,
+            fecha_asignada=self.start,
+            titulo="Plan B",
+            tipo_actividad="RUN",
+        )
+
+    def test_planning_list_cross_tenant_returns_404(self):
+        res = self.client.get(
+            f"/api/coach/athletes/{self.other_alumno.id}/planning/?from={self.start}&to={self.end}"
+        )
+        self.assertEqual(res.status_code, 404)
+
+    def test_planning_create_cross_tenant_returns_404(self):
+        res = self.client.post(
+            f"/api/coach/athletes/{self.other_alumno.id}/planning/",
+            {"fecha_asignada": str(self.start), "titulo": "Plan X"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 404)
+
+    def test_planning_patch_cross_tenant_returns_404(self):
+        res = self.client.patch(
+            f"/api/coach/planning/{self.other_plan.id}/",
+            {"titulo": "Nope"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 404)
+
+    def test_planning_range_caps_enforced(self):
+        res = self.client.get(
+            f"/api/coach/athletes/{self.alumno.id}/planning/?from=2026-01-01&to=2026-04-30"
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_planning_contract_shape(self):
+        res = self.client.get(
+            f"/api/coach/athletes/{self.alumno.id}/planning/?from={self.start}&to={self.end}"
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["version"], "v1")
+        self.assertEqual(res.data["athlete_id"], self.alumno.id)
+        self.assertIn("count", res.data)
+        self.assertIn("results", res.data)
+        self.assertTrue(res.data["results"])
+        first = res.data["results"][0]
+        for key in ("id", "date", "sport", "title", "description", "structure", "planned_metrics", "status"):
+            self.assertIn(key, first)
+        for key in ("duration_s", "distance_m", "elev_pos_m", "load"):
+            self.assertIn(key, first["planned_metrics"])
+
+    def test_compliance_returns_explicit_zeros(self):
+        res = self.client.get(
+            f"/api/coach/athletes/{self.empty_alumno.id}/compliance/?from={self.start}&to={self.end}"
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["version"], "v1")
+        self.assertIn("planned_totals", res.data)
+        self.assertIn("actual_totals", res.data)
+        self.assertIn("compliance_pct", res.data)
+        self.assertEqual(res.data["planned_totals"]["duration_s"], 0)
+        self.assertEqual(res.data["planned_totals"]["distance_m"], 0)
+        self.assertEqual(res.data["planned_totals"]["elev_pos_m"], 0)
+        self.assertEqual(res.data["planned_totals"]["load"], 0.0)
+        self.assertEqual(res.data["actual_totals"]["duration_s"], 0)
+        self.assertEqual(res.data["actual_totals"]["distance_m"], 0)
+        self.assertEqual(res.data["actual_totals"]["elev_pos_m"], 0)
+        self.assertEqual(res.data["actual_totals"]["load"], 0.0)
+        self.assertEqual(res.data["compliance_pct"]["duration_s"], 0.0)
