@@ -926,14 +926,17 @@ class CoachAlertPatchView(CoachTenantAPIViewMixin, APIView):
             return Response({"detail": "visto_por_coach must be boolean"}, status=400)
 
         alert = _alert_queryset_for_user(request.user).filter(id=int(alert_id)).first()
+        perf_alert = _performance_alert_queryset_for_user(request.user).filter(id=int(alert_id)).first()
+        if alert is None and perf_alert is None:
+            return Response({"detail": "Not found."}, status=404)
+
         if alert is not None:
             alert.visto_por_coach = bool(visto)
             alert.save(update_fields=["visto_por_coach"])
-            return Response({"id": alert.id, "visto_por_coach": alert.visto_por_coach}, status=200)
+        if perf_alert is not None:
+            perf_alert.visto_por_coach = bool(visto)
+            perf_alert.save(update_fields=["visto_por_coach"])
 
-        perf_alert = _performance_alert_queryset_for_user(request.user).filter(id=int(alert_id)).first()
-        if perf_alert is None:
-            return Response({"detail": "Not found."}, status=404)
-        perf_alert.visto_por_coach = bool(visto)
-        perf_alert.save(update_fields=["visto_por_coach"])
+        if alert is not None:
+            return Response({"id": alert.id, "visto_por_coach": alert.visto_por_coach}, status=200)
         return Response({"id": perf_alert.id, "visto_por_coach": perf_alert.visto_por_coach}, status=200)
