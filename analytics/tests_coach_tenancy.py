@@ -99,6 +99,8 @@ class CoachTenancyEndpointsTests(TestCase):
         self.assertTrue(res.data["visto_por_coach"])
         self.alert.refresh_from_db()
         self.assertTrue(self.alert.visto_por_coach)
+        persisted_alert = Alert.objects.get(pk=self.alert.pk)
+        self.assertTrue(persisted_alert.visto_por_coach)
 
         perf_res = self.client.patch(
             f"/api/coach/alerts/{self.perf_alert.id}/",
@@ -110,6 +112,8 @@ class CoachTenancyEndpointsTests(TestCase):
         self.assertTrue(perf_res.data["visto_por_coach"])
         self.perf_alert.refresh_from_db()
         self.assertTrue(self.perf_alert.visto_por_coach)
+        persisted_perf_alert = AlertaRendimiento.objects.get(pk=self.perf_alert.pk)
+        self.assertTrue(persisted_perf_alert.visto_por_coach)
 
     def test_alert_patch_cross_tenant_returns_404(self):
         res = self.client.patch(
