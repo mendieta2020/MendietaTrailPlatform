@@ -16,7 +16,14 @@ from stravalib.client import Client
 from analytics.injury_risk import compute_injury_risk
 from analytics.models import PMCHistory
 from analytics.plan_vs_actual import PlannedVsActualComparator
-from .models import Alumno, Entrenamiento, BloqueEntrenamiento, PasoEntrenamiento, Actividad
+from .models import (
+    Alumno,
+    Entrenamiento,
+    BloqueEntrenamiento,
+    PasoEntrenamiento,
+    Actividad,
+    PlantillaEntrenamientoVersion,
+)
 from .utils.logging import safe_extra
 
 logger = logging.getLogger(__name__)
@@ -98,40 +105,57 @@ def copiar_estructura_plantilla(entrenamiento, plantilla):
 
 def asignar_plantilla_a_alumno(plantilla, alumno, fecha):
     """
-    Crea la cáscara del entrenamiento y delega el copiado al Clonador Universal.
-    Calcula ritmos personalizados al final.
+    Crea o actualiza (idempotente) un entrenamiento planificado para un alumno.
+    Usa la estructura JSON vigente de la plantilla y versionado.
     """
     logger.info(
         "plantillas.asignar_inicio",
         extra=safe_extra({"plantilla_id": plantilla.id, "alumno_id": alumno.id, "fecha": str(fecha)}),
     )
-    
+
     try:
+        plantilla_version = plantilla.versiones.order_by("-version").first()
+        if not plantilla_version:
+            plantilla_version = PlantillaEntrenamientoVersion.objects.create(
+                plantilla=plantilla,
+                version=1,
+                estructura=plantilla.estructura,
+                descripcion=plantilla.descripcion_global,
+            )
+        estructura_snapshot = plantilla_version.estructura
+
         with transaction.atomic():
-            # A. Crear la cáscara vacía
-            nuevo_entreno = Entrenamiento.objects.create(
+            entrenamiento, created = Entrenamiento.objects.select_for_update().get_or_create(
                 alumno=alumno,
                 plantilla_origen=plantilla,
                 fecha_asignada=fecha,
-                titulo=plantilla.titulo,
-                tipo_actividad=plantilla.deporte,
-                descripcion_detallada=plantilla.descripcion_global, # Copiamos la descripción
-                completado=False
+                defaults={
+                    "plantilla_version": plantilla_version,
+                    "titulo": plantilla.titulo,
+                    "tipo_actividad": plantilla.deporte,
+                    "descripcion_detallada": plantilla.descripcion_global,
+                    "estructura": estructura_snapshot,
+                    "completado": False,
+                },
             )
-            
-            # B. Inyectar contenido (Bloques/Pasos)
-            copiar_estructura_plantilla(nuevo_entreno, plantilla)
-            
-            # C. Calcular Totales y Ritmos Personalizados (MAGIA DE VAM)
-            nuevo_entreno.calcular_totales_desde_estructura()
-            
-            # Si el modelo tiene la función de ritmos personalizados, la ejecutamos
-            if hasattr(nuevo_entreno, 'calcular_objetivos_personalizados'):
-                nuevo_entreno.calcular_objetivos_personalizados()
-                
-            nuevo_entreno.save()
-            
-            return nuevo_entreno
+
+            if not created and not entrenamiento.completado:
+                entrenamiento.plantilla_version = plantilla_version
+                entrenamiento.titulo = plantilla.titulo
+                entrenamiento.tipo_actividad = plantilla.deporte
+                entrenamiento.descripcion_detallada = plantilla.descripcion_global
+                entrenamiento.estructura = estructura_snapshot
+                entrenamiento.save(
+                    update_fields=[
+                        "plantilla_version",
+                        "titulo",
+                        "tipo_actividad",
+                        "descripcion_detallada",
+                        "estructura",
+                    ]
+                )
+
+            return entrenamiento, created
 
     except Exception:
         logger.exception(
