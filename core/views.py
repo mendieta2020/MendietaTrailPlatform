@@ -496,18 +496,21 @@ class PlantillaViewSet(TenantModelViewSet):
         except ValueError:
             return Response({"error": "Formato de fecha inválido. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
 
-        alumno_qs = Alumno.objects.all() if request.user.is_staff else Alumno.objects.filter(entrenador=request.user)
-        alumno = alumno_qs.filter(pk=alumno_id).first()
+        alumno = Alumno.objects.filter(pk=alumno_id).first()
         if not alumno:
             return Response({"error": "El alumno no existe."}, status=status.HTTP_404_NOT_FOUND)
+        if not request.user.is_staff and alumno.entrenador_id != request.user.id:
+            return Response({"error": "No tienes permisos para asignar a este alumno."}, status=status.HTTP_403_FORBIDDEN)
+        if not request.user.is_staff and plantilla.entrenador_id != alumno.entrenador_id:
+            return Response({"error": "Plantilla y alumno no pertenecen al mismo entrenador."}, status=status.HTTP_403_FORBIDDEN)
 
         try:
-            entrenamiento = asignar_plantilla_a_alumno(plantilla, alumno, fecha)
+            entrenamiento, created = asignar_plantilla_a_alumno(plantilla, alumno, fecha)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         serializer = EntrenamientoSerializer(entrenamiento, context={"request": request})
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 
 class CarreraViewSet(TenantModelViewSet):
