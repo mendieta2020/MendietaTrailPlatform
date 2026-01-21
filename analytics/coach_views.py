@@ -10,6 +10,7 @@ from django.utils import timezone
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import generics, status
+from rest_framework.exceptions import NotFound
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -529,6 +530,8 @@ class CoachAthleteWeekSummaryView(CoachTenantAPIViewMixin, APIView):
                 return Response({"detail": "Invalid week format. Use week=YYYY-Www"}, status=400)
 
         daily_qs = DailyActivityAgg.objects.filter(alumno_id=athlete.id, fecha__range=[start, end])
+        if not daily_qs.exists():
+            raise NotFound(detail="No daily activity aggregates for requested range.")
         latest_daily_update = daily_qs.aggregate(latest=Max("updated_at")).get("latest")
         cache_record = (
             AnalyticsRangeCache.objects.filter(
