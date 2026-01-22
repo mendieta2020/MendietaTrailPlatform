@@ -256,6 +256,18 @@ class WeeklySummaryEndpointTests(TestCase):
             apellido="Empty",
             email="lia_empty@test.com",
         )
+        DailyActivityAgg.objects.create(
+            alumno=empty_athlete,
+            fecha=self.monday - timedelta(days=7),
+            sport=DailyActivityAgg.Sport.RUN,
+            load=10,
+            distance_m=1000,
+            elev_gain_m=50,
+            elev_loss_m=40,
+            elev_total_m=90,
+            duration_s=300,
+            calories_kcal=80,
+        )
         self._login_with_cookie()
         res = self.client.get(
             f"/api/coach/athletes/{empty_athlete.id}/week-summary/?week={self.week}"
