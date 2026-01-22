@@ -531,7 +531,10 @@ class CoachAthleteWeekSummaryView(CoachTenantAPIViewMixin, APIView):
 
         daily_qs = DailyActivityAgg.objects.filter(alumno_id=athlete.id, fecha__range=[start, end])
         if not daily_qs.exists():
-            raise NotFound(detail="No daily activity aggregates for requested range.")
+            # Fail-closed: no daily aggs at all means we cannot serve week summary (pipeline never ran).
+            has_any_daily = DailyActivityAgg.objects.filter(alumno_id=athlete.id).exists()
+            if not has_any_daily:
+                raise NotFound(detail="No daily activity aggregates for requested range.")
         latest_daily_update = daily_qs.aggregate(latest=Max("updated_at")).get("latest")
         cache_record = (
             AnalyticsRangeCache.objects.filter(

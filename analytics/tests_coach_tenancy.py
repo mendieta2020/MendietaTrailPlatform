@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from analytics.models import AlertaRendimiento, Alert
+from analytics.models import AlertaRendimiento, Alert, DailyActivityAgg
 from core.models import Alumno, Entrenamiento
 
 User = get_user_model()
@@ -60,6 +60,18 @@ class CoachTenancyEndpointsTests(TestCase):
         today = date.today()
         year, week, _ = today.isocalendar()
         self.week = f"{year}-{week:02d}"
+        DailyActivityAgg.objects.create(
+            alumno=self.alumno,
+            fecha=today,
+            sport=DailyActivityAgg.Sport.RUN,
+            load=25,
+            distance_m=2000,
+            elev_gain_m=100,
+            elev_loss_m=80,
+            elev_total_m=180,
+            duration_s=600,
+            calories_kcal=150,
+        )
 
     def test_week_summary_own_tenant_returns_200(self):
         res = self.client.get(f"/api/coach/athletes/{self.alumno.id}/week-summary/?week={self.week}")
