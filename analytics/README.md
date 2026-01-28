@@ -40,3 +40,25 @@
 Esta política se aplica tanto en la ingesta (Actividad) como en la generación
 de `DailyActivityAgg`, garantizando valores numéricos y evitando `NULL` en
 campos críticos.
+
+## PMC endpoint contract + scale risks
+
+### Contract (GET `/api/analytics/pmc/`)
+- **Output**: lista ordenada por fecha ascendente.
+- **Keys por fila**:
+  - `fecha` (string `YYYY-MM-DD`)
+  - `is_future` (bool)
+  - `ctl`, `atl`, `tsb` (float)
+  - `load` (int)
+  - `dist` (float, km)
+  - `time` (int, minutos)
+  - `elev_gain`, `elev_loss` (int o `null`)
+  - `calories` (int o `null`)
+  - `effort` (float o `null`)
+  - `race` (objeto o `null`)
+- **Privacidad/tenancy**: sin payloads crudos ni credenciales; acceso limitado al coach/atleta dueño.
+
+### Scale risks (no implementar ahora)
+- Rango amplio + agregados por día puede crecer linealmente → considerar **paginación/limit** en futuro.
+- Recompute en caliente en rangos grandes puede ser costoso → **cachear** o precalcular por día/semana.
+- Precompute async (batch/cron) para rangos largos y evitar latencia en requests.
