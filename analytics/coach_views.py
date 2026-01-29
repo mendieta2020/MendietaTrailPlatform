@@ -23,6 +23,7 @@ from analytics.serializers import AlertaRendimientoSerializer
 from analytics.pmc_engine import PMC_SPORT_GROUPS, _normalize_business_sport, ensure_pmc_materialized
 from analytics.range_utils import max_range_days, parse_date_range_params, parse_iso_week_param
 from core.models import Actividad, Alumno, Entrenamiento
+from core.permissions import IsCoachUser
 from core.serializers import PlanningSessionSerializer, PlanningSessionWriteSerializer
 from core.tenancy import CoachTenantAPIViewMixin
 
@@ -461,7 +462,7 @@ class CoachAthleteWeekSummaryView(CoachTenantAPIViewMixin, APIView):
     # Usamos exactamente el mismo stack de auth que el resto de endpoints coach (defaults de DRF).
     # Esto asegura soporte para JWT en cookie (401 solo cuando no hay credenciales).
     authentication_classes = api_settings.DEFAULT_AUTHENTICATION_CLASSES
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsCoachUser]
 
     @swagger_auto_schema(
         manual_parameters=[
@@ -577,7 +578,7 @@ class CoachAthleteWeekSummaryView(CoachTenantAPIViewMixin, APIView):
 
 class CoachAthletePlanningView(CoachTenantAPIViewMixin, generics.GenericAPIView):
     authentication_classes = api_settings.DEFAULT_AUTHENTICATION_CLASSES
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsCoachUser]
     throttle_classes = api_settings.DEFAULT_THROTTLE_CLASSES
     pagination_class = CoachPlanningPagination
 
@@ -638,7 +639,7 @@ class CoachAthletePlanningView(CoachTenantAPIViewMixin, generics.GenericAPIView)
 
 class CoachPlanningDetailView(CoachTenantAPIViewMixin, APIView):
     authentication_classes = api_settings.DEFAULT_AUTHENTICATION_CLASSES
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsCoachUser]
     throttle_classes = api_settings.DEFAULT_THROTTLE_CLASSES
 
     def patch(self, request, planned_id: int):
@@ -668,7 +669,7 @@ class CoachPlanningDetailView(CoachTenantAPIViewMixin, APIView):
 
 class CoachAthleteComplianceSummaryView(CoachTenantAPIViewMixin, APIView):
     authentication_classes = api_settings.DEFAULT_AUTHENTICATION_CLASSES
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsCoachUser]
     throttle_classes = api_settings.DEFAULT_THROTTLE_CLASSES
 
     def get(self, request, athlete_id: int):
@@ -709,7 +710,7 @@ class CoachAthleteComplianceSummaryView(CoachTenantAPIViewMixin, APIView):
 
 class CoachGroupWeekSummaryView(CoachTenantAPIViewMixin, APIView):
     authentication_classes = api_settings.DEFAULT_AUTHENTICATION_CLASSES
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsCoachUser]
 
     @swagger_auto_schema(
         manual_parameters=[
@@ -884,7 +885,7 @@ class CoachGroupWeekSummaryView(CoachTenantAPIViewMixin, APIView):
 
 
 class CoachAthleteAlertsListView(CoachTenantAPIViewMixin, APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsCoachUser]
 
     @swagger_auto_schema(
         manual_parameters=[
@@ -917,7 +918,7 @@ class CoachAlertPatchView(CoachTenantAPIViewMixin, APIView):
     Cross-tenant access returns 404 to avoid leaking existence.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsCoachUser]
 
     @swagger_auto_schema(
         request_body=openapi.Schema(

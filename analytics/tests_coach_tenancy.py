@@ -5,7 +5,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from analytics.models import AlertaRendimiento, Alert, DailyActivityAgg
-from core.models import Alumno, Entrenamiento
+from core.models import Alumno, Entrenamiento, Equipo
 
 User = get_user_model()
 
@@ -247,3 +247,117 @@ class CoachPlanningComplianceTests(TestCase):
         self.assertEqual(res.data["actual_totals"]["elev_pos_m"], 0)
         self.assertEqual(res.data["actual_totals"]["load"], 0.0)
         self.assertEqual(res.data["compliance_pct"]["duration_s"], 0.0)
+
+
+class CoachOnlyAccessTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.coach = User.objects.create_user(username="coach_only", password="pass")
+        self.other_coach = User.objects.create_user(username="coach_only_other", password="pass")
+        self.athlete_user = User.objects.create_user(username="athlete_user", password="pass")
+        self.alumno = Alumno.objects.create(
+            entrenador=self.coach,
+            usuario=self.athlete_user,
+            nombre="Alicia",
+            apellido="Athlete",
+            email="alicia_athlete@test.com",
+        )
+        self.other_alumno = Alumno.objects.create(
+            entrenador=self.other_coach,
+            nombre="Oscar",
+            apellido="Other",
+            email="oscar_other@test.com",
+        )
+        self.group = Equipo.objects.create(nombre="Grupo A", entrenador=self.coach)
+        self.other_group = Equipo.objects.create(nombre="Grupo B", entrenador=self.other_coach)
+        self.alumno.equipo = self.group
+        self.alumno.save(update_fields=["equipo"])
+        self.plan = Entrenamiento.objects.create(
+            alumno=self.alumno,
+            fecha_asignada=date.today(),
+            titulo="Plan Coach",
+            tipo_actividad="RUN",
+        )
+        DailyActivityAgg.objects.create(
+            alumno=self.alumno,
+            fecha=date.today(),
+            sport=DailyActivityAgg.Sport.RUN,
+            load=20,
+            distance_m=1500,
+            elev_gain_m=50,
+            elev_loss_m=40,
+            elev_total_m=90,
+            duration_s=500,
+            calories_kcal=120,
+        )
+        self.alert = Alert.objects.create(
+            entrenador=self.coach,
+            alumno=self.alumno,
+            type=Alert.Type.ANOMALY,
+            severity=Alert.Severity.INFO,
+            message="Alert coach only",
+        )
+
+        today = date.today()
+        year, week, _ = today.isocalendar()
+        self.week = f"{year}-{week:02d}"
+        self.start = date(today.year, 1, 1)
+        self.end = date(today.year, 1, 7)
+
+    def test_athlete_denied_week_summary(self):
+        self.client.force_authenticate(user=self.athlete_user)
+        res = self.client.get(f"/api/coach/athletes/{self.alumno.id}/week-summary/?week={self.week}")
+        self.assertEqual(res.status_code, 403)
+
+    def test_athlete_denied_planning_endpoints(self):
+        self.client.force_authenticate(user=self.athlete_user)
+        res = self.client.get(f"/api/coach/athletes/{self.alumno.id}/planning/?from={self.start}&to={self.end}")
+        self.assertEqual(res.status_code, 403)
+        res = self.client.post(
+            f"/api/coach/athletes/{self.alumno.id}/planning/",
+            {"fecha_asignada": str(self.start), "titulo": "Plan athlete"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 403)
+        res = self.client.patch(
+            f"/api/coach/planning/{self.plan.id}/",
+            {"titulo": "Plan update"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 403)
+
+    def test_athlete_denied_compliance_group_alerts(self):
+        self.client.force_authenticate(user=self.athlete_user)
+        res = self.client.get(f"/api/coach/athletes/{self.alumno.id}/compliance/?from={self.start}&to={self.end}")
+        self.assertEqual(res.status_code, 403)
+        res = self.client.get(f"/api/coach/groups/{self.group.id}/week-summary/?week={self.week}")
+        self.assertEqual(res.status_code, 403)
+        res = self.client.get(f"/api/coach/athletes/{self.alumno.id}/alerts/")
+        self.assertEqual(res.status_code, 403)
+        res = self.client.patch(
+            f"/api/coach/alerts/{self.alert.id}/",
+            {"visto_por_coach": True},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 403)
+
+    def test_coach_allows_group_week_summary(self):
+        self.client.force_authenticate(user=self.coach)
+        res = self.client.get(f"/api/coach/groups/{self.group.id}/week-summary/?week={self.week}")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["group_id"], self.group.id)
+
+    def test_coach_allows_planning_patch(self):
+        self.client.force_authenticate(user=self.coach)
+        res = self.client.patch(
+            f"/api/coach/planning/{self.plan.id}/",
+            {"titulo": "Plan updated"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["data"]["id"], self.plan.id)
+
+    def test_group_cross_tenant_returns_404(self):
+        self.client.force_authenticate(user=self.coach)
+        res = self.client.get(f"/api/coach/groups/{self.other_group.id}/week-summary/?week={self.week}")
+        self.assertEqual(res.status_code, 404)
