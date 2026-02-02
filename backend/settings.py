@@ -73,6 +73,10 @@ COOKIE_AUTH_SECURE = get_env_variable(
     default=("True" if not DEBUG else "False"),
     required=False,
 ) == "True"
+# Alineamos cookies CSRF con el modo cookie auth (token visible para JS).
+CSRF_COOKIE_SECURE = COOKIE_AUTH_SECURE
+CSRF_COOKIE_SAMESITE = COOKIE_AUTH_SAMESITE
+CSRF_COOKIE_DOMAIN = COOKIE_AUTH_DOMAIN
 
 # --- CONFIGURACIÓN DE HOSTS (Ngrok Ready) ---
 if DEBUG:
@@ -151,6 +155,8 @@ MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'core.middleware.ApiErrorLoggingMiddleware',
+    # Bearer JWT (header) no requiere CSRF; cookies sí.
+    'core.middleware.BearerAuthCsrfBypassMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     # Multi-tenant context (tenant = coach_id). No bloquea, solo expone request.tenant_coach_id.
