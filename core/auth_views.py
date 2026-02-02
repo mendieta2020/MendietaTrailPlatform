@@ -1,4 +1,6 @@
 from django.conf import settings
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
@@ -110,6 +112,7 @@ class CookieLogoutView(APIView):
         return response
 
 
+@method_decorator(ensure_csrf_cookie, name="get")
 class SessionStatusView(APIView):
     permission_classes = [IsAuthenticated]
 

@@ -53,3 +53,33 @@ class ApiErrorLoggingMiddleware:
                 "user_id": getattr(user, "id", None) if getattr(user, "is_authenticated", False) else None,
             },
         )
+
+
+class BearerAuthCsrfBypassMiddleware:
+    """
+    Permite flujos JWT Bearer sin CSRF cuando NO se usan cookies de auth.
+
+    - Si llega Authorization: Bearer <token> y no hay cookies de auth,
+      desactivamos la validación CSRF (clientes no-browser).
+    - Si hay cookies de auth presentes, dejamos CSRF activo para evitar
+      bypass accidental en flujos cookie-based.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        auth_header = request.META.get("HTTP_AUTHORIZATION", "")
+        if auth_header.lower().startswith("bearer "):
+            request._dont_enforce_csrf_checks = not self._has_auth_cookies(request)
+        return self.get_response(request)
+
+    @staticmethod
+    def _has_auth_cookies(request):
+        from django.conf import settings
+
+        if not getattr(settings, "USE_COOKIE_AUTH", False):
+            return False
+        access_cookie = request.COOKIES.get(settings.COOKIE_AUTH_ACCESS_NAME)
+        refresh_cookie = request.COOKIES.get(settings.COOKIE_AUTH_REFRESH_NAME)
+        return bool(access_cookie or refresh_cookie)

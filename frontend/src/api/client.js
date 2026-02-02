@@ -18,6 +18,31 @@ const client = axios.create({
     },
 });
 
+const SAFE_METHODS = new Set(['get', 'head', 'options', 'trace']);
+const CSRF_COOKIE_NAME = 'csrftoken';
+const CSRF_HEADER_NAME = 'X-CSRFToken';
+
+function getCookieValue(name) {
+    if (typeof document === 'undefined') return null;
+    const cookies = `; ${document.cookie}`;
+    const parts = cookies.split(`; ${name}=`);
+    if (parts.length !== 2) return null;
+    return parts.pop().split(';').shift() || null;
+}
+
+function attachCsrfInterceptor(instance) {
+    instance.interceptors.request.use((config) => {
+        if (!USE_COOKIE_AUTH) return config;
+        const method = (config.method || 'get').toLowerCase();
+        if (SAFE_METHODS.has(method)) return config;
+        const csrfToken = getCookieValue(CSRF_COOKIE_NAME);
+        if (!csrfToken) return config;
+        config.headers = config.headers || {};
+        config.headers[CSRF_HEADER_NAME] = csrfToken;
+        return config;
+    });
+}
+
 // Cliente “limpio” (sin interceptores) para refrescar tokens
 const refreshClient = axios.create({
     baseURL: baseURL,
@@ -28,6 +53,9 @@ const refreshClient = axios.create({
         'accept': 'application/json'
     },
 });
+
+attachCsrfInterceptor(client);
+attachCsrfInterceptor(refreshClient);
 
 // --- INTERCEPTOR DE REQUEST (SALIDA) ---
 // Inyectamos el token automáticamente en cada petición
