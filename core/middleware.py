@@ -71,15 +71,24 @@ class BearerAuthCsrfBypassMiddleware:
     def __call__(self, request):
         auth_header = request.META.get("HTTP_AUTHORIZATION", "")
         if auth_header.lower().startswith("bearer "):
-            request._dont_enforce_csrf_checks = not self._has_auth_cookies(request)
+            token = auth_header[7:].strip()
+            if token:
+                request._dont_enforce_csrf_checks = not self._has_auth_cookies(request)
         return self.get_response(request)
 
     @staticmethod
     def _has_auth_cookies(request):
         from django.conf import settings
 
-        if not getattr(settings, "USE_COOKIE_AUTH", False):
-            return False
-        access_cookie = request.COOKIES.get(settings.COOKIE_AUTH_ACCESS_NAME)
-        refresh_cookie = request.COOKIES.get(settings.COOKIE_AUTH_REFRESH_NAME)
-        return bool(access_cookie or refresh_cookie)
+        cookie_names = set()
+        session_cookie_name = getattr(settings, "SESSION_COOKIE_NAME", "sessionid")
+        if session_cookie_name:
+            cookie_names.add(session_cookie_name)
+        csrf_cookie_name = getattr(settings, "CSRF_COOKIE_NAME", "csrftoken")
+        if csrf_cookie_name:
+            cookie_names.add(csrf_cookie_name)
+        if getattr(settings, "USE_COOKIE_AUTH", False):
+            access_name = getattr(settings, "COOKIE_AUTH_ACCESS_NAME", "mt_access")
+            refresh_name = getattr(settings, "COOKIE_AUTH_REFRESH_NAME", "mt_refresh")
+            cookie_names.update([access_name, refresh_name])
+        return any(request.COOKIES.get(name) for name in cookie_names)
