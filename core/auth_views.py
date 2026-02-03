@@ -7,6 +7,8 @@ from rest_framework.settings import api_settings
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
+from .models import get_onboarding_completed
+
 
 def _get_lifetime_seconds(lifetime):
     try:
@@ -121,5 +123,6 @@ class SessionStatusView(APIView):
             {
                 "username": request.user.username,
                 "id": request.user.id,
+                "onboarding_completed": get_onboarding_completed(request.user),
             }
         )

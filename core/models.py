@@ -53,6 +53,27 @@ TURNOS_DIA = [
 #  2. MODELOS PRINCIPALES
 # ==============================================================================
 
+# --- PERFIL DE COACH (ONBOARDING) ---
+class CoachProfile(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="coach_profile",
+    )
+    onboarding_completed = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"CoachProfile(user={self.user_id})"
+
+
+def get_onboarding_completed(user) -> bool:
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    profile = CoachProfile.objects.filter(user=user).only("onboarding_completed").first()
+    return bool(profile and profile.onboarding_completed)
+
+
 # --- NUEVO MODELO: VIDEOS DE EJERCICIOS (GIMNASIO PRO) ---
 class VideoEjercicio(models.Model):
     titulo = models.CharField(max_length=100, blank=True, help_text="Ej: Sentadilla Técnica")
