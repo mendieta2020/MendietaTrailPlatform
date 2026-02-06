@@ -11,6 +11,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Athletes from './pages/Athletes';
 import AthleteDetail from './pages/AthleteDetail'; // <--- NUEVA IMPORTACIÓN (Perfil del Atleta)
+import AthleteIntegrations from './pages/AthleteIntegrations';
 import CalendarPage from './pages/Calendar';
 import Teams from './pages/Teams';
 import TeamDetail from './pages/TeamDetail';
@@ -112,7 +113,17 @@ function App() {
             } 
           />
 
-          {/* 7. Alertas */}
+          {/* 7. Integraciones del Atleta */}
+          <Route
+            path="/athlete/integrations"
+            element={
+              <ProtectedRoute>
+                <AthleteIntegrations />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* 8. Alertas */}
           <Route
             path="/alerts"
             element={
@@ -122,7 +133,7 @@ function App() {
             }
           />
 
-          {/* 7. Finanzas (Placeholder para el futuro inmediato) */}
+          {/* 9. Finanzas (Placeholder para el futuro inmediato) */}
           <Route 
             path="/finance" 
             element={
