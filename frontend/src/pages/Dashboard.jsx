@@ -1,19 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { Grid, Paper, Typography, Box, CircularProgress, Alert, Divider, MenuItem, Select, FormControl, InputLabel } from '@mui/material';
+import { Grid, Paper, Typography, Box, CircularProgress, Alert, Divider, MenuItem, Select, FormControl, InputLabel, IconButton } from '@mui/material';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend, Line
 } from 'recharts';
 import { 
   PeopleAlt, AttachMoney, MonitorHeart, LocalHospital, 
-  TrendingUp, CalendarMonth
+  TrendingUp, CalendarMonth, InfoOutlined
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import client from '../api/client';
 import PaymentsWidget from '../components/widgets/PaymentsWidget';
 import ComplianceChart from '../components/widgets/ComplianceChart';
 import AlertsWidget from '../components/widgets/AlertsWidget';
+import PMCExplainer from '../components/widgets/PMCExplainer';
+import OnboardingWizard from '../components/onboarding/OnboardingWizard';
 import { format, subMonths, startOfYear, startOfMonth, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useNavigate } from 'react-router-dom';
 
 // --- COMPONENTE DE TARJETA KPI ---
 const StatCard = ({ title, value, sub, color, icon: Icon, loading }) => (
@@ -35,8 +38,11 @@ const StatCard = ({ title, value, sub, color, icon: Icon, loading }) => (
 );
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showWizard, setShowWizard] = useState(false);
+  const [pmcExplainerOpen, setPmcExplainerOpen] = useState(false);
   
   // Estado del Filtro de Tiempo
   const [periodo, setPeriodo] = useState('THIS_MONTH');
@@ -45,6 +51,34 @@ const Dashboard = () => {
   const [kpiData, setKpiData] = useState({ alumnos: 0, ingresos: 0 });
   const [pmcData, setPmcData] = useState([]); // Datos reales del Backend
   const [pagosData, setPagosData] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchOnboardingStatus() {
+      try {
+        const res = await client.get('/api/auth/session/');
+        if (cancelled) return;
+        setShowWizard(!res.data?.onboarding_completed);
+      } catch {
+        if (!cancelled) setShowWizard(false);
+      }
+    }
+
+    fetchOnboardingStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const seen = window.localStorage.getItem('pmc_explainer_seen');
+    if (!seen) {
+      setPmcExplainerOpen(true);
+      window.localStorage.setItem('pmc_explainer_seen', 'true');
+    }
+  }, []);
 
   // --- EFECTO DE CARGA DE DATOS ---
   useEffect(() => {
@@ -103,6 +137,18 @@ const Dashboard = () => {
 
   return (
     <Layout>
+      <OnboardingWizard
+        open={showWizard}
+        onClose={() => setShowWizard(false)}
+        onComplete={() => {
+          setShowWizard(false);
+          navigate('/dashboard', { replace: true });
+        }}
+      />
+      <PMCExplainer
+        open={pmcExplainerOpen}
+        onClose={() => setPmcExplainerOpen(false)}
+      />
       {/* HEADER CON FILTROS */}
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Box>
@@ -172,13 +218,22 @@ const Dashboard = () => {
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {/* GRÁFICO PMC (SCIENTIFIC DATA) */}
         <Grid item xs={12} md={8}>
-            <Paper sx={{ p: 3, borderRadius: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.03)', height: 400 }}>
+            <Paper id="pmc-widget" sx={{ p: 3, borderRadius: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.03)', height: 400 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, justifyContent: 'space-between' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center' }}>
                         <MonitorHeart sx={{ color: '#64748B', mr: 1 }} />
                         <Typography variant="h6" sx={{ fontWeight: 600 }}>Rendimiento Fisiológico (PMC)</Typography>
                     </Box>
-                    <Typography variant="caption" sx={{ bgcolor: '#F1F5F9', px: 1, py: 0.5, borderRadius: 1 }}>Modelo Banister Híbrido</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="caption" sx={{ bgcolor: '#F1F5F9', px: 1, py: 0.5, borderRadius: 1 }}>Modelo Banister Híbrido</Typography>
+                      <IconButton
+                        size="small"
+                        aria-label="Abrir explicación PMC"
+                        onClick={() => setPmcExplainerOpen(true)}
+                      >
+                        <InfoOutlined fontSize="small" />
+                      </IconButton>
+                    </Box>
                 </Box>
                 <Divider sx={{ mb: 2 }} />
                 
@@ -239,7 +294,9 @@ const Dashboard = () => {
       </Paper>
 
       {/* ALERTS (PRUEBA DE FUEGO: JWT + PAGINACIÓN OPT-IN) */}
-      <AlertsWidget pageSize={20} />
+      <Box id="alerts-widget">
+        <AlertsWidget pageSize={20} />
+      </Box>
 
     </Layout>
   );

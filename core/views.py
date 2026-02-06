@@ -6,6 +6,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser # <--- CRÍTICO PARA SUBIR VIDEOS
+from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from django.shortcuts import render, redirect
 from django.conf import settings
@@ -24,6 +25,7 @@ from .models import (
     InscripcionCarrera, Pago,
     Equipo, VideoEjercicio,
     PlantillaEntrenamientoVersion,
+    CoachProfile,
 )
 from analytics.models import InjuryRiskSnapshot
 from analytics.serializers import InjuryRiskSnapshotSerializer
@@ -112,6 +114,16 @@ class TenantModelViewSet(viewsets.ModelViewSet):
         for tenant_filter in tenant_filters:
             tenant_q |= tenant_filter
         return qs.filter(tenant_q)
+
+
+class OnboardingCompleteView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsCoachUser]
+
+    def post(self, request):
+        profile, _ = CoachProfile.objects.get_or_create(user=request.user)
+        profile.onboarding_completed = True
+        profile.save(update_fields=["onboarding_completed"])
+        return Response({"ok": True, "onboarding_completed": True}, status=status.HTTP_200_OK)
 
 
 # --- 🚀 NUEVO ENDPOINT: SUBIDA DE VIDEOS (GIMNASIO PRO) ---
