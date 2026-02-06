@@ -12,6 +12,7 @@ from .views import (
     ActividadViewSet,
     dashboard_entrenador
 )
+from .strava_integration_views import StravaOAuthCallbackView, StravaOAuthStartView
 
 # Creamos el router para la API REST estándar
 router = DefaultRouter()
@@ -53,4 +54,6 @@ urlpatterns = [
 
     # Ruta específica para tu Dashboard visual (Vista Legacy de Django)
     path('dashboard/', dashboard_entrenador, name='dashboard_entrenador'),
+    path('integrations/strava/start', StravaOAuthStartView.as_view(), name='strava_integration_start'),
+    path('integrations/strava/callback', StravaOAuthCallbackView.as_view(), name='strava_integration_callback'),
 ]

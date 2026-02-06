@@ -102,6 +102,9 @@ STRAVA_WEBHOOK_STUCK_THRESHOLD_MINUTES = int(
 STRAVA_WEBHOOK_FAILED_ALERT_THRESHOLD = int(
     get_env_variable("STRAVA_WEBHOOK_FAILED_ALERT_THRESHOLD", default="50", required=False)
 )
+STRAVA_OAUTH_STATE_TTL_SECONDS = int(
+    get_env_variable("STRAVA_OAUTH_STATE_TTL_SECONDS", default="600", required=False)
+)
 # Legacy Strava sync (services.sincronizar_actividades_strava) MUST be disabled in prod.
 # Default: disabled in non-debug to fail-closed. Override only for dev/admin compatibility.
 DISABLE_LEGACY_STRAVA_SYNC = (
@@ -115,6 +118,13 @@ DISABLE_LEGACY_STRAVA_SYNC = (
 
 # OpenAI (opcional en local)
 OPENAI_API_KEY = get_env_variable("OPENAI_API_KEY", default="", required=False)
+
+# Frontend base URL (OAuth redirects, legacy login)
+FRONTEND_BASE_URL = get_env_variable(
+    "FRONTEND_BASE_URL",
+    default="http://localhost:5173",
+    required=False,
+)
 
 
 # ==============================================================================

@@ -44,6 +44,8 @@ PyJWT==2.10.1
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.1
 python-monkey-business==1.1.0
+pytest==8.2.2
+pytest-django==4.8.0
 pytz==2025.2
 PyYAML==6.0.3
 redis==7.1.0
