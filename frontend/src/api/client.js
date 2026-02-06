@@ -61,6 +61,18 @@ attachCsrfInterceptor(refreshClient);
 // Inyectamos el token automáticamente en cada petición
 client.interceptors.request.use(
     (config) => {
+        const url = config.url || '';
+        const isTokenEndpoint = url.includes('/api/token/');
+        if (isTokenEndpoint) {
+            if (config.headers) {
+                delete config.headers.Authorization;
+                delete config.headers.authorization;
+            }
+            if (import.meta.env.DEV) {
+                console.debug('[auth] skipping Authorization header for token endpoint', { url });
+            }
+            return config;
+        }
         const token = tokenStore.getAccessToken();
         if (token && !USE_COOKIE_AUTH) {
             config.headers = config.headers || {};

@@ -1,5 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useState, useEffect, useContext } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { tokenStore } from '../api/tokenStore';
 import { subscribeOnLogout } from '../api/authEvents';
 import { USE_COOKIE_AUTH } from '../api/authMode';
@@ -10,6 +11,7 @@ const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const navigate = useNavigate();
 
     useEffect(() => {
         // Al cargar, verificamos si ya existe un token guardado
@@ -54,11 +56,11 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    const logout = () => {
-        logoutSession();
+    const logout = async () => {
+        await logoutSession();
         setUser(null);
-        // Recargar la página para limpiar estados
-        window.location.href = '/';
+        // Navegación SPA para limpiar estados sin hard refresh
+        navigate('/login', { replace: true });
     };
 
     return (

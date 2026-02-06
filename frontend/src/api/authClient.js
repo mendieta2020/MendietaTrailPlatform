@@ -10,6 +10,13 @@ export async function loginWithCredentials({ username, password }) {
 
 export async function logoutSession() {
   tokenStore.clear();
+  if (client.defaults?.headers?.common) {
+    delete client.defaults.headers.common.Authorization;
+    delete client.defaults.headers.common.authorization;
+  }
+  if (import.meta.env.DEV) {
+    console.debug('[auth] cleared token store and axios defaults on logout');
+  }
   if (USE_COOKIE_AUTH) {
     try {
       await client.post('/api/token/logout/');

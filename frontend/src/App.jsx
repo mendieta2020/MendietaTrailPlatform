@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 
@@ -40,8 +40,7 @@ function App() {
       {/* CssBaseline: Reset CSS estándar para consistencia visual */}
       <CssBaseline />
       
-      <BrowserRouter>
-        <Routes>
+      <Routes>
           
           {/* RUTA PÚBLICA: Login */}
           <Route path="/" element={<Login />} />
@@ -133,8 +132,7 @@ function App() {
           {/* RUTA COMODÍN: Cualquier dirección desconocida redirige al Login */}
           <Route path="*" element={<Navigate to="/login" replace />} />
 
-        </Routes>
-      </BrowserRouter>
+      </Routes>
     </ThemeProvider>
   );
 }
