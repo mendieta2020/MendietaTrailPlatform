@@ -43,13 +43,19 @@ export const AuthProvider = ({ children }) => {
     }, []);
 
     const login = async (username, password) => {
+        setUser(null);
         try {
             await loginWithCredentials({ username, password });
 
             setUser({ username });
+            if (import.meta.env.DEV) {
+                console.debug('[Auth] login success');
+            }
             return { success: true };
         } catch (error) {
-            console.error("Login fallido:", error);
+            if (import.meta.env.DEV) {
+                console.debug('[Auth] login failed', error);
+            }
             return { success: false, error: "Credenciales incorrectas o servidor no disponible." };
         }
     };

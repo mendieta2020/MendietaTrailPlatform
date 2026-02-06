@@ -4,7 +4,7 @@ import {
 } from '@mui/material';
 import { styled } from '@mui/system';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { loginWithCredentials } from '../api/authClient';
+import { useAuth } from '../context/AuthContext';
 
 // Estilos personalizados
 const BackgroundBox = styled(Box)({
@@ -31,16 +31,18 @@ const Login = () => {
     const [error, setError] = useState('');
     const navigate = useNavigate();
     const location = useLocation();
+    const { login } = useAuth();
 
     const handleLogin = async (e) => {
         e.preventDefault();
         setError('');
         
         try {
-            await loginWithCredentials({
-                username: username,
-                password: password
-            });
+            const result = await login(username, password);
+            if (!result?.success) {
+                setError(result?.error || '❌ Usuario o contraseña incorrectos.');
+                return;
+            }
 
             // Redirigir a la ruta original (si venía de ProtectedRoute)
             const from = location.state?.from;

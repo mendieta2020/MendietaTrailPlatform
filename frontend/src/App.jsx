@@ -28,6 +28,9 @@ const ProtectedRoute = ({ children }) => {
   }
 
   if (!user) {
+    if (import.meta.env.DEV) {
+      console.debug('[Auth] protected route redirect to /login');
+    }
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
   
