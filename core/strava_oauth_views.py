@@ -6,6 +6,7 @@ from allauth.socialaccount.adapter import get_adapter as get_social_adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Client, OAuth2Error
 from allauth.socialaccount.providers.oauth2.views import OAuth2CallbackView, OAuth2LoginView
 from allauth.socialaccount.providers.strava.views import StravaOAuth2Adapter
+from django.http import HttpResponseForbidden
 
 logger = logging.getLogger("allauth.socialaccount.providers.strava")
 
@@ -156,7 +157,33 @@ class LoggedStravaOAuth2Adapter(StravaOAuth2Adapter):
     client_class = LoggedOAuth2Client
 
 
-# Vistas que reemplazan a allauth strava por defecto (mismas URLs)
-oauth2_login = OAuth2LoginView.adapter_view(LoggedStravaOAuth2Adapter)
-oauth2_callback = OAuth2CallbackView.adapter_view(LoggedStravaOAuth2Adapter)
+def can_start_strava_oauth(user) -> bool:
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return True
+    return hasattr(user, "perfil_alumno") and getattr(user, "perfil_alumno", None) is not None
 
+
+def _reject_non_athlete(request):
+    if can_start_strava_oauth(getattr(request, "user", None)):
+        return None
+    return HttpResponseForbidden("Solo el alumno autenticado puede conectar Strava.")
+
+
+_oauth2_login_view = OAuth2LoginView.adapter_view(LoggedStravaOAuth2Adapter)
+_oauth2_callback_view = OAuth2CallbackView.adapter_view(LoggedStravaOAuth2Adapter)
+
+
+def oauth2_login(request, *args, **kwargs):
+    rejection = _reject_non_athlete(request)
+    if rejection:
+        return rejection
+    return _oauth2_login_view(request, *args, **kwargs)
+
+
+def oauth2_callback(request, *args, **kwargs):
+    rejection = _reject_non_athlete(request)
+    if rejection:
+        return rejection
+    return _oauth2_callback_view(request, *args, **kwargs)

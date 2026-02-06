@@ -385,9 +385,14 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 # --- REDIRECCIONES ---
-LOGIN_REDIRECT_URL = 'http://localhost:5173/dashboard'
-LOGOUT_REDIRECT_URL = 'http://localhost:5173/'
-ACCOUNT_CONNECT_REDIRECT_URL = 'http://localhost:5173/dashboard'
+FRONTEND_BASE_URL = get_env_variable(
+    "FRONTEND_BASE_URL",
+    default="http://localhost:5173",
+    required=False,
+)
+LOGIN_REDIRECT_URL = f"{FRONTEND_BASE_URL}/dashboard"
+LOGOUT_REDIRECT_URL = f"{FRONTEND_BASE_URL}/"
+ACCOUNT_CONNECT_REDIRECT_URL = f"{FRONTEND_BASE_URL}/athlete/integrations?strava=connected"
 
 # --- COMPORTAMIENTO SOCIAL ---
 SOCIALACCOUNT_LOGIN_ON_GET = True

@@ -6,7 +6,7 @@ import {
 } from '@mui/material';
 import { 
   ArrowBack, Edit, Email, LocationOn, CalendarMonth, FitnessCenter,
-  LibraryBooks 
+  LibraryBooks, ContentCopy
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import client from '../api/client';
@@ -24,14 +24,12 @@ const AthleteDetail = () => {
   const [trainings, setTrainings] = useState([]);
   const [injuryRisk, setInjuryRisk] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [copyStatus, setCopyStatus] = useState('');
   
   // Estado para la Librería Lateral
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const handleTrainingCreated = (training) => {
-const handleTrainingCreated = (training) => {
-  setTrainings((prev) => [...(Array.isArray(prev) ? prev : []), training]);
-};
-
+    setTrainings((prev) => [...(Array.isArray(prev) ? prev : []), training]);
   };
 
   useEffect(() => {
@@ -74,6 +72,26 @@ const handleTrainingCreated = (training) => {
 
   if (loading) return <Layout><Box sx={{ p: 5, textAlign: 'center' }}><CircularProgress /></Box></Layout>;
   if (!athlete) return <Layout><Typography>Atleta no encontrado</Typography></Layout>;
+
+  const syncState = athlete.sync_state;
+  const isConnected = Boolean(athlete.strava_athlete_id);
+  const inviteLink = `${window.location.origin}/athlete/integrations`;
+  const formatDateTime = (value) => {
+    if (!value) return 'Sin datos';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Sin datos';
+    return date.toLocaleString();
+  };
+
+  const handleCopyInvite = async () => {
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      setCopyStatus('Link copiado');
+    } catch (error) {
+      setCopyStatus('No se pudo copiar el link');
+    }
+    setTimeout(() => setCopyStatus(''), 2500);
+  };
 
   return (
     <Layout>
@@ -120,6 +138,54 @@ const handleTrainingCreated = (training) => {
 
       {/* COACH DECISION LAYER (v1) */}
       <CoachDecisionsPanel athleteId={id} />
+
+      {/* INTEGRACIONES (COACH VIEW) */}
+      <Paper sx={{ p: 3, borderRadius: 3, mb: 4 }}>
+        <Stack spacing={2}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" justifyContent="space-between">
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                Integraciones del Alumno
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#64748B' }}>
+                El alumno debe conectar su propia cuenta.
+              </Typography>
+            </Box>
+            <Chip
+              label={isConnected ? 'Strava conectado' : 'Strava no conectado'}
+              color={isConnected ? 'success' : 'default'}
+              sx={{ fontWeight: 600 }}
+            />
+          </Stack>
+
+          <Stack spacing={1}>
+            <Typography variant="body2">
+              Última sincronización: {formatDateTime(syncState?.last_sync_at)}
+            </Typography>
+            {syncState?.last_error ? (
+              <Typography variant="body2" color="error">
+                Último error: {syncState.last_error}
+              </Typography>
+            ) : null}
+          </Stack>
+
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
+            <Button
+              variant="outlined"
+              startIcon={<ContentCopy />}
+              onClick={handleCopyInvite}
+              sx={{ textTransform: 'none' }}
+            >
+              Invitar al alumno a conectar
+            </Button>
+            {copyStatus ? (
+              <Typography variant="body2" sx={{ color: '#10B981', fontWeight: 600 }}>
+                {copyStatus}
+              </Typography>
+            ) : null}
+          </Stack>
+        </Stack>
+      </Paper>
 
       {/* --- SECCIÓN DE ANALYTICS (BLINDADA) --- */}
       <Box sx={{ mb: 4 }}>
