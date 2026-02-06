@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Box, Typography, Paper, Tabs, Tab, Button, Avatar, 
@@ -34,7 +34,7 @@ const TeamDetail = () => {
   const [openAddModal, setOpenAddModal] = useState(false);
 
   // Función para cargar los datos
-  const fetchTeamData = async () => {
+  const fetchTeamData = useCallback(async () => {
     try {
       const resTeam = await client.get(`/api/equipos/${id}/`);
       setTeam(resTeam.data);
@@ -44,12 +44,12 @@ const TeamDetail = () => {
     } catch (err) {
       console.error("Error cargando equipo:", err);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchTeamData();
-  }, [id]);
+  }, [fetchTeamData]);
 
   const handleMembersAdded = () => {
     fetchTeamData(); 

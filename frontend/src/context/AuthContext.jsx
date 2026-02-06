@@ -18,7 +18,7 @@ export const AuthProvider = ({ children }) => {
                 try {
                     const response = await fetchSession();
                     setUser(response.data);
-                } catch (error) {
+                } catch {
                     setUser(null);
                 } finally {
                     setLoading(false);
