@@ -5,6 +5,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser # <--- CRÍTICO PARA SUBIR VIDEOS
 from django_filters.rest_framework import DjangoFilterBackend
 from django.shortcuts import render, redirect
@@ -522,6 +523,13 @@ class CarreraViewSet(TenantModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [filters.SearchFilter]
     search_fields = ['nombre', 'lugar']
+
+
+class OnboardingCompleteView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        return Response({"status": "ok"}, status=status.HTTP_200_OK)
 
 
 class InscripcionViewSet(TenantModelViewSet):

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Dialog, DialogTitle, DialogContent, DialogActions, 
   Button, List, ListItem, ListItemText, ListItemAvatar, 
@@ -14,15 +14,7 @@ const AddMemberModal = ({ open, onClose, teamId, onMembersAdded }) => {
   const [loading, setLoading] = useState(false);
 
   // 1. Cargar alumnos al abrir el modal
-  useEffect(() => {
-    if (open) {
-      fetchAvailableAthletes();
-      setSelected([]); // Resetear selección
-      setSearchTerm('');
-    }
-  }, [open]);
-
-  const fetchAvailableAthletes = async () => {
+  const fetchAvailableAthletes = useCallback(async () => {
     try {
       // Traemos TODOS los alumnos
       const res = await client.get('/api/alumnos/');
@@ -33,7 +25,15 @@ const AddMemberModal = ({ open, onClose, teamId, onMembersAdded }) => {
     } catch (err) {
       console.error("Error cargando atletas:", err);
     }
-  };
+  }, [teamId]);
+
+  useEffect(() => {
+    if (open) {
+      fetchAvailableAthletes();
+      setSelected([]); // Resetear selección
+      setSearchTerm('');
+    }
+  }, [open, fetchAvailableAthletes]);
 
   // 2. Manejar Selección (Checkbox)
   const handleToggle = (value) => () => {

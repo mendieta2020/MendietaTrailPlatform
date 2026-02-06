@@ -3,15 +3,16 @@ import { Grid, Paper, Typography, Box, CircularProgress, Alert, Divider, MenuIte
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend, Line
 } from 'recharts';
+import { useSearchParams } from 'react-router-dom';
 import { 
   PeopleAlt, AttachMoney, MonitorHeart, LocalHospital, 
-  TrendingUp, CalendarMonth
+  TrendingUp
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import client from '../api/client';
 import PaymentsWidget from '../components/widgets/PaymentsWidget';
-import ComplianceChart from '../components/widgets/ComplianceChart';
 import AlertsWidget from '../components/widgets/AlertsWidget';
+import OnboardingWizard from '../components/onboarding/OnboardingWizard';
 import { format, subMonths, startOfYear, startOfMonth, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -35,6 +36,9 @@ const StatCard = ({ title, value, sub, color, icon: Icon, loading }) => (
 );
 
 const Dashboard = () => {
+  const [searchParams] = useSearchParams();
+  const showOnboarding = searchParams.get('onboarding') === '1';
+  const [onboardingOpen, setOnboardingOpen] = useState(showOnboarding);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
@@ -86,6 +90,10 @@ const Dashboard = () => {
 
     fetchData();
   }, [periodo]); // Recargar si cambia el periodo (futuro: conectar filtro al backend)
+
+  useEffect(() => {
+    setOnboardingOpen(showOnboarding);
+  }, [showOnboarding]);
 
   // --- FILTRADO DE DATOS PMC SEGÚN PERIODO ---
   const getFilteredPMC = () => {
@@ -172,7 +180,7 @@ const Dashboard = () => {
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {/* GRÁFICO PMC (SCIENTIFIC DATA) */}
         <Grid item xs={12} md={8}>
-            <Paper sx={{ p: 3, borderRadius: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.03)', height: 400 }}>
+            <Paper id="pmc-widget" sx={{ p: 3, borderRadius: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.03)', height: 400 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, justifyContent: 'space-between' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center' }}>
                         <MonitorHeart sx={{ color: '#64748B', mr: 1 }} />
@@ -239,8 +247,11 @@ const Dashboard = () => {
       </Paper>
 
       {/* ALERTS (PRUEBA DE FUEGO: JWT + PAGINACIÓN OPT-IN) */}
-      <AlertsWidget pageSize={20} />
+      <Box id="alerts-widget">
+        <AlertsWidget pageSize={20} />
+      </Box>
 
+      <OnboardingWizard open={onboardingOpen} onClose={() => setOnboardingOpen(false)} />
     </Layout>
   );
 };
