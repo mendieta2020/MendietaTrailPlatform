@@ -12,6 +12,7 @@ from .views import (
     ActividadViewSet,
     dashboard_entrenador
 )
+from .integration_views import IntegrationStartView, IntegrationStatusView
 
 # Creamos el router para la API REST estándar
 router = DefaultRouter()
@@ -47,6 +48,10 @@ router.register(r'activities', ActividadViewSet, basename='activities')
 router.register(r'upload-video', VideoUploadViewSet, basename='upload-video') 
 
 urlpatterns = [
+    # OAuth Integration Management
+    path('integrations/<str:provider>/start', IntegrationStartView.as_view(), name='integration_start'),
+    path('integrations/status', IntegrationStatusView.as_view(), name='integration_status'),
+    
     # Rutas automáticas de la API (GET, POST, PUT, DELETE)
     # Ejemplo: /api/equipos/, /api/alumnos/, /api/upload-video/
     path('', include(router.urls)),
