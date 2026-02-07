@@ -202,21 +202,29 @@ def ensure_external_identity_link(sender, instance: Alumno, created: bool, **kwa
 
 def _extract_strava_athlete_id_from_sociallogin(sociallogin) -> str:
     """
-    allauth/Strava: el `uid` suele ser el athlete_id.
-    Fallback: intentar leer del extra_data si existe.
+    Extract unique Strava athlete ID from sociallogin.
+    Priority order: extra_data.athlete.id, extra_data.athlete_id, account.uid (if digits).
     """
     try:
-        uid = getattr(getattr(sociallogin, "account", None), "uid", None)
-        if uid:
-            return str(uid).strip()
-    except Exception:
-        pass
-
-    try:
-        extra = getattr(getattr(sociallogin, "account", None), "extra_data", None) or {}
+        account = getattr(sociallogin, "account", None)
+        if not account:
+            return ""
+        
+        extra = getattr(account, "extra_data", None) or {}
+        
+        # Priority 1: athlete.id (nested dict)
         athlete = extra.get("athlete") or {}
         if isinstance(athlete, dict) and athlete.get("id"):
             return str(athlete["id"]).strip()
+        
+        # Priority 2: athlete_id (flat field)
+        if extra.get("athlete_id"):
+            return str(extra["athlete_id"]).strip()
+        
+        # Priority 3: account.uid if it's digits (fallback for some providers)
+        uid = getattr(account, "uid", None)
+        if uid and str(uid).isdigit():
+            return str(uid).strip()
     except Exception:
         pass
     return ""
@@ -226,52 +234,176 @@ def _extract_strava_athlete_id_from_sociallogin(sociallogin) -> str:
 @receiver(social_account_updated)
 def link_strava_on_oauth(sender, request, sociallogin, **kwargs):
     """
-    Linking por OAuth:
-    Cuando el usuario conecta Strava, linkeamos su `Alumno` (si existe) a la identidad externa
-    y drenamos eventos pendientes.
+    Hardened OAuth linking (P0):
+    - Validates access_token and athlete.id exist
+    - Upserts ExternalIdentity deterministically
+    - Upserts OAuthIntegrationStatus with connected/failed state
+    - Triggers drain_strava_events_for_athlete on success
+    
+    Fail-closed: if validation fails, marks as failed in OAuthIntegrationStatus.
     """
     try:
         account = getattr(sociallogin, "account", None)
         if not account or getattr(account, "provider", None) != "strava":
             return
+        
         user = getattr(sociallogin, "user", None)
         if not user:
             return
-
-        athlete_id = _extract_strava_athlete_id_from_sociallogin(sociallogin)
-        if not athlete_id:
-            return
-
+        
+        # Get Alumno profile
         alumno = Alumno.objects.filter(usuario=user).first()
         if not alumno:
-            # Usuario sin perfil Alumno todavía: el webhook igual queda en LINK_REQUIRED.
+            # User without Alumno profile: cannot link yet
+            logger.warning(
+                "oauth.link.no_alumno_profile",
+                extra={"user_id": user.id, "provider": "strava"},
+            )
             return
-
-        # 1) Backfill compat: setear strava_athlete_id si faltaba (admin-friendly).
+        
+        # Extract and validate OAuth data
+        extra_data = getattr(account, "extra_data", None) or {}
+        
+        # Validation 1: access_token must exist
+        access_token = extra_data.get("access_token")
+        if not access_token:
+            logger.error(
+                "oauth.link.missing_access_token",
+                extra={"user_id": user.id, "alumno_id": alumno.id, "provider": "strava"},
+            )
+            from .integration_models import OAuthIntegrationStatus
+            OAuthIntegrationStatus.objects.update_or_create(
+                alumno=alumno,
+                provider="strava",
+                defaults={
+                    "connected": False,
+                    "error_reason": "missing_access_token",
+                    "error_message": "OAuth token exchange completed but access_token missing from response",
+                    "last_error_at": timezone.now(),
+                },
+            )
+            return
+        
+        # Validation 2: athlete.id must exist
+        athlete_id = _extract_strava_athlete_id_from_sociallogin(sociallogin)
+        if not athlete_id:
+            logger.error(
+                "oauth.link.missing_athlete_id",
+                extra={"user_id": user.id, "alumno_id": alumno.id, "provider": "strava"},
+            )
+            from .integration_models import OAuthIntegrationStatus
+            OAuthIntegrationStatus.objects.update_or_create(
+                alumno=alumno,
+                provider="strava",
+                defaults={
+                    "connected": False,
+                    "error_reason": "missing_athlete_id",
+                    "error_message": "OAuth token response missing athlete.id field",
+                    "last_error_at": timezone.now(),
+                },
+            )
+            return
+        
+        # SUCCESS PATH: Both validations passed
+        
+        # Extract token metadata for storage
+        refresh_token = extra_data.get("refresh_token", "")
+        expires_at_timestamp = extra_data.get("expires_at")
+        expires_at = None
+        if expires_at_timestamp:
+            try:
+                from datetime import datetime as dt, timezone as dt_timezone
+                expires_at = dt.fromtimestamp(int(expires_at_timestamp), tz=dt_timezone.utc)
+            except (ValueError, TypeError):
+                expires_at = None
+        
+        # 1) Backfill compat: set strava_athlete_id on Alumno if missing (admin-friendly)
         if not (alumno.strava_athlete_id or "").strip():
-            alumno._skip_signal = True  # evita que se dispare el cerebro de pronósticos en este save
+            alumno._skip_signal = True  # Avoid triggering forecast recalc signal
             alumno.strava_athlete_id = str(int(athlete_id))
             alumno.save(update_fields=["strava_athlete_id"])
-
-        # 2) Link canónico + drain (idempotente).
-        identity, created_identity = ExternalIdentity.objects.get_or_create(
+        
+        # 2) Upsert canonical ExternalIdentity (deterministic linking)
+        identity, created_identity = ExternalIdentity.objects.update_or_create(
             provider=ExternalIdentity.Provider.STRAVA,
             external_user_id=str(int(athlete_id)),
             defaults={
                 "alumno": alumno,
                 "status": ExternalIdentity.Status.LINKED,
                 "linked_at": timezone.now(),
-                "profile": getattr(account, "extra_data", None) or {},
+                "profile": extra_data,
             },
         )
-        if (not created_identity) and identity.alumno_id != alumno.id:
+        
+        # If identity existed but pointed to different alumno, update it
+        if not created_identity and identity.alumno_id != alumno.id:
             ExternalIdentity.objects.filter(pk=identity.pk).update(
                 alumno=alumno,
                 status=ExternalIdentity.Status.LINKED,
                 linked_at=timezone.now(),
-                profile=getattr(account, "extra_data", None) or {},
+                profile=extra_data,
             )
-
-        transaction.on_commit(lambda: drain_strava_events_for_athlete.delay(provider="strava", owner_id=int(athlete_id)))
-    except Exception:
-        return
+        
+        # 3) Upsert OAuthIntegrationStatus (source of truth for connected state)
+        from .integration_models import OAuthIntegrationStatus
+        integration_status, status_created = OAuthIntegrationStatus.objects.update_or_create(
+            alumno=alumno,
+            provider="strava",
+            defaults={
+                "connected": True,
+                "athlete_id": str(int(athlete_id)),
+                "expires_at": expires_at,
+                "error_reason": "",
+                "error_message": "",
+                "last_error_at": None,
+            },
+        )
+        
+        logger.info(
+            "oauth.link.success",
+            extra={
+                "user_id": user.id,
+                "alumno_id": alumno.id,
+                "provider": "strava",
+                "athlete_id": athlete_id,
+                "identity_created": created_identity,
+                "status_created": status_created,
+            },
+        )
+        
+        # 4) Trigger backfill/drain of pending webhook events (async, fail-safe)
+        try:
+            transaction.on_commit(
+                lambda: drain_strava_events_for_athlete.delay(
+                    provider="strava",
+                    owner_id=int(athlete_id),
+                )
+            )
+        except Exception as e:
+            # Non-critical: draining can be done manually if this fails
+            logger.warning(
+                "oauth.link.drain_failed_to_queue",
+                extra={"alumno_id": alumno.id, "athlete_id": athlete_id, "error": str(e)},
+            )
+    
+    except Exception as e:
+        # Unexpected exception during linking: mark as failed in OAuthIntegrationStatus
+        logger.exception(
+            "oauth.link.unexpected_exception",
+            extra={"user_id": user.id if user else None},
+        )
+        try:
+            if alumno:
+                from .integration_models import OAuthIntegrationStatus
+                OAuthIntegrationStatus.objects.update_or_create(
+                    alumno=alumno,
+                    provider="strava",
+                    defaults={
+                        "connected": False,
+                        "error_reason": "exception_during_link",
+                        "error_message": f"{e.__class__.__name__}: {str(e)[:200]}",
+                        "last_error_at": timezone.now(),
+                    },
+                )
+        except Exception:
+            pass  # Best effort

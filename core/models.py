@@ -10,6 +10,9 @@ from django.utils import timezone
 import logging
 import uuid
 
+# Re-export OAuth integration status model for compatibility (single source of truth is integration_models.py)
+from .integration_models import OAuthIntegrationStatus  # noqa: F401
+
 # ==============================================================================
 #  1. CONFIGURACIÓN Y CONSTANTES (GLOBALES)
 # ==============================================================================
