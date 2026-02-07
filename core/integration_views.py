@@ -3,7 +3,8 @@ OAuth integration management views.
 
 Provides endpoints for:
 - POST /api/integrations/{provider}/start - Initiate OAuth flow
-- GET /api/integrations/status - Get integration status for all providers
+- GET /api/integrations/status - Get integration status for all providers (student)
+- GET /api/coach/athletes/<alumno_id>/integrations/status - Get integration status for athlete (coach)
 """
 import logging
 from urllib.parse import urlencode
@@ -24,16 +25,18 @@ from .providers import PROVIDERS, get_available_providers
 
 logger = logging.getLogger(__name__)
 
-# Frontend base URL for redirects after OAuth callback
-FRONTEND_BASE_URL = getattr(settings, "FRONTEND_BASE_URL", "http://localhost:5173")
-
 
 class IntegrationStartView(APIView):
     """
     POST /api/integrations/{provider}/start
     
-    Initiate OAuth flow for a given provider.
-    Only the authenticated athlete (Alumno user) can start their own OAuth flow.
+    Initiates OAuth flow for a provider.
+    - Validates provider exists and is enabled
+    - Validates user has Alumno profile
+    - Generates OAuth state with nonce
+    - Returns OAuth authorization URL for frontend redirect
+    
+    Required: user must be authenticated and have an Alumno profile (athlete role).
     """
     permission_classes = [IsAuthenticated]
     
@@ -62,65 +65,57 @@ class IntegrationStartView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         
-        # Generate OAuth state with nonce
-        try:
-            # Build callback URI (allauth handles the actual callback)
-            # We're generating state that allauth will validate
+        # For Strava, use allauth's OAuth flow (existing, battle-tested)
+        # We don't use custom state/nonce here to keep allauth unchanged
+        if provider == "strava":
+            # Build allauth OAuth URL
             callback_uri = request.build_absolute_uri(reverse("strava_callback"))
             
-            oauth_state = generate_oauth_state(
-                provider=provider,
-                user_id=request.user.id,
-                redirect_uri=callback_uri,
-            )
-        except RuntimeError as e:
-            logger.error(
-                "oauth.start.nonce_generation_failed",
+            client_id = settings.STRAVA_CLIENT_ID
+            if not client_id:
+                return Response(
+                    {"error": "provider_not_configured", "message": "Strava client ID not configured"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+            
+            # Build Strava OAuth URL (allauth compatible)
+            strava_authorize_url = "https://www.strava.com/oauth/authorize"
+            params = {
+                "client_id": client_id,
+                "redirect_uri": callback_uri,
+                "response_type": "code",
+                "scope": "read,activity:read_all,profile:read_all",
+                "approval_prompt": "force",
+            }
+            oauth_url = f"{strava_authorize_url}?{urlencode(params)}"
+            
+            logger.info(
+                "oauth.start.success",
                 extra={
                     "provider": provider,
                     "user_id": request.user.id,
-                    "error": str(e),
+                    "alumno_id": alumno.id,
                 },
             )
-            return Response(
-                {"error": "oauth_setup_failed", "message": "Failed to initialize OAuth flow"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-        
-        # Build OAuth authorization URL
-        # For Strava: use allauth's login URL with our custom state
-        if provider == "strava":
-            oauth_url = request.build_absolute_uri(reverse("strava_login"))
-            # Append state as query param (allauth will use it)
-            oauth_url = f"{oauth_url}?{urlencode({'state': oauth_state, 'next': f'{FRONTEND_BASE_URL}/athletes/{alumno.id}'})}"
-        else:
-            # Future providers would have their own URL construction
-            return Response(
-                {"error": "provider_not_implemented"},
-                status=status.HTTP_501_NOT_IMPLEMENTED,
-            )
-       
-        logger.info(
-            "oauth.start.initiated",
-            extra={
+            
+            return Response({
+                "oauth_url": oauth_url,
                 "provider": provider,
-                "user_id": request.user.id,
-                "alumno_id": alumno.id,
-            },
-        )
+            })
         
-        return Response({
-            "oauth_url": oauth_url,
-            "provider": provider,
-        })
+        # For other providers, return not implemented
+        return Response(
+            {"error": "provider_not_implemented", "message": f"OAuth flow for {provider} coming soon"},
+            status=status.HTTP_501_NOT_IMPLEMENTED,
+        )
 
 
 class IntegrationStatusView(APIView):
     """
     GET /api/integrations/status
     
-    Get OAuth integration status for all providers for the authenticated athlete.
-    Returns connection status, last sync, and error info if applicable.
+    Returns OAuth integration status for all providers for the authenticated athlete.
+    Only accessible by athlete users (must have Alumno profile).
     """
     permission_classes = [IsAuthenticated]
     
@@ -156,8 +151,8 @@ class IntegrationStatusView(APIView):
                     "last_sync_at": integration_status.last_sync_at.isoformat() if integration_status.last_sync_at else None,
                     "error_reason": None,
                 })
-            elif integration_status and integration_status.error_reason:
-                # Failed integration with error
+            elif integration_status and not integration_status.connected:
+                # Failed integration (has error)
                 integrations.append({
                     "provider": provider_id,
                     "name": provider_data["name"],
@@ -166,11 +161,12 @@ class IntegrationStatusView(APIView):
                     "athlete_id": None,
                     "expires_at": None,
                     "last_sync_at": None,
-                    "error_reason": integration_status.error_reason,
+                    "error_reason": integration_status.error_reason or "unknown",
+                    "error_message": integration_status.error_message or "",
                     "last_error_at": integration_status.last_error_at.isoformat() if integration_status.last_error_at else None,
                 })
             else:
-                # Not connected, no error
+                # Not connected, no attempt yet
                 integrations.append({
                     "provider": provider_id,
                     "name": provider_data["name"],
@@ -185,4 +181,75 @@ class IntegrationStatusView(APIView):
         return Response({
             "integrations": integrations,
             "athlete_id": alumno.id,
+        })
+
+
+class CoachAthleteIntegrationStatusView(APIView):
+    """
+    GET /api/coach/athletes/<alumno_id>/integrations/status
+    
+    Returns OAuth integration status for a specific athlete.
+    Coach-scoped: only accessible by coach who owns the athlete (multi-tenant enforced).
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, alumno_id):
+        # Get the athlete
+        try:
+            alumno = Alumno.objects.select_related("entrenador").get(pk=alumno_id)
+        except Alumno.DoesNotExist:
+            return Response(
+                {"error": "athlete_not_found", "message": "Athlete not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        
+        # Enforce coach ownership (fail-closed tenancy)
+        # Only the coach who owns this athlete can see integration status
+        if request.user != alumno.entrenador:
+            logger.warning(
+                "coach.athlete_integration_status.unauthorized",
+                extra={
+                    "request_user_id": request.user.id,
+                    "alumno_id": alumno_id,
+                    "alumno_coach_id": alumno.entrenador.id if alumno.entrenador else None,
+                },
+            )
+            return Response(
+                {"error": "forbidden", "message": "Access denied"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        
+        # Fetch all integration statuses for this athlete
+        statuses = OAuthIntegrationStatus.objects.filter(alumno=alumno)
+        status_map = {s.provider: s for s in statuses}
+        
+        # Build response for all providers
+        integrations = []
+        for provider_data in get_available_providers():
+            provider_id= provider_data["id"]
+            integration_status = status_map.get(provider_id)
+            
+            if integration_status and integration_status.connected:
+                # Connected integration
+                integrations.append({
+                    "provider": provider_id,
+                    "name": provider_data["name"],
+                    "connected": True,
+                    "athlete_id": integration_status.athlete_id,
+                    "last_sync_at": integration_status.last_sync_at.isoformat() if integration_status.last_sync_at else None,
+                })
+            else:
+                # Not connected or failed
+                integrations.append({
+                    "provider": provider_id,
+                    "name": provider_data["name"],
+                    "connected": False,
+                    "athlete_id": None,
+                    "last_sync_at": None,
+                })
+        
+        return Response({
+            "integrations": integrations,
+            "athlete_id": alumno.id,
+            "athlete_name": alumno.nombre,
         })

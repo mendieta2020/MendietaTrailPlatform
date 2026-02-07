@@ -12,7 +12,7 @@ from .views import (
     ActividadViewSet,
     dashboard_entrenador
 )
-from .integration_views import IntegrationStartView, IntegrationStatusView
+from .integration_views import IntegrationStartView, IntegrationStatusView, CoachAthleteIntegrationStatusView
 
 # Creamos el router para la API REST estándar
 router = DefaultRouter()
@@ -51,6 +51,9 @@ urlpatterns = [
     # OAuth Integration Management
     path('integrations/<str:provider>/start', IntegrationStartView.as_view(), name='integration_start'),
     path('integrations/status', IntegrationStatusView.as_view(), name='integration_status'),
+    
+    # Coach-scoped integration status
+    path('coach/athletes/<int:alumno_id>/integrations/status', CoachAthleteIntegrationStatusView.as_view(), name='coach_athlete_integration_status'),
     
     # Rutas automáticas de la API (GET, POST, PUT, DELETE)
     # Ejemplo: /api/equipos/, /api/alumnos/, /api/upload-video/
