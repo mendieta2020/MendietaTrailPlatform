@@ -124,11 +124,20 @@ OPENAI_API_KEY = get_env_variable("OPENAI_API_KEY", default="", required=False)
 # In prod: https://yourdomain.com
 PUBLIC_BASE_URL = get_env_variable("PUBLIC_BASE_URL", default="http://localhost:8000", required=False)
 
-# STRAVA_REDIRECT_URI: Full callback URL for Strava OAuth
+# STRAVA_REDIRECT_URI: Full callback URL for Strava OAuth (allauth social login)
 # If not set explicitly, construct from PUBLIC_BASE_URL
 STRAVA_REDIRECT_URI = get_env_variable("STRAVA_REDIRECT_URI", default="", required=False)
 if not STRAVA_REDIRECT_URI:
     STRAVA_REDIRECT_URI = f"{PUBLIC_BASE_URL}/accounts/strava/login/callback/"
+
+# STRAVA_INTEGRATION_CALLBACK_URI: Callback for provider integrations (separate from social login)
+# This is the NEW callback for Alumno-based provider connections
+STRAVA_INTEGRATION_CALLBACK_URI = get_env_variable("STRAVA_INTEGRATION_CALLBACK_URI", default="", required=False)
+if not STRAVA_INTEGRATION_CALLBACK_URI:
+    STRAVA_INTEGRATION_CALLBACK_URI = f"{PUBLIC_BASE_URL}/api/integrations/strava/callback"
+
+# FRONTEND_URL: Base URL for frontend (for OAuth redirects after callback)
+FRONTEND_URL = get_env_variable("FRONTEND_URL", default="http://localhost:3000", required=False)
 
 # Validate OAuth configuration in runtime (not for tests/management commands)
 if REQUIRE_RUNTIME_SECRETS and not DEBUG:

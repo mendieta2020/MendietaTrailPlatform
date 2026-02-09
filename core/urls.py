@@ -13,6 +13,7 @@ from .views import (
     dashboard_entrenador
 )
 from .integration_views import IntegrationStartView, IntegrationStatusView, CoachAthleteIntegrationStatusView
+from .integration_callback_views import IntegrationCallbackView
 
 # Creamos el router para la API REST estándar
 router = DefaultRouter()
@@ -50,6 +51,7 @@ router.register(r'upload-video', VideoUploadViewSet, basename='upload-video')
 urlpatterns = [
     # OAuth Integration Management
     path('integrations/<str:provider>/start', IntegrationStartView.as_view(), name='integration_start'),
+    path('integrations/<str:provider>/callback', IntegrationCallbackView.as_view(), name='integration_callback'),
     path('integrations/status', IntegrationStatusView.as_view(), name='integration_status'),
     
     # Coach-scoped integration status

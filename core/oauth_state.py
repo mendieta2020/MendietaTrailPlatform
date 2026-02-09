@@ -20,13 +20,14 @@ NONCE_TTL_SECONDS = int(getattr(settings, "OAUTH_NONCE_TTL_SECONDS", 600))
 NONCE_FAIL_OPEN = getattr(settings, "OAUTH_NONCE_FAIL_OPEN", False)
 
 
-def generate_oauth_state(provider: str, user_id: int, redirect_uri: str = "") -> str:
+def generate_oauth_state(provider: str, user_id: int, alumno_id: int = None, redirect_uri: str = "") -> str:
     """
     Generate OAuth state with embedded nonce for replay protection.
     
     Args:
         provider: Provider ID (e.g., "strava")
         user_id: Authenticated user's ID
+        alumno_id: Alumno ID for integration flow (None for social login)
         redirect_uri: Optional redirect URI for validation
     
     Returns:
@@ -43,16 +44,24 @@ def generate_oauth_state(provider: str, user_id: int, redirect_uri: str = "") ->
         "redirect_uri": redirect_uri,
     }
     
+    # Add alumno_id for integration flow (required for provider connections)
+    if alumno_id is not None:
+        payload["alumno_id"] = alumno_id
+    
     # Store nonce in cache for validation
     cache_key = f"oauth_nonce:{provider}:{nonce}"
     try:
-        cache.set(cache_key, {"user_id": user_id, "ts": timestamp}, timeout=NONCE_TTL_SECONDS)
+        cache_data = {"user_id": user_id, "ts": timestamp}
+        if alumno_id is not None:
+            cache_data["alumno_id"] = alumno_id
+        cache.set(cache_key, cache_data, timeout=NONCE_TTL_SECONDS)
     except Exception as e:
         logger.error(
             "oauth.nonce.cache_set_failed",
             extra={
                 "provider": provider,
                 "user_id": user_id,
+                "alumno_id": alumno_id,
                 "error": str(e),
             },
         )

@@ -65,12 +65,17 @@ class IntegrationStartView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         
-        # For Strava, use allauth's OAuth flow (existing, battle-tested)
-        # We don't use custom state/nonce here to keep allauth unchanged
+        # For Strava, use custom OAuth callback (NOT allauth's social login callback)
+        #  allauth callback → User-based social login
+        #  custom callback → Alumno-based provider integration
         if provider == "strava":
-            # Use configured redirect URI (ngrok/prod) instead of request host
-            # This prevents "testserver" issues in tests and ensures consistent OAuth callback
-            callback_uri = settings.STRAVA_REDIRECT_URI
+            # Use configured redirect URI (custom callback, not allauth)
+            callback_uri = getattr(settings, 'STRAVA_INTEGRATION_CALLBACK_URI', None)
+            
+            if not callback_uri:
+                # Fallback: construct from PUBLIC_BASE_URL
+                public_base = getattr(settings, 'PUBLIC_BASE_URL', 'http://localhost:8000')
+                callback_uri = f"{public_base}/api/integrations/strava/callback"
             
             if not callback_uri:
                 logger.error("oauth.start.missing_redirect_uri", extra={"provider": provider})
@@ -86,7 +91,15 @@ class IntegrationStartView(APIView):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
             
-            # Build Strava OAuth URL (allauth compatible)
+            # Generate state with alumno_id for integration flow (securely signed)
+            state = generate_oauth_state(
+                provider="strava",
+                user_id=request.user.id,
+                alumno_id=alumno.id,  # ← NEW: Track which alumno is connecting
+                redirect_uri=callback_uri,
+            )
+            
+            # Build Strava OAuth URL
             strava_authorize_url = "https://www.strava.com/oauth/authorize"
             params = {
                 "client_id": client_id,
@@ -94,6 +107,7 @@ class IntegrationStartView(APIView):
                 "response_type": "code",
                 "scope": "read,activity:read_all,profile:read_all",
                 "approval_prompt": "force",
+                "state": state,  # ← Signed state with alumno_id
             }
             oauth_url = f"{strava_authorize_url}?{urlencode(params)}"
             
