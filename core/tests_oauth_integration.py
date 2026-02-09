@@ -32,7 +32,8 @@ class TestOAuthSignalHardening:
         alumno = Alumno.objects.create(
             usuario=user,
             entrenador=coach,
-            nombre="Test Athlete",
+            nombre="Test",
+            apellido="Athlete",
             equipo=None,
         )
         
@@ -89,7 +90,8 @@ class TestOAuthSignalHardening:
         alumno = Alumno.objects.create(
             usuario=user,
             entrenador=coach,
-            nombre="Test Athlete 2",
+            nombre="Test",
+            apellido="Athlete2",
             equipo=None,
         )
         
@@ -140,7 +142,8 @@ class TestOAuthSignalHardening:
         alumno = Alumno.objects.create(
             usuario=user,
             entrenador=coach,
-            nombre="Test Athlete 3",
+            nombre="Test",
+            apellido="Athlete3",
             equipo=None,
         )
         
@@ -183,7 +186,8 @@ class TestOAuthSignalHardening:
         alumno = Alumno.objects.create(
             usuario=user,
             entrenador=coach,
-            nombre="Test Athlete 4",
+            nombre="Test",
+            apellido="Athlete4",
             equipo=None,
         )
         
@@ -233,7 +237,8 @@ class TestWebhookLinkingRegression:
         alumno = Alumno.objects.create(
             usuario=user,
             entrenador=coach,
-            nombre="Test Athlete 5",
+            nombre="Test",
+            apellido="Athlete5",
             equipo=None,
         )
         
@@ -317,7 +322,8 @@ class TestCoachIntegrationStatusEndpoint:
         alumno = Alumno.objects.create(
             usuario=athlete_user,
             entrenador=coach,  # Coach owns this athlete
-            nombre="Coach's Athlete",
+            nombre="Coach's",
+            apellido="Athlete",
             equipo=None,
         )
         
@@ -361,7 +367,8 @@ class TestCoachIntegrationStatusEndpoint:
         alumno_b = Alumno.objects.create(
             usuario=athlete_user,
             entrenador=coach_b,  # Owned by Coach B
-            nombre="Coach B's Athlete",
+            nombre="CoachB",
+            apellido="Athlete",
             equipo=None,
         )
         

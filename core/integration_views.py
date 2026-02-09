@@ -68,8 +68,16 @@ class IntegrationStartView(APIView):
         # For Strava, use allauth's OAuth flow (existing, battle-tested)
         # We don't use custom state/nonce here to keep allauth unchanged
         if provider == "strava":
-            # Build allauth OAuth URL
-            callback_uri = request.build_absolute_uri(reverse("strava_callback"))
+            # Use configured redirect URI (ngrok/prod) instead of request host
+            # This prevents "testserver" issues in tests and ensures consistent OAuth callback
+            callback_uri = settings.STRAVA_REDIRECT_URI
+            
+            if not callback_uri:
+                logger.error("oauth.start.missing_redirect_uri", extra={"provider": provider})
+                return Response(
+                    {"error": "server_misconfigured", "message": "OAuth redirect URI not configured in settings"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
             
             client_id = settings.STRAVA_CLIENT_ID
             if not client_id:
@@ -95,6 +103,7 @@ class IntegrationStartView(APIView):
                     "provider": provider,
                     "user_id": request.user.id,
                     "alumno_id": alumno.id,
+                    "redirect_uri": callback_uri,  # Log for debugging
                 },
             )
             
