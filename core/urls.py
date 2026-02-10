@@ -12,8 +12,9 @@ from .views import (
     ActividadViewSet,
     dashboard_entrenador
 )
-from .integration_views import IntegrationStartView, IntegrationStatusView, CoachAthleteIntegrationStatusView
+from .integration_views import IntegrationStartView, IntegrationStatusView, CoachAthleteIntegrationStatusView, ProviderStatusView
 from .integration_callback_views import IntegrationCallbackView
+from .identity_views import UserIdentityView
 
 # Creamos el router para la API REST estándar
 router = DefaultRouter()
@@ -49,10 +50,14 @@ router.register(r'activities', ActividadViewSet, basename='activities')
 router.register(r'upload-video', VideoUploadViewSet, basename='upload-video') 
 
 urlpatterns = [
+    # Canonical user identity endpoint
+    path('me', UserIdentityView.as_view(), name='user_identity'),
+    
     # OAuth Integration Management
     path('integrations/<str:provider>/start', IntegrationStartView.as_view(), name='integration_start'),
     path('integrations/<str:provider>/callback', IntegrationCallbackView.as_view(), name='integration_callback'),
-    path('integrations/status', IntegrationStatusView.as_view(), name='integration_status'),
+    path('integrations/<str:provider>/status', ProviderStatusView.as_view(), name='provider_status'),  # NEW: Provider-specific status
+    path('integrations/status', IntegrationStatusView.as_view(), name='integration_status'),  # All providers status
     
     # Coach-scoped integration status
     path('coach/athletes/<int:alumno_id>/integrations/status', CoachAthleteIntegrationStatusView.as_view(), name='coach_athlete_integration_status'),

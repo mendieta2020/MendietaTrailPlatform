@@ -198,7 +198,8 @@ class TestIntegrationStartView:
         assert response.status_code == 500
         data = response.json()
         assert data["error"] == "provider_not_configured"
-        assert "client ID" in data["message"]
+        assert ("integration not configured" in data["message"].lower() or 
+                "strava" in data["message"].lower())
     
     def test_start_requires_authentication(self, client):
         """

@@ -381,3 +381,109 @@ class TestIntegrationCallback:
         assert response.status_code == 302
         assert "status=error" in response.url
         assert "error=user_denied" in response.url
+    
+    @patch('core.integration_callback_views.requests.post')
+    @patch('core.integration_callback_views.drain_strava_events_for_athlete')
+    def test_callback_redirect_uses_frontend_base_url(self, mock_drain, mock_post, client, settings):
+        """
+        GIVEN: FRONTEND_URL configured in settings
+        WHEN: Callback redirects after success
+        THEN: Redirect uses configured FRONTEND_URL, not hardcoded fallback
+        """
+        # Set custom frontend URL
+        settings.FRONTEND_URL = "https://custom-frontend.example.com:8080"
+        
+        # Setup
+        user = User.objects.create_user(username="athlete_redirect", password="test")
+        coach = User.objects.create_user(username="coach_redirect", password="test")
+        alumno = Alumno.objects.create(
+            usuario=user,
+            entrenador=coach,
+            nombre="Redirect",
+            apellido="Test",
+        )
+        
+        state = generate_oauth_state(
+            provider="strava",
+            user_id=user.id,
+            alumno_id=alumno.id,
+            redirect_uri="http://localhost:8000/api/integrations/strava/callback",
+        )
+        
+        # Mock token response
+        mock_response = Mock()
+        mock_response.ok = True
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "access_token": "test_token",
+            "refresh_token": "test_refresh",
+            "expires_at": 1704132000,
+            "athlete": {"id": 12345678, "username": "test"},
+        }
+        mock_post.return_value = mock_response
+        
+        # Invoke callback
+        response = client.get(
+            "/api/integrations/strava/callback",
+            {"code": "test_code", "state": state},
+        )
+        
+        # Assert: Redirect uses custom FRONTEND_URL
+        assert response.status_code == 302
+        assert response.url.startswith("https://custom-frontend.example.com:8080/integrations/callback")
+        assert "status=success" in response.url
+    
+    @patch('core.integration_callback_views.requests.post')
+    @patch('core.integration_callback_views.drain_strava_events_for_athlete')
+    def test_callback_redirect_not_hardcoded_port_3000(self, mock_drain, mock_post, client, settings):
+        """
+        GIVEN: FRONTEND_URL not explicitly set (uses default)
+        WHEN: Callback redirects
+        THEN: Does NOT use hardcoded :3000 (should use :5173 Vite default)
+        """
+        # Don't set FRONTEND_URL explicitly (use default)
+        if hasattr(settings, 'FRONTEND_URL'):
+            delattr(settings, 'FRONTEND_URL')
+        
+        # Setup
+        user = User.objects.create_user(username="athlete_default", password="test")
+        coach = User.objects.create_user(username="coach_default", password="test")
+        alumno = Alumno.objects.create(
+            usuario=user,
+            entrenador=coach,
+            nombre="Default",
+            apellido="Port",
+        )
+        
+        state = generate_oauth_state(
+            provider="strava",
+            user_id=user.id,
+            alumno_id=alumno.id,
+            redirect_uri="http://localhost:8000/api/integrations/strava/callback",
+        )
+        
+        # Mock token response
+        mock_response = Mock()
+        mock_response.ok = True
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "access_token": "test_token",
+            "refresh_token": "test_refresh",
+            "expires_at": 1704132000,
+            "athlete": {"id": 87654321, "username": "default_test"},
+        }
+        mock_post.return_value = mock_response
+        
+        # Invoke callback
+        response = client.get(
+            "/api/integrations/strava/callback",
+            {"code": "test_code", "state": state},
+        )
+        
+        # Assert: Redirect does NOT contain :3000
+        assert response.status_code == 302
+        assert ":3000" not in response.url, f"Should not hardcode :3000, got: {response.url}"
+        
+        # Assert: Should use :5173 (Vite default)
+        assert ":5173" in response.url or "localhost:5173" in response.url, \
+            f"Should use Vite default :5173, got: {response.url}"

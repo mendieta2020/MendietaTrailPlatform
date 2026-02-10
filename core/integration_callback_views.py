@@ -286,7 +286,7 @@ class IntegrationCallbackView(APIView):
             error_message: Human-readable error message
             athlete_id: External user ID if status="success"
         """
-        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
         callback_path = "/integrations/callback"  # Frontend route
         
         params = {

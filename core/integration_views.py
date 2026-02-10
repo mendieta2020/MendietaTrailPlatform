@@ -18,12 +18,31 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 
+
 from .integration_models import OAuthIntegrationStatus
 from .models import Alumno
 from .oauth_state import generate_oauth_state
-from .providers import PROVIDERS, get_available_providers
+from .providers import get_provider, list_providers
 
 logger = logging.getLogger(__name__)
+
+
+def get_available_providers():
+    """
+    Get list of available providers from registry.
+    
+    Returns:
+        List of dicts: [{"id": "strava", "name": "Strava", "enabled": True}, ...]
+    """
+    providers = list_providers()
+    return [
+        {
+            "id": provider_obj.provider_id,
+            "name": provider_obj.display_name,
+            "enabled": True,  # All registered providers are enabled
+        }
+        for provider_id, provider_obj in providers.items()
+    ]
 
 
 class IntegrationStartView(APIView):
@@ -41,18 +60,16 @@ class IntegrationStartView(APIView):
     permission_classes = [IsAuthenticated]
     
     def post(self, request, provider):
-        # Validate provider exists
-        provider_obj = PROVIDERS.get(provider)
+        """
+        Initiate OAuth flow for provider.
+        
+        Provider-agnostic: uses provider registry to support multiple providers.
+        """
+        # Get provider from registry
+        provider_obj = get_provider(provider)
         if not provider_obj:
             return Response(
-                {"error": "invalid_provider", "message": f"Provider '{provider}' not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-        
-        # Validate provider is enabled
-        if not provider_obj.enabled:
-            return Response(
-                {"error": "provider_disabled", "message": f"Provider '{provider}' is not yet available"},
+                {"error": "unknown_provider", "message": f"Provider '{provider}' not supported"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         
@@ -65,11 +82,53 @@ class IntegrationStartView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         
-        # For Strava, use custom OAuth callback (NOT allauth's social login callback)
-        #  allauth callback → User-based social login
-        #  custom callback → Alumno-based provider integration
+        # Build callback URI (provider-specific pattern)
+        callback_uri = self._get_callback_uri(provider)
+        
+        if not callback_uri:
+            logger.error("oauth.start.missing_callback_uri", extra={"provider": provider})
+            return Response(
+                {"error": "server_misconfigured", "message": "OAuth callback URI not configured"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        
+        # Provider-specific configuration check
+        if not self._validate_provider_config(provider):
+            return Response(
+                {"error": "provider_not_configured", "message": f"{provider_obj.display_name} integration not configured"},
+               status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        
+        # Generate state with alumno_id (securely signed)
+        state = generate_oauth_state(
+            provider=provider,
+            user_id=request.user.id,
+            alumno_id=alumno.id,  # ← Track which alumno is connecting
+            redirect_uri=callback_uri,
+        )
+        
+        # Get OAuth URL from provider
+        oauth_url = provider_obj.get_oauth_authorize_url(state, callback_uri)
+        
+        logger.info(
+            "oauth.start.success",
+            extra={
+                "provider": provider,
+                "user_id": request.user.id,
+                "alumno_id": alumno.id,
+                "callback_uri": callback_uri,
+            },
+        )
+        
+        return Response({
+            "oauth_url": oauth_url,
+            "provider": provider,
+        })
+    
+    def _get_callback_uri(self, provider):
+        """Get callback URI for provider (provider-specific settings)."""
         if provider == "strava":
-            # Use configured redirect URI (custom callback, not allauth)
+            # Use configured STRAVA_INTEGRATION_CALLBACK_URI
             callback_uri = getattr(settings, 'STRAVA_INTEGRATION_CALLBACK_URI', None)
             
             if not callback_uri:
@@ -77,60 +136,25 @@ class IntegrationStartView(APIView):
                 public_base = getattr(settings, 'PUBLIC_BASE_URL', 'http://localhost:8000')
                 callback_uri = f"{public_base}/api/integrations/strava/callback"
             
-            if not callback_uri:
-                logger.error("oauth.start.missing_redirect_uri", extra={"provider": provider})
-                return Response(
-                    {"error": "server_misconfigured", "message": "OAuth redirect URI not configured in settings"},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                )
-            
-            client_id = settings.STRAVA_CLIENT_ID
-            if not client_id:
-                return Response(
-                    {"error": "provider_not_configured", "message": "Strava client ID not configured"},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                )
-            
-            # Generate state with alumno_id for integration flow (securely signed)
-            state = generate_oauth_state(
-                provider="strava",
-                user_id=request.user.id,
-                alumno_id=alumno.id,  # ← NEW: Track which alumno is connecting
-                redirect_uri=callback_uri,
-            )
-            
-            # Build Strava OAuth URL
-            strava_authorize_url = "https://www.strava.com/oauth/authorize"
-            params = {
-                "client_id": client_id,
-                "redirect_uri": callback_uri,
-                "response_type": "code",
-                "scope": "read,activity:read_all,profile:read_all",
-                "approval_prompt": "force",
-                "state": state,  # ← Signed state with alumno_id
-            }
-            oauth_url = f"{strava_authorize_url}?{urlencode(params)}"
-            
-            logger.info(
-                "oauth.start.success",
-                extra={
-                    "provider": provider,
-                    "user_id": request.user.id,
-                    "alumno_id": alumno.id,
-                    "redirect_uri": callback_uri,  # Log for debugging
-                },
-            )
-            
-            return Response({
-                "oauth_url": oauth_url,
-                "provider": provider,
-            })
+            return callback_uri
         
-        # For other providers, return not implemented
-        return Response(
-            {"error": "provider_not_implemented", "message": f"OAuth flow for {provider} coming soon"},
-            status=status.HTTP_501_NOT_IMPLEMENTED,
-        )
+        # For other providers, use generic pattern
+        # Example: GARMIN_INTEGRATION_CALLBACK_URI or fallback to PUBLIC_BASE_URL
+        public_base = getattr(settings, 'PUBLIC_BASE_URL', 'http://localhost:8000')
+        return f"{public_base}/api/integrations/{provider}/callback"
+    
+    def _validate_provider_config(self, provider):
+        """Validate provider has required configuration (client ID, secret, etc)."""
+        if provider == "strava":
+            client_id = getattr(settings, 'STRAVA_CLIENT_ID', None)
+            if not client_id:
+                return False
+        
+        # For other providers, add config checks:
+        # elif provider == "garmin":
+        #     return bool(getattr(settings, 'GARMIN_CLIENT_ID', None))
+        
+        return True
 
 
 class IntegrationStatusView(APIView):
@@ -205,6 +229,76 @@ class IntegrationStatusView(APIView):
             "integrations": integrations,
             "athlete_id": alumno.id,
         })
+
+
+class ProviderStatusView(APIView):
+    """
+    GET /api/integrations/{provider}/status
+    
+    Returns normalized integration status for a specific provider.
+    
+    Response schema:
+    {
+        "provider": str,
+        "status": "connected" | "unlinked" | "error",
+        "external_user_id": str,
+        "athlete_id": str (alias for external_user_id),
+        "linked_at": str (ISO datetime) | null,
+        "last_sync_at": str (ISO datetime) | null,
+        "error_reason": str (if status="error")
+    }
+    
+    Multi-tenant safe: returns only current athlete's status.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, provider):
+        """Get integration status for specific provider"""
+        # Get athlete profile
+        try:
+            alumno = Alumno.objects.get(usuario=request.user)
+        except Alumno.DoesNotExist:
+            return Response(
+                {"error": "athlete_not_found", "message": "No athlete profile found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        
+        # Fetch integration status for this provider (or None if not linked)
+        try:
+            integration = OAuthIntegrationStatus.objects.get(
+                alumno=alumno,
+                provider=provider,
+            )
+            
+            # Normalize status
+            if integration.connected:
+                status_value = "connected"
+            elif integration.error_reason:
+                status_value = "error"
+            else:
+                status_value = "unlinked"
+            
+            return Response({
+                "provider": provider,
+                "status": status_value,
+                "external_user_id": integration.athlete_id or "",
+                "athlete_id": integration.athlete_id or "",  # Alias for backwards compat
+                "linked_at": integration.last_sync_at.isoformat() if integration.last_sync_at else None,
+                "last_sync_at": integration.last_sync_at.isoformat() if integration.last_sync_at else None,
+                "error_reason": integration.error_reason or "",
+            })
+            
+        except OAuthIntegrationStatus.DoesNotExist:
+            # Not linked yet - return unlinked status
+            return Response({
+                "provider": provider,
+                "status": "unlinked",
+                "external_user_id": "",
+                "athlete_id": "",
+                "linked_at": None,
+                "last_sync_at": None,
+                "error_reason": "",
+            })
 
 
 class CoachAthleteIntegrationStatusView(APIView):
