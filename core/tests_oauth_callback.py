@@ -43,6 +43,18 @@ class TestIntegrationCallback:
             apellido="Athlete",
         )
         
+        # Ensure SocialApp exists (required for credential persistence)
+        from allauth.socialaccount.models import SocialApp
+        from django.conf import settings
+        SocialApp.objects.get_or_create(
+            provider="strava",
+            defaults={
+                "name": "Strava",
+                "client_id": getattr(settings, "STRAVA_CLIENT_ID", "test_client"),
+                "secret": getattr(settings, "STRAVA_CLIENT_SECRET", "test_secret"),
+            }
+        )
+        
         # Generate valid state with alumno_id
         state = generate_oauth_state(
             provider="strava",
@@ -239,6 +251,18 @@ class TestIntegrationCallback:
             profile={"old": "data"},
         )
         
+        # Ensure SocialApp exists (required for credential persistence)
+        from allauth.socialaccount.models import SocialApp
+        from django.conf import settings
+        SocialApp.objects.get_or_create(
+            provider="strava",
+            defaults={
+                "name": "Strava",
+                "client_id": getattr(settings, "STRAVA_CLIENT_ID", "test_client"),
+                "secret": getattr(settings, "STRAVA_CLIENT_SECRET", "test_secret"),
+            }
+        )
+        
         # Generate state
         state = generate_oauth_state(
             provider="strava",
@@ -401,6 +425,17 @@ class TestIntegrationCallback:
             entrenador=coach,
             nombre="Redirect",
             apellido="Test",
+        )
+        
+        # Ensure SocialApp exists (required for credential persistence)
+        from allauth.socialaccount.models import SocialApp
+        SocialApp.objects.get_or_create(
+            provider="strava",
+            defaults={
+                "name": "Strava",
+                "client_id": getattr(settings, "STRAVA_CLIENT_ID", "test_client"),
+                "secret": getattr(settings, "STRAVA_CLIENT_SECRET", "test_secret"),
+            }
         )
         
         state = generate_oauth_state(

@@ -113,14 +113,36 @@ class IntegrationCallbackView(APIView):
         try:
             alumno = Alumno.objects.select_related('usuario').get(id=alumno_id)
         except Alumno.DoesNotExist:
-            logger.error("oauth.callback.alumno_not_found", extra={
+            logger.warning("oauth.callback.alumno_not_found", extra={
                 "provider": provider,
                 "alumno_id": alumno_id,
             })
-            return self._redirect_frontend("error", provider, "alumno_not_found",
-                                         "Athlete profile not found")
+            return self._redirect_frontend("error", provider, "invalid_state",
+                                         "Alumno not found")
         
-        # CRITICAL: Multi-tenancy check (fail-closed)
+        # Security: Check if alumno.usuario is None BEFORE mismatch check
+        # This ensures we return "missing_user" error instead of mismatch
+        if alumno.usuario_id is None:
+            logger.error("oauth.callback.missing_user_early", extra={
+                "provider": provider,
+                "alumno_id": alumno.id,
+                "state_user_id": user_id,
+            })
+            # Create OAuthIntegrationStatus with missing_user error
+            OAuthIntegrationStatus.objects.update_or_create(
+                alumno=alumno,
+                provider=provider,
+                defaults={
+                    "connected": False,
+                    "error_reason": "missing_user",
+                    "error_message": "Alumno not linked to User. Cannot proceed with OAuth.",
+                    "last_error_at": timezone.now(),
+                },
+            )
+            return self._redirect_frontend("error", provider, "missing_user",
+                                         "Alumno not linked to User")
+        
+        # Security: Multi-tenant check (alumno.usuario must match state.user_id)
         if alumno.usuario_id != user_id:
             logger.error("oauth.callback.alumno_user_mismatch", extra={
                 "provider": provider,
@@ -128,6 +150,17 @@ class IntegrationCallbackView(APIView):
                 "state_alumno_id": alumno_id,
                 "actual_alumno_usuario_id": alumno.usuario_id,
             })
+            # Create OAuthIntegrationStatus with mismatch error
+            OAuthIntegrationStatus.objects.update_or_create(
+                alumno=alumno,
+                provider=provider,
+                defaults={
+                    "connected": False,
+                    "error_reason": "alumno_user_mismatch",
+                    "error_message": "Unauthorized: Alumno usuario mismatch with state.",
+                    "last_error_at": timezone.now(),
+                },
+            )
             return self._redirect_frontend("error", provider, "unauthorized",
                                          "Unauthorized access attempt")
         
@@ -214,7 +247,66 @@ class IntegrationCallbackView(APIView):
             alumno.strava_athlete_id = external_user_id
             alumno.save(update_fields=["strava_athlete_id"])
         
+        # P0 Bridge: Persist OAuth credentials to allauth for backward compatibility
+        # This enables obtener_cliente_strava_para_alumno() to find SocialToken
+        if not alumno.usuario_id:
+            # Fail-closed: No user linked → cannot persist credentials
+            logger.error("oauth.callback.missing_user", extra={
+                "provider": provider,
+                "alumno_id": alumno.id,
+                "external_user_id": external_user_id,
+            })
+            OAuthIntegrationStatus.objects.update_or_create(
+                alumno=alumno,
+                provider=provider,
+                defaults={
+                    "connected": False,
+                    "athlete_id": external_user_id,
+                    "error_reason": "missing_user",
+                    "error_message": "Alumno not linked to User. Cannot persist OAuth credentials.",
+                    "last_error_at": timezone.now(),
+                },
+            )
+            return self._redirect_frontend("error", provider, "missing_user",
+                                          "Alumno not linked to User")
+        
+        from .oauth_credentials import persist_oauth_tokens
+        
+        credential_result = persist_oauth_tokens(
+            provider=provider,
+            user=alumno.usuario,
+            external_user_id=external_user_id,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_at=expires_at,
+            extra_data=sanitize_oauth_payload(athlete_data) if athlete_data else None,
+        )
+        
+        if not credential_result.success:
+            # Fail-closed: Cannot persist credentials → mark as failed
+            logger.error("oauth.callback.credential_persist_failed", extra={
+                "provider": provider,
+                "alumno_id": alumno.id,
+                "external_user_id": external_user_id,
+                "error_reason": credential_result.error_reason,
+            })
+            OAuthIntegrationStatus.objects.update_or_create(
+                alumno=alumno,
+                provider=provider,
+                defaults={
+                    "connected": False,
+                    "athlete_id": external_user_id,
+                    "error_reason": credential_result.error_reason,
+                    "error_message": credential_result.error_message,
+                    "last_error_at": timezone.now(),
+                },
+            )
+            return self._redirect_frontend("error", provider,
+                                          credential_result.error_reason,
+                                          credential_result.error_message)
+        
         # Update OAuthIntegrationStatus (source of truth for connected state)
+        # Only marked as connected=True if credential persistence succeeded
         integration_status, _ = OAuthIntegrationStatus.objects.update_or_create(
             alumno=alumno,
             provider=provider,
@@ -227,6 +319,7 @@ class IntegrationCallbackView(APIView):
                 "error_message": "",
             },
         )
+
         
         # Trigger background activity sync (async celery task)
         try:
