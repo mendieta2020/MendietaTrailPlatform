@@ -51,3 +51,7 @@ tr coach exit()
 celerybeat-schedule*
 db.sqlite3
 openapi.json
+
+# Antigravity agent workspace (local only)
+.agent/
+
