@@ -164,32 +164,36 @@ class IntegrationCallbackView(APIView):
             return self._redirect_frontend("error", provider, "unauthorized",
                                          "Unauthorized access attempt")
         
-        # Provider-specific token exchange
-        if provider == "strava":
-            return self._handle_strava_callback(request, alumno, code, payload)
-        else:
+        # Provider-agnostic token exchange using registry
+        from .providers import get_provider
+        
+        provider_impl = get_provider(provider)
+        if not provider_impl:
             logger.error("oauth.callback.unsupported_provider", extra={
                 "provider": provider,
             })
             return self._redirect_frontend("error", provider, "unsupported_provider",
-                                         f"Provider {provider} not yet supported")
+                                         f"Provider {provider} not registered")
+        
+        return self._handle_generic_callback(request, alumno, code, payload, provider_impl)
     
-    def _handle_strava_callback(self, request, alumno, code, state_payload):
-        """Handle Strava-specific callback logic."""
-        provider = "strava"
+    def _handle_generic_callback(self, request, alumno, code, state_payload, provider_impl):
+        """Handle OAuth callback for any registered provider (generic)."""
+        provider = provider_impl.provider_id
         
         # Get callback URI from state (for token exchange)
         callback_uri = state_payload.get("redirect_uri", "")
         if not callback_uri:
-            # Fallback: reconstruct from settings
-            callback_uri = getattr(settings, 'STRAVA_INTEGRATION_CALLBACK_URI', None)
+            # Fallback: reconstruct from settings (provider-specific setting or generic)
+            provider_setting_key = f"{provider.upper()}_INTEGRATION_CALLBACK_URI"
+            callback_uri = getattr(settings, provider_setting_key, None)
             if not callback_uri:
                 public_base = getattr(settings, 'PUBLIC_BASE_URL', 'http://localhost:8000')
-                callback_uri = f"{public_base}/api/integrations/strava/callback"
+                callback_uri = f"{public_base}/api/integrations/{provider}/callback"
         
-        # Exchange code for token
+        # Exchange code for token using provider implementation
         try:
-            token_data = self._exchange_strava_code_for_token(code, callback_uri)
+            token_data = provider_impl.exchange_code_for_token(code, callback_uri)
         except Exception as e:
             logger.error("oauth.callback.token_exchange_failed", extra={
                 "provider": provider,
@@ -199,23 +203,35 @@ class IntegrationCallbackView(APIView):
             return self._redirect_frontend("error", provider, "token_exchange_failed",
                                          "Failed to exchange authorization code")
         
-        # Extract athlete data from token response
+        # Extract user ID using provider implementation
+        try:
+            external_user_id = provider_impl.get_external_user_id(token_data)
+        except (ValueError, KeyError) as e:
+            logger.error("oauth.callback.invalid_user_id", extra={
+                "provider": provider,
+                "alumno_id": alumno.id,
+                "error": str(e),
+            })
+            return self._redirect_frontend("error", provider, "invalid_user_id",
+                                         "Could not extract user ID from token response")
+        
+        # Extract token details
         access_token = token_data.get("access_token")
         refresh_token = token_data.get("refresh_token", "")
         expires_at_timestamp = token_data.get("expires_at")
-        athlete_data = token_data.get("athlete", {})
-        athlete_id = athlete_data.get("id")
+        # Athlete data structure is provider-specific, but we get the ID from provider_impl
+        athlete_data = token_data.get("athlete") or token_data.get("user", {})
         
         # Validate required fields
-        if not access_token or not athlete_id:
+        if not access_token or not external_user_id:
             logger.error("oauth.callback.invalid_token_response", extra={
                 "provider": provider,
                 "alumno_id": alumno.id,
                 "has_access_token": bool(access_token),
-                "has_athlete_id": bool(athlete_id),
+                "has_external_user_id": bool(external_user_id),
             })
             return self._redirect_frontend("error", provider, "invalid_token_response",
-                                         "Invalid token response from Strava")
+                                         f"Invalid token response from {provider_impl.display_name}")
         
         # Parse expires_at
         expires_at = None
@@ -229,9 +245,9 @@ class IntegrationCallbackView(APIView):
                 })
         
         # Persist ExternalIdentity (idempotent upsert)
-        external_user_id = str(int(athlete_id))
+        # Normalize external_user_id to string (already done by provider_impl.get_external_user_id)
         identity, created = ExternalIdentity.objects.update_or_create(
-            provider=ExternalIdentity.Provider.STRAVA,
+            provider=provider,  # Generic provider ID
             external_user_id=external_user_id,
             defaults={
                 "alumno": alumno,
@@ -241,8 +257,8 @@ class IntegrationCallbackView(APIView):
             },
         )
         
-        # Backfill legacy strava_athlete_id field on Alumno (optional, for admin)
-        if not (alumno.strava_athlete_id or "").strip():
+        # Backfill legacy strava_athlete_id field on Alumno (only for Strava)
+        if provider == "strava" and not (alumno.strava_athlete_id or "").strip():
             alumno._skip_signal = True  # Avoid forecast recalc
             alumno.strava_athlete_id = external_user_id
             alumno.save(update_fields=["strava_athlete_id"])
@@ -340,33 +356,6 @@ class IntegrationCallbackView(APIView):
         })
         
         return self._redirect_frontend("success", provider, athlete_id=external_user_id)
-    
-    def _exchange_strava_code_for_token(self, code, redirect_uri):
-        """
-        Exchange Strava authorization code for access token.
-        
-        Returns dict with: access_token, refresh_token, expires_at, athlete{...}
-        """
-        token_url = "https://www.strava.com/oauth/token"
-        data = {
-            "client_id": settings.STRAVA_CLIENT_ID,
-            "client_secret": settings.STRAVA_CLIENT_SECRET,
-            "code": code,
-            "grant_type": "authorization_code",
-        }
-        
-        response = requests.post(token_url, data=data, timeout=10)
-        
-        # Log sanitized response for debugging
-        logger.debug("oauth.token_exchange.response", extra={
-            "status_code": response.status_code,
-            "content_type": response.headers.get("content-type"),
-            "body": sanitize_oauth_payload(response.json() if response.ok else response.text),
-        })
-        
-        response.raise_for_status()  # Raises HTTPError for 4xx/5xx
-        
-        return response.json()
     
     def _redirect_frontend(self, status_result, provider, error_code=None, error_message=None, athlete_id=None):
         """
