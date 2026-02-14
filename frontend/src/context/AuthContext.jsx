@@ -26,10 +26,21 @@ export const AuthProvider = ({ children }) => {
                 return;
             }
 
+            // Modo Bearer token: si hay token en localStorage, validamos con backend
             const token = tokenStore.getAccessToken();
             if (token) {
-                // Si hay token, asumimos que el usuario es válido (el interceptor lo borrará si no)
-                setUser({ username: 'Coach' });
+                try {
+                    // El interceptor de client.js ya inyecta Authorization: Bearer <token>
+                    const response = await fetchSession();
+                    setUser(response.data);
+                } catch (error) {
+                    // Token inválido o expirado, limpiar
+                    console.warn('Session fetch failed, clearing tokens:', error.message);
+                    tokenStore.clear();
+                    setUser(null);
+                }
+            } else {
+                setUser(null);
             }
             setLoading(false);
         };

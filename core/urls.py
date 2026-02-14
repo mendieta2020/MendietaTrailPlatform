@@ -10,7 +10,8 @@ from .views import (
     EquipoViewSet, 
     VideoUploadViewSet, # <--- 1. IMPORTANTE: Importamos el Gestor de Videos
     ActividadViewSet,
-    dashboard_entrenador
+    dashboard_entrenador,
+    OnboardingCompleteView,
 )
 from .integration_views import IntegrationStartView, IntegrationStatusView, CoachAthleteIntegrationStatusView, ProviderStatusView
 from .integration_callback_views import IntegrationCallbackView
@@ -68,4 +69,5 @@ urlpatterns = [
 
     # Ruta específica para tu Dashboard visual (Vista Legacy de Django)
     path('dashboard/', dashboard_entrenador, name='dashboard_entrenador'),
+    path('onboarding/complete/', OnboardingCompleteView.as_view(), name='onboarding_complete'),
 ]

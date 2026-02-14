@@ -209,7 +209,11 @@ class AlumnoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Alumno
         fields = '__all__'
-        read_only_fields = ['fecha_alta', 'entrenador', 'equipo_nombre']
+        # read_only_fields: NO incluir 'entrenador' aquí porque debe ser asignable
+        # programáticamente en perform_create(). El campo NO es expuesto a writes
+        # del cliente (no está en ningún input), pero DRF necesita que NO esté en
+        # read_only_fields para que save(entrenador=...) funcione.
+        read_only_fields = ['fecha_alta', 'equipo_nombre']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
