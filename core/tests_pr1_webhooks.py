@@ -17,17 +17,19 @@ class TestStravaWebhookFailClosed(TestCase):
         }
 
     @override_settings(STRAVA_WEBHOOK_SUBSCRIPTION_ID=None)
-    def test_missing_config_returns_500(self):
+    def test_missing_config_returns_200_and_does_not_enqueue(self):
         """
         If settings.STRAVA_WEBHOOK_SUBSCRIPTION_ID is missing/None,
-        return 500 and log critical (do not process).
+        return 200 (ACK) but do not process.
         """
-        response = self.client.post(
-            "/webhooks/strava/",
-            data=json.dumps(self.payload),
-            content_type="application/json"
-        )
-        self.assertEqual(response.status_code, 500)
+        with patch("core.webhooks.process_strava_event.delay") as mock_delay:
+            response = self.client.post(
+                "/webhooks/strava/",
+                data=json.dumps(self.payload),
+                content_type="application/json"
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(mock_delay.called)
 
     @override_settings(STRAVA_WEBHOOK_SUBSCRIPTION_ID=9999)
     def test_subscription_mismatch_returns_403(self):

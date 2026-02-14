@@ -94,7 +94,7 @@ class ThrottlingSecurityTests(APITestCase):
             "event_time": 1700000000,
         }
 
-        with override_settings(REST_FRAMEWORK=rest_framework):
+        with override_settings(REST_FRAMEWORK=rest_framework, STRAVA_WEBHOOK_SUBSCRIPTION_ID=1):
             self.assertEqual(
                 settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["strava_webhook"],
                 "1/min",
@@ -116,7 +116,8 @@ class ThrottlingSecurityTests(APITestCase):
                     content_type="application/json",
                     HTTP_X_FORWARDED_FOR="203.0.113.10",
                 )
-
+            # The context manager exits here, so indentation back one level for assertions
+        
         self.assertEqual(response_ok.status_code, 200)
         self.assertEqual(response_limited.status_code, 429)
         self.assertEqual(delay_mock.call_count, 1)

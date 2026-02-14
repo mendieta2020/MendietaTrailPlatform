@@ -124,8 +124,9 @@ def strava_webhook(request):
             configured_sub_id = getattr(settings, "STRAVA_WEBHOOK_SUBSCRIPTION_ID", None)
 
             if configured_sub_id is None:
+                # User requested fail-closed but ACK (200 OK) so Strava doesn't retry forever.
                 logger.critical("strava_webhook.fail_closed_missing_config_subscription_id")
-                return HttpResponse(status=500)
+                return JsonResponse({"ok": True, "ignored": "missing_subscription_config"})
 
             # Ensure strict string comparison to avoid type coercion issues
             if str(subscription_id) != str(configured_sub_id):
