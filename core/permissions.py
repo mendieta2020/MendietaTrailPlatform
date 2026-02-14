@@ -19,7 +19,9 @@ class IsCoachUser(BasePermission):
             return False
         if getattr(user, "is_staff", False):
             return True
-        return not hasattr(user, "perfil_alumno")
+        # Hybrid support: Allow if user has NO perfil_alumno OR if they are a coach (have students).
+        # This blocks "pure athletes" (have profile but no students) from accessing coach APIs.
+        return not hasattr(user, "perfil_alumno") or user.alumnos.exists()
 
 
 class SwaggerAccessPermission(BasePermission):
