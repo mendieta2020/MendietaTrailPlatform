@@ -5,13 +5,8 @@ from rest_framework.permissions import BasePermission
 class IsCoachUser(BasePermission):
     """
     Permite acceso solo a usuarios "coach" (no atletas).
-
-    Heurística actual del proyecto:
-    - Si el User tiene `perfil_alumno`, lo tratamos como atleta.
-    - Staff siempre permitido.
     """
-
-    message = "No autorizado."
+    message = "Acceso restringido a entrenadores."
 
     def has_permission(self, request, view) -> bool:
         user = getattr(request, "user", None)
@@ -19,9 +14,26 @@ class IsCoachUser(BasePermission):
             return False
         if getattr(user, "is_staff", False):
             return True
-        # Hybrid support: Allow if user has NO perfil_alumno OR if they are a coach (have students).
-        # This blocks "pure athletes" (have profile but no students) from accessing coach APIs.
-        return not hasattr(user, "perfil_alumno") or user.alumnos.exists()
+        # Si tiene perfil_alumno y NO tiene alumnos a cargo => Es Atleta Puro => False
+        # Si tiene perfil_alumno pero TIENE alumnos => Es Coach-Atleta => True
+        # Si NO tiene perfil_alumno => Es Coach Puro => True
+        is_athlete = hasattr(user, "perfil_alumno")
+        has_students = user.alumnos.exists()
+        
+        if is_athlete and not has_students:
+            return False
+        return True
+
+
+class IsAthleteUser(BasePermission):
+    """
+    Permite acceso a usuarios que son atletas (tienen perfil_alumno).
+    """
+    message = "Acceso restringido a atletas."
+
+    def has_permission(self, request, view) -> bool:
+        user = getattr(request, "user", None)
+        return bool(user and user.is_authenticated and hasattr(user, "perfil_alumno"))
 
 
 class SwaggerAccessPermission(BasePermission):

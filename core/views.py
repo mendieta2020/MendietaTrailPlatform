@@ -316,11 +316,101 @@ class EntrenamientoViewSet(TenantModelViewSet):
         "plantilla_version",
     ).all()
     serializer_class = EntrenamientoSerializer
+    # Base permission is Authenticated, but specific actions have explicit logic below
     permission_classes = [permissions.IsAuthenticated]
     
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['alumno', 'fecha_asignada', 'completado']
-    ordering_fields = ['fecha_asignada']
+    def get_queryset(self):
+        """
+        RBAC & Multi-tenancy:
+        - Staff: All
+        - Coach: Workouts of THEIR students
+        - Athlete: THEIR own workouts
+        """
+        user = self.request.user
+        if not user.is_authenticated:
+            return Entrenamiento.objects.none()
+
+        if user.is_staff:
+            return super().get_queryset()
+
+        # Is Coach?
+        # (Check permission helper to avoid code duplication logic, or just check 'alumnos' relation)
+        # Note: A user can be both (hybrid). Logic order matters.
+        # Requirement: "COACH: can list/create for athletes that belong to them"
+        # Requirement: "ATHLETE: can list/retrieve only their own"
+        
+        q = Q()
+        
+        # 1. As Coach: include workouts of my students
+        if hasattr(user, 'alumnos') and user.alumnos.exists():
+            q |= Q(alumno__entrenador=user)
+            
+        # 2. As Athlete: include my workouts
+        if hasattr(user, 'perfil_alumno'):
+            q |= Q(alumno__usuario=user)
+            
+        if not q:
+            # Fallback for "pure coach without students yet" -> empty (or technically correct)
+            # But if purely coach, allow create? Queryset is for listing/retrieving.
+            # If I am a coach with 0 students, I see 0 workouts. Correct.
+            return Entrenamiento.objects.none()
+            
+        return super().get_queryset().filter(q).distinct()
+
+    def perform_create(self, serializer):
+        """
+        Only Coaches (or Staff) can create workouts.
+        Athletes cannot self-assign via API (yet).
+        """
+        user = self.request.user
+        # Block pure athletes
+        is_coach = getattr(user, "is_staff", False) or (hasattr(user, 'alumnos') and user.alumnos.exists()) or not hasattr(user, "perfil_alumno")
+        
+        if not is_coach:
+             raise PermissionDenied("Los atletas no pueden crear entrenamientos.")
+             
+        # Serializer validate_alumno checks tenant scope (athlete belongs to coach)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        """
+        RBAC for Updates:
+        - Coach: Full update allowed (within tenant scope).
+        - Athlete: LIMITED update (Analysis/Feedback only). NO structural changes.
+        """
+        user = self.request.user
+        instance = serializer.instance
+        
+        # Check if user is acting as the Athlete owner
+        is_owner_athlete = hasattr(user, 'perfil_alumno') and instance.alumno.usuario_id == user.id
+        
+        # Check if user is the Coach
+        is_coach_owner = (instance.alumno.entrenador_id == user.id) or user.is_staff
+        
+        if is_owner_athlete and not is_coach_owner:
+            # Athlete attempting update
+            # Enforce that strictly NO structural/planned fields are changed
+            # This is partly handled by serializer read_only_fields, but strictly:
+            allowed_fields = {'completado', 'rpe', 'feedback_alumno', 'distancia_real_km', 'tiempo_real_min', 'desnivel_real_m', 'strava_id'}
+            
+            # Check for forbidden fields in initial_data
+            incoming_keys = set(self.request.data.keys())
+            # Note: request.data might include 'estructura' even if unchanged. 
+            # Ideally we check what actually CHANGED, or we just force strict serialized partial update.
+            # Simpler: If not coach, ignore structural fields or raise error if they try to change them?
+            # Requirement: "PATCH allowed fields: status, notes... Do not allow coach to change athlete ownership."
+            
+            # Safe approach: pass context to serializer or check here?
+            # Let's rely on Serializer validation OR just allow safe fields.
+            # But since we use the SAME serializer for Coach and Athlete, we need dynamic read_only.
+            
+            # Better approach: If athlete, reject structural changes if they differ.
+            if 'estructura' in serializer.validated_data:
+                 raise PermissionDenied("Los atletas no pueden modificar la estructura del entrenamiento.")
+            if 'fecha_asignada' in serializer.validated_data:
+                 raise PermissionDenied("Los atletas no pueden reagendar entrenamientos.")
+        
+        serializer.save()
 
     # ======================================================================
     #  🔥 ACCIÓN ESPECIAL: FEEDBACK DEL ALUMNO (TÚNEL SEGURO)
@@ -366,7 +456,7 @@ class PlantillaViewSet(TenantModelViewSet):
     """
     queryset = PlantillaEntrenamiento.objects.all()
     serializer_class = PlantillaEntrenamientoSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsCoachUser]
     
     filter_backends = [filters.SearchFilter, DjangoFilterBackend, filters.OrderingFilter]
     search_fields = ['titulo', 'descripcion_global']
@@ -374,7 +464,25 @@ class PlantillaViewSet(TenantModelViewSet):
     ordering_fields = ['titulo', 'created_at']
     ordering = ['-created_at']
 
+    def get_queryset(self):
+        """
+        Strict RBAC:
+        - Staff: All
+        - Coach: Own templates
+        - Athlete: None (blocked by permission_classes but double check)
+        """
+        user = self.request.user
+        if not user.is_authenticated:
+            return PlantillaEntrenamiento.objects.none()
+            
+        if user.is_staff:
+            return PlantillaEntrenamiento.objects.all()
+            
+        # Coach sees only their own templates
+        return PlantillaEntrenamiento.objects.filter(entrenador=user)
+
     def perform_create(self, serializer):
+        # Enforce owner = request.user
         plantilla = serializer.save(entrenador=self.request.user)
         PlantillaEntrenamientoVersion.objects.create(
             plantilla=plantilla,

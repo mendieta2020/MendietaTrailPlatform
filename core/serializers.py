@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 from .models import (
     Alumno, Carrera, InscripcionCarrera, 
     PlantillaEntrenamiento, Entrenamiento, Actividad, Pago,
@@ -87,9 +88,9 @@ class EntrenamientoSerializer(serializers.ModelSerializer):
         user = request.user
         # Si es atleta, no permitimos setear alumno arbitrario (este endpoint es de coach)
         if hasattr(user, "perfil_alumno") and not user.is_staff:
-            raise serializers.ValidationError("No autorizado.")
+            raise PermissionDenied("No autorizado.")
         if alumno.entrenador_id and alumno.entrenador_id != user.id and not user.is_staff:
-            raise serializers.ValidationError("No autorizado.")
+            raise PermissionDenied("No autorizado.")
         return alumno
 
 
