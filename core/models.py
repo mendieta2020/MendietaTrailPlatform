@@ -247,6 +247,7 @@ class Entrenamiento(models.Model):
     # Esto permite editar el entrenamiento del alumno SIN afectar la plantilla original.
     # Y es lo que leerá la API de Garmin para subir el workout al reloj.
     estructura = models.JSONField(default=dict, blank=True)
+    estructura_schema_version = models.CharField(max_length=10, default="1.0", help_text="Versión del schema JSON")
 
     tipo_actividad = models.CharField(max_length=20, choices=TIPO_ACTIVIDAD, default='RUN')
     
