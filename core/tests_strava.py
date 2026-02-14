@@ -130,6 +130,7 @@ class _FakeStravaClientWithStreams(_FakeStravaClient):
         return {"altitude": {"data": list(self._altitude_stream)}}
 
 
+@override_settings(STRAVA_WEBHOOK_SUBSCRIPTION_ID=1)
 class StravaWebhookThinEndpointTests(TestCase):
     def test_webhook_idempotency_same_payload_twice_creates_one_event(self):
         payload = {

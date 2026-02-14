@@ -51,3 +51,7 @@ tr coach exit()
 celerybeat-schedule*
 db.sqlite3
 openapi.json
+
+test_output*.txt
+test_strava_output*.txt
+
