@@ -11,6 +11,7 @@ from core.models import Actividad, Alumno, StravaWebhookEvent
 from core.tests_strava import _FakeStravaActivity, _FakeStravaClient
 
 
+@override_settings(STRAVA_WEBHOOK_SUBSCRIPTION_ID=1)
 class TestsWebhookFiabilidad(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -56,7 +57,7 @@ class TestsWebhookFiabilidad(TestCase):
         self.assertTrue(evento.last_error)
 
 
-@override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True, STRAVA_WEBHOOK_SUBSCRIPTION_ID=1)
 class TestsWebhookIdempotencia(TestCase):
     def setUp(self):
         self.client = APIClient()

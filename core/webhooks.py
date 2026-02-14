@@ -119,14 +119,23 @@ def strava_webhook(request):
             except (TypeError, ValueError):
                 return HttpResponse("Payload inválido", status=400)
 
-            # Hardening opcional: si configuramos un subscription_id esperado, ignoramos el resto.
-            if EXPECTED_SUBSCRIPTION_ID is not None and str(subscription_id) != str(EXPECTED_SUBSCRIPTION_ID):
+            # Hardening PR1: Fail-closed verification of subscription_id.
+            # We MUST access settings at runtime to support override_settings in tests and hot-reloads.
+            configured_sub_id = getattr(settings, "STRAVA_WEBHOOK_SUBSCRIPTION_ID", None)
+
+            if configured_sub_id is None:
+                logger.critical("strava_webhook.fail_closed_missing_config_subscription_id")
+                return HttpResponse(status=500)
+
+            # Ensure strict string comparison to avoid type coercion issues
+            if str(subscription_id) != str(configured_sub_id):
                 logger.warning(
                     "strava_webhook.subscription_mismatch",
                     extra={
                         "status": "discarded",
                         "reason": "subscription_mismatch",
-                        "subscription_id": subscription_id,
+                        "received_subscription_id": subscription_id,
+                        "expected_subscription_id": configured_sub_id,
                     },
                 )
                 return HttpResponse(status=403)
