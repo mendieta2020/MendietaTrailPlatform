@@ -75,6 +75,22 @@ class OAuthIntegrationStatus(models.Model):
         db_index=True,
     )
     
+    # Status Lifecycle (supersedes connected boolean)
+    class Status(models.TextChoices):
+        DISCONNECTED = "disconnected", "Disconnected"
+        CONNECTING = "connecting", "Connecting"
+        CONNECTED = "connected", "Connected"
+        SYNCING = "syncing", "Syncing"
+        LINK_REQUIRED = "link_required", "Link Required"
+        FAILED = "failed", "Failed"
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.DISCONNECTED,
+        db_index=True,
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True, db_index=True)
     
@@ -90,16 +106,17 @@ class OAuthIntegrationStatus(models.Model):
         ]
         indexes = [
             models.Index(fields=["provider", "connected"]),
+            models.Index(fields=["provider", "status"]),
             models.Index(fields=["alumno", "-updated_at"]),
         ]
     
     def __str__(self):
-        status = "✓" if self.connected else "✗"
-        return f"{status} {self.alumno} → {self.provider}"
+        return f"[{self.status}] {self.alumno} → {self.provider}"
     
     def mark_connected(self, athlete_id: str, expires_at=None):
         """Mark integration as successfully connected."""
         self.connected = True
+        self.status = self.Status.CONNECTED
         self.athlete_id = str(athlete_id)
         self.expires_at = expires_at
         self.error_reason = ""
@@ -107,9 +124,17 @@ class OAuthIntegrationStatus(models.Model):
         self.last_error_at = None
         self.save()
     
+    def mark_syncing(self):
+        """Mark integration as syncing (transient state)."""
+        self.status = self.Status.SYNCING
+        # Syncing implies connected in our logic
+        self.connected = True
+        self.save(update_fields=["status", "connected", "updated_at"])
+
     def mark_failed(self, error_reason: str, error_message: str = ""):
         """Mark integration as failed with specific reason."""
         self.connected = False
+        self.status = self.Status.FAILED
         self.error_reason = str(error_reason)[:60]
         self.error_message = str(error_message)
         self.last_error_at = timezone.now()

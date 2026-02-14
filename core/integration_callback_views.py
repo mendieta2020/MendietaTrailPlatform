@@ -134,6 +134,7 @@ class IntegrationCallbackView(APIView):
                 provider=provider,
                 defaults={
                     "connected": False,
+                    "status": OAuthIntegrationStatus.Status.FAILED,
                     "error_reason": "missing_user",
                     "error_message": "Alumno not linked to User. Cannot proceed with OAuth.",
                     "last_error_at": timezone.now(),
@@ -156,6 +157,7 @@ class IntegrationCallbackView(APIView):
                 provider=provider,
                 defaults={
                     "connected": False,
+                    "status": OAuthIntegrationStatus.Status.FAILED,
                     "error_reason": "alumno_user_mismatch",
                     "error_message": "Unauthorized: Alumno usuario mismatch with state.",
                     "last_error_at": timezone.now(),
@@ -277,6 +279,7 @@ class IntegrationCallbackView(APIView):
                 provider=provider,
                 defaults={
                     "connected": False,
+                    "status": OAuthIntegrationStatus.Status.FAILED,
                     "athlete_id": external_user_id,
                     "error_reason": "missing_user",
                     "error_message": "Alumno not linked to User. Cannot persist OAuth credentials.",
@@ -311,6 +314,7 @@ class IntegrationCallbackView(APIView):
                 provider=provider,
                 defaults={
                     "connected": False,
+                    "status": OAuthIntegrationStatus.Status.FAILED,
                     "athlete_id": external_user_id,
                     "error_reason": credential_result.error_reason,
                     "error_message": credential_result.error_message,
