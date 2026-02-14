@@ -13,7 +13,7 @@ export async function logoutSession() {
   if (USE_COOKIE_AUTH) {
     try {
       await client.post('/api/token/logout/');
-    } catch (error) {
+    } catch {
       // Silencioso: el logout de cookies es best-effort.
     }
   }

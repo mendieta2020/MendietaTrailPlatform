@@ -28,10 +28,7 @@ const AthleteDetail = () => {
   // Estado para la Librería Lateral
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const handleTrainingCreated = (training) => {
-const handleTrainingCreated = (training) => {
-  setTrainings((prev) => [...(Array.isArray(prev) ? prev : []), training]);
-};
-
+    setTrainings((prev) => [...(Array.isArray(prev) ? prev : []), training]);
   };
 
   useEffect(() => {

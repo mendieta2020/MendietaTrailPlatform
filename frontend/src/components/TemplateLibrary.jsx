@@ -89,7 +89,7 @@ const TemplateLibrary = () => {
     if (createState.estructura?.trim()) {
       try {
         estructuraPayload = JSON.parse(createState.estructura);
-      } catch (error) {
+      } catch {
         setCreateError('La estructura debe ser un JSON válido.');
         return;
       }

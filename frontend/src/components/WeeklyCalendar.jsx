@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Box, Typography, Paper, Grid, IconButton, Button, Snackbar, Alert 
 } from '@mui/material';
@@ -19,7 +19,6 @@ import TrainingDetailModal from './TrainingDetailModal'; // <--- IMPORTACIÓN CR
 const WeeklyCalendar = ({ trainings: initialTrainings, athleteId, onTrainingCreated }) => {
   const [trainings, setTrainings] = useState([]); 
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [overallCompliance, setOverallCompliance] = useState(0);
   
   // Estado de Modales
   const [editingTraining, setEditingTraining] = useState(null); // Editor (Entrenador)
@@ -27,22 +26,24 @@ const WeeklyCalendar = ({ trainings: initialTrainings, athleteId, onTrainingCrea
   
   const [feedback, setFeedback] = useState({ open: false, msg: '', type: 'success' });
   
-  const [stats, setStats] = useState({
-    distRun: { planned: 0, actual: 0 },
-    distBike: { planned: 0, actual: 0 },
-    elevation: { planned: 0, actual: 0 },
-    hours: { planned: 0, actual: 0 },
-  });
-
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTrainings(Array.isArray(initialTrainings) ? initialTrainings : []);
   }, [initialTrainings]);
 
-  const startOfVisibleWeek = startOfWeek(currentDate, { weekStartsOn: 1 });
-  const weekDays = Array.from({ length: 7 }).map((_, i) => addDays(startOfVisibleWeek, i));
+  const currentDateTime = currentDate.getTime();
+  const startOfVisibleWeek = useMemo(
+    () => startOfWeek(new Date(currentDateTime), { weekStartsOn: 1 }),
+    [currentDateTime]
+  );
+  const weekDays = useMemo(
+    () => Array.from({ length: 7 }).map((_, i) => addDays(startOfVisibleWeek, i)),
+    [startOfVisibleWeek]
+  );
 
   // --- CÁLCULOS DE ESTADÍSTICAS ---
-  useEffect(() => {
+  const stats = useMemo(() => {
+    const weekStart = startOfWeek(new Date(currentDateTime), { weekStartsOn: 1 });
     const newStats = {
         distRun: { planned: 0, actual: 0 },
         distBike: { planned: 0, actual: 0 },
@@ -53,7 +54,7 @@ const WeeklyCalendar = ({ trainings: initialTrainings, athleteId, onTrainingCrea
     const weekTrainings = (Array.isArray(trainings) ? trainings : []).filter(t => {
         if (!t.fecha_asignada) return false;
         const tDate = parseISO(t.fecha_asignada);
-        return tDate >= startOfVisibleWeek && tDate <= addDays(startOfVisibleWeek, 6);
+        return tDate >= weekStart && tDate <= addDays(weekStart, 6);
     });
 
     weekTrainings.forEach(t => {
@@ -71,14 +72,14 @@ const WeeklyCalendar = ({ trainings: initialTrainings, athleteId, onTrainingCrea
         newStats.hours.actual += parseInt(t.tiempo_real_min || 0);
     });
 
-    setStats(newStats);
+    return newStats;
+  }, [trainings, currentDateTime]);
 
-    let totalPlanned = newStats.hours.planned;
-    let totalActual = newStats.hours.actual;
-    const globalScore = totalPlanned > 0 ? Math.min(100, Math.round((totalActual / totalPlanned) * 100)) : 0;
-    setOverallCompliance(globalScore);
-
-  }, [currentDate, trainings]);
+  const overallCompliance = useMemo(() => {
+    const totalPlanned = stats.hours.planned;
+    const totalActual = stats.hours.actual;
+    return totalPlanned > 0 ? Math.min(100, Math.round((totalActual / totalPlanned) * 100)) : 0;
+  }, [stats]);
 
   // --- MANEJADORES DE INTERACCIÓN ---
 
