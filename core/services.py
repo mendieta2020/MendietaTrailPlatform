@@ -24,6 +24,7 @@ from .models import (
     Actividad,
     PlantillaEntrenamientoVersion,
 )
+from .schema_v1 import compute_metrics_v1
 from .utils.logging import safe_extra
 
 logger = logging.getLogger(__name__)
@@ -35,8 +36,9 @@ logger = logging.getLogger(__name__)
 def copiar_estructura_plantilla(entrenamiento, plantilla):
     """
     Toma un entrenamiento (existente o recién creado) y le inyecta 
-    una COPIA PROFUNDA (Deep Copy) de los bloques y pasos de la plantilla.
-    Adapta la estructura nueva de objetivos flexibles (RPE, Zona VAM, Manual).
+    una COPIA PROFUNDA (Deep Copy) de la estructura JSON de la plantilla.
+    Calcula métricas planificadas usando el servicio V1.
+    NO toca modelos legacy (BloqueEntrenamiento/PasoEntrenamiento).
     """
     logger.info(
         "plantillas.copiar_estructura",
@@ -44,52 +46,25 @@ def copiar_estructura_plantilla(entrenamiento, plantilla):
     )
     
     try:
-        # 1. Limpieza previa (Evita duplicados si se edita y cambia la plantilla)
-        entrenamiento.bloques_reales.all().delete()
-        
-        # 2. Clonado de Bloques
-        bloques_origen = plantilla.bloques.all().order_by('orden')
-        
-        for bloque_orig in bloques_origen:
-            nuevo_bloque = BloqueEntrenamiento.objects.create(
-                entrenamiento=entrenamiento,
-                plantilla=None, # Desvinculado para edición libre
-                orden=bloque_orig.orden,
-                nombre_bloque=bloque_orig.nombre_bloque,
-                repeticiones=bloque_orig.repeticiones
-            )
-            
-            # 3. Clonado de Pasos (NUEVA ESTRUCTURA FLEXIBLE)
-            pasos_origen = bloque_orig.pasos.all().order_by('orden')
-            for paso_orig in pasos_origen:
-                PasoEntrenamiento.objects.create(
-                    bloque=nuevo_bloque,
-                    orden=paso_orig.orden,
-                    fase=paso_orig.fase,
-                    
-                    # Datos de Tiempo/Distancia
-                    tipo_duracion=paso_orig.tipo_duracion,
-                    valor_duracion=paso_orig.valor_duracion,
-                    unidad_duracion=paso_orig.unidad_duracion,
-                    
-                    # --- NUEVA LÓGICA DE OBJETIVOS (CORRECCIÓN CRÍTICA) ---
-                    tipo_objetivo=paso_orig.tipo_objetivo,
-                    objetivo_rpe=paso_orig.objetivo_rpe,
-                    objetivo_zona_vam=paso_orig.objetivo_zona_vam,
-                    objetivo_manual=paso_orig.objetivo_manual,
-                    
-                    # Textos y Multimedia
-                    titulo_paso=paso_orig.titulo_paso,
-                    nota_paso=paso_orig.nota_paso,
-                    archivo_adjunto=paso_orig.archivo_adjunto, # Copia la referencia
-                    enlace_url=paso_orig.enlace_url
-                )
-                
-        # 4. Auto-completar título si no tiene uno
+        # 1. Copia de Estructura JSON (Deep Copy implícito al asignar dict)
+        estructura_copy = dict(plantilla.estructura) if plantilla.estructura else {}
+        entrenamiento.estructura = estructura_copy
+        entrenamiento.estructura_schema_version = "1.0"
+
+        # 2. Cálculo de métricas V1
+        metrics = compute_metrics_v1(estructura_copy)
+        entrenamiento.distancia_planificada_km = metrics.get("distance_km")
+        entrenamiento.tiempo_planificado_min = metrics.get("duration_min")
+        # tss_estimate could be used later
+
+        # 3. Datos de cabecera
         if not entrenamiento.titulo or entrenamiento.titulo.strip() == "":
             entrenamiento.titulo = plantilla.titulo
+        
+        entrenamiento.tipo_actividad = plantilla.deporte
+        entrenamiento.descripcion_detallada = plantilla.descripcion_global
 
-        # 5. GUARDADO FINAL (EL GATILLO)
+        # 4. GUARDADO FINAL
         entrenamiento.save()
         
     except Exception:
@@ -122,7 +97,12 @@ def asignar_plantilla_a_alumno(plantilla, alumno, fecha):
                 estructura=plantilla.estructura,
                 descripcion=plantilla.descripcion_global,
             )
-        estructura_snapshot = plantilla_version.estructura
+        estructura_snapshot = dict(plantilla_version.estructura) if plantilla_version.estructura else {}
+        
+        # Calcular métricas V1
+        metrics = compute_metrics_v1(estructura_snapshot)
+        dist_km = metrics.get("distance_km")
+        dur_min = metrics.get("duration_min")
 
         with transaction.atomic():
             entrenamiento, created = Entrenamiento.objects.select_for_update().get_or_create(
@@ -135,6 +115,9 @@ def asignar_plantilla_a_alumno(plantilla, alumno, fecha):
                     "tipo_actividad": plantilla.deporte,
                     "descripcion_detallada": plantilla.descripcion_global,
                     "estructura": estructura_snapshot,
+                    "estructura_schema_version": "1.0",
+                    "distancia_planificada_km": dist_km,
+                    "tiempo_planificado_min": dur_min,
                     "completado": False,
                 },
             )
@@ -145,6 +128,9 @@ def asignar_plantilla_a_alumno(plantilla, alumno, fecha):
                 entrenamiento.tipo_actividad = plantilla.deporte
                 entrenamiento.descripcion_detallada = plantilla.descripcion_global
                 entrenamiento.estructura = estructura_snapshot
+                entrenamiento.estructura_schema_version = "1.0"
+                entrenamiento.distancia_planificada_km = dist_km
+                entrenamiento.tiempo_planificado_min = dur_min
                 entrenamiento.save(
                     update_fields=[
                         "plantilla_version",
@@ -152,6 +138,9 @@ def asignar_plantilla_a_alumno(plantilla, alumno, fecha):
                         "tipo_actividad",
                         "descripcion_detallada",
                         "estructura",
+                        "estructura_schema_version",
+                        "distancia_planificada_km",
+                        "tiempo_planificado_min",
                     ]
                 )
 

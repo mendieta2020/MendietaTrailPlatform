@@ -10,7 +10,7 @@ from django.conf import settings
 
 
 @pytest.fixture(scope="function", autouse=True)
-def cleanup_oauth_test_data(db):
+def cleanup_oauth_test_data(request):
     """
     Auto-cleanup fixture: remove orphaned records after each test.
     
@@ -19,10 +19,17 @@ def cleanup_oauth_test_data(db):
     - OAuthIntegrationStatus with error_reason from test mocks
     
     Runs automatically after EVERY test function.
+    Safely skips cleanup for SimpleTestCase (no DB access).
     """
     # Run test first
     yield
     
+    # Check if DB access is authorized for this test
+    # If the test doesn't use the 'db' fixture or 'django_db' marker, 
+    # we shouldn't touch the database (e.g. SimpleTestCase).
+    if 'db' not in request.fixturenames and not request.node.get_closest_marker("django_db"):
+        return
+
     # Cleanup after test completes
     from core.models import ExternalIdentity
     from core.integration_models import OAuthIntegrationStatus
