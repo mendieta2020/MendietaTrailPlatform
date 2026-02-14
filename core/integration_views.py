@@ -186,31 +186,30 @@ class IntegrationStatusView(APIView):
             provider_id = provider_data["id"]
             integration_status = status_map.get(provider_id)
             
-            if integration_status and integration_status.connected:
-                # Connected integration
+            if integration_status:
+                # Use explicit status if available, fallback to computed
+                status_value = integration_status.status
+                if not status_value or status_value == OAuthIntegrationStatus.Status.DISCONNECTED:
+                     # Legacy fallback check
+                     if integration_status.connected:
+                         status_value = "connected"
+                     elif integration_status.error_reason:
+                         status_value = "error"
+                     else:
+                         status_value = "unlinked"
+                
                 integrations.append({
                     "provider": provider_id,
                     "name": provider_data["name"],
                     "enabled": provider_data["enabled"],
-                    "connected": True,
+                    "status": status_value,
+                    "connected": integration_status.connected,
                     "athlete_id": integration_status.athlete_id,
                     "expires_at": integration_status.expires_at.isoformat() if integration_status.expires_at else None,
                     "last_sync_at": integration_status.last_sync_at.isoformat() if integration_status.last_sync_at else None,
-                    "error_reason": None,
-                })
-            elif integration_status and not integration_status.connected:
-                # Failed integration (has error)
-                integrations.append({
-                    "provider": provider_id,
-                    "name": provider_data["name"],
-                    "enabled": provider_data["enabled"],
-                    "connected": False,
-                    "athlete_id": None,
-                    "expires_at": None,
-                    "last_sync_at": None,
-                    "error_reason": integration_status.error_reason or "unknown",
-                    "error_message": integration_status.error_message or "",
-                    "last_error_at": integration_status.last_error_at.isoformat() if integration_status.last_error_at else None,
+                    "error_reason": integration_status.error_reason,
+                    "last_error": integration_status.error_message,
+                     "last_error_at": integration_status.last_error_at.isoformat() if integration_status.last_error_at else None,
                 })
             else:
                 # Not connected, no attempt yet
@@ -218,11 +217,13 @@ class IntegrationStatusView(APIView):
                     "provider": provider_id,
                     "name": provider_data["name"],
                     "enabled": provider_data["enabled"],
+                    "status": "unlinked",
                     "connected": False,
                     "athlete_id": None,
                     "expires_at": None,
                     "last_sync_at": None,
                     "error_reason": None,
+                    "last_error": None,
                 })
         
         return Response({
@@ -270,22 +271,27 @@ class ProviderStatusView(APIView):
                 provider=provider,
             )
             
-            # Normalize status
-            if integration.connected:
-                status_value = "connected"
-            elif integration.error_reason:
-                status_value = "error"
-            else:
-                status_value = "unlinked"
+            # Use explicit status if available, fallback to computed
+            status_value = integration.status
+            if not status_value or status_value == OAuthIntegrationStatus.Status.DISCONNECTED:
+                 # Legacy fallback check
+                 if integration.connected:
+                     status_value = "connected"
+                 elif integration.error_reason:
+                     status_value = "error"
+                 else:
+                     status_value = "unlinked"
             
             return Response({
                 "provider": provider,
                 "status": status_value,
+                "connected": integration.connected,
                 "external_user_id": integration.athlete_id or "",
                 "athlete_id": integration.athlete_id or "",  # Alias for backwards compat
-                "linked_at": integration.last_sync_at.isoformat() if integration.last_sync_at else None,
+                "linked_at": integration.created_at.isoformat() if integration.created_at else None,
                 "last_sync_at": integration.last_sync_at.isoformat() if integration.last_sync_at else None,
                 "error_reason": integration.error_reason or "",
+                "last_error": integration.error_message or "",
             })
             
         except OAuthIntegrationStatus.DoesNotExist:
@@ -293,11 +299,13 @@ class ProviderStatusView(APIView):
             return Response({
                 "provider": provider,
                 "status": "unlinked",
+                "connected": False,
                 "external_user_id": "",
                 "athlete_id": "",
                 "linked_at": None,
                 "last_sync_at": None,
                 "error_reason": "",
+                "last_error": "",
             })
 
 
@@ -346,23 +354,37 @@ class CoachAthleteIntegrationStatusView(APIView):
             provider_id= provider_data["id"]
             integration_status = status_map.get(provider_id)
             
-            if integration_status and integration_status.connected:
-                # Connected integration
+            if integration_status:
+                status_value = integration_status.status
+                if not status_value or status_value == OAuthIntegrationStatus.Status.DISCONNECTED:
+                     if integration_status.connected:
+                         status_value = "connected"
+                     elif integration_status.error_reason:
+                         status_value = "error"
+                     else:
+                         status_value = "unlinked"
+                
                 integrations.append({
                     "provider": provider_id,
                     "name": provider_data["name"],
-                    "connected": True,
+                    "status": status_value,
+                    "connected": integration_status.connected,
                     "athlete_id": integration_status.athlete_id,
                     "last_sync_at": integration_status.last_sync_at.isoformat() if integration_status.last_sync_at else None,
+                    "last_error": integration_status.error_message,
+                    "error_reason": integration_status.error_reason,
                 })
             else:
                 # Not connected or failed
                 integrations.append({
                     "provider": provider_id,
                     "name": provider_data["name"],
+                    "status": "unlinked",
                     "connected": False,
                     "athlete_id": None,
                     "last_sync_at": None,
+                    "last_error": None,
+                    "error_reason": None,
                 })
         
         return Response({

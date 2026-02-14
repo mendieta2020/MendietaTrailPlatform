@@ -1600,3 +1600,170 @@ def reclassify_activities_for_alumno(self, alumno_id: int) -> dict:
         extra=safe_extra({"alumno_id": alumno_id, "changed": len(changed), "min_date": str(min_date) if min_date else None}),
     )
     return {"status": "OK", "alumno_id": alumno_id, "changed": len(changed), "min_date": str(min_date) if min_date else None}
+# ==============================================================================
+#  TAREA 4: BACKFILL AUTOMÁTICO (BOUNDED 90 DAYS + DIRECT DOMAIN LOGIC)
+# ==============================================================================
+@shared_task(name="strava.trigger_backfill")
+def trigger_strava_backfill(result, provider: str, athlete_id: str):
+    """
+    Backfill inicial tras conexión OAuth exitosa.
+    
+    Estrategia:
+    - Bounded: últimos 90 días (evita rate limits y timeout en cuentas antiguas).
+    - Direct Domain Logic: NO crea WebhookEvents falsos.
+    - Idempotente: usa `upsert_actividad` con dedupe por strava_id/source_id.
+    - Status: Actualiza OAuthIntegrationStatus a SYNCING -> CONNECTED/FAILED.
+    
+    Args:
+        result: Resultado del paso anterior (chain).
+        provider: "strava" (extensible).
+        athlete_id: ID externo del atleta.
+    """
+    from .models import OAuthIntegrationStatus, Alumno
+    from .services import obtener_cliente_strava_para_alumno
+    from .strava_activity_normalizer import decide_activity_creation, normalize_strava_activity_payload
+    from .strava_mapper import map_strava_activity_to_actividad, normalize_strava_activity
+    from .actividad_upsert import upsert_actividad
+    from .services import ejecutar_cruce_inteligente
+
+    logger.info("strava.backfill.start", extra={"provider": provider, "athlete_id": athlete_id})
+
+    # 1. Recuperar contexto (Alumno)
+    integration = OAuthIntegrationStatus.objects.select_related("alumno").filter(
+        provider=provider, athlete_id=str(athlete_id)
+    ).first()
+    
+    if not integration:
+        logger.error("strava.backfill.missing_integration", extra={"provider": provider, "athlete_id": athlete_id})
+        return "FAIL: integration_not_found"
+        
+    alumno = integration.alumno
+    
+    # 2. Marcar estado SYNCING (feedback UI)
+    integration.mark_syncing()
+    
+    # 3. Obtener cliente Strava
+    client = obtener_cliente_strava_para_alumno(alumno)
+    if not client:
+        integration.mark_failed(
+            error_reason="missing_strava_auth",
+            error_message="No valid token found for backfill."
+        )
+        return "FAIL: no_token"
+        
+    try:
+        # 4. Fetch Activities (Bounded 90 days)
+        start_date = timezone.now() - datetime.timedelta(days=90)
+        # after accepts datetime or timestamp
+        activities = client.get_activities(after=start_date)
+        
+        count_processed = 0
+        count_ingested = 0
+        count_errors = 0
+        
+        # Iterar generador (cuidado con rate limits, el cliente maneja paginación)
+        # Límite duro de seguridad: 100 actividades para evitar timeouts de Celery
+        for i, strava_activity in enumerate(activities):
+            if i >= 100:
+                logger.warning("strava.backfill.limit_reached", extra={"athlete_id": athlete_id, "limit": 100})
+                break
+                
+            try:
+                # A. Normalización (Lib -> Dict estable)
+                normalized_dict = normalize_strava_activity(strava_activity)
+                
+                # B. Reglas de Negocio (SaaS)
+                normalized_payload = normalize_strava_activity_payload(normalized_dict)
+                
+                # C. Decisión de creación (Validación)
+                decision = decide_activity_creation(normalized=normalized_payload)
+                if not decision.should_create:
+                    logger.info("strava.backfill.skipped", extra={
+                        "athlete_id": athlete_id, 
+                        "activity_id": normalized_dict.get("id"),
+                        "reason": decision.reason
+                    })
+                    continue
+                    
+                # D. Mapping a Modelo Interno
+                # Inyectar campos normalizados requeridos por el mapper
+                normalized_dict["tipo_deporte"] = normalized_payload["tipo_deporte"]
+                normalized_dict["strava_sport_type"] = normalized_payload["strava_sport_type"]
+                normalized_dict["distance_m"] = normalized_payload["distancia"]
+                normalized_dict["moving_time_s"] = normalized_payload["duracion"]
+                normalized_dict["start_date_local"] = normalized_payload["fecha_inicio"]
+                
+                mapped_data = map_strava_activity_to_actividad(normalized_dict)
+                
+                # E. Upsert (Idempotente)
+                source = mapped_data.pop("source")
+                source_object_id = mapped_data.pop("source_object_id")
+                
+                # F. Campos calculados (Calorías / Load Canonica)
+                # Nota: compute_calories_kcal y build_canonical_load_fields importados arriba o disponibles
+                calories_kcal = compute_calories_kcal({
+                    **mapped_data,
+                    "tipo_deporte": normalized_payload["tipo_deporte"],
+                    "alumno": alumno,
+                    "strava_sport_type": normalized_payload["strava_sport_type"],
+                })
+                
+                load_fields = build_canonical_load_fields(
+                    activity=normalized_dict, 
+                    alumno=alumno, 
+                    sport_type=normalized_payload["tipo_deporte"]
+                )
+                
+                defaults = {
+                    **mapped_data,
+                    **load_fields,
+                    "calories_kcal": float(calories_kcal or 0.0),
+                    "validity": Actividad.Validity.VALID,
+                }
+                
+                actividad_obj, created = upsert_actividad(
+                    alumno=alumno,
+                    usuario=alumno.entrenador, # O alumno.usuario si es self-coached (pero maintainer del token es lo que importa aqui, usamos entrenador como en webhook)
+                    source=source, # "strava"
+                    source_object_id=source_object_id,
+                    defaults=defaults,
+                )
+                
+                # G. Cruce Inteligente (Plan vs Real)
+                ejecutar_cruce_inteligente(actividad_obj)
+                
+                count_processed += 1
+                if created:
+                    count_ingested += 1
+                    
+            except Exception as exc:
+                count_errors += 1
+                logger.error("strava.backfill.activity_error", extra={
+                    "athlete_id": athlete_id,
+                    "error": str(exc)
+                })
+                # Continue con la siguiente actividad
+                continue
+
+        # 5. Finalización exitosa
+        # Volvemos a CONNECTED (Syncing es estado transitorio)
+        integration.mark_connected(athlete_id=athlete_id)
+        # Actualizar last_sync_at explícitamente
+        integration.last_sync_at = timezone.now()
+        integration.save(update_fields=["last_sync_at"])
+        
+        logger.info("strava.backfill.success", extra={
+            "athlete_id": athlete_id,
+            "processed": count_processed,
+            "ingested": count_ingested,
+            "errors": count_errors
+        })
+        return f"OK: {count_ingested} ingested"
+
+    except Exception as e:
+        logger.exception("strava.backfill.failed", extra={"athlete_id": athlete_id})
+        integration.mark_failed(
+            error_reason="backfill_exception",
+            error_message=_truncate_error(str(e))
+        )
+        return "FAIL: exception"
