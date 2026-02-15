@@ -696,6 +696,87 @@ class ActividadViewSet(TenantModelViewSet):
         serializer = ActividadRawPayloadSerializer(page, many=True, context={"request": request})
         return self.get_paginated_response(serializer.data)
 
+
+class AlumnoPlannedWorkoutViewSet(EntrenamientoViewSet):
+    """
+    Gestión de Entrenamientos Anidados por Alumno.
+    Ruta canónica: /api/alumnos/{alumno_id}/planned-workouts/
+    Fail-closed: Si el alumno no es accesible pro el usuario, devuelve 404.
+    """
+    def get_queryset(self):
+        # 1. Recuperar Tenant-Scoped Alumno (Fail-closed)
+        user = self.request.user
+        if not user.is_authenticated:
+            # EntrenamientoViewSet permissions usually handle this, but for fail-closed logic:
+            from django.http import Http404
+            raise Http404
+
+        alumno_id = self.kwargs.get('alumno_id') or self.kwargs.get('athlete_id')
+
+        # Definir scope de búsqueda del alumno
+        qs_alumno = Alumno.objects.none()
+
+        if user.is_staff:
+             qs_alumno = Alumno.objects.all()
+        elif hasattr(user, 'perfil_alumno'):
+             # Atleta: solo puede ver SU propio alumno_id
+             # Nota: perfil_alumno.id es el ID del perfil, no del user. 
+             # alumno.usuario es el User. 
+             qs_alumno = Alumno.objects.filter(usuario=user)
+        else:
+             # Coach: solo sus alumnos
+             qs_alumno = Alumno.objects.filter(entrenador=user)
+        
+        # Validación estricta: Si el alumno no está en el scope -> 404
+        from django.shortcuts import get_object_or_404
+        get_object_or_404(qs_alumno, pk=alumno_id)
+        
+        # 2. Filtrar Entrenamientos del Alumno
+        # Usamos super().get_queryset() para mantener cualquier otra lógica base (RBAC de padre),
+        # pero forzamos el filtro por alumno_id confirmado.
+        qs = super().get_queryset().filter(alumno_id=alumno_id)
+
+        # 3. Date Filtering Strict
+        start_date = self.request.query_params.get('from')
+        end_date = self.request.query_params.get('to')
+
+        if start_date or end_date:
+            from rest_framework.exceptions import ValidationError
+            try:
+                if start_date:
+                    # Validar formato YYYY-MM-DD
+                    datetime.strptime(start_date, '%Y-%m-%d')
+                    qs = qs.filter(fecha_asignada__gte=start_date)
+                if end_date:
+                    datetime.strptime(end_date, '%Y-%m-%d')
+                    qs = qs.filter(fecha_asignada__lte=end_date)
+            except ValueError:
+                raise ValidationError({"error": "Formato de fecha inválido. Use YYYY-MM-DD."})
+            
+        return qs
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        alumno_id = self.kwargs.get('alumno_id') or self.kwargs.get('athlete_id')
+        
+        # Scope Coach Strict (Fail-closed)
+        # Re-verificamos ownership explícitamente para escritura
+        from django.shortcuts import get_object_or_404
+        
+        # Determine coach scope again just to be sure we are safe
+        if user.is_staff:
+            alumno = get_object_or_404(Alumno, pk=alumno_id)
+        elif hasattr(user, 'perfil_alumno'):
+             # Atletas no pueden crear (EntrenamientoViewSet.perform_create ya lanzaría, 
+             # pero por seguridad extra...)
+             from rest_framework.exceptions import PermissionDenied
+             raise PermissionDenied("Los atletas no pueden crear entrenamientos.")
+        else:
+             alumno = get_object_or_404(Alumno, pk=alumno_id, entrenador=user)
+        
+        serializer.save(alumno=alumno)
+
+
 # ==============================================================================
 #  DASHBOARD LEGACY (Vista de Gestión / Admin - NO TOCAR)
 # ==============================================================================

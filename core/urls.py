@@ -48,10 +48,29 @@ router.register(r'activities', ActividadViewSet, basename='activities')
 # 6. Multimedia y Herramientas (Gimnasio Pro)
 # Esta es la ruta que usa el botón de la cámara en el Frontend
 router.register(r'upload-video', VideoUploadViewSet, basename='upload-video') 
+from .views import AlumnoPlannedWorkoutViewSet
 
 urlpatterns = [
     # Canonical user identity endpoint
     path('me', UserIdentityView.as_view(), name='user_identity'),
+
+    # PR3: Canonical Nested Planned Workouts
+    path('alumnos/<int:alumno_id>/planned-workouts/', 
+         AlumnoPlannedWorkoutViewSet.as_view({'get': 'list', 'post': 'create'}), 
+         name='alumno-planned-workouts-list'),
+    path('alumnos/<int:alumno_id>/planned-workouts/<int:pk>/', 
+         AlumnoPlannedWorkoutViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), 
+         name='alumno-planned-workouts-detail'),
+
+    # PR3: Compat Alias (same viewset)
+    path('athletes/<int:athlete_id>/planned-workouts/', 
+         AlumnoPlannedWorkoutViewSet.as_view({'get': 'list', 'post': 'create'}), 
+         name='athlete-planned-workouts-list'),
+    path('athletes/<int:athlete_id>/planned-workouts/<int:pk>/', 
+         AlumnoPlannedWorkoutViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), 
+         name='athlete-planned-workouts-detail'),
+    
+    # OAuth Integration Management
     
     # OAuth Integration Management
     path('integrations/<str:provider>/start', IntegrationStartView.as_view(), name='integration_start'),
