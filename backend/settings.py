@@ -113,6 +113,12 @@ DISABLE_LEGACY_STRAVA_SYNC = (
     == "True"
 )
 
+# Permite pruebas locales enviando JSON con encodings no-UTF8 (ej: PowerShell UTF-16).
+# En producción debe habilitarse explícitamente (o mantener False).
+STRAVA_WEBHOOK_ALLOW_SIMULATION = (
+    get_env_variable("STRAVA_WEBHOOK_ALLOW_SIMULATION", default="False", required=False) == "True"
+)
+
 # OpenAI (opcional en local)
 OPENAI_API_KEY = get_env_variable("OPENAI_API_KEY", default="", required=False)
 

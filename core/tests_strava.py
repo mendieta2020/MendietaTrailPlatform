@@ -159,6 +159,31 @@ class StravaWebhookThinEndpointTests(TestCase):
         self.assertEqual(StravaWebhookEvent.objects.count(), 1)
         self.assertEqual(delay_mock.call_count, 1)
 
+    def test_webhook_accepts_utf16_json_when_simulation_enabled(self):
+        payload = {
+            "object_type": "activity",
+            "aspect_type": "create",
+            "object_id": 123,
+            "owner_id": 999,
+            "subscription_id": 1,
+            "event_time": 1700000002,
+        }
+        body_utf16 = json.dumps(payload).encode("utf-16")
+
+        with patch("core.webhooks.process_strava_event.delay") as delay_mock:
+            with override_settings(STRAVA_WEBHOOK_ALLOW_SIMULATION=True):
+                # Usamos generic() para enviar bytes crudos (post() intenta re-encodear).
+                res = self.client.generic(
+                    "POST",
+                    "/webhooks/strava/",
+                    data=body_utf16,
+                    content_type="application/json; charset=utf-16",
+                )
+
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(StravaWebhookEvent.objects.count(), 1)
+        self.assertEqual(delay_mock.call_count, 1)
+
     def test_webhook_discard_non_activity_does_not_enqueue(self):
         payload = {
             "object_type": "athlete",
