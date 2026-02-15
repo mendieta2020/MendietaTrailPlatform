@@ -96,6 +96,24 @@ curl -s -X POST 'http://127.0.0.1:8000/webhooks/strava/' \
   }' -i
 ```
 
+#### Backfill / mantenimiento (management commands)
+
+Reclasificar histórico de actividades importadas como `OTHER` que en Strava sean fuerza (`WeightTraining`/`Workout`/`Crossfit`) y recomputar PMC desde la fecha mínima afectada por atleta:
+
+```bash
+# dry-run (no escribe)
+python3 manage.py reclassify_strength_from_other --dry-run
+
+# scoped por tenant (entrenador)
+python3 manage.py reclassify_strength_from_other --tenant_id 123
+
+# scoped por alumno
+python3 manage.py reclassify_strength_from_other --tenant_id 123 --alumno_id 456
+
+# filtrar por fecha (YYYY-MM-DD)
+python3 manage.py reclassify_strength_from_other --tenant_id 123 --since 2025-01-01
+```
+
 #### Auditoría / estados (DB)
 
 - **Idempotencia de eventos**: `core.StravaWebhookEvent` (unique `event_uid`, status, attempts, last_error)
