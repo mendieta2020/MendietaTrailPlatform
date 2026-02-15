@@ -11,6 +11,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Athletes from './pages/Athletes';
 import AthleteDetail from './pages/AthleteDetail'; // <--- NUEVA IMPORTACIÓN (Perfil del Atleta)
+import AthleteIntegrations from './pages/AthleteIntegrations';
 import CalendarPage from './pages/Calendar';
 import Teams from './pages/Teams';
 import TeamDetail from './pages/TeamDetail';
@@ -118,6 +119,16 @@ function App() {
             element={
               <ProtectedRoute>
                 <Alerts />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* 8. Portal del Alumno: Integraciones */}
+          <Route
+            path="/athlete/integrations"
+            element={
+              <ProtectedRoute>
+                <AthleteIntegrations />
               </ProtectedRoute>
             }
           />

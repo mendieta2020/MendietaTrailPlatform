@@ -215,6 +215,15 @@ class AlumnoViewSet(TenantModelViewSet):
     def perform_create(self, serializer):
         serializer.save(entrenador=self.request.user)
 
+    @action(detail=False, methods=["get"], url_path="me")
+    def me(self, request):
+        user = request.user
+        perfil = getattr(user, "perfil_alumno", None)
+        if not perfil:
+            return Response({"detail": "Solo alumnos pueden acceder a este recurso."}, status=status.HTTP_403_FORBIDDEN)
+        serializer = self.get_serializer(perfil)
+        return Response(serializer.data)
+
     # Ruta: /api/alumnos/{id}/injury-risk/ (y también /api/athletes/{id}/injury-risk/ vía alias de router)
     @action(detail=True, methods=["get"], url_path="injury-risk")
     def injury_risk(self, request, pk=None):
