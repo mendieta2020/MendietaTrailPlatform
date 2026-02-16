@@ -125,6 +125,30 @@ class EntrenamientoSerializer(serializers.ModelSerializer):
                 if alumno.entrenador_id and alumno.entrenador_id != user.id and not user.is_staff:
                     raise PermissionDenied("No autorizado.")
 
+        # 3. PR5 Hardening: Data Integrity (Real fields are read-only via API)
+        request = self.context.get("request")
+        # Bloquear solo si hay request (API call) y el usuario NO es staff/system
+        if request and getattr(request, "user", None) and not request.user.is_staff:
+            restricted_fields = {
+                'distancia_real_km', 
+                'tiempo_real_min', 
+                'desnivel_real_m', 
+                'rpe', 
+                'feedback_alumno',
+                'completado'
+            }
+            # Chequear tanto initial_data (raw) como attrs (validado) para mayor seguridad
+            # initial_data catcha intentos de enviar el campo aunque DRF lo ignore por read_only
+            incoming_keys = set(self.initial_data.keys()) if hasattr(self, 'initial_data') else set()
+            
+            # Intersección: si manda algún campo restringido -> 400
+            forbidden = incoming_keys.intersection(restricted_fields)
+            if forbidden:
+                raise serializers.ValidationError({
+                    "detail": f"Campos de ejecución 'Real' son de solo lectura vía API: {', '.join(forbidden)}",
+                    "reason": "real_fields_read_only"
+                })
+
         return attrs
 
 
