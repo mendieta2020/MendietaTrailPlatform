@@ -12,6 +12,7 @@ import uuid
 
 # Re-export OAuth integration status model for compatibility (single source of truth is integration_models.py)
 from .integration_models import OAuthIntegrationStatus  # noqa: F401
+from .compliance import calcular_porcentaje_cumplimiento
 
 # ==============================================================================
 #  1. CONFIGURACIÓN Y CONSTANTES (GLOBALES)
@@ -290,20 +291,10 @@ class Entrenamiento(models.Model):
     def save(self, *args, **kwargs):
         # Cálculo automático de cumplimiento al guardar
         if self.completado:
-            ratio = 0
-            if self.distancia_planificada_km and self.distancia_planificada_km > 0:
-                # Convertimos a float para calcular, ya que Decimal puede dar problemas mixtos
-                plan = float(self.distancia_planificada_km)
-                real = float(self.distancia_real_km or 0)
-                ratio = (real / plan) * 100
-            elif self.tiempo_planificado_min and self.tiempo_planificado_min > 0:
-                plan = self.tiempo_planificado_min
-                real = self.tiempo_real_min or 0
-                ratio = (real / plan) * 100
             
-            self.porcentaje_cumplimiento = int(min(max(ratio, 0), 200))
+            self.porcentaje_cumplimiento = calcular_porcentaje_cumplimiento(self)
         
-        super().save(*args, **kwargs)
+        return super().save(*args, **kwargs)
 
 # --- MODELOS DEPRECATED (SE MANTIENEN POR SEGURIDAD DE MIGRACIÓN) ---
 # En el futuro, eliminaremos BloqueEntrenamiento y PasoEntrenamiento
@@ -570,7 +561,11 @@ class StravaWebhookEvent(models.Model):
                 return 0
             failed_count = self.failed().count()
             if failed_count >= threshold:
-                (logger or logging.getLogger(__name__)).warning(
+                from .utils.logging import safe_extra
+                from .compliance import calcular_porcentaje_cumplimiento
+
+                logger = logging.getLogger(__name__)
+                logger.warning(
                     "strava.webhook.failed_threshold",
                     extra={"failed_count": failed_count, "threshold": threshold},
                 )
