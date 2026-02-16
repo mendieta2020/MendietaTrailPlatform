@@ -78,20 +78,54 @@ class EntrenamientoSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['porcentaje_cumplimiento', 'plantilla_version']
 
-    def validate_alumno(self, alumno: Alumno):
-        """
-        Multi-tenant: un coach no puede crear/editar entrenamientos de atletas ajenos.
-        """
-        request = self.context.get("request")
-        if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
-            return alumno
-        user = request.user
-        # Si es atleta, no permitimos setear alumno arbitrario (este endpoint es de coach)
-        if hasattr(user, "perfil_alumno") and not user.is_staff:
-            raise PermissionDenied("No autorizado.")
-        if alumno.entrenador_id and alumno.entrenador_id != user.id and not user.is_staff:
-            raise PermissionDenied("No autorizado.")
-        return alumno
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # PR4: If using nested route, 'alumno' is derived from URL, so it's not required in body.
+        # We check if view is present and has the specific kwargs.
+        view = self.context.get('view')
+        if view and hasattr(view, 'kwargs'):
+            url_alumno_id = view.kwargs.get('alumno_id') or view.kwargs.get('athlete_id')
+            if url_alumno_id and 'alumno' in self.fields:
+                self.fields['alumno'].required = False
+
+    def validate(self, attrs):
+        # 1. PR4 Hardening: Validate Body vs URL Alumno correctness
+        # We check self.initial_data to catch explicit mismatch even if DRF field validation passed or skipped
+        view = self.context.get('view')
+        if view and hasattr(view, 'kwargs'):
+            url_alumno_id = view.kwargs.get('alumno_id') or view.kwargs.get('athlete_id')
+            if url_alumno_id:
+                # Check if 'alumno' key exists in raw input
+                if 'alumno' in self.initial_data:
+                    raw_alumno = self.initial_data['alumno']
+                    # Extract ID safely (handle dict or scalar)
+                    body_id = None
+                    if isinstance(raw_alumno, dict):
+                         body_id = raw_alumno.get('id')
+                    else:
+                         body_id = raw_alumno
+                    
+                    # Strict string comparison
+                    if str(body_id) != str(url_alumno_id):
+                        raise serializers.ValidationError({"alumno": "Body alumno does not match URL alumno_id"})
+
+        # 2. Tenant Permission Check
+        # Only needed if non-nested route (url_alumno_id is None). 
+        # If nested, View perform_create checks URL ID with 404 (Fail-closed).
+        # We skip check here to avoid returning 403 (Leak) if body ID matches URL ID but is forbidden.
+        if not url_alumno_id and 'alumno' in attrs:
+            alumno = attrs['alumno']
+            request = self.context.get("request")
+            if request and getattr(request, "user", None) and request.user.is_authenticated:
+                user = request.user
+                # Si es atleta, no permitimos setear alumno arbitrario
+                if hasattr(user, "perfil_alumno") and not user.is_staff:
+                    raise PermissionDenied("No autorizado.")
+                # Si es coach, solo sus alumnos
+                if alumno.entrenador_id and alumno.entrenador_id != user.id and not user.is_staff:
+                    raise PermissionDenied("No autorizado.")
+
+        return attrs
 
 
 class PlanningSessionSerializer(serializers.ModelSerializer):
