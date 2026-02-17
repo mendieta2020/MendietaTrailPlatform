@@ -139,6 +139,16 @@ if not STRAVA_INTEGRATION_CALLBACK_URI:
 # FRONTEND_URL: Base URL for frontend (for OAuth redirects after callback)
 FRONTEND_URL = get_env_variable("FRONTEND_URL", default="http://localhost:3000", required=False)
 
+# FRONTEND_BASE_URL: Base URL for frontend redirects (OAuth callback final destination)
+# Separate from FRONTEND_URL for better dev/prod alignment
+# In DEBUG: defaults to Vite dev server (localhost:5173)
+# In production: uses env var or falls back to FRONTEND_URL
+if DEBUG:
+    FRONTEND_BASE_URL = get_env_variable("FRONTEND_BASE_URL", default="http://localhost:5173", required=False)
+else:
+    FRONTEND_BASE_URL = get_env_variable("FRONTEND_BASE_URL", default=FRONTEND_URL, required=False)
+
+
 # Validate OAuth configuration in runtime (not for tests/management commands)
 if REQUIRE_RUNTIME_SECRETS and not DEBUG:
     if not STRAVA_REDIRECT_URI or STRAVA_REDIRECT_URI == "http://localhost:8000/accounts/strava/login/callback/":

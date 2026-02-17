@@ -366,14 +366,15 @@ class IntegrationCallbackView(APIView):
         Redirect to frontend with OAuth callback result.
         
         Args:
-            status: "success" or "error"
+            status_result: "success" or "error"
             provider: Provider ID (e.g., "strava")
             error_code: Error code if status="error"
             error_message: Human-readable error message
             athlete_id: External user ID if status="success"
         """
-        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
-        callback_path = "/integrations/callback"  # Frontend route
+        # Use FRONTEND_BASE_URL if available, fallback to FRONTEND_URL
+        frontend_url = getattr(settings, 'FRONTEND_BASE_URL', None) or getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+        callback_path = "/connections"  # Final destination after OAuth
         
         params = {
             "status": status_result,
@@ -382,7 +383,8 @@ class IntegrationCallbackView(APIView):
         
         if status_result == "error":
             params["error"] = error_code or "unknown_error"
-            params["message"] = error_message or "An error occurred"
+            if error_message:
+                params["message"] = error_message
         elif status_result == "success" and athlete_id:
             params["athlete_id"] = athlete_id
         
