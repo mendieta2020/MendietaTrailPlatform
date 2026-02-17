@@ -1,40 +1,56 @@
-import React, { useState } from 'react';
-import { 
-  Box, Drawer, AppBar, Toolbar, List, Typography, Divider, IconButton, 
-  ListItem, ListItemButton, ListItemIcon, ListItemText, Avatar 
+import React, { useState, useEffect } from 'react';
+import {
+  Box, Drawer, AppBar, Toolbar, List, Typography, Divider, IconButton,
+  ListItem, ListItemButton, ListItemIcon, ListItemText, Avatar
 } from '@mui/material';
-import { 
-  Menu as MenuIcon, 
+import {
+  Menu as MenuIcon,
   Dashboard,      // Icono para Inicio
   People,         // Icono para Alumnos
   CalendarMonth,  // Icono para Calendario
   Payment,        // Icono para Finanzas
   Groups,         // <--- NUEVO ICONO PARA GRUPOS
+  Link as LinkIcon,  // Icono para Conexiones
   Logout,         // Icono para Cerrar Sesión
   Settings        // Icono para Configuración (Futuro)
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { logoutSession } from '../api/authClient';
+import client from '../api/client';
 
 const drawerWidth = 260;
 
 const Layout = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [userRole, setUserRole] = useState('coach'); // Default to coach
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Fetch user role on mount
+  useEffect(() => {
+    client.get('/api/me')
+      .then(res => setUserRole(res.data.role))
+      .catch(err => {
+        if (import.meta.env.DEV) {
+          console.error('Failed to fetch user role:', err);
+        }
+        // Silently default to 'coach' on error
+      });
+  }, []);
+
   const handleLogout = async () => {
     await logoutSession();
     window.location.href = '/';
   };
 
   // DEFINICIÓN DEL MENÚ LATERAL
-  // Aquí agregamos la nueva opción "Grupos"
   const menuItems = [
     { text: 'Inicio', icon: <Dashboard />, path: '/dashboard' },
     { text: 'Calendario', icon: <CalendarMonth />, path: '/calendar' },
-    { text: 'Grupos', icon: <Groups />, path: '/teams' }, // <--- NUEVA OPCIÓN
+    { text: 'Grupos', icon: <Groups />, path: '/teams' },
     { text: 'Alumnos', icon: <People />, path: '/athletes' },
     { text: 'Finanzas', icon: <Payment />, path: '/finance' },
+    { text: 'Conexiones', icon: <LinkIcon />, path: '/connections' }, // <--- NUEVA OPCIÓN
   ];
 
   const handleDrawerToggle = () => {
@@ -50,20 +66,20 @@ const Layout = ({ children }) => {
           SENDERO <span style={{ color: 'white' }}>MENDIETA</span>
         </Typography>
       </Toolbar>
-      
+
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
-      
+
       {/* LISTA DE NAVEGACIÓN */}
       <List sx={{ flexGrow: 1, px: 1 }}>
         {menuItems.map((item) => (
           <ListItem key={item.text} disablePadding sx={{ mb: 1 }}>
-            <ListItemButton 
+            <ListItemButton
               onClick={() => navigate(item.path)}
               selected={location.pathname === item.path}
               sx={{
                 borderRadius: 2, // Bordes redondeados en los botones del menú (Moderno)
-                '&.Mui-selected': { 
-                  bgcolor: 'rgba(245, 124, 0, 0.15)', 
+                '&.Mui-selected': {
+                  bgcolor: 'rgba(245, 124, 0, 0.15)',
                   borderLeft: '4px solid #F57C00', // Indicador visual a la izquierda
                   color: '#F57C00'
                 },
@@ -73,21 +89,21 @@ const Layout = ({ children }) => {
               <ListItemIcon sx={{ minWidth: 40, color: location.pathname === item.path ? '#F57C00' : '#94A3B8' }}>
                 {item.icon}
               </ListItemIcon>
-              <ListItemText 
-                primary={item.text} 
-                primaryTypographyProps={{ fontSize: '0.9rem', fontWeight: location.pathname === item.path ? 600 : 400 }} 
+              <ListItemText
+                primary={item.text}
+                primaryTypographyProps={{ fontSize: '0.9rem', fontWeight: location.pathname === item.path ? 600 : 400 }}
               />
             </ListItemButton>
           </ListItem>
         ))}
       </List>
-      
+
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
-      
+
       {/* FOOTER DEL MENÚ (CERRAR SESIÓN) */}
       <List sx={{ px: 1 }}>
         <ListItem disablePadding>
-          <ListItemButton 
+          <ListItemButton
             onClick={handleLogout}
             sx={{ borderRadius: 2, '&:hover': { bgcolor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' } }}
           >
@@ -102,12 +118,12 @@ const Layout = ({ children }) => {
   return (
     <Box sx={{ display: 'flex' }}>
       {/* BARRA SUPERIOR (HEADER) */}
-      <AppBar position="fixed" 
-        sx={{ 
-          width: { sm: `calc(100% - ${drawerWidth}px)` }, 
+      <AppBar position="fixed"
+        sx={{
+          width: { sm: `calc(100% - ${drawerWidth}px)` },
           ml: { sm: `${drawerWidth}px` },
-          bgcolor: 'white', 
-          color: '#1E293B', 
+          bgcolor: 'white',
+          color: '#1E293B',
           boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)', // Sombra sutil profesional
           borderBottom: 'none'
         }}
@@ -116,11 +132,11 @@ const Layout = ({ children }) => {
           <IconButton color="inherit" edge="start" onClick={handleDrawerToggle} sx={{ mr: 2, display: { sm: 'none' } }}>
             <MenuIcon />
           </IconButton>
-          
+
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1, fontWeight: 700, fontSize: '1.1rem' }}>
-            Panel de Entrenadores 🚀
+            {userRole === 'athlete' ? 'Panel del Atleta 🚀' : 'Panel de Entrenadores 🚀'}
           </Typography>
-          
+
           {/* Avatar del usuario (Esquina superior derecha) */}
           <Avatar sx={{ bgcolor: '#F57C00', fontWeight: 'bold' }}>FM</Avatar>
         </Toolbar>

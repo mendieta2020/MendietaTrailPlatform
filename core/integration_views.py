@@ -121,9 +121,11 @@ class IntegrationStartView(APIView):
         )
         
         return Response({
-            "oauth_url": oauth_url,
+            "authorization_url": oauth_url,  # New canonical key
+            "oauth_url": oauth_url,          # Backward compatibility
             "provider": provider,
         })
+
     
     def _get_callback_uri(self, provider):
         """Get callback URI for provider (provider-specific settings)."""

@@ -15,7 +15,9 @@ import CalendarPage from './pages/Calendar';
 import Teams from './pages/Teams';
 import TeamDetail from './pages/TeamDetail';
 import Alerts from './pages/Alerts';
+import Connections from './pages/Connections';
 import { useAuth } from './context/AuthContext';
+
 
 // --- COMPONENTE DE SEGURIDAD (GUARDIÁN) ---
 // Verifica si existe un token válido. Si no, redirige al Login.
@@ -33,7 +35,7 @@ const ProtectedRoute = ({ children }) => {
     }
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
-  
+
   return children;
 };
 
@@ -42,74 +44,74 @@ function App() {
     <ThemeProvider theme={theme}>
       {/* CssBaseline: Reset CSS estándar para consistencia visual */}
       <CssBaseline />
-      
+
       <BrowserRouter>
         <Routes>
-          
+
           {/* RUTA PÚBLICA: Login */}
           <Route path="/" element={<Login />} />
           <Route path="/login" element={<Login />} />
 
           {/* --- RUTAS PRIVADAS (ÁREA SEGURA) --- */}
-          
+
           {/* 1. Panel Principal (Torre de Control) */}
-          <Route 
-            path="/dashboard" 
+          <Route
+            path="/dashboard"
             element={
               <ProtectedRoute>
                 <Dashboard />
               </ProtectedRoute>
-            } 
+            }
           />
 
           {/* 2. Calendario de Temporada */}
-          <Route 
-            path="/calendar" 
+          <Route
+            path="/calendar"
             element={
               <ProtectedRoute>
                 <CalendarPage />
               </ProtectedRoute>
-            } 
+            }
           />
 
           {/* 3. Gestión de Equipos (LISTADO) */}
-          <Route 
-            path="/teams" 
+          <Route
+            path="/teams"
             element={
               <ProtectedRoute>
                 <Teams />
               </ProtectedRoute>
-            } 
+            }
           />
 
           {/* 4. Detalle de Equipo (VISTA ESPECÍFICA) */}
-          <Route 
-            path="/teams/:id" 
+          <Route
+            path="/teams/:id"
             element={
               <ProtectedRoute>
                 <TeamDetail />
               </ProtectedRoute>
-            } 
+            }
           />
 
           {/* 5. Gestión de Alumnos (LISTADO CRM) */}
-          <Route 
-            path="/athletes" 
+          <Route
+            path="/athletes"
             element={
               <ProtectedRoute>
                 <Athletes />
               </ProtectedRoute>
-            } 
+            }
           />
 
           {/* 6. Perfil del Atleta (VISTA INDIVIDUAL - NUEVA) */}
-          <Route 
-            path="/athletes/:id" 
+          <Route
+            path="/athletes/:id"
             element={
               <ProtectedRoute>
                 <AthleteDetail />
               </ProtectedRoute>
-            } 
+            }
           />
 
           {/* 7. Alertas */}
@@ -122,15 +124,25 @@ function App() {
             }
           />
 
-          {/* 7. Finanzas (Placeholder para el futuro inmediato) */}
-          <Route 
-            path="/finance" 
+          {/* 8. Conexiones con Plataformas */}
+          <Route
+            path="/connections"
+            element={
+              <ProtectedRoute>
+                <Connections />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* 9. Finanzas (Placeholder para el futuro inmediato) */}
+          <Route
+            path="/finance"
             element={
               <ProtectedRoute>
                 {/* Por ahora redirige al dashboard, pronto tendrá su propia pantalla */}
                 <Navigate to="/dashboard" replace />
               </ProtectedRoute>
-            } 
+            }
           />
 
           {/* RUTA COMODÍN: Cualquier dirección desconocida redirige al Login */}
