@@ -265,24 +265,63 @@ def link_strava_on_oauth(sender, request, sociallogin, **kwargs):
         extra_data = getattr(account, "extra_data", None) or {}
         
         # Validation 1: access_token must exist
+        # P0 HOTFIX: Use persisted SocialToken as source of truth, not just extra_data
+        # extra_data may be incomplete even when allauth persisted token correctly
         access_token = extra_data.get("access_token")
+        
         if not access_token:
-            logger.error(
-                "oauth.link.missing_access_token",
-                extra={"user_id": user.id, "alumno_id": alumno.id, "provider": "strava"},
-            )
-            from .integration_models import OAuthIntegrationStatus
-            OAuthIntegrationStatus.objects.update_or_create(
-                alumno=alumno,
-                provider="strava",
-                defaults={
-                    "connected": False,
-                    "error_reason": "missing_access_token",
-                    "error_message": "OAuth token exchange completed but access_token missing from response",
-                    "last_error_at": timezone.now(),
-                },
-            )
-            return
+            # Fallback: check if SocialToken exists (source of truth)
+            try:
+                from django.apps import apps
+                SocialToken = apps.get_model("socialaccount", "SocialToken")
+                persisted_token = SocialToken.objects.filter(
+                    account__user=user,
+                    account__provider="strava"
+                ).first()
+                
+                if persisted_token and (persisted_token.token or "").strip():
+                    # Token exists in DB - validation passes despite missing in extra_data
+                    access_token = persisted_token.token  # Use for success path
+                    logger.info(
+                        "oauth.link.token_from_socialtoken",
+                        extra={"user_id": user.id, "alumno_id": alumno.id, "provider": "strava"},
+                    )
+                else:
+                    # BOTH extra_data AND persisted token missing → true missing_access_token
+                    logger.error(
+                        "oauth.link.missing_access_token",
+                        extra={"user_id": user.id, "alumno_id": alumno.id, "provider": "strava"},
+                    )
+                    from .integration_models import OAuthIntegrationStatus
+                    OAuthIntegrationStatus.objects.update_or_create(
+                        alumno=alumno,
+                        provider="strava",
+                        defaults={
+                            "connected": False,
+                            "error_reason": "missing_access_token",
+                            "error_message": "OAuth token exchange completed but access_token missing from response",
+                            "last_error_at": timezone.now(),
+                        },
+                    )
+                    return
+            except Exception as e:
+                # Fallback failed - mark as error
+                logger.error(
+                    "oauth.link.socialtoken_lookup_failed",
+                    extra={"user_id": user.id, "alumno_id": alumno.id, "provider": "strava", "error": str(e)},
+                )
+                from .integration_models import OAuthIntegrationStatus
+                OAuthIntegrationStatus.objects.update_or_create(
+                    alumno=alumno,
+                    provider="strava",
+                    defaults={
+                        "connected": False,
+                        "error_reason": "missing_access_token",
+                        "error_message": "OAuth token exchange completed but access_token missing from response",
+                        "last_error_at": timezone.now(),
+                    },
+                )
+                return
         
         # Validation 2: athlete.id must exist
         athlete_id = _extract_strava_athlete_id_from_sociallogin(sociallogin)

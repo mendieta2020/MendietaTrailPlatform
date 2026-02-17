@@ -79,12 +79,15 @@ class TestOAuthSignalHardening:
         assert integration.error_message == ""
         assert integration.expires_at is not None
     
-    def test_signal_missing_access_token_marks_failed(self):
+    def test_signal_access_token_from_socialtoken_succeeds(self):
         """
-        GIVEN: OAuth callback missing access_token
+        P0 HOTFIX REGRESSION TEST:
+        GIVEN: OAuth callback with no access_token in extra_data BUT SocialToken exists
         WHEN: signal triggers
-        THEN: Creates OAuthIntegrationStatus with connected=False and error_reason
+        THEN: Falls back to SocialToken, creates connected=True status (NOT false error)
         """
+        from allauth.socialaccount.models import SocialAccount, SocialToken, SocialApp
+        
         user = User.objects.create_user(username="athlete2", password="test")
         coach = User.objects.create_user(username="coach2", password="test")
         alumno = Alumno.objects.create(
@@ -95,20 +98,90 @@ class TestOAuthSignalHardening:
             equipo=None,
         )
         
-        # Mock sociallogin WITHOUT access_token
+        # Create SocialApp (required by allauth)
+        social_app = SocialApp.objects.create(
+            provider="strava",
+            name="Strava",
+            client_id="test_client_id",
+            secret="test_secret",
+        )
+        
+        # Create SocialAccount + SocialToken (as allauth would after OAuth)
+        social_account = SocialAccount.objects.create(
+            user=user,
+            provider="strava",
+            uid="11111111",
+            extra_data={"athlete": {"id": 11111111}},  # No access_token in extra_data!
+        )
+        
+        SocialToken.objects.create(
+            app=social_app,
+            account=social_account,
+            token="valid_persisted_token_abc123",  # Token EXISTS HERE
+            token_secret="",
+        )
+        
+        # Mock sociallogin WITHOUT access_token in extra_data
         mock_sociallogin = Mock()
         mock_account = Mock()
         mock_account.provider = "strava"
         mock_account.extra_data = {
-            # Missing access_token!
-            "athlete": {
-                "id": 11111111,
-            },
+            # Missing access_token in extra_data!
+            "athlete": {"id": 11111111},
         }
         mock_sociallogin.account = mock_account
         mock_sociallogin.user = user
         
         # Trigger signal
+        link_strava_on_oauth(
+            sender=None,
+            request=None,
+            sociallogin=mock_sociallogin,
+        )
+        
+        # Assert: OAuthIntegrationStatus created as CONNECTED (not failed!)
+        integration = OAuthIntegrationStatus.objects.get(
+            alumno=alumno,
+            provider="strava",
+        )
+        assert integration.connected is True  # MUST BE TRUE (hotfix verification)
+        assert integration.error_reason == ""
+        assert integration.athlete_id == "11111111"
+        
+        # Assert: ExternalIdentity created
+        assert ExternalIdentity.objects.filter(
+            provider="strava",
+            external_user_id="11111111",
+        ).exists()
+    
+    def test_signal_missing_access_token_marks_failed(self):
+        """
+        GIVEN: OAuth callback missing access_token in BOTH extra_data AND SocialToken
+        WHEN: signal triggers
+        THEN: Creates OAuthIntegrationStatus with connected=False and error_reason
+        """
+        user = User.objects.create_user(username="athlete2b", password="test")
+        coach = User.objects.create_user(username="coach2b", password="test")
+        alumno = Alumno.objects.create(
+            usuario=user,
+            entrenador=coach,
+            nombre="Test",
+            apellido="Athlete2b",
+            equipo=None,
+        )
+        
+        # Mock sociallogin WITHOUT access_token, and NO SocialToken exists
+        mock_sociallogin = Mock()
+        mock_account = Mock()
+        mock_account.provider = "strava"
+        mock_account.extra_data = {
+            # Missing access_token!
+            "athlete": {"id": 22222222},
+        }
+        mock_sociallogin.account = mock_account
+        mock_sociallogin.user = user
+        
+        # Trigger signal (no SocialToken exists for this user)
         link_strava_on_oauth(
             sender=None,
             request=None,
@@ -128,7 +201,7 @@ class TestOAuthSignalHardening:
         # Assert: ExternalIdentity NOT created (fail-closed)
         assert not ExternalIdentity.objects.filter(
             provider="strava",
-            external_user_id="11111111",
+            external_user_id="22222222",
         ).exists()
     
     def test_signal_missing_athlete_id_marks_failed(self):
