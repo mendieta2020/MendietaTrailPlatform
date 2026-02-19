@@ -2,7 +2,7 @@
 PR6: Tenant Isolation – ViewSet-level tests using reverse().
 
 Purpose:
-- Mirror isolation guarantees from tests_tenant_isolation_pr6.py.
+- Tenant isolation tests for PlantillaViewSet and VideoUploadViewSet using reverse()
 - Use Django reverse() to validate router basenames explicitly.
 - Covers PlantillaViewSet (basename='plantilla') and
   VideoUploadViewSet (basename='upload-video').
