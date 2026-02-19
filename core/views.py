@@ -120,7 +120,7 @@ class VideoUploadViewSet(TenantModelViewSet):
     Endpoint dedicado para subir videos cortos de ejercicios.
     Recibe un archivo, lo guarda y devuelve la URL.
     """
-    queryset = VideoEjercicio.objects.all()
+    queryset = VideoEjercicio.objects.order_by("id")
     serializer_class = VideoEjercicioSerializer
     parser_classes = (MultiPartParser, FormParser) # Habilita subida de archivos
     permission_classes = [permissions.IsAuthenticated, IsCoachUser]
