@@ -15,6 +15,7 @@ from .views import (
 from .integration_views import IntegrationStartView, IntegrationStatusView, CoachAthleteIntegrationStatusView, ProviderStatusView
 from .integration_callback_views import IntegrationCallbackView
 from .identity_views import UserIdentityView
+from .connection_views import ProviderConnectionStatusView  # PR11
 
 # Creamos el router para la API REST estándar
 router = DefaultRouter()
@@ -77,7 +78,10 @@ urlpatterns = [
     path('integrations/<str:provider>/callback', IntegrationCallbackView.as_view(), name='integration_callback'),
     path('integrations/<str:provider>/status', ProviderStatusView.as_view(), name='provider_status'),  # NEW: Provider-specific status
     path('integrations/status', IntegrationStatusView.as_view(), name='integration_status'),  # All providers status
-    
+
+    # PR11: Non-Strava provider connection status (derived from OAuthCredential)
+    path('connections/', ProviderConnectionStatusView.as_view(), name='provider_connections'),
+
     # Coach-scoped integration status
     path('coach/athletes/<int:alumno_id>/integrations/status', CoachAthleteIntegrationStatusView.as_view(), name='coach_athlete_integration_status'),
     

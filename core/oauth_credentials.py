@@ -302,3 +302,155 @@ def persist_oauth_tokens_v2(
         )
         return PersistResult(False, "persist_error", f"Failed to persist OAuthCredential: {str(exc)}")
 
+
+# ==============================================================================
+# PR11: Connection Status Computation
+# ==============================================================================
+
+@dataclass
+class ConnectionStatus:
+    """
+    Computed connection status for a single (alumno, provider) pair.
+
+    Derived from OAuthCredential (PR10) — for non-Strava providers.
+    Strava uses OAuthIntegrationStatus (core/integration_models.py) via callbacks.
+
+    Fields:
+        status:      "connected" | "disconnected" | "needs_reauth"
+        reason_code: "" | "no_credential" | "token_expired" | "internal_error"
+        expires_at:  Token expiry (None if not set or not applicable)
+        updated_at:  Last credential update (None if no credential exists)
+
+    Security:
+        No token values are stored here. Only status + timestamps.
+    """
+    status: str
+    reason_code: str
+    expires_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+
+def compute_connection_status(alumno, provider: str) -> ConnectionStatus:
+    """
+    Derive the connection status for an (alumno, provider) pair from OAuthCredential.
+
+    This function is READ-ONLY and has NO side effects.
+
+    Decision logic:
+        1. No OAuthCredential row → disconnected / no_credential
+        2. Row exists + expires_at is set + expires_at <= now() → needs_reauth / token_expired
+        3. Row exists + (expires_at is None OR expires_at > now()) → connected / ""
+
+    Args:
+        alumno:   Alumno model instance (must have .pk).
+        provider: Provider string (e.g., "garmin", "coros"). Case-insensitive (lowercased internally).
+
+    Returns:
+        ConnectionStatus dataclass. Never raises.
+
+    Security:
+        - Tokens NEVER read beyond their boolean existence.
+        - Logs include alumno_id + provider + reason_code only.
+        - Multi-tenant: caller must guarantee alumno is the correct tenant.
+
+    Scope:
+        For non-Strava providers using OAuthCredential (PR10).
+        Strava status → OAuthIntegrationStatus (integration_models.py).
+    """
+    from django.db import OperationalError, ProgrammingError
+
+    if not provider or not isinstance(provider, str):
+        logger.warning(
+            "compute_connection_status.invalid_provider",
+            extra={"alumno_id": getattr(alumno, "pk", None), "provider": repr(provider)},
+        )
+        return ConnectionStatus(
+            status="disconnected",
+            reason_code="internal_error",
+            expires_at=None,
+            updated_at=None,
+        )
+
+    provider = provider.lower().strip()
+
+    if alumno is None or not getattr(alumno, "pk", None):
+        logger.warning(
+            "compute_connection_status.invalid_alumno",
+            extra={"alumno_id": None, "provider": provider},
+        )
+        return ConnectionStatus(
+            status="disconnected",
+            reason_code="internal_error",
+            expires_at=None,
+            updated_at=None,
+        )
+
+    try:
+        from core.models import OAuthCredential  # local import avoids circular deps
+
+        cred = (
+            OAuthCredential.objects
+            .filter(alumno=alumno, provider=provider)
+            .order_by("-updated_at")
+            .first()
+        )
+
+        if cred is None:
+            logger.info(
+                "compute_connection_status.disconnected",
+                extra={"alumno_id": alumno.pk, "provider": provider, "reason_code": "no_credential"},
+            )
+            return ConnectionStatus(
+                status="disconnected",
+                reason_code="no_credential",
+                expires_at=None,
+                updated_at=None,
+            )
+
+        if cred.expires_at is not None and cred.expires_at <= timezone.now():
+            logger.info(
+                "compute_connection_status.needs_reauth",
+                extra={"alumno_id": alumno.pk, "provider": provider, "reason_code": "token_expired"},
+            )
+            return ConnectionStatus(
+                status="needs_reauth",
+                reason_code="token_expired",
+                expires_at=cred.expires_at,
+                updated_at=cred.updated_at,
+            )
+
+        # Credential exists and is not expired (or has no expiry set)
+        logger.info(
+            "compute_connection_status.connected",
+            extra={"alumno_id": alumno.pk, "provider": provider, "reason_code": ""},
+        )
+        return ConnectionStatus(
+            status="connected",
+            reason_code="",
+            expires_at=cred.expires_at,
+            updated_at=cred.updated_at,
+        )
+
+    except (OperationalError, ProgrammingError) as exc:
+        # DB not available (e.g., test setup edge case) — treat as disconnected
+        logger.exception(
+            "compute_connection_status.db_error",
+            extra={"alumno_id": alumno.pk, "provider": provider, "error_type": type(exc).__name__},
+        )
+        return ConnectionStatus(
+            status="disconnected",
+            reason_code="internal_error",
+            expires_at=None,
+            updated_at=None,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "compute_connection_status.unexpected_error",
+            extra={"alumno_id": alumno.pk, "provider": provider, "error_type": type(exc).__name__},
+        )
+        return ConnectionStatus(
+            status="disconnected",
+            reason_code="internal_error",
+            expires_at=None,
+            updated_at=None,
+        )
