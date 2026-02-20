@@ -1,115 +1,60 @@
 """
-Multi-provider OAuth integration registry.
+core/providers.py — Legacy shim (PR8 cleanup).
 
-Defines available OAuth providers (Strava, Garmin, Coros, Suunto) and provides
-a registry pattern for managing provider-specific OAuth flows.
+IMPORTANT: This file previously contained standalone provider stubs
+(StravaProvider, GarminProvider, etc.). Those stubs have been moved to
+the canonical registry under core/providers/ package.
+
+This module now re-exports from the canonical registry for backward
+compatibility with any code that imports directly from core.providers.
+
+Source of truth: core/providers/registry.py
 """
-from abc import ABC, abstractmethod
-from typing import Any
-from django.conf import settings
+
+# Re-export canonical functions from the registry package
+from core.providers.registry import (  # noqa: F401
+    get_provider,
+    register_provider,
+    list_providers,
+    is_enabled,
+)
+
+# Re-export provider classes for any code that imports them directly
+from core.providers.strava import StravaProvider    # noqa: F401
+from core.providers.garmin import GarminProvider   # noqa: F401
+from core.providers.coros import CorosProvider     # noqa: F401
+from core.providers.suunto import SuuntoProvider   # noqa: F401
+from core.providers.polar import PolarProvider     # noqa: F401
+from core.providers.wahoo import WahooProvider     # noqa: F401
+
+# Legacy: PROVIDERS dict kept for any consumer that imported it directly
+# Points to the registry dict (same instances)
+PROVIDERS = list_providers()
 
 
-class IntegrationProvider(ABC):
-    """Base class for OAuth integration providers."""
-    
-    @property
-    @abstractmethod
-    def provider_id(self) -> str:
-        """Unique provider identifier (e.g., 'strava')."""
-        pass
-    
-    @property
-    @abstractmethod
-    def display_name(self) -> str:
-        """Human-readable provider name (e.g., 'Strava')."""
-        pass
-    
-    @property
-    @abstractmethod
-    def enabled(self) -> bool:
-        """Whether this provider is currently enabled for connections."""
-        pass
-    
-    @property
-    def icon_url(self) -> str:
-        """Optional icon URL for frontend display."""
-        return ""
-
-
-class StravaProvider(IntegrationProvider):
-    """Strava OAuth integration (active)."""
-    
-    provider_id = "strava"
-    display_name = "Strava"
-    enabled = True
-    icon_url = "/static/icons/strava.svg"  # Optional
-
-
-class GarminProvider(IntegrationProvider):
-    """Garmin Connect OAuth integration (coming soon)."""
-    
-    provider_id = "garmin"
-    display_name = "Garmin Connect"
-    enabled = False  # Coming soon stub
-
-
-class CorosProvider(IntegrationProvider):
-    """Coros OAuth integration (coming soon)."""
-    
-    provider_id = "coros"
-    display_name = "Coros"
-    enabled = False  # Coming soon stub
-
-
-class SuuntoProvider(IntegrationProvider):
-    """Suunto OAuth integration (coming soon)."""
-    
-    provider_id = "suunto"
-    display_name = "Suunto"
-    enabled = False  # Coming soon stub
-
-
-# Provider registry
-PROVIDERS: dict[str, IntegrationProvider] = {
-    "strava": StravaProvider(),
-    "garmin": GarminProvider(),
-    "coros": CorosProvider(),
-    "suunto": SuuntoProvider(),
-}
-
-
-def get_provider(provider_id: str) -> IntegrationProvider | None:
+def get_available_providers():
     """
-    Get provider instance by ID.
-    
-    Args:
-        provider_id: Provider identifier (e.g., "strava")
-    
-    Returns:
-        IntegrationProvider instance or None if not found
-    """
-    return PROVIDERS.get(provider_id)
+    DEPRECATED: Use core.providers.list_providers() directly.
 
-
-def get_available_providers() -> list[dict[str, Any]]:
+    Kept for backward compatibility. Returns all registered providers
+    (enabled and disabled) as a list of dicts.
     """
-    Get list of available providers for frontend catalog.
-    
-    Returns:
-        List of dicts with provider metadata:
-        [{"id": "strava", "name": "Strava", "enabled": True}, ...]
-    """
+    providers = list_providers()
     return [
         {
             "id": p.provider_id,
             "name": p.display_name,
-            "enabled": p.enabled,
-            "icon_url": p.icon_url if hasattr(p, 'icon_url') else "",
+            "enabled": getattr(p, "enabled", False),
+            "icon_url": getattr(p, "icon_url", ""),
         }
-        for p in PROVIDERS.values()
+        for p in providers.values()
     ]
 
 
-def get_enabled_providers() -> list[IntegrationProvider]:
-    """Get list of enabled providers."""
-    return [p for p in PROVIDERS.values() if p.enabled]
+def get_enabled_providers():
+    """
+    DEPRECATED: Use core.providers.list_providers() + filter.
+
+    Returns only enabled providers.
+    """
+    return [p for p in list_providers().values() if getattr(p, "enabled", False)]

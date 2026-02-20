@@ -28,7 +28,11 @@ class StravaProvider(IntegrationProvider):
     @property
     def display_name(self) -> str:
         return "Strava"
-    
+
+    @property
+    def enabled(self) -> bool:
+        return True
+
     def capabilities(self) -> Dict[str, bool]:
         """Strava supports token refresh and activity fetch."""
         return {

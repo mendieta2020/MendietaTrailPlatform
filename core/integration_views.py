@@ -29,17 +29,21 @@ logger = logging.getLogger(__name__)
 
 def get_available_providers():
     """
-    Get list of available providers from registry.
-    
+    Get list of all registered providers from canonical registry.
+
+    Includes both enabled (active) and disabled (Coming Soon) providers.
+    The frontend uses the 'enabled' flag to show "Próximamente" state.
+
     Returns:
-        List of dicts: [{"id": "strava", "name": "Strava", "enabled": True}, ...]
+        List of dicts with provider metadata.
     """
     providers = list_providers()
     return [
         {
             "id": provider_obj.provider_id,
             "name": provider_obj.display_name,
-            "enabled": True,  # All registered providers are enabled
+            # Use the actual enabled property — NOT hardcoded True
+            "enabled": getattr(provider_obj, "enabled", False),
         }
         for provider_id, provider_obj in providers.items()
     ]
@@ -72,7 +76,27 @@ class IntegrationStartView(APIView):
                 {"error": "unknown_provider", "message": f"Provider '{provider}' not supported"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        
+
+        # Guard: provider registered but not yet enabled (Coming Soon)
+        # Return 422 Unprocessable Entity — not a server error, not a bad request.
+        # The provider exists but is explicitly disabled until implementation is complete.
+        if not getattr(provider_obj, "enabled", False):
+            logger.info(
+                "oauth.start.provider_disabled",
+                extra={
+                    "provider": provider,
+                    "user_id": request.user.id,
+                },
+            )
+            return Response(
+                {
+                    "error": "provider_disabled",
+                    "message": f"{provider_obj.display_name} integration is not yet available.",
+                    "provider": provider,
+                },
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+
         # Validate user has Alumno profile
         try:
             alumno = Alumno.objects.get(usuario=request.user)

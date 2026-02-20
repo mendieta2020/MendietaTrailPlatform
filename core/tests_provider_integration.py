@@ -275,3 +275,134 @@ class TestGenericOAuthCallback:
         # Assert: Should redirect to error (fail-closed)
         assert response.status_code == 302
         assert 'error' in response.url or 'invalid_user_id' in response.url
+
+
+# ===========================================================================
+# PR8: Provider Registry Hardening — Protective Tests
+# ===========================================================================
+
+DISABLED_PROVIDERS = ["garmin", "coros", "suunto", "polar", "wahoo"]
+
+
+@pytest.mark.django_db
+class TestDisabledProviderGuard:
+    """
+    PR8: IntegrationStartView must return 422 for any disabled provider.
+
+    Prevents the routing bug where start view accepted a disabled provider
+    but the callback would fail with unsupported_provider (500).
+    """
+
+    def test_start_disabled_provider_returns_422(self, client, django_user_model):
+        """POST /api/integrations/<disabled>/start must return 422, not 500."""
+        user = django_user_model.objects.create_user(
+            username="athlete_pr8",
+            email="athlete_pr8@test.com",
+            password="testpass",
+        )
+        from core.models import Alumno
+        Alumno.objects.create(
+            nombre="PR8",
+            apellido="Athlete",
+            email="athlete_pr8@test.com",
+            usuario=user,
+        )
+
+        client.force_login(user)
+
+        for provider in DISABLED_PROVIDERS:
+            response = client.post(
+                f"/api/integrations/{provider}/start",
+                content_type="application/json",
+            )
+            assert response.status_code == 422, (
+                f"Expected 422 for disabled provider '{provider}', got {response.status_code}"
+            )
+            data = response.json()
+            assert data.get("error") == "provider_disabled", (
+                f"Expected error='provider_disabled' for '{provider}', got: {data}"
+            )
+            assert "provider" in data, (
+                f"Response for '{provider}' must include 'provider' field"
+            )
+
+    def test_start_unknown_provider_returns_400(self, client, django_user_model):
+        """POST /api/integrations/<unknown>/start must return 400, not 422 or 500."""
+        user = django_user_model.objects.create_user(
+            username="athlete_pr8_unk",
+            email="athlete_pr8_unk@test.com",
+            password="testpass",
+        )
+        client.force_login(user)
+
+        response = client.post(
+            "/api/integrations/nonexistent_provider/start",
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+        data = response.json()
+        assert data.get("error") == "unknown_provider"
+
+
+@pytest.mark.django_db
+class TestDisabledProvidersInStatusEndpoint:
+    """
+    PR8: GET /api/integrations/status must include all registered providers,
+    with disabled providers marked enabled=False.
+    """
+
+    def test_disabled_providers_appear_in_status_endpoint(self, client, django_user_model):
+        """Status endpoint returns all 6 providers (1 enabled + 5 disabled)."""
+        user = django_user_model.objects.create_user(
+            username="athlete_status_pr8",
+            email="athlete_status_pr8@test.com",
+            password="testpass",
+        )
+        from core.models import Alumno
+        Alumno.objects.create(
+            nombre="Status",
+            apellido="PR8",
+            email="athlete_status_pr8@test.com",
+            usuario=user,
+        )
+        client.force_login(user)
+
+        response = client.get("/api/integrations/status")
+        assert response.status_code == 200
+
+        data = response.json()
+        provider_ids = {item["provider"] for item in data["integrations"]}
+
+        for disabled in DISABLED_PROVIDERS:
+            assert disabled in provider_ids, (
+                f"Disabled provider '{disabled}' must appear in status endpoint"
+            )
+
+        # Each disabled provider must have enabled=False
+        for item in data["integrations"]:
+            if item["provider"] in DISABLED_PROVIDERS:
+                assert item["enabled"] is False, (
+                    f"Provider '{item['provider']}' must have enabled=False in status response"
+                )
+
+    def test_strava_still_enabled(self, client, django_user_model):
+        """Strava must remain enabled=True — backward compat guard."""
+        from core.providers import get_provider
+        strava = get_provider("strava")
+
+        assert strava is not None, "Strava must remain registered after PR8"
+        assert getattr(strava, "enabled", False) is True, (
+            "Strava must have enabled=True — PR8 must not change Strava behavior"
+        )
+
+    def test_registry_has_all_six_providers(self):
+        """Registry must contain exactly 6 known providers after PR8."""
+        from core.providers import list_providers
+        providers = list_providers()
+
+        expected = {"strava", "garmin", "coros", "suunto", "polar", "wahoo"}
+        registered = set(providers.keys())
+
+        assert expected == registered, (
+            f"Registry mismatch. Expected={expected}, Got={registered}"
+        )
