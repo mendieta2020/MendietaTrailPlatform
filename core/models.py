@@ -781,6 +781,51 @@ class ExternalIdentity(models.Model):
             return f"{self.provider}:{self.external_user_id} -> alumno:{self.alumno_id}"
         return f"{self.provider}:{self.external_user_id} (unlinked)"
 
+class OAuthCredential(models.Model):
+    """
+    Provider-agnostic OAuth token storage (PR10 foundation).
+
+    Design:
+      - One row per (alumno, provider) — enforced by UniqueConstraint.
+      - Intended for future providers (Garmin, Coros, Suunto, Polar, Wahoo).
+      - Strava continues using the allauth bridge (persist_oauth_tokens) unchanged.
+      - Tokens NEVER logged. updated_at auto_now tracks token freshness.
+
+    Multi-tenant discipline:
+      Any query on this model must always filter by alumno (which is
+      organisation-scoped via Alumno.entrenador). Never query globally.
+    """
+
+    alumno = models.ForeignKey(
+        "Alumno",
+        on_delete=models.CASCADE,
+        related_name="oauth_credentials",
+        db_index=True,
+    )
+    provider = models.CharField(max_length=40, db_index=True)
+    external_user_id = models.CharField(max_length=120, db_index=True)
+    access_token = models.TextField()
+    refresh_token = models.TextField(blank=True, default="")
+    expires_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True, db_index=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["alumno", "provider"],
+                name="uniq_oauth_credential_alumno_provider",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["provider", "alumno"]),
+            models.Index(fields=["provider", "-updated_at"]),
+        ]
+
+    def __str__(self):
+        # Safe: no token content exposed via string representation.
+        return f"{self.provider}:alumno:{self.alumno_id}"
+
+
 @receiver(post_save, sender=Pago)
 def actualizar_pago_alumno(sender, instance, **kwargs):
     if instance.es_valido:
