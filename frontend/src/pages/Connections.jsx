@@ -8,22 +8,34 @@ import {
     Alert,
     CircularProgress,
     Chip,
-    Stack
+    Stack,
+    Dialog,
+    DialogTitle,
+    DialogContent,
+    DialogActions,
+    Tooltip
 } from '@mui/material';
 import {
     CheckCircle,
     Error as ErrorIcon,
-    Link as LinkIcon
+    Link as LinkIcon,
+    PhoneIphone,
+    NotificationsNone
 } from '@mui/icons-material';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import client from '../api/client';
+
+// Providers that require a native mobile app instead of web OAuth
+const MOBILE_ONLY_PROVIDERS = ['apple_health'];
 
 const Connections = () => {
     const [loading, setLoading] = useState(true);
     const [integrations, setIntegrations] = useState([]);
     const [userRole, setUserRole] = useState(null);
     const [alert, setAlert] = useState(null);
+    // Avisarme modal state
+    const [avisarmeProvider, setAvisarmeProvider] = useState(null);
     const location = useLocation();
     const navigate = useNavigate();
 
@@ -115,6 +127,19 @@ const Connections = () => {
     };
 
     const getStatusChip = (integration) => {
+        const isMobileOnly = MOBILE_ONLY_PROVIDERS.includes(integration.provider);
+
+        if (isMobileOnly) {
+            return (
+                <Chip
+                    icon={<PhoneIphone />}
+                    label="App iOS"
+                    color="default"
+                    size="small"
+                    variant="outlined"
+                />
+            );
+        }
         if (integration.connected) {
             return (
                 <Chip
@@ -144,18 +169,59 @@ const Connections = () => {
         }
     };
 
-    const getActionButton = (integration) => {
-        const isStrava = integration.provider === 'strava';
-        const isEnabled = integration.enabled && isStrava; // Only Strava enabled for now
+    const getSubtitle = (integration) => {
+        if (MOBILE_ONLY_PROVIDERS.includes(integration.provider)) {
+            return 'Requiere app iOS con HealthKit. No disponible como integración web.';
+        }
+        if (!integration.enabled) {
+            return 'Próximamente: esta integración aún no está disponible.';
+        }
+        return null;
+    };
 
-        if (!isEnabled) {
+    const getActionButton = (integration) => {
+        const isMobileOnly = MOBILE_ONLY_PROVIDERS.includes(integration.provider);
+
+        // Apple Health / mobile-only: different CTA — not OAuth
+        if (isMobileOnly) {
             return (
-                <Button variant="outlined" disabled size="small">
-                    Próximamente
-                </Button>
+                <Tooltip title="Esta integración requiere la app iOS de MTP con HealthKit." arrow>
+                    <span>
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            disabled
+                            startIcon={<PhoneIphone />}
+                        >
+                            Requiere app
+                        </Button>
+                    </span>
+                </Tooltip>
             );
         }
 
+        // Disabled (Coming Soon) providers
+        if (!integration.enabled) {
+            return (
+                <Box display="flex" flexDirection="column" alignItems="flex-end" gap={0.5}>
+                    <Button variant="outlined" disabled size="small">
+                        Próximamente
+                    </Button>
+                    <Button
+                        size="small"
+                        variant="text"
+                        color="secondary"
+                        startIcon={<NotificationsNone fontSize="small" />}
+                        sx={{ fontSize: '0.72rem', textTransform: 'none', p: 0, minWidth: 0 }}
+                        onClick={() => setAvisarmeProvider(integration)}
+                    >
+                        Avisarme
+                    </Button>
+                </Box>
+            );
+        }
+
+        // Enabled + connected → Reconectar
         if (integration.connected) {
             return (
                 <Button
@@ -168,19 +234,20 @@ const Connections = () => {
                     Reconectar
                 </Button>
             );
-        } else {
-            return (
-                <Button
-                    variant="contained"
-                    color="primary"
-                    size="small"
-                    startIcon={<LinkIcon />}
-                    onClick={() => handleConnect(integration.provider)}
-                >
-                    Conectar con {integration.name}
-                </Button>
-            );
         }
+
+        // Enabled + not connected → Connect CTA
+        return (
+            <Button
+                variant="contained"
+                color="primary"
+                size="small"
+                startIcon={<LinkIcon />}
+                onClick={() => handleConnect(integration.provider)}
+            >
+                Conectar con {integration.name}
+            </Button>
+        );
     };
 
     if (loading && integrations.length === 0) {
@@ -210,44 +277,65 @@ const Connections = () => {
                 )}
 
                 <Stack spacing={2}>
-                    {integrations.map((integration) => (
-                        <Card key={integration.provider} sx={{ boxShadow: 2 }}>
-                            <CardContent>
-                                <Box display="flex" justifyContent="space-between" alignItems="center">
-                                    <Box flex={1}>
-                                        <Box display="flex" alignItems="center" gap={2} mb={1}>
-                                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                                {integration.name}
-                                            </Typography>
-                                            {getStatusChip(integration)}
+                    {integrations.map((integration) => {
+                        const subtitle = getSubtitle(integration);
+                        return (
+                            <Card
+                                key={integration.provider}
+                                sx={{
+                                    boxShadow: 2,
+                                    opacity: integration.enabled ? 1 : 0.82,
+                                }}
+                            >
+                                <CardContent>
+                                    <Box display="flex" justifyContent="space-between" alignItems="flex-start">
+                                        <Box flex={1}>
+                                            <Box display="flex" alignItems="center" gap={2} mb={0.5}>
+                                                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                                    {integration.name}
+                                                </Typography>
+                                                {getStatusChip(integration)}
+                                            </Box>
+
+                                            {/* Helper text for disabled / mobile-only providers */}
+                                            {subtitle && (
+                                                <Typography
+                                                    variant="caption"
+                                                    color="text.disabled"
+                                                    display="block"
+                                                    sx={{ mb: 1 }}
+                                                >
+                                                    {subtitle}
+                                                </Typography>
+                                            )}
+
+                                            {integration.connected && integration.athlete_id && (
+                                                <Typography variant="body2" color="text.secondary">
+                                                    ID de atleta: {integration.athlete_id}
+                                                </Typography>
+                                            )}
+
+                                            {integration.error_reason && (
+                                                <Alert severity="error" sx={{ mt: 1 }}>
+                                                    {integration.last_error || `Error: ${integration.error_reason}`}
+                                                </Alert>
+                                            )}
+
+                                            {integration.last_sync_at && (
+                                                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                                                    Última sincronización: {new Date(integration.last_sync_at).toLocaleString('es-AR')}
+                                                </Typography>
+                                            )}
                                         </Box>
 
-                                        {integration.connected && integration.athlete_id && (
-                                            <Typography variant="body2" color="text.secondary">
-                                                ID de atleta: {integration.athlete_id}
-                                            </Typography>
-                                        )}
-
-                                        {integration.error_reason && (
-                                            <Alert severity="error" sx={{ mt: 1 }}>
-                                                {integration.last_error || `Error: ${integration.error_reason}`}
-                                            </Alert>
-                                        )}
-
-                                        {integration.last_sync_at && (
-                                            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
-                                                Última sincronización: {new Date(integration.last_sync_at).toLocaleString('es-AR')}
-                                            </Typography>
-                                        )}
+                                        <Box ml={2} mt={0.5}>
+                                            {getActionButton(integration)}
+                                        </Box>
                                     </Box>
-
-                                    <Box>
-                                        {getActionButton(integration)}
-                                    </Box>
-                                </Box>
-                            </CardContent>
-                        </Card>
-                    ))}
+                                </CardContent>
+                            </Card>
+                        );
+                    })}
                 </Stack>
 
                 {integrations.length === 0 && (
@@ -256,6 +344,31 @@ const Connections = () => {
                     </Alert>
                 )}
             </Box>
+
+            {/* Avisarme modal — no backend call, purely informational */}
+            <Dialog
+                open={Boolean(avisarmeProvider)}
+                onClose={() => setAvisarmeProvider(null)}
+                maxWidth="xs"
+                fullWidth
+            >
+                <DialogTitle sx={{ pb: 1 }}>
+                    Te avisaremos cuando esté listo
+                </DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" color="text.secondary">
+                        La integración con{' '}
+                        <strong>{avisarmeProvider?.name}</strong>{' '}
+                        está en nuestro roadmap. Te notificaremos dentro de la plataforma
+                        cuando esté disponible.
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setAvisarmeProvider(null)} variant="contained" size="small">
+                        Entendido
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Layout>
     );
 };
