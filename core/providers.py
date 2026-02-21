@@ -27,6 +27,26 @@ from core.providers.suunto import SuuntoProvider   # noqa: F401
 from core.providers.polar import PolarProvider     # noqa: F401
 from core.providers.wahoo import WahooProvider     # noqa: F401
 
+# ---------------------------------------------------------------------------
+# PR12: SUPPORTED_PROVIDERS — Single Source of Truth
+# ---------------------------------------------------------------------------
+# This is the ONE authoritative list of OAuth provider slugs for MTP.
+# Rules:
+#   - Any new provider must be added HERE first (lowercase slug).
+#   - No other module may maintain its own provider list.
+#   - Consumers: import SUPPORTED_PROVIDERS from core.providers
+#   - "strava" is included so that ?provider=strava returns a controlled 400
+#     (Strava status lives in OAuthIntegrationStatus, not OAuthCredential).
+#     The 400 message will guide callers to the correct endpoint.
+# ---------------------------------------------------------------------------
+SUPPORTED_PROVIDERS: list[str] = [
+    "strava",
+    "garmin",
+    "coros",
+    "suunto",
+    "polar",
+]
+
 # Legacy: PROVIDERS dict kept for any consumer that imported it directly
 # Points to the registry dict (same instances)
 PROVIDERS = list_providers()
