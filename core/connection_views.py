@@ -30,16 +30,14 @@ from rest_framework.views import APIView
 from core.models import Alumno
 from core.oauth_credentials import compute_connection_status
 from core.permissions import IsAthleteUser
+from core.providers import SUPPORTED_PROVIDERS
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# PR11 Minimal Provider List
-# Canonical list for providers using OAuthCredential (PR10).
-# Excludes "strava" — it uses OAuthIntegrationStatus (different system).
-# Expand this list as new providers graduate from "stub" to "production".
+# PR12: Provider list is now imported from core.providers (single source of truth).
+# Strava status → GET /api/integrations/status (OAuthIntegrationStatus system).
 # ---------------------------------------------------------------------------
-_PR11_PROVIDERS = ["garmin", "coros", "suunto", "polar", "wahoo"]
 
 
 def _build_connection_payload(provider: str, cs, alumno_id: int) -> dict:
@@ -136,6 +134,32 @@ class ProviderConnectionStatusView(APIView):
         provider_param = request.query_params.get("provider", "").strip().lower()
 
         if provider_param:
+            # PR12: Validate provider against canonical registry (fail-closed)
+            if provider_param not in SUPPORTED_PROVIDERS:
+                logger.warning(
+                    "provider_connection_status.invalid_provider",
+                    extra={"user_id": user.id, "provider": provider_param},
+                )
+                return Response(
+                    {
+                        "error": "invalid_provider",
+                        "message": f"Provider '{provider_param}' is not supported. "
+                                   f"Supported providers: {SUPPORTED_PROVIDERS}",
+                        "supported_providers": SUPPORTED_PROVIDERS,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Strava uses OAuthIntegrationStatus — redirect callers
+            if provider_param == "strava":
+                return Response(
+                    {
+                        "error": "wrong_endpoint",
+                        "message": "Strava status is available at GET /api/integrations/status",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             # Single-provider response
             cs = compute_connection_status(alumno=alumno, provider=provider_param)
             logger.info(
@@ -149,9 +173,9 @@ class ProviderConnectionStatusView(APIView):
             )
             return Response(_build_connection_payload(provider_param, cs, alumno.pk))
 
-        # All-providers response
+        # All-providers response: iterate SUPPORTED_PROVIDERS directly
         connections = []
-        for prov in _PR11_PROVIDERS:
+        for prov in SUPPORTED_PROVIDERS:
             cs = compute_connection_status(alumno=alumno, provider=prov)
             connections.append(_build_connection_payload(prov, cs, alumno.pk))
 
