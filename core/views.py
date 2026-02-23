@@ -34,7 +34,7 @@ from .tenancy import require_athlete_for_user
 
 # Importamos Serializadores
 from .serializers import (
-    AlumnoSerializer, EntrenamientoSerializer,
+    AlumnoSerializer, EntrenamientoSerializer, PlannedWorkoutSerializer,
     PlantillaEntrenamientoSerializer, CarreraSerializer,
     InscripcionCarreraSerializer, PagoSerializer,
     EquipoSerializer, VideoEjercicioSerializer, ActividadSerializer, ActividadRawPayloadSerializer # <--- NUEVO SERIALIZER IMPORTADO
@@ -754,6 +754,10 @@ class AlumnoPlannedWorkoutViewSet(EntrenamientoViewSet):
                 raise ValidationError({"error": "Formato de fecha inválido. Use YYYY-MM-DD."})
             
         return qs
+
+    def get_serializer_class(self):
+        """Use PlannedWorkoutSerializer on the nested route to enforce Plan≠Real contract."""
+        return PlannedWorkoutSerializer
 
     def perform_create(self, serializer):
         user = self.request.user

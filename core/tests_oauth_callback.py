@@ -92,7 +92,7 @@ class TestIntegrationCallback:
         
         # Assert: Redirect to frontend with success
         assert response.status_code == 302
-        assert "/integrations/callback" in response.url
+        assert "/connections" in response.url
         assert "status=success" in response.url
         assert "provider=strava" in response.url
         
@@ -465,7 +465,7 @@ class TestIntegrationCallback:
         
         # Assert: Redirect uses custom FRONTEND_URL
         assert response.status_code == 302
-        assert response.url.startswith("https://custom-frontend.example.com:8080/integrations/callback")
+        assert response.url.startswith("https://custom-frontend.example.com:8080/connections")
         assert "status=success" in response.url
     
     @patch('core.integration_callback_views.requests.post')

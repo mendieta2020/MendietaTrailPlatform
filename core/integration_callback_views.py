@@ -372,8 +372,8 @@ class IntegrationCallbackView(APIView):
             error_message: Human-readable error message
             athlete_id: External user ID if status="success"
         """
-        # Use FRONTEND_BASE_URL if available, fallback to FRONTEND_URL
-        frontend_url = getattr(settings, 'FRONTEND_BASE_URL', None) or getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+        # Use FRONTEND_URL with secure fallback
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
         callback_path = "/connections"  # Final destination after OAuth
         
         params = {
