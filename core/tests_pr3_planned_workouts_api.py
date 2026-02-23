@@ -140,20 +140,29 @@ class PlannedWorkoutsPR3Tests(APITestCase):
         self.client.force_authenticate(user=self.coach_user)
         url = f"/api/alumnos/{self.alumno_1.id}/planned-workouts/"
         
-        payload = {
-            "alumno": self.alumno_2.id, # Try to inject Alumno 2
+        # PR4 Hardening: Injecting a different alumno ID in payload now explicitly returns 400
+        payload_mismatch = {
+            "alumno": self.alumno_2.id,
             "titulo": "Hacked Workout",
             "fecha_asignada": "2026-03-01",
             "tipo_actividad": "RUN"
         }
-        res = self.client.post(url, payload)
-        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        res_mismatch = self.client.post(url, payload_mismatch)
+        self.assertEqual(res_mismatch.status_code, status.HTTP_400_BAD_REQUEST)
         
-        created_id = res.data['id']
+        # Valid payload omitting alumno (inherits from URL)
+        payload_valid = {
+            "titulo": "Valid Workout",
+            "fecha_asignada": "2026-03-01",
+            "tipo_actividad": "RUN"
+        }
+        res_valid = self.client.post(url, payload_valid)
+        self.assertEqual(res_valid.status_code, status.HTTP_201_CREATED)
+        
+        created_id = res_valid.data['id']
         wkt = Entrenamiento.objects.get(pk=created_id)
-        # Should be assigned to Alumno 1 (from URL), NOT Alumno 2
+        # Should be assigned to Alumno 1 (from URL)
         self.assertEqual(wkt.alumno.id, self.alumno_1.id)
-        self.assertNotEqual(wkt.alumno.id, self.alumno_2.id)
 
     def test_compat_alias_urls(self):
         """Verify /athletes/ alias works same as /alumnos/"""

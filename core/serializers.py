@@ -133,9 +133,6 @@ class EntrenamientoSerializer(serializers.ModelSerializer):
                 'distancia_real_km', 
                 'tiempo_real_min', 
                 'desnivel_real_m', 
-                'rpe', 
-                'feedback_alumno',
-                'completado'
             }
             # Chequear tanto initial_data (raw) como attrs (validado) para mayor seguridad
             # initial_data catcha intentos de enviar el campo aunque DRF lo ignore por read_only
@@ -147,6 +144,55 @@ class EntrenamientoSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     "detail": f"Campos de ejecución 'Real' son de solo lectura vía API: {', '.join(forbidden)}",
                     "reason": "real_fields_read_only"
+                })
+
+        return attrs
+
+
+# ==============================================================================
+#  PR5 Hardening: PlannedWorkoutSerializer (nested /alumnos/{id}/planned-workouts/)
+#  Enforces Plan ≠ Real contract: blocks all Real/execution fields for anyone
+#  except staff regardless of role. Coach and Athlete cannot inject Real data
+#  through the planning endpoint.
+# ==============================================================================
+
+class PlannedWorkoutSerializer(EntrenamientoSerializer):
+    """
+    Serializer exclusivo del endpoint nested planned-workouts.
+
+    Contract:
+    - PLAN fields (fecha_asignada, titulo, tipo_actividad, distancia_planificada_km …) → allowed.
+    - REAL fields (rpe, feedback_alumno, completado, distancia_real_km, tiempo_real_min,
+      desnivel_real_m) → always 400 for non-staff (Plan ≠ Real law).
+    - Staff bypass → allowed (migration / operational requirement).
+    """
+
+    # Real fields that are NEVER accepted on the planning endpoint
+    PLAN_ENDPOINT_REAL_FIELDS = frozenset({
+        'rpe',
+        'feedback_alumno',
+        'completado',
+        'distancia_real_km',
+        'tiempo_real_min',
+        'desnivel_real_m',
+    })
+
+    def validate(self, attrs):
+        # Run parent validations first (PR4 alumno-injection check, tenant check)
+        attrs = super().validate(attrs)
+
+        # PR5 Strict: on the planning endpoint, real fields are forbidden for non-staff
+        request = self.context.get("request")
+        if request and not getattr(request.user, 'is_staff', False):
+            incoming_keys = set(self.initial_data.keys()) if hasattr(self, 'initial_data') else set()
+            forbidden = incoming_keys.intersection(self.PLAN_ENDPOINT_REAL_FIELDS)
+            if forbidden:
+                raise serializers.ValidationError({
+                    "detail": (
+                        f"Campos de ejecución 'Real' son de solo lectura vía API: "
+                        f"{', '.join(sorted(forbidden))}"
+                    ),
+                    "reason": "real_fields_read_only",
                 })
 
         return attrs
