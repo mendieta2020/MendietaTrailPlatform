@@ -27,6 +27,11 @@ from .models import (
 from .schema_v1 import compute_metrics_v1
 from .utils.logging import safe_extra
 
+# PR15 — Outbound delivery imports
+from core.providers import SUPPORTED_PROVIDERS
+from core.provider_capabilities import provider_supports, CAP_OUTBOUND_WORKOUTS
+from integrations.outbound.workout_delivery import queue_workout_delivery
+
 logger = logging.getLogger(__name__)
 
 # ==============================================================================
@@ -738,3 +743,95 @@ def sincronizar_actividades_strava(user, dias_historial=None):
             extra=safe_extra({"user_id": user.id}),
         )
         return nuevas, actualizadas, error_msg
+
+
+# ==============================================================================
+#  PR15: OUTBOUND DELIVERY TRIGGER
+# ==============================================================================
+
+def trigger_workout_delivery_if_applicable(entrenamiento, *, actor_user=None) -> None:
+    """
+    PR15 — Trigger outbound delivery for a PlannedWorkout.
+
+    Enqueues queue_workout_delivery ONLY for providers that:
+      1. Appear in SUPPORTED_PROVIDERS (PR12 registry)
+      2. Declare CAP_OUTBOUND_WORKOUTS (PR13) — Strava does NOT
+      3. Have a live OAuthCredential with status="connected" (PR11)
+
+    Fail-closed contract:
+      - Missing alumno / entrenador → log warning + return (never raise).
+      - Any unexpected exception is caught and logged; never propagates to HTTP layer.
+
+    Multi-tenant:
+      organization_id = alumno.entrenador_id  (coach user pk = tenant key in MTP).
+
+    This function is fire-and-forget: callers do not inspect the return value.
+    """
+    try:
+        alumno = getattr(entrenamiento, "alumno", None)
+        if alumno is None:
+            logger.warning(
+                "workout_delivery_trigger.missing_alumno",
+                extra=safe_extra({"entrenamiento_id": getattr(entrenamiento, "id", None)}),
+            )
+            return
+
+        organization_id = getattr(alumno, "entrenador_id", None)
+        if not organization_id:
+            logger.warning(
+                "workout_delivery_trigger.missing_organization",
+                extra=safe_extra({
+                    "entrenamiento_id": getattr(entrenamiento, "id", None),
+                    "alumno_id": alumno.pk,
+                }),
+            )
+            return
+
+        athlete_id = alumno.pk
+        planned_workout_id = entrenamiento.pk
+
+        # Lazy import to avoid circular dependency at import-time
+        from core.oauth_credentials import compute_connection_status
+
+        eligible_providers = []
+
+        for provider in SUPPORTED_PROVIDERS:
+            # Gate 1: capability check (no DB hit)
+            if not provider_supports(provider, CAP_OUTBOUND_WORKOUTS):
+                continue
+
+            # Gate 2: connection status (reads OAuthCredential)
+            cs = compute_connection_status(alumno=alumno, provider=provider)
+            if cs.status != "connected":
+                continue
+
+            # Provider is eligible — enqueue delivery
+            queue_workout_delivery(
+                organization_id=organization_id,
+                athlete_id=athlete_id,
+                provider=provider,
+                planned_workout_id=planned_workout_id,
+                payload={},
+            )
+            eligible_providers.append(provider)
+
+        logger.info(
+            "workout_delivery_trigger.completed",
+            extra=safe_extra({
+                "event_name": "workout_delivery_trigger.completed",
+                "organization_id": organization_id,
+                "athlete_id": athlete_id,
+                "planned_workout_id": planned_workout_id,
+                "eligible_providers": eligible_providers,
+                "actor_user_id": getattr(actor_user, "id", None),
+            }),
+        )
+
+    except Exception:  # noqa: BLE001 — fire-and-forget, must never break HTTP flow
+        logger.exception(
+            "workout_delivery_trigger.unexpected_error",
+            extra=safe_extra({
+                "entrenamiento_id": getattr(entrenamiento, "id", None),
+                "actor_user_id": getattr(actor_user, "id", None),
+            }),
+        )
