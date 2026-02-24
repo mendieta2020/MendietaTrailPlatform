@@ -390,18 +390,28 @@ DEFAULT_FROM_EMAIL = 'Mendieta Platform <noreply@mendieta.ai>'
 # ==============================================================================
 #  CORS & SEGURIDAD WEBHOOKS
 # ==============================================================================
-# Permitir acceso desde el Frontend (React) - configurable por env
+# Explicit origin allowlist — parsed from CSV env var. Fail-closed: no wildcard.
 CORS_ALLOWED_ORIGINS = parse_env_list(get_env_variable("CORS_ALLOWED_ORIGINS", default="", required=False))
+
 if USE_COOKIE_AUTH and not CORS_ALLOWED_ORIGINS:
+    # Cookie-auth mode: restrict to known local dev origins by default.
     CORS_ALLOWED_ORIGINS = [
         "http://localhost:5173",
         "http://localhost:3000",
     ]
-    CORS_ALLOW_ALL_ORIGINS = False
-elif DEBUG and not CORS_ALLOWED_ORIGINS:
-    CORS_ALLOW_ALL_ORIGINS = True  # 🔓 Desarrollo fácil
-else:
-    CORS_ALLOW_ALL_ORIGINS = False
+
+# CORS_ALLOW_ALL_ORIGINS is ALWAYS False — we never open a wildcard.
+# In DEBUG without a list set, dev traffic still works because the browser
+# dev server is same-origin or the user adds it to CORS_ALLOWED_ORIGINS.
+CORS_ALLOW_ALL_ORIGINS = False
+
+# Regex-based allowlist for dynamic origins (e.g. Vercel preview deployments).
+# Controlled exclusively via env; empty by default → no regex matching.
+# Example (in .env):  CORS_ALLOWED_ORIGIN_REGEXES=^https://.*\.vercel\.app$
+# Multiple patterns can be comma-separated.
+CORS_ALLOWED_ORIGIN_REGEXES = parse_env_list(
+    get_env_variable("CORS_ALLOWED_ORIGIN_REGEXES", default="", required=False)
+)
 
 # Permitir credenciales (cookies) en modo cookie auth
 CORS_ALLOW_CREDENTIALS = USE_COOKIE_AUTH
