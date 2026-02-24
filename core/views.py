@@ -41,7 +41,7 @@ from .serializers import (
 )
 
 from allauth.socialaccount.models import SocialToken
-from .services import sincronizar_actividades_strava, asignar_plantilla_a_alumno
+from .services import sincronizar_actividades_strava, asignar_plantilla_a_alumno, trigger_workout_delivery_if_applicable
 from .filters import ActividadFilter
 
 logger = logging.getLogger(__name__)
@@ -371,6 +371,8 @@ class EntrenamientoViewSet(TenantModelViewSet):
              
         # Serializer validate_alumno checks tenant scope (athlete belongs to coach)
         serializer.save()
+        # PR15: trigger outbound delivery for eligible providers
+        trigger_workout_delivery_if_applicable(serializer.instance, actor_user=user)
 
     def perform_update(self, serializer):
         """
@@ -411,6 +413,9 @@ class EntrenamientoViewSet(TenantModelViewSet):
                  raise PermissionDenied("Los atletas no pueden reagendar entrenamientos.")
         
         serializer.save()
+        # PR15: trigger outbound delivery ONLY for coach updates (not athlete feedback)
+        if is_coach_owner and not (is_owner_athlete and not is_coach_owner):
+            trigger_workout_delivery_if_applicable(serializer.instance, actor_user=user)
 
     # ======================================================================
     #  🔥 ACCIÓN ESPECIAL: FEEDBACK DEL ALUMNO (TÚNEL SEGURO)
@@ -571,6 +576,15 @@ class PlantillaViewSet(TenantModelViewSet):
                 
                 # Bulk Create: 50 veces más rápido que guardar uno por uno
                 Entrenamiento.objects.bulk_create(nuevos_entrenamientos)
+
+            # PR15: re-fetch created instances to get real PKs, then trigger delivery
+            created_entrenamientos = Entrenamiento.objects.filter(
+                alumno__in=alumnos,
+                plantilla_origen=plantilla,
+                fecha_asignada=fecha_inicio,
+            ).select_related("alumno")
+            for entrenamiento in created_entrenamientos:
+                trigger_workout_delivery_if_applicable(entrenamiento, actor_user=request.user)
 
             return Response({
                 "mensaje": "Plantilla aplicada exitosamente.",
@@ -779,6 +793,8 @@ class AlumnoPlannedWorkoutViewSet(EntrenamientoViewSet):
              alumno = get_object_or_404(Alumno, pk=alumno_id, entrenador=user)
         
         serializer.save(alumno=alumno)
+        # PR15: trigger outbound delivery for eligible providers
+        trigger_workout_delivery_if_applicable(serializer.instance, actor_user=user)
 
 
 # ==============================================================================
