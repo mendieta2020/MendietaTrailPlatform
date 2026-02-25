@@ -193,6 +193,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware', # <--- CORS SIEMPRE PRIMERO
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # PR16: serve /static/* in prod (Railway)
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'core.middleware.ApiErrorLoggingMiddleware',
@@ -274,6 +275,16 @@ USE_TZ = True
 # Archivos CSS/JS del sistema (Admin)
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+# PR16: WhiteNoise serves /static/* in production (DEBUG=False + Gunicorn/Railway).
+# Use STORAGES dict (Django 4.2+/5.x) — CompressedManifest = gzip + content-hash fingerprinting.
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 # Archivos subidos por el usuario (Videos de Gym, Comprobantes)
 MEDIA_URL = '/media/'
