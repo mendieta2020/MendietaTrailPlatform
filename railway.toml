@@ -4,6 +4,6 @@ buildCommand = "pip install -r requirements.txt && python manage.py collectstati
 [deploy]
 startCommand = "gunicorn backend.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --log-level info"
 healthcheckPath = "/healthz"
-healthcheckTimeout = 10
+healthcheckTimeout = 30
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
