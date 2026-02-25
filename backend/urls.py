@@ -7,6 +7,7 @@ from django.conf.urls.static import static
 
 # Importamos la vista del dashboard directamente (Vista Clásica)
 from core.views import dashboard_entrenador
+from core.landing_views import landing  # PR16: root landing page
 from core.strava_oauth_views import oauth2_callback as strava_oauth2_callback
 from core.strava_oauth_views import oauth2_login as strava_oauth2_login
 
@@ -44,6 +45,9 @@ schema_view = get_schema_view(
 )
 
 urlpatterns = [
+    # 0. Landing institucional (sin auth, sin datos privados) — PR16
+    path('', landing, name='landing'),
+
     # 1. Panel de Administración de Django
     path('admin/', admin.site.urls),
     
