@@ -20,9 +20,9 @@ from core.models import ExternalIdentity
 logger = logging.getLogger(__name__)
 
 # Token de verificación para el handshake (GET).
+# Resolvemos at runtime para que override_settings en tests funcione correctamente.
 # En prod debe venir desde settings/env; en dev permitimos un fallback para no romper local.
-_CONFIGURED_VERIFY_TOKEN = getattr(settings, "STRAVA_WEBHOOK_VERIFY_TOKEN", None)
-VERIFY_TOKEN = _CONFIGURED_VERIFY_TOKEN or ("MENDIETA_SECRET_TOKEN_2025" if getattr(settings, "DEBUG", False) else None)
+# VERIFY_TOKEN NO se cachea a nivel de módulo — se lee en cada request.
 
 # Validación opcional de subscription_id en POST (hardening sin romper dev):
 # si se define `STRAVA_WEBHOOK_SUBSCRIPTION_ID`, solo aceptamos eventos de esa suscripción.
@@ -73,18 +73,31 @@ def strava_webhook(request):
         token = request.GET.get('hub.verify_token')
         challenge = request.GET.get('hub.challenge')
 
+        # Resolve at request time — no module-level caching, no hardcoded fallback.
+        # Fail-closed: if STRAVA_WEBHOOK_VERIFY_TOKEN is unset, return 403.
+        verify_token = getattr(settings, "STRAVA_WEBHOOK_VERIFY_TOKEN", None)
+
         if mode and token:
-            if VERIFY_TOKEN is None:
-                logger.error("strava_webhook.handshake_misconfigured_no_verify_token")
-                return HttpResponse("Webhook misconfigured", status=500)
-            if mode == 'subscribe' and token == VERIFY_TOKEN:
-                logger.info("strava_webhook.handshake_ok")
+            if verify_token is None:
+                logger.warning(
+                    "strava_webhook_verify",
+                    extra={"event_name": "strava_webhook_verify", "outcome": "forbidden", "reason_code": "missing_verify_token"},
+                )
+                return HttpResponse(status=403)
+            if mode == 'subscribe' and token == verify_token:
+                logger.info(
+                    "strava_webhook_verify",
+                    extra={"event_name": "strava_webhook_verify", "outcome": "success", "reason_code": "token_match"},
+                )
                 return JsonResponse({"hub.challenge": challenge})
             else:
                 # No loggear tokens/secretos (seguridad).
-                logger.warning("strava_webhook.handshake_invalid_token")
-                return HttpResponse("Token de verificación inválido", status=403)
-        
+                logger.warning(
+                    "strava_webhook_verify",
+                    extra={"event_name": "strava_webhook_verify", "outcome": "forbidden", "reason_code": "token_mismatch"},
+                )
+                return HttpResponse(status=403)
+
         # Si es GET pero no tiene los params correctos
         return HttpResponse("Faltan parámetros de verificación", status=400)
 
