@@ -5,7 +5,11 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from core.tasks import procesar_actividad_strava
 
-VERIFY_TOKEN = "MENDIETA_SECRET_TOKEN_2025"
+import os
+
+VERIFY_TOKEN = os.environ.get("STRAVA_WEBHOOK_VERIFY_TOKEN")
+if not VERIFY_TOKEN:
+    raise ValueError("Missing STRAVA_WEBHOOK_VERIFY_TOKEN in environment")
 
 @csrf_exempt
 @require_http_methods(["GET", "POST"])

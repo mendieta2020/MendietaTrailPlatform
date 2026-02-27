@@ -90,7 +90,7 @@ else:
 # - opcional para tests y para comandos de management (migrate/makemigrations/etc)
 STRAVA_CLIENT_ID = get_env_variable("STRAVA_CLIENT_ID", default="", required=(REQUIRE_RUNTIME_SECRETS and not DEBUG))
 STRAVA_CLIENT_SECRET = get_env_variable("STRAVA_CLIENT_SECRET", default="", required=(REQUIRE_RUNTIME_SECRETS and not DEBUG))
-# Este es el token que definiste en tu .env (MENDIETA_SECRET_TOKEN_2025)
+# Este es el token que definiste en tu .env para la verificación del webhook de Strava
 STRAVA_WEBHOOK_VERIFY_TOKEN = get_env_variable(
     "STRAVA_WEBHOOK_VERIFY_TOKEN",
     default="",
