@@ -156,3 +156,14 @@ curl -s -X POST 'http://127.0.0.1:8000/api/token/refresh/' \
   - `GET /api/analytics/alerts/?page=1&page_size=20` con `Authorization: Bearer <access>`
   - refresh automático si el backend responde `401` por access expirado
   - si falla el refresh: se limpian tokens y vuelve a login
+
+## Railway Service Separation
+
+**Web Service** — uses `railway.toml`:
+- Runs `migrate` + `collectstatic` + `gunicorn`
+- Exposes `/healthz`
+
+**Worker Service** — uses `railway.worker.toml`:
+- Runs Celery worker only
+- No HTTP healthcheck
+- No migrations
