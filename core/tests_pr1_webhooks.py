@@ -32,17 +32,19 @@ class TestStravaWebhookFailClosed(TestCase):
             self.assertFalse(mock_delay.called)
 
     @override_settings(STRAVA_WEBHOOK_SUBSCRIPTION_ID=9999)
-    def test_subscription_mismatch_returns_403(self):
+    def test_subscription_mismatch_returns_200_and_logs(self):
         """
         If request payload subscription_id (1001) mismatches expected (9999),
-        return 403.
+        return 200 to prevent retries but do NOT process.
         """
-        response = self.client.post(
-            "/webhooks/strava/",
-            data=json.dumps(self.payload),
-            content_type="application/json"
-        )
-        self.assertEqual(response.status_code, 403)
+        with patch("core.webhooks.process_strava_event.delay") as mock_delay:
+            response = self.client.post(
+                "/webhooks/strava/",
+                data=json.dumps(self.payload),
+                content_type="application/json"
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(mock_delay.called)
 
     @override_settings(STRAVA_WEBHOOK_SUBSCRIPTION_ID=1001)
     def test_subscription_match_returns_200(self):

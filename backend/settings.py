@@ -90,12 +90,23 @@ else:
 # - opcional para tests y para comandos de management (migrate/makemigrations/etc)
 STRAVA_CLIENT_ID = get_env_variable("STRAVA_CLIENT_ID", default="", required=(REQUIRE_RUNTIME_SECRETS and not DEBUG))
 STRAVA_CLIENT_SECRET = get_env_variable("STRAVA_CLIENT_SECRET", default="", required=(REQUIRE_RUNTIME_SECRETS and not DEBUG))
-# Este es el token que definiste en tu .env para la verificación del webhook de Strava
 STRAVA_WEBHOOK_VERIFY_TOKEN = get_env_variable(
     "STRAVA_WEBHOOK_VERIFY_TOKEN",
     default="",
     required=(REQUIRE_RUNTIME_SECRETS and not DEBUG),
 )
+
+_strava_sub_raw = get_env_variable("STRAVA_WEBHOOK_SUBSCRIPTION_ID", default="", required=False)
+STRAVA_WEBHOOK_SUBSCRIPTION_ID = None
+if _strava_sub_raw:
+    try:
+        STRAVA_WEBHOOK_SUBSCRIPTION_ID = int(_strava_sub_raw)
+    except ValueError:
+        logger.warning(
+            "strava_webhook.invalid_config_subscription_id_format",
+            extra={"reason": "invalid_integer"},
+        )
+
 STRAVA_WEBHOOK_STUCK_THRESHOLD_MINUTES = int(
     get_env_variable("STRAVA_WEBHOOK_STUCK_THRESHOLD_MINUTES", default="30", required=False)
 )

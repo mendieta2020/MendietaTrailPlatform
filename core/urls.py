@@ -16,7 +16,7 @@ from .integration_views import IntegrationStartView, IntegrationStatusView, Coac
 from .integration_callback_views import IntegrationCallbackView
 from .identity_views import UserIdentityView
 from .connection_views import ProviderConnectionStatusView  # PR11
-from core.webhooks import StravaWebhookView  # PR-WebhookRoute
+from core.webhooks import StravaWebhookView, StravaDiagnosticsView  # PR-WebhookRoute
 
 # Creamos el router para la API REST estándar
 router = DefaultRouter()
@@ -60,6 +60,7 @@ urlpatterns = [
     # GET  → hub.challenge echo (subscription verification, AllowAny, CSRF-exempt)
     # POST → event ingestion (idempotent, AllowAny, CSRF-exempt)
     path('integrations/strava/webhook/', StravaWebhookView.as_view(), name='strava_webhook_api'),
+    path('integrations/strava/diagnostics/', StravaDiagnosticsView.as_view(), name='strava_diagnostics'),
 
     # PR3: Canonical Nested Planned Workouts
     path('alumnos/<int:alumno_id>/planned-workouts/', 
