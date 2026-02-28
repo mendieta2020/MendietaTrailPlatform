@@ -90,17 +90,12 @@ class StravaProvider(IntegrationProvider):
             "grant_type": "authorization_code",
         }
         
-        logger.debug(f"strava.token_exchange", extra={
-            "url": token_url,
-            "client_id": settings.STRAVA_CLIENT_ID,
-        })
-        
         response = requests.post(token_url, data=data, timeout=10)
         
-        # Log status (sanitize to avoid tokens in logs)
-        logger.debug(f"strava.token_exchange.response", extra={
+        logger.info("strava.http.request", extra={
+            "method": "POST",
+            "url_path": "/oauth/token",
             "status_code": response.status_code,
-            "has_access_token": "access_token" in response.json() if response.ok else False,
         })
         
         response.raise_for_status()  # Raises HTTPError for 4xx/5xx
@@ -151,12 +146,14 @@ class StravaProvider(IntegrationProvider):
             "grant_type": "refresh_token",
         }
         
-        logger.debug("strava.token_refresh", extra={
-            "url": token_url,
-        })
-        
         try:
             response = requests.post(token_url, data=data, timeout=10)
+            
+            logger.info("strava.http.request", extra={
+                "method": "POST",
+                "url_path": "/oauth/token",
+                "status_code": response.status_code,
+            })
             
             # Handle rate limiting
             if response.status_code == 429:
@@ -217,14 +214,14 @@ class StravaProvider(IntegrationProvider):
         if before:
             params["before"] = int(before.timestamp())
         
-        logger.debug("strava.fetch_activities", extra={
-            "url": activities_url,
-            "after": after.isoformat(),
-            "before": before.isoformat() if before else None,
-        })
-        
         try:
             response = requests.get(activities_url, headers=headers, params=params, timeout=30)
+            
+            logger.info("strava.http.request", extra={
+                "method": "GET",
+                "url_path": "/api/v3/athlete/activities",
+                "status_code": response.status_code,
+            })
             
             # Handle rate limiting (Strava: 100 req/15min, 1000 req/day)
             if response.status_code == 429:
