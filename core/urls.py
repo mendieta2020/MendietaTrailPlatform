@@ -12,7 +12,7 @@ from .views import (
     ActividadViewSet,
     dashboard_entrenador
 )
-from .integration_views import IntegrationStartView, IntegrationStatusView, CoachAthleteIntegrationStatusView, ProviderStatusView
+from .integration_views import IntegrationStartView, IntegrationStatusView, CoachAthleteIntegrationStatusView, ProviderStatusView, IntegrationDisconnectView
 from .integration_callback_views import IntegrationCallbackView
 from .identity_views import UserIdentityView
 from .connection_views import ProviderConnectionStatusView  # PR11
@@ -83,6 +83,7 @@ urlpatterns = [
     # OAuth Integration Management
     path('integrations/<str:provider>/start', IntegrationStartView.as_view(), name='integration_start'),
     path('integrations/<str:provider>/callback', IntegrationCallbackView.as_view(), name='integration_callback'),
+    path('integrations/<str:provider>/disconnect/', IntegrationDisconnectView.as_view(), name='integration_disconnect'),
     path('integrations/<str:provider>/status', ProviderStatusView.as_view(), name='provider_status'),  # NEW: Provider-specific status
     path('integrations/status', IntegrationStatusView.as_view(), name='integration_status'),  # All providers status
 
