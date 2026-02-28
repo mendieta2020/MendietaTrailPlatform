@@ -141,18 +141,17 @@ def strava_webhook(request):
                 logger.critical("strava_webhook.fail_closed_missing_config_subscription_id")
                 return JsonResponse({"ok": True, "ignored": "missing_subscription_config"})
 
-            # Ensure strict string comparison to avoid type coercion issues
             if str(subscription_id) != str(configured_sub_id):
                 logger.warning(
-                    "strava_webhook.subscription_mismatch",
+                    "strava_webhook.subscription_id_mismatch",
                     extra={
                         "status": "discarded",
-                        "reason": "subscription_mismatch",
+                        "reason": "subscription_id_mismatch",
                         "received_subscription_id": subscription_id,
                         "expected_subscription_id": configured_sub_id,
                     },
                 )
-                return HttpResponse(status=403)
+                return JsonResponse({"ok": True, "ignored": "subscription_id_mismatch"})
 
             # event_uid determinístico para idempotencia total.
             # Incluimos event_time si viene para diferenciar eventos legítimos sobre el mismo object_id.
@@ -358,3 +357,23 @@ class StravaWebhookView(APIView):
 
     def post(self, request, *args, **kwargs):
         return strava_webhook(request._request)
+
+
+class StravaDiagnosticsView(APIView):
+    """
+    Runtime diagnostics endpoint to verify webhook config.
+    No secrets exposed. Unauthenticated access allowed to simplify checks.
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = api_settings.DEFAULT_THROTTLE_CLASSES
+
+    def get(self, request, *args, **kwargs):
+        sub_id = getattr(settings, "STRAVA_WEBHOOK_SUBSCRIPTION_ID", None)
+        callback_url = getattr(settings, "PUBLIC_BASE_URL", None)
+        return JsonResponse({
+            "subscription_id_configured": sub_id is not None,
+            "subscription_id_value": sub_id,
+            "callback_url_configured": callback_url is not None,
+            "environment": "production" if not settings.DEBUG else "staging/dev"
+        })
