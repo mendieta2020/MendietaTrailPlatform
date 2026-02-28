@@ -1138,6 +1138,54 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
     source_object_id = mapped.pop("source_object_id")
     payload_sanitized = bool(activity.get("raw_sanitized"))
 
+    resolved_usuario = alumno.entrenador or alumno.usuario
+    logger.info(
+        "strava.activity.tenant_resolution",
+        extra=safe_extra(
+            {
+                "provider": "strava",
+                "event_id": event.pk,
+                "activity_id": int(activity.get("id") or 0),
+                "external_user_id": owner_key,
+                "alumno_id": alumno.id,
+                "entrenador_id": getattr(alumno.entrenador, "id", None),
+                "usuario_id": getattr(resolved_usuario, "id", None),
+                "reason_code": "resolved" if resolved_usuario else "missing_tenant",
+            }
+        ),
+    )
+
+    if not resolved_usuario:
+        StravaImportLog.objects.create(
+            event_id=event.pk,
+            alumno=alumno,
+            actividad=None,
+            strava_activity_id=activity.get("id"),
+            attempt=attempt_no,
+            status=StravaImportLog.Status.DEFERRED,
+            reason="missing_tenant",
+            details={
+                "provider": "strava",
+                "owner_id": event.owner_id,
+                "external_user_id": owner_key,
+            },
+        )
+        StravaWebhookEvent.objects.filter(pk=event.pk).update(
+            status=StravaWebhookEvent.Status.DISCARDED,
+            discard_reason="missing_tenant",
+            error_message="Cannot upsert Actividad without a valid usuario (tenant).",
+            processed_at=timezone.now(),
+        )
+        StravaActivitySyncState.objects.filter(provider=event.provider, strava_activity_id=int(event.object_id)).update(
+            status=StravaActivitySyncState.Status.DISCARDED,
+            discard_reason="missing_tenant",
+            locked_at=None,
+            locked_by_event_uid="",
+            last_error="",
+            last_attempt_at=timezone.now(),
+        )
+        return "DEFERRED: missing_tenant"
+
     calories_kcal = compute_calories_kcal(
         {
             **mapped,
@@ -1158,7 +1206,7 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
 
     actividad_obj, created = upsert_actividad(
         alumno=alumno,
-        usuario=alumno.entrenador,
+        usuario=resolved_usuario,
         source=source,
         source_object_id=source_object_id,
         defaults=defaults,
