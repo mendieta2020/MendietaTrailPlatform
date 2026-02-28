@@ -6,60 +6,11 @@ from allauth.socialaccount.adapter import get_adapter as get_social_adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Client, OAuth2Error
 from allauth.socialaccount.providers.oauth2.views import OAuth2CallbackView, OAuth2LoginView
 from allauth.socialaccount.providers.strava.views import StravaOAuth2Adapter
+from core.utils.logging import sanitize_secrets
 
 logger = logging.getLogger("allauth.socialaccount.providers.strava")
 
-_SENSITIVE_KEYS = {
-    "access_token",
-    "refresh_token",
-    "token_type",
-    "expires_at",
-    "expires_in",
-    # Strava también puede devolver athlete data; no es secreto pero puede ser grande.
-}
-
-
-def _truncate(s: str, max_len: int = 400) -> str:
-    if len(s) > max_len:
-        return s[: max_len - 3] + "..."
-    return s
-
-
-def sanitize_oauth_payload(obj):
-    """
-    Sanitiza payloads (dict/list/str/bytes) para logging:
-    - redacción de tokens
-    - truncado de strings largas
-    """
-    if obj is None:
-        return None
-
-    # Preservar primitivos JSON (para no "stringificar" ints/bools en logs/tests)
-    if isinstance(obj, (int, float, bool)):
-        return obj
-
-    if isinstance(obj, (bytes, bytearray)):
-        try:
-            obj = obj.decode("utf-8", errors="replace")
-        except Exception:
-            return "<binary>"
-
-    if isinstance(obj, str):
-        return _truncate(obj)
-
-    if isinstance(obj, list):
-        return [sanitize_oauth_payload(x) for x in obj[:50]]
-
-    if isinstance(obj, dict):
-        out = {}
-        for k, v in list(obj.items())[:200]:
-            if k in _SENSITIVE_KEYS:
-                out[k] = "<redacted>"
-            else:
-                out[k] = sanitize_oauth_payload(v)
-        return out
-
-    return _truncate(str(obj), max_len=200)
+sanitize_oauth_payload = sanitize_secrets
 
 
 class LoggedOAuth2Client(OAuth2Client):
@@ -114,12 +65,17 @@ class LoggedOAuth2Client(OAuth2Client):
         body_preview = None
         try:
             if content_type.split(";")[0] == "application/json" or (resp.text or "")[:2] == '{"':
-                body_preview = sanitize_oauth_payload(resp.json())
+                body_preview = sanitize_secrets(resp.json())
             else:
-                body_preview = sanitize_oauth_payload(resp.text)
+                body_preview = sanitize_secrets(resp.text)
         except Exception:
             body_preview = "<unparseable>"
 
+        logger.info("strava.http.request", extra={
+            "method": self.access_token_method,
+            "url_path": "/oauth/token",
+            "status_code": resp.status_code,
+        })
         logger.debug(
             "Strava token exchange: status=%s method=%s url=%s redirect_uri=%s content_type=%s body=%s",
             resp.status_code,
@@ -145,16 +101,14 @@ class LoggedOAuth2Client(OAuth2Client):
 
         # Evitar que tokens entren a logs vía repr() accidental
         try:
-            logger.debug("Strava token OK (sanitized)=%s", json.dumps(sanitize_oauth_payload(access_token)))
+            logger.debug("Strava token OK (sanitized)=%s", json.dumps(sanitize_secrets(access_token)))
         except Exception:
-            logger.debug("Strava token OK (sanitized)=%s", sanitize_oauth_payload(access_token))
+            logger.debug("Strava token OK (sanitized)=%s", sanitize_secrets(access_token))
 
         return access_token
 
-
 class LoggedStravaOAuth2Adapter(StravaOAuth2Adapter):
     client_class = LoggedOAuth2Client
-
 
 # Vistas que reemplazan a allauth strava por defecto (mismas URLs/names que allauth)
 oauth2_login = OAuth2LoginView.adapter_view(LoggedStravaOAuth2Adapter)

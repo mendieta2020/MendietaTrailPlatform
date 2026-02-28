@@ -4,6 +4,7 @@ from celery import Celery
 from celery.signals import task_failure
 from kombu import Queue
 from celery.schedules import crontab
+from core.utils.logging import sanitize_secrets
 
 # 1. Establecemos el módulo de configuración de Django por defecto
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
@@ -57,7 +58,7 @@ def log_critical_task_failure(sender=None, task_id=None, exception=None, args=No
             "task_name": task_name,
             "task_id": task_id,
             "task_args": args,
-            "task_kwargs": kwargs,
+            "task_kwargs": sanitize_secrets(kwargs),
             "exc_msg": str(exception),
             "exc_type": type(exception).__name__ if exception else "",
         },
