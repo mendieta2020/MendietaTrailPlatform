@@ -212,6 +212,38 @@ class IntegrationStatusView(APIView):
             provider_id = provider_data["id"]
             integration_status = status_map.get(provider_id)
             
+            if provider_id == "strava":
+                from integrations.strava.service import get_strava_connection
+                strava_account = get_strava_connection(alumno.usuario)
+                
+                if not strava_account:
+                    integrations.append({
+                        "provider": provider_id,
+                        "name": provider_data["name"],
+                        "enabled": provider_data["enabled"],
+                        "status": "unlinked",
+                        "connected": False,
+                        "athlete_id": None,
+                        "expires_at": None,
+                        "last_sync_at": None,
+                        "error_reason": None,
+                        "last_error": None,
+                    })
+                else:
+                    integrations.append({
+                        "provider": provider_id,
+                        "name": provider_data["name"],
+                        "enabled": provider_data["enabled"],
+                        "status": "connected",
+                        "connected": True,
+                        "athlete_id": strava_account.uid,
+                        "expires_at": integration_status.expires_at.isoformat() if (integration_status and integration_status.expires_at) else None,
+                        "last_sync_at": integration_status.last_sync_at.isoformat() if (integration_status and integration_status.last_sync_at) else None,
+                        "error_reason": "",
+                        "last_error": "",
+                    })
+                continue
+
             if integration_status:
                 # Use explicit status if available, fallback to computed
                 status_value = integration_status.status
@@ -290,6 +322,36 @@ class ProviderStatusView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         
+        if provider == "strava":
+            from integrations.strava.service import get_strava_connection
+            strava_account = get_strava_connection(alumno.usuario)
+            if strava_account:
+                # Connected -> fetch sync dates if integration exists
+                integration = OAuthIntegrationStatus.objects.filter(alumno=alumno, provider="strava").first()
+                return Response({
+                    "provider": provider,
+                    "status": "connected",
+                    "connected": True,
+                    "external_user_id": strava_account.uid,
+                    "athlete_id": strava_account.uid,
+                    "linked_at": integration.created_at.isoformat() if integration and integration.created_at else None,
+                    "last_sync_at": integration.last_sync_at.isoformat() if integration and integration.last_sync_at else None,
+                    "error_reason": "",
+                    "last_error": "",
+                })
+            else:
+                return Response({
+                    "provider": provider,
+                    "status": "unlinked",
+                    "connected": False,
+                    "external_user_id": "",
+                    "athlete_id": "",
+                    "linked_at": None,
+                    "last_sync_at": None,
+                    "error_reason": "",
+                    "last_error": "",
+                })
+
         # Fetch integration status for this provider (or None if not linked)
         try:
             integration = OAuthIntegrationStatus.objects.get(
@@ -380,6 +442,33 @@ class CoachAthleteIntegrationStatusView(APIView):
             provider_id= provider_data["id"]
             integration_status = status_map.get(provider_id)
             
+            if provider_id == "strava":
+                from integrations.strava.service import get_strava_connection
+                strava_account = get_strava_connection(alumno.usuario)
+                if strava_account:
+                    integrations.append({
+                        "provider": provider_id,
+                        "name": provider_data["name"],
+                        "status": "connected",
+                        "connected": True,
+                        "athlete_id": strava_account.uid,
+                        "last_sync_at": integration_status.last_sync_at.isoformat() if (integration_status and integration_status.last_sync_at) else None,
+                        "last_error": "",
+                        "error_reason": "",
+                    })
+                else:
+                    integrations.append({
+                        "provider": provider_id,
+                        "name": provider_data["name"],
+                        "status": "unlinked",
+                        "connected": False,
+                        "athlete_id": None,
+                        "last_sync_at": None,
+                        "last_error": None,
+                        "error_reason": None,
+                    })
+                continue
+            
             if integration_status:
                 status_value = integration_status.status
                 if not status_value or status_value == OAuthIntegrationStatus.Status.DISCONNECTED:
@@ -418,3 +507,58 @@ class CoachAthleteIntegrationStatusView(APIView):
             "athlete_id": alumno.id,
             "athlete_name": alumno.nombre,
         })
+
+class IntegrationDisconnectView(APIView):
+    """
+    DELETE /api/integrations/{provider}/disconnect/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, provider):
+        """Disconnect provider integration."""
+        if provider != "strava":
+            return Response(
+                {"error": "unsupported", "message": "Only Strava disconnect is currently supported"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        from allauth.socialaccount.models import SocialAccount, SocialToken
+        
+        # Idempotent disconnect
+        accounts = SocialAccount.objects.filter(user=request.user, provider=provider)
+        for account in accounts:
+            SocialToken.objects.filter(account=account).delete()
+            account.delete()
+            
+        alumno = Alumno.objects.filter(usuario=request.user).first()
+        org_id = None
+        if alumno:
+            if alumno.entrenador_id:
+                org_id = alumno.entrenador_id
+            
+            # Nullify cached athlete ID
+            if getattr(alumno, "strava_athlete_id", None):
+                alumno._skip_signal = True
+                alumno.strava_athlete_id = None
+                alumno.save(update_fields=["strava_athlete_id"])
+                
+            # Update OAuthIntegrationStatus
+            OAuthIntegrationStatus.objects.filter(alumno=alumno, provider=provider).update(
+                connected=False,
+                status=OAuthIntegrationStatus.Status.DISCONNECTED,
+                error_reason="",
+                error_message="",
+                athlete_id=""
+            )
+            
+        logger.info(
+            "strava.disconnected",
+            extra={
+                "event_name": f"{provider}.disconnected",
+                "organization_id": org_id,
+                "user_id": request.user.id,
+                "provider": provider,
+                "outcome": "success"
+            }
+        )
+        return Response({"success": True})
