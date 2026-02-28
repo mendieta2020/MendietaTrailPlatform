@@ -54,10 +54,11 @@ def log_critical_task_failure(sender=None, task_id=None, exception=None, args=No
     logger.exception(
         "celery.task.failed",
         extra={
-            "task": task_name,
+            "task_name": task_name,
             "task_id": task_id,
-            "args": args,
-            "kwargs": kwargs,
-            "exception": str(exception),
+            "task_args": args,
+            "task_kwargs": kwargs,
+            "exc_msg": str(exception),
+            "exc_type": type(exception).__name__ if exception else "",
         },
     )

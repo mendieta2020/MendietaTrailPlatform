@@ -746,3 +746,123 @@ class StravaUpsertTests(TestCase):
         self.assertTrue(created)
         self.assertEqual(act.usuario_id, self.coach.id)
 
+class StravaTenantResolutionTests(TestCase):
+    def setUp(self):
+        self.coach = User.objects.create_user(username="coach_tenant", password="x")
+        self.user_orphan1 = User.objects.create_user(username="user_orphan1", password="x")
+        self.user_orphan2 = User.objects.create_user(username="user_orphan2", password="x")
+        
+        self.alumno_with_coach = Alumno.objects.create(
+            entrenador=self.coach,
+            usuario=self.user_orphan1,
+            nombre="Ana",
+            apellido="Coach",
+            email="ana_coach@test.com",
+            strava_athlete_id="1010",
+        )
+        
+        self.alumno_with_user = Alumno.objects.create(
+            entrenador=None,
+            usuario=self.user_orphan2,
+            nombre="Beto",
+            apellido="User",
+            email="beto_user@test.com",
+            strava_athlete_id="2020",
+        )
+        
+        self.alumno_orphan = Alumno.objects.create(
+            entrenador=None,
+            usuario=None,
+            nombre="Carlos",
+            apellido="Orphan",
+            email="carlos_orphan@test.com",
+            strava_athlete_id="3030",
+        )
+
+    def _mk_event(self, *, uid: str, owner_id: int, object_id: int):
+        return StravaWebhookEvent.objects.create(
+            event_uid=uid,
+            object_type="activity",
+            object_id=object_id,
+            aspect_type="create",
+            owner_id=owner_id,
+            subscription_id=1,
+            payload_raw={"test": True},
+            status=StravaWebhookEvent.Status.QUEUED,
+        )
+
+    def test_tenant_resolves_to_entrenador_when_present(self):
+        start = datetime.now(dt_timezone.utc)
+        a = _FakeStravaActivity(
+            activity_id=7771,
+            athlete_id=1010,
+            name="Run",
+            type_="Run",
+            start=start,
+            distance_m=1000,
+            moving_time_s=600,
+        )
+        e = self._mk_event(uid="ev1", owner_id=1010, object_id=7771)
+        with patch("core.services.obtener_cliente_strava_para_alumno", return_value=_FakeStravaClient(a)):
+            process_strava_event(e.id)
+            
+        act = Actividad.objects.filter(strava_id=7771).first()
+        self.assertIsNotNone(act)
+        self.assertEqual(act.usuario_id, self.coach.id)
+
+    def test_tenant_resolves_to_alumno_usuario_when_no_entrenador(self):
+        start = datetime.now(dt_timezone.utc)
+        a = _FakeStravaActivity(
+            activity_id=7772,
+            athlete_id=2020,
+            name="Run",
+            type_="Run",
+            start=start,
+            distance_m=1000,
+            moving_time_s=600,
+        )
+        e = self._mk_event(uid="ev2", owner_id=2020, object_id=7772)
+        with patch("core.services.obtener_cliente_strava_para_alumno", return_value=_FakeStravaClient(a)):
+            process_strava_event(e.id)
+            
+        act = Actividad.objects.filter(strava_id=7772).first()
+        self.assertIsNotNone(act)
+        self.assertEqual(act.usuario_id, self.user_orphan2.id)
+
+    def test_missing_tenant_returns_deferred_without_exception(self):
+        start = datetime.now(dt_timezone.utc)
+        a = _FakeStravaActivity(
+            activity_id=7773,
+            athlete_id=3030,
+            name="Run",
+            type_="Run",
+            start=start,
+            distance_m=1000,
+            moving_time_s=600,
+        )
+        e = self._mk_event(uid="ev3", owner_id=3030, object_id=7773)
+        with patch("core.services.obtener_cliente_strava_para_alumno", return_value=_FakeStravaClient(a)):
+            result = process_strava_event(e.id)
+            
+        self.assertEqual(result, "DEFERRED: missing_tenant")
+        act = Actividad.objects.filter(strava_id=7773).first()
+        self.assertIsNone(act)
+
+class CeleryFailureHandlerTests(TestCase):
+    def test_log_critical_task_failure_never_raises_keyerror(self):
+        from backend.celery import log_critical_task_failure
+        import logging
+        
+        class MockSender:
+            name = "strava.test"
+            
+        try:
+            log_critical_task_failure(
+                sender=MockSender(), 
+                task_id="123", 
+                exception=ValueError("test error"), 
+                args=(1, 2), 
+                kwargs={"a": "b"}
+            )
+        except Exception as e:
+            self.fail(f"log_critical_task_failure raised exception: {e}")
