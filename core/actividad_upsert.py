@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import logging
+
 from django.db import IntegrityError, transaction
 
 from core.models import Actividad, Alumno
+from core.utils.logging import safe_extra
+
+logger = logging.getLogger(__name__)
 
 
 def upsert_actividad(
@@ -14,6 +19,22 @@ def upsert_actividad(
     defaults: dict,
 ) -> tuple[Actividad, bool]:
     """Idempotent upsert por (source, source_object_id) con fallback ante carrera."""
+    resolved_usuario = usuario or getattr(alumno, "entrenador", None)
+
+    if not resolved_usuario:
+        logger.error(
+            "strava.activity.upsert.fail",
+            extra=safe_extra(
+                {
+                    "event_name": "strava.activity.upsert.fail",
+                    "reason_code": "missing_usuario",
+                    "organization_id": None,
+                    "alumno_id": alumno.id if alumno else None,
+                }
+            ),
+        )
+        raise ValueError("Cannot upsert Actividad without a valid usuario (tenant).")
+
     lookup = {
         "source": str(source or ""),
         "source_object_id": str(source_object_id or ""),
@@ -22,7 +43,7 @@ def upsert_actividad(
     merged = {
         **defaults,
         "alumno": alumno,
-        "usuario": usuario,
+        "usuario": resolved_usuario,
         "source": lookup["source"],
         "source_object_id": lookup["source_object_id"],
     }

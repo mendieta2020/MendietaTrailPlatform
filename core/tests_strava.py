@@ -688,3 +688,61 @@ class LoggingExtraSafetyTests(TestCase):
         rec = next(r for r in capture.records if r.msg == "strava.activity.upserted")
         self.assertTrue(hasattr(rec, "upsert_created"))
         self.assertEqual(rec.upsert_created, True)
+
+class StravaUpsertTests(TestCase):
+    def setUp(self):
+        self.coach = User.objects.create_user(username="coach_upsert", password="x")
+        self.alumno = Alumno.objects.create(
+            entrenador=self.coach,
+            nombre="Ana",
+            apellido="Upsert",
+            email="ana_upsert@test.com",
+            strava_athlete_id="999",
+        )
+        self.alumno_no_coach = Alumno.objects.create(
+            entrenador=None,
+            nombre="Beto",
+            apellido="NoCoach",
+            email="beto_nocoach@test.com",
+        )
+
+    def test_upsert_fails_without_usuario(self):
+        from core.actividad_upsert import upsert_actividad
+        
+        with self.assertRaises(ValueError) as cm:
+            upsert_actividad(
+                alumno=self.alumno_no_coach,
+                usuario=None,
+                source="strava",
+                source_object_id="123",
+                defaults={
+                    "nombre": "Test",
+                    "distancia": 1000,
+                    "tiempo_movimiento": 600,
+                    "fecha_inicio": timezone.now(),
+                    "tipo_deporte": "RUN",
+                    "validity": "VALID",
+                }
+            )
+        self.assertTrue("usuario" in str(cm.exception))
+
+    def test_upsert_succeeds_with_usuario(self):
+        from core.actividad_upsert import upsert_actividad
+        
+        act, created = upsert_actividad(
+            alumno=self.alumno,
+            usuario=self.coach,
+            source="strava",
+            source_object_id="456",
+            defaults={
+                "nombre": "Test 2",
+                "distancia": 2000,
+                "tiempo_movimiento": 1200,
+                "fecha_inicio": timezone.now(),
+                "tipo_deporte": "BIKE",
+                "validity": "VALID",
+            }
+        )
+        self.assertTrue(created)
+        self.assertEqual(act.usuario_id, self.coach.id)
+
