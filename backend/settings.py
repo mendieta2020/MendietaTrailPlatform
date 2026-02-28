@@ -522,7 +522,8 @@ LOGGING = {
         "allauth.socialaccount": {"handlers": ["console"], "level": "DEBUG"},
         "allauth.socialaccount.providers.oauth2": {"handlers": ["console"], "level": "DEBUG"},
         # requests/urllib3: útil para ver handshake HTTP (sin bodies por defecto).
-        "urllib3": {"handlers": ["console"], "level": "DEBUG"},
+        "urllib3": {"handlers": ["console"], "level": "DEBUG" if DEBUG else "WARNING"},
+        "requests": {"handlers": ["console"], "level": "DEBUG" if DEBUG else "WARNING"},
     },
 }
 
