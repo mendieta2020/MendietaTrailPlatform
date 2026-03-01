@@ -1,0 +1,53 @@
+name: Bug Report
+description: Report a bug or unintended behavior
+title: "[BUG] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps
+      description: Steps to reproduce the behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior (NO tokens/secrets)
+      description: What actually happened. CRITICAL: Do NOT include any tokens, secrets, or sensitive PII.
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - P0 (Critical/Blocker)
+        - P1 (High)
+        - P2 (Medium/Low)
+    validations:
+      required: true
+  - type: checkboxes
+    id: laws
+    attributes:
+      label: Laws Impact
+      description: Does this bug impact any of our non-negotiable laws?
+      options:
+        - label: Tenancy leak or cross-org exposure
+        - label: OAuth/Integration regression
+        - label: Plan vs Real confusion/mixing
+        - label: Secrets/PII logging
