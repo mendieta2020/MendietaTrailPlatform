@@ -18,4 +18,19 @@
 pytest -q
 python manage.py check
 python manage.py makemigrations --check --dry-run
-python manage.py migrate --check
+python manage.py migrate --noinput
+```
+
+**Frontend:**
+```bash
+cd frontend
+npm ci
+npm run build
+```
+
+## Evidence
+- [ ] CI/Actions run link:
+- [ ] Branch protection configured: 1 approval + required checks
+
+## Rollback
+Revert this PR (templates/workflows only). No data migrations.
