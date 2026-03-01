@@ -72,7 +72,7 @@ jobs:
         run: python manage.py makemigrations --check --dry-run
 
       - name: Verify migrations apply successfully
-        run: python manage.py migrate --check
+        run: python manage.py migrate --noinput
 
       - name: Run pytest
         run: pytest -q
