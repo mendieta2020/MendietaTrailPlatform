@@ -3,7 +3,7 @@
 
 ## Classification
 - **Phase**: FASE 1 — Gates
-- **Risk**: Low / Medium / High
+- **Risk**: <!-- Low / Med / High -->
 
 ## Non-Negotiable Laws Checklist
 - [ ] Multi-tenant untouched (no tenancy logic or org-scoping modified)
@@ -29,7 +29,7 @@ npm run build
 ```
 
 ## Evidence
-- [ ] CI/Actions run link:
+- [ ] CI/Actions run link: <!-- Paste link to successful GitHub Actions run -->
 - [ ] Branch protection configured: 1 approval + required checks
 
 ## Rollback

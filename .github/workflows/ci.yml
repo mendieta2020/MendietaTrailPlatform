@@ -37,7 +37,8 @@ jobs:
           --health-retries 5
 
     env:
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/test_db
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+      DJANGO_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
       REDIS_URL: redis://localhost:6379/0
       CELERY_BROKER_URL: redis://localhost:6379/0
       CELERY_RESULT_BACKEND: redis://localhost:6379/0
@@ -70,6 +71,9 @@ jobs:
 
       - name: Check for missing migrations
         run: python manage.py makemigrations --check --dry-run
+        
+      - name: Diagnostic DB Check
+        run: python -c "import os, django; os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings'); django.setup(); from django.conf import settings; print('Active DB Engine:', settings.DATABASES['default']['ENGINE'])"
 
       - name: Verify migrations apply successfully
         run: python manage.py migrate --noinput
