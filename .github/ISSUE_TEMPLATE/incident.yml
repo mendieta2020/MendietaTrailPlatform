@@ -1,0 +1,33 @@
+name: "Incident (Prod / Staging)"
+description: "Report an incident in production or staging."
+title: "[INCIDENT] "
+labels: ["type:incident", "status:needs-triage"]
+body:
+  - type: dropdown
+    id: sev
+    attributes:
+      label: Severidad
+      options:
+        - P0
+        - P1
+        - P2
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impacto
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidencia/Logs/RequestId
+    validations:
+      required: true
+  - type: textarea
+    id: mitigation
+    attributes:
+      label: Mitigación/Rollback
+    validations:
+      required: false
