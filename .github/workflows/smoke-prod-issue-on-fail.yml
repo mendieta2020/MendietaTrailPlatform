@@ -58,6 +58,36 @@ jobs:
             
             console.log(`Created issue #${issue.data.number}`);
             
+            // Fetch existing labels (pagination-safe)
+            const labels = await github.paginate(github.rest.issues.listLabelsForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100,
+            });
+            const existingLabels = new Set(labels.map(label => label.name.toLowerCase()));
+
+            const requiredLabels = [
+              { name: 'P0', color: 'B60205' },
+              { name: 'ops', color: '0E8A16' },
+              { name: 'smoke', color: 'FBCA04' }
+            ];
+
+            for (const label of requiredLabels) {
+              if (!existingLabels.has(label.name.toLowerCase())) {
+                console.log(`Creating missing label: ${label.name}`);
+                try {
+                  await github.rest.issues.createLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    name: label.name,
+                    color: label.color,
+                  });
+                } catch (error) {
+                  console.log(`Failed to create label ${label.name} (it may already exist): ${error.message}`);
+                }
+              }
+            }
+
             // Attempt to apply labels
             try {
               await github.rest.issues.addLabels({
@@ -68,6 +98,6 @@ jobs:
               });
               console.log('Successfully applied labels.');
             } catch (error) {
-              console.log('Failed to apply labels (they might not exist), but issue was created successfully.');
+              console.log('Failed to apply labels, but issue was created successfully.');
               console.error(error);
             }
