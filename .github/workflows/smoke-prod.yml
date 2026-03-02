@@ -5,6 +5,22 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      url:
+        description: 'URL to test'
+        required: false
+        default: 'https://api.quantoryn.com/healthz'
+        type: string
+      expected_status:
+        description: 'Expected HTTP status code'
+        required: false
+        default: '200'
+        type: string
+      timeout_seconds:
+        description: 'Timeout in seconds'
+        required: false
+        default: '10'
+        type: string
 
 jobs:
   smoke-prod:
@@ -15,10 +31,14 @@ jobs:
         run: |
           set -euo pipefail
           
-          URL="https://api.quantoryn.com/healthz"
+          URL="${{ inputs.url }}"
+          URL="${URL:-https://api.quantoryn.com/healthz}"
+          EXPECTED_STATUS="${{ inputs.expected_status }}"
+          EXPECTED_STATUS="${EXPECTED_STATUS:-200}"
           MAX_RETRIES=3
           RETRY_DELAY=10
-          TIMEOUT=10
+          TIMEOUT="${{ inputs.timeout_seconds }}"
+          TIMEOUT="${TIMEOUT:-10}"
           
           echo "Starting smoke test. Target: $URL"
           
@@ -31,7 +51,7 @@ jobs:
             cat headers.txt
             echo "---"
             
-            if [ "$HTTP_STATUS" = "200" ]; then
+            if [ "$HTTP_STATUS" = "$EXPECTED_STATUS" ]; then
               echo "✅ Success! HTTP Status: $HTTP_STATUS"
               echo "Response Body:"
               cat body.txt
