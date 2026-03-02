@@ -1,0 +1,56 @@
+name: Production Smoke Test
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  smoke-prod:
+    name: Smoke Test API
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Health Endpoint
+        run: |
+          set -euo pipefail
+          
+          URL="https://api.quantoryn.com/healthz"
+          MAX_RETRIES=3
+          RETRY_DELAY=10
+          TIMEOUT=10
+          
+          echo "Starting smoke test. Target: $URL"
+          
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Attempt $i of $MAX_RETRIES"
+            
+            HTTP_STATUS=$(curl -s -D headers.txt -o body.txt -w "%{http_code}" -m "$TIMEOUT" "$URL" || echo "CURL_FAILED")
+            
+            echo "Response Headers:"
+            cat headers.txt
+            echo "---"
+            
+            if [ "$HTTP_STATUS" = "200" ]; then
+              echo "✅ Success! HTTP Status: $HTTP_STATUS"
+              echo "Response Body:"
+              cat body.txt
+              echo ""
+              exit 0
+            else
+              echo "⚠️ Attempt $i failed. HTTP Status: $HTTP_STATUS."
+              if [ -f body.txt ]; then
+                echo "Body snippet (up to 200 chars):"
+                head -c 200 body.txt
+                echo ""
+              fi
+              
+              if [ "$i" -lt "$MAX_RETRIES" ]; then
+                echo "Sleeping $RETRY_DELAY seconds..."
+                sleep "$RETRY_DELAY"
+              fi
+            fi
+          done
+          
+          echo "❌ Smoke test failed after $MAX_RETRIES attempts."
+          exit 1
