@@ -62,7 +62,7 @@ jobs:
       # Strava placeholders (CI only)
       STRAVA_CLIENT_ID: "0"
       STRAVA_CLIENT_SECRET: ci-not-secret
-      STRAVA_REDIRECT_URI: http://localhost
+      STRAVA_REDIRECT_URI: "http://localhost/accounts/strava/login/callback/"
       STRAVA_WEBHOOK_VERIFY_TOKEN: ci-not-secret
 
     steps:
