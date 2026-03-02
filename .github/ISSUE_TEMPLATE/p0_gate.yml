@@ -1,0 +1,49 @@
+name: P0 Gate (Governance layer)
+description: Create a minimal, high-priority system change or gate
+title: "[P0-GATE] "
+labels: ["p0", "gate"]
+body:
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: One-sentence objective of this P0 gate.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope (Minimal)
+      description: Exact files or surfaces targeted. Must be minimal.
+    validations:
+      required: true
+  - type: textarea
+    id: dod
+    attributes:
+      label: Definition of Done
+      description: Criteria required to consider this task completed.
+    validations:
+      required: true
+  - type: textarea
+    id: test_plan
+    attributes:
+      label: Test Plan
+      description: Exact commands and steps to verify this change.
+    validations:
+      required: true
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Hard Constraints Checkout
+      description: Verify that none of these are violated.
+      options:
+        - label: No product features
+          required: true
+        - label: No domain changes
+          required: true
+        - label: No refactors
+          required: true
+        - label: No multi-provider additions
+          required: true
+        - label: No auto-merge/deploy
+          required: true
