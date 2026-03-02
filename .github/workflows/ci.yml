@@ -2,16 +2,15 @@ name: CI Gate
 
 on:
   pull_request:
-    branches:
-      - main
+    branches: [main]
   push:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
   backend:
     name: Backend Checks
     runs-on: ubuntu-latest
+
     services:
       postgres:
         image: postgres:16
@@ -22,10 +21,11 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres -d test_db"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+
       redis:
         image: redis:7
         ports:
@@ -37,15 +37,29 @@ jobs:
           --health-retries 5
 
     env:
+      # ✅ IMPORTANT: force Postgres based on your settings.py selector (DB_* variables)
+      DB_NAME: test_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: localhost
+      DB_PORT: "5432"
+
+      # Optional (keep for compatibility with libs/scripts; not used by your selector now)
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
       DJANGO_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+
+      # Redis / Celery
       REDIS_URL: redis://localhost:6379/0
       CELERY_BROKER_URL: redis://localhost:6379/0
       CELERY_RESULT_BACKEND: redis://localhost:6379/0
+
+      # Django basics
       SECRET_KEY: ci-not-secret
       DEBUG: "False"
       ALLOWED_HOSTS: localhost,127.0.0.1
       CSRF_TRUSTED_ORIGINS: http://localhost
+
+      # Strava placeholders (CI only)
       STRAVA_CLIENT_ID: "0"
       STRAVA_CLIENT_SECRET: ci-not-secret
       STRAVA_REDIRECT_URI: http://localhost
@@ -71,9 +85,9 @@ jobs:
 
       - name: Check for missing migrations
         run: python manage.py makemigrations --check --dry-run
-        
+
       - name: Diagnostic DB Check
-        run: python -c "import os, django; os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings'); django.setup(); from django.conf import settings; print('Active DB Engine:', settings.DATABASES['default']['ENGINE'])"
+        run: python -c "import os, django; os.environ.setdefault('DJANGO_SETTINGS_MODULE','backend.settings'); django.setup(); from django.conf import settings; print('Active DB Engine:', settings.DATABASES['default']['ENGINE'])"
 
       - name: Verify migrations apply successfully
         run: python manage.py migrate --noinput
@@ -84,6 +98,7 @@ jobs:
   frontend:
     name: Frontend Checks
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
