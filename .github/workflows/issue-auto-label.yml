@@ -1,0 +1,81 @@
+name: "Issues: Auto-Label"
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  auto-label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto-label based on content
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const title = issue.title || '';
+            const body = issue.body || '';
+            const labelsToAdd = new Set();
+            const currentLabels = issue.labels.map(l => l.name);
+
+            const isIncident = title.startsWith('[INCIDENT]');
+            const isIntake = title.startsWith('[INTAKE]');
+
+            // 5) If title starts with [INCIDENT] or [INTAKE], ensure matching type label exists
+            if (isIncident && !currentLabels.includes('type:incident')) {
+              labelsToAdd.add('type:incident');
+            }
+            if (isIntake && !currentLabels.includes('type:intake')) {
+              labelsToAdd.add('type:intake');
+            }
+
+            // 1) Ensure status:needs-triage if no status:* exists
+            if (!currentLabels.some(l => l.startsWith('status:'))) {
+              labelsToAdd.add('status:needs-triage');
+            }
+
+            // 2) If incident and no sev:* exists, default sev:P1, parse from body
+            if (isIncident && !currentLabels.some(l => l.startsWith('sev:'))) {
+              const sevMatch = body.match(/\b(P0|P1|P2)\b/);
+              if (sevMatch) {
+                labelsToAdd.add(`sev:${sevMatch[1]}`);
+              } else {
+                labelsToAdd.add('sev:P1');
+              }
+            }
+
+            // 3) Provider keyword detection
+            const providers = ['strava', 'garmin', 'coros', 'suunto', 'polar', 'wahoo'];
+            const contentLower = `${title}\n${body}`.toLowerCase();
+            for (const p of providers) {
+              if (contentLower.includes(p) && !currentLabels.some(l => l === `provider:${p}`)) {
+                labelsToAdd.add(`provider:${p}`);
+              }
+            }
+
+            // 4) Area heuristics (conservative)
+            if (!currentLabels.some(l => l.startsWith('area:'))) {
+              const checkKeywords = (keywords) => keywords.some(k => contentLower.includes(k));
+
+              if (checkKeywords(['oauth', 'token', 'secret', 'csrf', 'cors', 'signature', 'hmac'])) {
+                labelsToAdd.add('area:security');
+              } else if (checkKeywords(['webhook', 'integrations', 'strava', 'garmin', 'coros', 'suunto', 'polar', 'wahoo'])) {
+                labelsToAdd.add('area:integrations');
+              } else if (checkKeywords(['react', 'vite', 'ui', 'vercel'])) {
+                labelsToAdd.add('area:frontend');
+              } else if (checkKeywords(['django', 'drf', 'celery', 'postgres', 'railway', 'migration', 'api'])) {
+                labelsToAdd.add('area:backend');
+              }
+            }
+
+            if (labelsToAdd.size > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: Array.from(labelsToAdd)
+              });
+            }

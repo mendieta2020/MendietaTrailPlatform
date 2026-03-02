@@ -1,0 +1,49 @@
+name: "Intake (Feature / Improvement / Vendor)"
+description: "Submit a new feature, improvement, or vendor-specific request."
+title: "[INTAKE] "
+labels: ["type:intake", "status:needs-triage"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área
+      options:
+        - backend
+        - frontend
+        - integrations
+        - infra
+        - security
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      options:
+        - none
+        - strava
+        - garmin
+        - coros
+        - suunto
+        - polar
+        - wahoo
+    validations:
+      required: true
+  - type: textarea
+    id: issue_description
+    attributes:
+      label: Problema/Oportunidad
+    validations:
+      required: true
+  - type: textarea
+    id: dod
+    attributes:
+      label: Definition of Done
+    validations:
+      required: true
+  - type: textarea
+    id: risk_assessment
+    attributes:
+      label: Riesgos y leyes no-negociables
+    validations:
+      required: true
