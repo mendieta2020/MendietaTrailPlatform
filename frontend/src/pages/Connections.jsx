@@ -34,6 +34,9 @@ const Connections = () => {
     const [integrations, setIntegrations] = useState([]);
     const [userRole, setUserRole] = useState(null);
     const [alert, setAlert] = useState(null);
+    // Disconnect state
+    const [disconnecting, setDisconnecting] = useState({});
+    const [disconnectConfirm, setDisconnectConfirm] = useState(null);
     // Avisarme modal state
     const [avisarmeProvider, setAvisarmeProvider] = useState(null);
     const location = useLocation();
@@ -96,6 +99,47 @@ const Connections = () => {
             setIntegrations(res.data.integrations || []);
         } catch (err) {
             console.error('Failed to fetch integrations:', err);
+        }
+    };
+
+    const handleDisconnect = async () => {
+        if (!disconnectConfirm) return;
+        const providerName = disconnectConfirm.name;
+        const providerKey = disconnectConfirm.provider;
+
+        if (!providerKey) {
+            setAlert({ severity: 'error', message: 'Error: Proveedor inválido.' });
+            setDisconnectConfirm(null);
+            return;
+        }
+
+        setDisconnectConfirm(null);
+        setDisconnecting(prev => ({ ...prev, [providerKey]: true }));
+
+        try {
+            await client.delete(`/api/integrations/${providerKey}/disconnect/`);
+            setAlert({
+                severity: 'success',
+                message: `Desconectado exitosamente de ${providerName}.`
+            });
+            await fetchIntegrations();
+        } catch (err) {
+            console.error(`Failed to disconnect from ${providerKey}:`, err);
+            const status = err.response?.status;
+            let errorMsg = 'Error al desconectar de la plataforma.';
+
+            if (status === 401 || status === 403) {
+                errorMsg = 'Sesión expirada / no autorizada.';
+            } else if (err.response?.data?.message || err.response?.data?.error) {
+                errorMsg = err.response.data.message || err.response.data.error;
+            }
+
+            setAlert({
+                severity: 'error',
+                message: errorMsg
+            });
+        } finally {
+            setDisconnecting(prev => ({ ...prev, [providerKey]: false }));
         }
     };
 
@@ -221,18 +265,30 @@ const Connections = () => {
             );
         }
 
-        // Enabled + connected → Reconectar
+        // Enabled + connected → Desconectar / Reconectar
         if (integration.connected) {
             return (
-                <Button
-                    variant="outlined"
-                    color="primary"
-                    size="small"
-                    startIcon={<LinkIcon />}
-                    onClick={() => handleConnect(integration.provider)}
-                >
-                    Reconectar
-                </Button>
+                <Box display="flex" gap={1}>
+                    <Button
+                        variant="outlined"
+                        color="error"
+                        size="small"
+                        disabled={disconnecting[integration.provider]}
+                        onClick={() => setDisconnectConfirm(integration)}
+                    >
+                        {disconnecting[integration.provider] ? 'Desconectando...' : 'Desconectar'}
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        color="primary"
+                        size="small"
+                        startIcon={<LinkIcon />}
+                        onClick={() => handleConnect(integration.provider)}
+                        disabled={disconnecting[integration.provider]}
+                    >
+                        Reconectar
+                    </Button>
+                </Box>
             );
         }
 
@@ -366,6 +422,31 @@ const Connections = () => {
                 <DialogActions>
                     <Button onClick={() => setAvisarmeProvider(null)} variant="contained" size="small">
                         Entendido
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Disconnect Confirmation Dialog */}
+            <Dialog
+                open={Boolean(disconnectConfirm)}
+                onClose={() => setDisconnectConfirm(null)}
+                maxWidth="xs"
+                fullWidth
+            >
+                <DialogTitle sx={{ pb: 1 }}>
+                    Desconectar {disconnectConfirm?.name}
+                </DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" color="text.secondary">
+                        ¿Estás seguro de que deseas desconectar tu cuenta de {disconnectConfirm?.name}?
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setDisconnectConfirm(null)} color="primary" size="small">
+                        Cancelar
+                    </Button>
+                    <Button onClick={handleDisconnect} color="error" variant="contained" size="small">
+                        Desconectar
                     </Button>
                 </DialogActions>
             </Dialog>
