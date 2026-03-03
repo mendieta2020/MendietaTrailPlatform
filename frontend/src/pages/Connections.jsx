@@ -32,7 +32,7 @@ const MOBILE_ONLY_PROVIDERS = ['apple_health'];
 const Connections = () => {
     const [loading, setLoading] = useState(true);
     const [integrations, setIntegrations] = useState([]);
-    const [userRole, setUserRole] = useState(null);
+
     const [alert, setAlert] = useState(null);
     // Avisarme modal state
     const [avisarmeProvider, setAvisarmeProvider] = useState(null);
@@ -70,9 +70,8 @@ const Connections = () => {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                // Fetch user role
-                const userRes = await client.get('/api/me');
-                setUserRole(userRes.data.role);
+                // Fetch user role (could be used later, or just keep session alive)
+                await client.get('/api/me');
 
                 // Fetch integrations
                 await fetchIntegrations();

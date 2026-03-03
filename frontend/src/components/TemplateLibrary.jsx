@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Box, Typography, Paper, List, ListItem, ListItemText, 
+import {
+  Box, Typography, Paper, List, ListItem, ListItemText,
   Chip, TextField, InputAdornment, IconButton, CircularProgress, Divider,
   Dialog, DialogTitle, DialogContent, DialogActions, Button, FormControl,
   InputLabel, Select, MenuItem, Alert
@@ -40,7 +40,7 @@ const TemplateLibrary = () => {
 
   // Icono dinámico según deporte
   const getIcon = (deporte) => {
-    switch(deporte) {
+    switch (deporte) {
       case 'RUN': case 'TRAIL': return <DirectionsRun fontSize="small" />;
       case 'CYCLING': case 'MTB': return <PedalBike fontSize="small" />;
       default: return <FitnessCenter fontSize="small" />;
@@ -49,14 +49,14 @@ const TemplateLibrary = () => {
 
   // Color dinámico según dificultad
   const getColor = (dificultad) => {
-    switch(dificultad) {
+    switch (dificultad) {
       case 'HARD': return '#ef5350'; // Rojo
       case 'MODERATE': return '#ff9800'; // Naranja
       default: return '#4caf50'; // Verde
     }
   };
 
-  const filteredList = templates.filter(t => 
+  const filteredList = templates.filter(t =>
     t.titulo.toLowerCase().includes(filter.toLowerCase())
   );
 
@@ -89,7 +89,7 @@ const TemplateLibrary = () => {
     if (createState.estructura?.trim()) {
       try {
         estructuraPayload = JSON.parse(createState.estructura);
-      } catch (error) {
+      } catch {
         setCreateError('La estructura debe ser un JSON válido.');
         return;
       }
@@ -156,9 +156,9 @@ const TemplateLibrary = () => {
           <List dense>
             {filteredList.map((tpl) => (
               <React.Fragment key={tpl.id}>
-                <ListItem 
-                  button 
-                  sx={{ 
+                <ListItem
+                  button
+                  sx={{
                     '&:hover': { bgcolor: '#f1f5f9' },
                     cursor: 'grab' // Cursor de manito para indicar arrastre
                   }}
@@ -171,7 +171,7 @@ const TemplateLibrary = () => {
                   <Box sx={{ mr: 1.5, color: '#64748B', display: 'flex' }}>
                     {getIcon(tpl.deporte)}
                   </Box>
-                  <ListItemText 
+                  <ListItemText
                     primary={
                       <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
                         {tpl.titulo}
@@ -179,27 +179,27 @@ const TemplateLibrary = () => {
                     }
                     secondary={
                       <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, flexWrap: 'wrap' }}>
-                        <Chip 
-                          label={tpl.dificultad_display || 'Normal'} 
-                          size="small" 
-                          sx={{ 
-                            height: 16, 
-                            fontSize: '0.65rem', 
-                            bgcolor: getColor(tpl.etiqueta_dificultad), 
-                            color: 'white' 
-                          }} 
+                        <Chip
+                          label={tpl.dificultad_display || 'Normal'}
+                          size="small"
+                          sx={{
+                            height: 16,
+                            fontSize: '0.65rem',
+                            bgcolor: getColor(tpl.etiqueta_dificultad),
+                            color: 'white'
+                          }}
                         />
-                         <Typography variant="caption" color="textSecondary" sx={{ fontSize: '0.7rem' }}>
-                           • {tpl.deporte}
-                         </Typography>
-                         {tpl.version_actual ? (
-                           <Typography variant="caption" color="textSecondary" sx={{ fontSize: '0.7rem' }}>
-                             • v{tpl.version_actual}
-                           </Typography>
-                         ) : null}
-                         <Typography variant="caption" color="textSecondary" sx={{ fontSize: '0.7rem' }}>
-                           • Últ. act: {formatLastUpdate(tpl)}
-                         </Typography>
+                        <Typography variant="caption" color="textSecondary" sx={{ fontSize: '0.7rem' }}>
+                          • {tpl.deporte}
+                        </Typography>
+                        {tpl.version_actual ? (
+                          <Typography variant="caption" color="textSecondary" sx={{ fontSize: '0.7rem' }}>
+                            • v{tpl.version_actual}
+                          </Typography>
+                        ) : null}
+                        <Typography variant="caption" color="textSecondary" sx={{ fontSize: '0.7rem' }}>
+                          • Últ. act: {formatLastUpdate(tpl)}
+                        </Typography>
                       </Box>
                     }
                   />

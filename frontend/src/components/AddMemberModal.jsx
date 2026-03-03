@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Dialog, DialogTitle, DialogContent, DialogActions, 
-  Button, List, ListItem, ListItemText, ListItemAvatar, 
-  Avatar, Checkbox, TextField, InputAdornment, Typography, Box, Chip 
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  Button, List, ListItem, ListItemText, ListItemAvatar,
+  Avatar, Checkbox, TextField, InputAdornment, Typography, Box, Chip
 } from '@mui/material';
 import { Search, PersonAdd } from '@mui/icons-material';
 import client from '../api/client';
@@ -20,9 +20,9 @@ const AddMemberModal = ({ open, onClose, teamId, onMembersAdded }) => {
       setSelected([]); // Resetear selección
       setSearchTerm('');
     }
-  }, [open]);
+  }, [open, fetchAvailableAthletes]);
 
-  const fetchAvailableAthletes = async () => {
+  const fetchAvailableAthletes = useCallback(async () => {
     try {
       // Traemos TODOS los alumnos
       const res = await client.get('/api/alumnos/');
@@ -33,7 +33,7 @@ const AddMemberModal = ({ open, onClose, teamId, onMembersAdded }) => {
     } catch (err) {
       console.error("Error cargando atletas:", err);
     }
-  };
+  }, [teamId]);
 
   // 2. Manejar Selección (Checkbox)
   const handleToggle = (value) => () => {
@@ -54,12 +54,12 @@ const AddMemberModal = ({ open, onClose, teamId, onMembersAdded }) => {
       setLoading(true);
       // Truco Profesional: Usamos Promise.all para enviar múltiples peticiones en paralelo
       // Esto es mucho más rápido que un bucle for normal.
-      const promises = selected.map(athleteId => 
+      const promises = selected.map(athleteId =>
         client.patch(`/api/alumnos/${athleteId}/`, { equipo: teamId })
       );
 
       await Promise.all(promises);
-      
+
       // Éxito
       onMembersAdded(); // Avisamos al padre que recargue
       onClose();
@@ -72,7 +72,7 @@ const AddMemberModal = ({ open, onClose, teamId, onMembersAdded }) => {
   };
 
   // Filtro de búsqueda visual
-  const filteredAthletes = athletes.filter(a => 
+  const filteredAthletes = athletes.filter(a =>
     `${a.nombre} ${a.apellido}`.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -81,7 +81,7 @@ const AddMemberModal = ({ open, onClose, teamId, onMembersAdded }) => {
       <DialogTitle sx={{ fontWeight: 'bold' }}>
         Agregar Atletas al Grupo
       </DialogTitle>
-      
+
       <DialogContent dividers>
         {/* Buscador */}
         <TextField
@@ -122,15 +122,15 @@ const AddMemberModal = ({ open, onClose, teamId, onMembersAdded }) => {
                 >
                   <ListItemAvatar>
                     <Avatar sx={{ bgcolor: isSelected ? '#F57C00' : '#bdbdbd' }}>
-                        {athlete.nombre.charAt(0)}{athlete.apellido.charAt(0)}
+                      {athlete.nombre.charAt(0)}{athlete.apellido.charAt(0)}
                     </Avatar>
                   </ListItemAvatar>
                   <ListItemText
                     id={labelId}
                     primary={`${athlete.nombre} ${athlete.apellido}`}
                     secondary={
-                        athlete.equipo_nombre ? 
-                        `Actualmente en: ${athlete.equipo_nombre}` : 
+                      athlete.equipo_nombre ?
+                        `Actualmente en: ${athlete.equipo_nombre}` :
                         "Sin Grupo asignado"
                     }
                   />
@@ -140,21 +140,21 @@ const AddMemberModal = ({ open, onClose, teamId, onMembersAdded }) => {
           </List>
         )}
       </DialogContent>
-      
+
       <DialogActions sx={{ p: 2, justifyContent: 'space-between' }}>
         <Typography variant="caption" sx={{ ml: 2 }}>
-            {selected.length} seleccionados
+          {selected.length} seleccionados
         </Typography>
         <Box>
-            <Button onClick={onClose} color="inherit" sx={{ mr: 1 }}>Cancelar</Button>
-            <Button 
-                onClick={handleSave} 
-                variant="contained" 
-                disabled={selected.length === 0 || loading}
-                sx={{ bgcolor: '#F57C00', color: 'white' }}
-            >
-                {loading ? "Guardando..." : "Agregar Seleccionados"}
-            </Button>
+          <Button onClick={onClose} color="inherit" sx={{ mr: 1 }}>Cancelar</Button>
+          <Button
+            onClick={handleSave}
+            variant="contained"
+            disabled={selected.length === 0 || loading}
+            sx={{ bgcolor: '#F57C00', color: 'white' }}
+          >
+            {loading ? "Guardando..." : "Agregar Seleccionados"}
+          </Button>
         </Box>
       </DialogActions>
     </Dialog>
