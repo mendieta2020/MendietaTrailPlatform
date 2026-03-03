@@ -101,7 +101,7 @@ class PR19StravaStateTests(TestCase):
         
         # First call
         res = self.client.delete(url)
-        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.status_code, 204)  # PR21: now returns 204 No Content
         
         # Verify SocialAccount gone
         self.assertEqual(SocialAccount.objects.count(), 0)
@@ -117,7 +117,7 @@ class PR19StravaStateTests(TestCase):
         
         # Second call (idempotent)
         res2 = self.client.delete(url)
-        self.assertEqual(res2.status_code, 200)  # Must not error
+        self.assertEqual(res2.status_code, 204)  # PR21: idempotent, must not error
 
     def test_status_endpoint_returns_valid_data(self):
         self._setup_connected_state()

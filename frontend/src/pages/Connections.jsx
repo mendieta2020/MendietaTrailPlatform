@@ -19,6 +19,7 @@ import {
     CheckCircle,
     Error as ErrorIcon,
     Link as LinkIcon,
+    LinkOff,
     PhoneIphone,
     NotificationsNone
 } from '@mui/icons-material';
@@ -36,6 +37,9 @@ const Connections = () => {
     const [alert, setAlert] = useState(null);
     // Avisarme modal state
     const [avisarmeProvider, setAvisarmeProvider] = useState(null);
+    // Disconnect confirm modal state
+    const [disconnectTarget, setDisconnectTarget] = useState(null); // integration object
+    const [disconnecting, setDisconnecting] = useState(false);
     const location = useLocation();
     const navigate = useNavigate();
 
@@ -122,6 +126,29 @@ const Connections = () => {
             });
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleDisconnect = async (provider) => {
+        setDisconnecting(true);
+        try {
+            await client.delete(`/api/integrations/${provider}/disconnect/`);
+            setAlert({
+                severity: 'success',
+                message: `Desconectado de ${provider.charAt(0).toUpperCase() + provider.slice(1)} exitosamente.`
+            });
+            // Refresh integration list to show "No conectado" state
+            await fetchIntegrations();
+        } catch (err) {
+            const httpStatus = err.response?.status;
+            let msg = 'No fue posible desconectar. Intenta de nuevo.';
+            if (httpStatus === 401 || httpStatus === 403) {
+                msg = 'No autorizado. Por favor recargá la página e intentá de nuevo.';
+            }
+            setAlert({ severity: 'error', message: msg });
+        } finally {
+            setDisconnecting(false);
+            setDisconnectTarget(null);
         }
     };
 
@@ -220,24 +247,39 @@ const Connections = () => {
             );
         }
 
-        // Enabled + connected → Reconectar
+        // Enabled + connected → Desconectar (primary) + Reconectar (secondary)
         if (integration.connected) {
             return (
-                <Button
-                    variant="outlined"
-                    color="primary"
-                    size="small"
-                    startIcon={<LinkIcon />}
-                    onClick={() => handleConnect(integration.provider)}
-                >
-                    Reconectar
-                </Button>
+                <Box display="flex" flexDirection="column" alignItems="flex-end" gap={0.5}>
+                    <Button
+                        id={`btn-disconnect-${integration.provider}`}
+                        variant="contained"
+                        color="error"
+                        size="small"
+                        startIcon={<LinkOff />}
+                        onClick={() => setDisconnectTarget(integration)}
+                    >
+                        Desconectar
+                    </Button>
+                    <Button
+                        id={`btn-reconnect-${integration.provider}`}
+                        size="small"
+                        variant="text"
+                        color="secondary"
+                        startIcon={<LinkIcon fontSize="small" />}
+                        sx={{ fontSize: '0.72rem', textTransform: 'none', p: 0, minWidth: 0 }}
+                        onClick={() => handleConnect(integration.provider)}
+                    >
+                        Reconectar
+                    </Button>
+                </Box>
             );
         }
 
         // Enabled + not connected → Connect CTA
         return (
             <Button
+                id={`btn-connect-${integration.provider}`}
                 variant="contained"
                 color="primary"
                 size="small"
@@ -365,6 +407,48 @@ const Connections = () => {
                 <DialogActions>
                     <Button onClick={() => setAvisarmeProvider(null)} variant="contained" size="small">
                         Entendido
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Disconnect confirmation modal */}
+            <Dialog
+                id="modal-disconnect-confirm"
+                open={Boolean(disconnectTarget)}
+                onClose={() => !disconnecting && setDisconnectTarget(null)}
+                maxWidth="xs"
+                fullWidth
+            >
+                <DialogTitle sx={{ pb: 1 }}>
+                    ¿Desconectar {disconnectTarget?.name}?
+                </DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" color="text.secondary">
+                        Esto revocará el acceso de{' '}
+                        <strong>{disconnectTarget?.name}</strong>{' '}
+                        y detendrá futuras sincronizaciones.
+                        Las actividades ya importadas no se eliminarán.
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button
+                        id="btn-disconnect-cancel"
+                        onClick={() => setDisconnectTarget(null)}
+                        disabled={disconnecting}
+                        size="small"
+                    >
+                        Cancelar
+                    </Button>
+                    <Button
+                        id="btn-disconnect-confirm"
+                        variant="contained"
+                        color="error"
+                        size="small"
+                        startIcon={disconnecting ? <CircularProgress size={14} color="inherit" /> : <LinkOff />}
+                        disabled={disconnecting}
+                        onClick={() => handleDisconnect(disconnectTarget?.provider)}
+                    >
+                        {disconnecting ? 'Desconectando…' : 'Confirmar desconexión'}
                     </Button>
                 </DialogActions>
             </Dialog>
