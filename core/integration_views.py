@@ -471,54 +471,200 @@ class CoachAthleteIntegrationStatusView(APIView):
 class IntegrationDisconnectView(APIView):
     """
     DELETE /api/integrations/{provider}/disconnect/
+
+    Vendor-grade idempotent disconnect:
+    1. Resolves alumno via strict tenancy (fail-closed).
+    2. Calls provider revoke API (best-effort, timeout-guarded).
+    3. Purges OAuthCredential (canonical token store, PR20).
+    4. Deletes SocialToken + SocialAccount (allauth compat layer).
+    5. Marks ExternalIdentity as DISABLED.
+    6. Resets OAuthIntegrationStatus to DISCONNECTED.
+    7. Returns 204 No Content (idempotent: already-disconnected → 204 + reason_code log).
     """
     permission_classes = [IsAuthenticated]
 
+    # Strava deauthorization endpoint (provider logic stays here, not in integrations/)
+    _STRAVA_REVOKE_URL = "https://www.strava.com/oauth/deauthorize"
+    _REVOKE_TIMEOUT_SECONDS = 8
+
     def delete(self, request, provider):
-        """Disconnect provider integration."""
+        """Disconnect provider integration — idempotent, 204 No Content on success."""
         if provider != "strava":
             return Response(
-                {"error": "unsupported", "message": "Only Strava disconnect is currently supported"}, 
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "unsupported", "message": "Only Strava disconnect is currently supported"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-        
-        from allauth.socialaccount.models import SocialAccount, SocialToken
-        
-        # Idempotent disconnect
-        accounts = SocialAccount.objects.filter(user=request.user, provider=provider)
-        for account in accounts:
-            SocialToken.objects.filter(account=account).delete()
-            account.delete()
-            
-        alumno = Alumno.objects.filter(usuario=request.user).first()
-        org_id = None
-        if alumno:
-            if alumno.entrenador_id:
-                org_id = alumno.entrenador_id
-            
-            # Nullify cached athlete ID
-            if getattr(alumno, "strava_athlete_id", None):
-                alumno._skip_signal = True
-                alumno.strava_athlete_id = None
-                alumno.save(update_fields=["strava_athlete_id"])
-                
-            # Update OAuthIntegrationStatus
-            OAuthIntegrationStatus.objects.filter(alumno=alumno, provider=provider).update(
-                connected=False,
-                status=OAuthIntegrationStatus.Status.DISCONNECTED,
-                error_reason="",
-                error_message="",
-                athlete_id=""
-            )
-            
+
+        # --- Structured log: start ---
         logger.info(
-            "strava.disconnected",
+            "strava.disconnect.start",
             extra={
-                "event_name": f"{provider}.disconnected",
-                "organization_id": org_id,
+                "event_name": "strava.disconnect.start",
                 "user_id": request.user.id,
                 "provider": provider,
-                "outcome": "success"
-            }
+            },
         )
-        return Response({"success": True})
+
+        # --- Strict tenancy: resolve alumno from authenticated user (fail-closed) ---
+        try:
+            alumno = Alumno.objects.select_related("entrenador").get(usuario=request.user)
+        except Alumno.DoesNotExist:
+            # No alumno profile — nothing to disconnect, respond 204 idempotent
+            logger.info(
+                "strava.disconnect.done",
+                extra={
+                    "event_name": "strava.disconnect.done",
+                    "user_id": request.user.id,
+                    "provider": provider,
+                    "reason_code": "ALREADY_DISCONNECTED",
+                    "outcome": "OK",
+                },
+            )
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        organization_id = alumno.entrenador_id  # tenant anchor
+
+        # --- Check if already disconnected (idempotency gate) ---
+        from core.models import OAuthCredential, ExternalIdentity
+        from allauth.socialaccount.models import SocialAccount, SocialToken
+
+        has_cred = OAuthCredential.objects.filter(alumno=alumno, provider=provider).exists()
+        has_social = SocialAccount.objects.filter(user=request.user, provider=provider).exists()
+        has_identity = ExternalIdentity.objects.filter(
+            alumno=alumno, provider=provider, status=ExternalIdentity.Status.LINKED
+        ).exists()
+
+        if not has_cred and not has_social and not has_identity:
+            logger.info(
+                "strava.disconnect.done",
+                extra={
+                    "event_name": "strava.disconnect.done",
+                    "user_id": request.user.id,
+                    "organization_id": organization_id,
+                    "provider": provider,
+                    "reason_code": "ALREADY_DISCONNECTED",
+                    "outcome": "OK",
+                },
+            )
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        revoke_reason_code = "REVOKE_OK"
+
+        # --- (a) Attempt provider revoke (best-effort, timeout-guarded) ---
+        # Prefer OAuthCredential access_token; fall back to SocialToken.
+        access_token_for_revoke = None
+        try:
+            cred = OAuthCredential.objects.filter(alumno=alumno, provider=provider).first()
+            if cred and cred.access_token:
+                access_token_for_revoke = cred.access_token
+            else:
+                social_account = SocialAccount.objects.filter(
+                    user=request.user, provider=provider
+                ).first()
+                if social_account:
+                    social_token = SocialToken.objects.filter(account=social_account).first()
+                    if social_token and social_token.token:
+                        access_token_for_revoke = social_token.token
+        except Exception:
+            logger.exception(
+                "strava.disconnect.revoke_token_lookup_error",
+                extra={
+                    "event_name": "strava.disconnect.revoke_token_lookup_error",
+                    "user_id": request.user.id,
+                    "organization_id": organization_id,
+                    "provider": provider,
+                },
+            )
+
+        if access_token_for_revoke:
+            try:
+                import requests as http_requests
+                resp = http_requests.post(
+                    self._STRAVA_REVOKE_URL,
+                    data={"access_token": access_token_for_revoke},
+                    timeout=self._REVOKE_TIMEOUT_SECONDS,
+                )
+                if resp.status_code in (200, 204):
+                    revoke_reason_code = "REVOKE_OK"
+                else:
+                    revoke_reason_code = f"REVOKE_HTTP_{resp.status_code}"
+                    logger.warning(
+                        "strava.disconnect.revoke_non_ok",
+                        extra={
+                            "event_name": "strava.disconnect.revoke_non_ok",
+                            "user_id": request.user.id,
+                            "organization_id": organization_id,
+                            "provider": provider,
+                            "reason_code": revoke_reason_code,
+                        },
+                    )
+            except Exception:
+                revoke_reason_code = "REVOKE_FAILED"
+                logger.warning(
+                    "strava.disconnect.revoke_failed",
+                    extra={
+                        "event_name": "strava.disconnect.revoke_failed",
+                        "user_id": request.user.id,
+                        "organization_id": organization_id,
+                        "provider": provider,
+                        "reason_code": "REVOKE_FAILED",
+                    },
+                )
+                # Revoke failure: continue purge — tokens must be irrecoverable locally
+        else:
+            revoke_reason_code = "REVOKE_SKIPPED_NO_TOKEN"
+
+        # --- (b) Purge OAuthCredential (canonical store, PR20) ---
+        # Delete row entirely — tokens become irrecoverable.
+        deleted_cred_count, _ = OAuthCredential.objects.filter(
+            alumno=alumno, provider=provider
+        ).delete()
+
+        # --- (c) Purge SocialToken + SocialAccount (allauth compat layer) ---
+        social_accounts = SocialAccount.objects.filter(user=request.user, provider=provider)
+        deleted_token_count = 0
+        deleted_account_count = 0
+        for account in social_accounts:
+            deleted_token_count += SocialToken.objects.filter(account=account).delete()[0]
+            account.delete()
+            deleted_account_count += 1
+
+        # --- (d) Mark ExternalIdentity as DISABLED ---
+        disabled_identity_count = ExternalIdentity.objects.filter(
+            alumno=alumno, provider=provider
+        ).update(status=ExternalIdentity.Status.DISABLED)
+
+        # --- (e) Clear Alumno.strava_athlete_id (cached compat field) ---
+        if getattr(alumno, "strava_athlete_id", None):
+            alumno._skip_signal = True
+            alumno.strava_athlete_id = None
+            alumno.save(update_fields=["strava_athlete_id"])
+
+        # --- (f) Reset OAuthIntegrationStatus → DISCONNECTED ---
+        OAuthIntegrationStatus.objects.filter(alumno=alumno, provider=provider).update(
+            connected=False,
+            status=OAuthIntegrationStatus.Status.DISCONNECTED,
+            athlete_id="",
+            error_reason="disconnected_by_user",
+            error_message="",
+        )
+
+        # --- Structured log: done ---
+        logger.info(
+            "strava.disconnect.done",
+            extra={
+                "event_name": "strava.disconnect.done",
+                "user_id": request.user.id,
+                "organization_id": organization_id,
+                "provider": provider,
+                "revoke_reason_code": revoke_reason_code,
+                "deleted_credentials": deleted_cred_count,
+                "deleted_tokens": deleted_token_count,
+                "deleted_accounts": deleted_account_count,
+                "disabled_identities": disabled_identity_count,
+                "reason_code": "DISCONNECT_OK",
+                "outcome": "OK",
+            },
+        )
+
+        return Response(status=status.HTTP_204_NO_CONTENT)

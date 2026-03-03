@@ -1096,3 +1096,176 @@ class PR20OAuthCallbackPersistsCredentialTests(TestCase):
         self.assertEqual(cred.refresh_token, "fake_refresh_xyz")
         self.assertIsNotNone(cred.expires_at)
 
+
+# ==============================================================================
+#  PR21: Disconnect Strava — protective tests
+# ==============================================================================
+
+class StravaDisconnectTests(TestCase):
+    """
+    Protective tests for DELETE /api/integrations/strava/disconnect/
+
+    Coverage:
+    - test_disconnect_purges_tokens_and_marks_identity_disabled
+    - test_disconnect_idempotent
+    - test_worker_auth_after_disconnect_returns_none
+    - test_no_token_in_logs
+    """
+
+    def setUp(self):
+        self.coach = User.objects.create_user(username="coach_disc21", password="x")
+        self.athlete_user = User.objects.create_user(username="athlete_disc21", password="x")
+        self.alumno = Alumno.objects.create(
+            entrenador=self.coach,
+            usuario=self.athlete_user,
+            nombre="Disco",
+            apellido="Test",
+            email="disco_test21@test.com",
+            strava_athlete_id="54321",
+        )
+        from core.integration_models import OAuthIntegrationStatus
+        OAuthIntegrationStatus.objects.create(
+            alumno=self.alumno,
+            provider="strava",
+            connected=True,
+            athlete_id="54321",
+            status=OAuthIntegrationStatus.Status.CONNECTED,
+        )
+
+    def _seed_oauth_credential(self, access_token="tok_access", refresh_token="tok_refresh"):
+        from core.models import OAuthCredential
+        OAuthCredential.objects.update_or_create(
+            alumno=self.alumno,
+            provider="strava",
+            defaults={
+                "external_user_id": "54321",
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "expires_at": timezone.now() + timezone.timedelta(hours=6),
+            },
+        )
+
+    def test_disconnect_purges_tokens_and_marks_identity_disabled(self):
+        """
+        GIVEN: OAuthCredential and ExternalIdentity exist for the alumno.
+        WHEN:  DELETE /api/integrations/strava/disconnect/ (Strava revoke mocked OK).
+        THEN:  OAuthCredential deleted, ExternalIdentity DISABLED, OAuthIntegrationStatus DISCONNECTED, 204.
+        """
+        from core.models import OAuthCredential, ExternalIdentity
+        from core.integration_models import OAuthIntegrationStatus
+
+        self._seed_oauth_credential()
+        ExternalIdentity.objects.get_or_create(
+            provider="strava",
+            external_user_id="54321",
+            defaults={
+                "alumno": self.alumno,
+                "status": ExternalIdentity.Status.LINKED,
+            },
+        )
+
+        self.client.force_login(self.athlete_user)
+
+        with patch("requests.post") as mock_post:
+            from unittest.mock import MagicMock
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_post.return_value = mock_resp
+            res = self.client.delete("/api/integrations/strava/disconnect/")
+
+        self.assertEqual(res.status_code, 204, f"Expected 204, got {res.status_code}: {getattr(res, 'content', b'')}")
+
+        # OAuthCredential must be gone
+        self.assertFalse(
+            OAuthCredential.objects.filter(alumno=self.alumno, provider="strava").exists(),
+            "OAuthCredential must be purged after disconnect",
+        )
+
+        # ExternalIdentity must be DISABLED
+        identity = ExternalIdentity.objects.filter(alumno=self.alumno, provider="strava").first()
+        self.assertIsNotNone(identity)
+        self.assertEqual(identity.status, ExternalIdentity.Status.DISABLED)
+
+        # OAuthIntegrationStatus must be DISCONNECTED
+        ois = OAuthIntegrationStatus.objects.filter(alumno=self.alumno, provider="strava").first()
+        self.assertIsNotNone(ois)
+        self.assertFalse(ois.connected)
+        self.assertEqual(ois.status, OAuthIntegrationStatus.Status.DISCONNECTED)
+
+        # Alumno.strava_athlete_id must be cleared
+        self.alumno.refresh_from_db()
+        self.assertIsNone(self.alumno.strava_athlete_id)
+
+    def test_disconnect_idempotent(self):
+        """
+        GIVEN: No OAuthCredential, no SocialAccount, no LINKED ExternalIdentity (already disconnected).
+        WHEN:  DELETE /api/integrations/strava/disconnect/ called twice.
+        THEN:  Both calls return 204.
+        """
+        self.client.force_login(self.athlete_user)
+        res1 = self.client.delete("/api/integrations/strava/disconnect/")
+        self.assertEqual(res1.status_code, 204, f"First idempotent call: expected 204, got {res1.status_code}")
+        res2 = self.client.delete("/api/integrations/strava/disconnect/")
+        self.assertEqual(res2.status_code, 204, f"Second idempotent call: expected 204, got {res2.status_code}")
+
+    def test_worker_auth_after_disconnect_returns_none(self):
+        """
+        GIVEN: OAuthCredential seeded for alumno.
+        WHEN:  OAuthCredential is deleted (as disconnect does).
+        THEN:  obtener_cliente_strava_para_alumno(alumno) returns None.
+        """
+        from core.models import OAuthCredential
+        from core.services import obtener_cliente_strava_para_alumno
+
+        self._seed_oauth_credential()
+        self.assertTrue(OAuthCredential.objects.filter(alumno=self.alumno, provider="strava").exists())
+
+        OAuthCredential.objects.filter(alumno=self.alumno, provider="strava").delete()
+
+        client = obtener_cliente_strava_para_alumno(self.alumno)
+        self.assertIsNone(client, "Worker must not authenticate after disconnect purges OAuthCredential")
+
+    def test_no_token_in_logs(self):
+        """
+        GIVEN: OAuthCredential with a canary access_token value.
+        WHEN:  Disconnect endpoint called.
+        THEN:  The canary value never appears in any WARNING+ log record.
+        """
+        import logging as _logging
+        from unittest.mock import MagicMock
+
+        SECRET_TOKEN = "SUPER_SECRET_ACCESS_TOKEN_CANARY_PR21"
+        self._seed_oauth_credential(access_token=SECRET_TOKEN)
+
+        class _SecretCapture(_logging.Handler):
+            def __init__(self):
+                super().__init__()
+                self.found_secret = False
+
+            def emit(self, record):
+                try:
+                    msg = self.format(record)
+                except Exception:
+                    msg = str(record.getMessage())
+                if SECRET_TOKEN in msg:
+                    self.found_secret = True
+
+        capture = _SecretCapture()
+        capture.setLevel(_logging.WARNING)
+        root_logger = _logging.getLogger()
+        root_logger.addHandler(capture)
+
+        try:
+            self.client.force_login(self.athlete_user)
+            with patch("requests.post") as mock_post:
+                mock_resp = MagicMock()
+                mock_resp.status_code = 200
+                mock_post.return_value = mock_resp
+                self.client.delete("/api/integrations/strava/disconnect/")
+        finally:
+            root_logger.removeHandler(capture)
+
+        self.assertFalse(
+            capture.found_secret,
+            "access_token must NEVER appear in WARNING+ log records during disconnect",
+        )
