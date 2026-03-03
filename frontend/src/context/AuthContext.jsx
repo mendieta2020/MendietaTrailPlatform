@@ -16,9 +16,9 @@ export const AuthProvider = ({ children }) => {
         const checkAuth = async () => {
             if (USE_COOKIE_AUTH) {
                 try {
-                    const response = await fetchSession();
-                    setUser(response.data);
-                } catch (error) {
+                    const { data } = await fetchSession();
+                    setUser(data);
+                } catch {
                     setUser(null);
                 } finally {
                     setLoading(false);

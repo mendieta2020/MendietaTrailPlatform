@@ -109,7 +109,6 @@ const METRICS = [
   { key: 'sessions', label: 'Sesiones', icon: Layers, accent: 'sessions' },
 ];
 
-// eslint-disable-next-line no-unused-vars
 function MetricCard(props) {
   const { label, value, accent } = props;
   const styles = getMetricChipStyles(accent);

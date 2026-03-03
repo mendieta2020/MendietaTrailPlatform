@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { 
-  Box, Typography, Paper, Grid, Avatar, Chip, Button, 
-  CircularProgress, Stack, Fab, Drawer 
+import {
+  Box, Typography, Paper, Grid, Avatar, Chip, Button,
+  CircularProgress, Stack, Fab, Drawer
 } from '@mui/material';
-import { 
+import {
   ArrowBack, Edit, Email, LocationOn, CalendarMonth, FitnessCenter,
-  LibraryBooks 
+  LibraryBooks
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import client from '../api/client';
-import WeeklyCalendar from '../components/WeeklyCalendar'; 
-import StudentPerformanceChart from '../components/widgets/StudentPerformanceChart'; 
-import TemplateLibrary from '../components/TemplateLibrary'; 
+import WeeklyCalendar from '../components/WeeklyCalendar';
+import StudentPerformanceChart from '../components/widgets/StudentPerformanceChart';
+import TemplateLibrary from '../components/TemplateLibrary';
 import ErrorBoundary from '../components/ErrorBoundary'; // <--- 1. IMPORTACIÓN DE SEGURIDAD
 import RiskBadge from '../components/RiskBadge';
 import CoachDecisionsPanel from '../components/CoachDecisionsPanel';
@@ -24,14 +24,11 @@ const AthleteDetail = () => {
   const [trainings, setTrainings] = useState([]);
   const [injuryRisk, setInjuryRisk] = useState(null);
   const [loading, setLoading] = useState(true);
-  
+
   // Estado para la Librería Lateral
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const handleTrainingCreated = (training) => {
-const handleTrainingCreated = (training) => {
-  setTrainings((prev) => [...(Array.isArray(prev) ? prev : []), training]);
-};
-
+    setTrainings((prev) => [...(Array.isArray(prev) ? prev : []), training]);
   };
 
   useEffect(() => {
@@ -86,7 +83,7 @@ const handleTrainingCreated = (training) => {
       <Paper sx={{ p: 4, borderRadius: 3, mb: 4, background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
         <Grid container spacing={3} alignItems="center">
           <Grid item>
-            <Avatar 
+            <Avatar
               sx={{ width: 100, height: 100, bgcolor: '#F57C00', fontSize: 40, boxShadow: '0 4px 12px rgba(245, 124, 0, 0.3)' }}
             >
               {athlete.nombre ? athlete.nombre.charAt(0) : '?'}
@@ -100,7 +97,7 @@ const handleTrainingCreated = (training) => {
               <Chip label={athlete.estado_actual || "Activo"} color="success" size="small" sx={{ fontWeight: 600 }} />
               <RiskBadge risk={injuryRisk} />
             </Box>
-            
+
             <Stack direction="row" spacing={3} sx={{ color: '#64748B' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <Email fontSize="small" /> <Typography variant="body2">{athlete.email}</Typography>
@@ -112,7 +109,7 @@ const handleTrainingCreated = (training) => {
           </Grid>
           <Grid item>
             <Button variant="outlined" startIcon={<Edit />} sx={{ borderRadius: 2, textTransform: 'none' }}>
-                Editar Perfil
+              Editar Perfil
             </Button>
           </Grid>
         </Grid>
@@ -123,34 +120,34 @@ const handleTrainingCreated = (training) => {
 
       {/* --- SECCIÓN DE ANALYTICS (BLINDADA) --- */}
       <Box sx={{ mb: 4 }}>
-          {/* El ErrorBoundary atrapa cualquier crash dentro del gráfico y evita la pantalla blanca */}
-          <ErrorBoundary height={550}>
-              <StudentPerformanceChart alumnoId={id} />
-          </ErrorBoundary>
+        {/* El ErrorBoundary atrapa cualquier crash dentro del gráfico y evita la pantalla blanca */}
+        <ErrorBoundary height={550}>
+          <StudentPerformanceChart alumnoId={id} />
+        </ErrorBoundary>
       </Box>
 
       {/* SECCIÓN AGENDA - CALENDARIO SEMANAL */}
       <Box sx={{ mb: 4 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: '#0F172A' }}>
-                <CalendarMonth color="primary" /> Agenda de Entrenamientos
-            </Typography>
+          <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: '#0F172A' }}>
+            <CalendarMonth color="primary" /> Agenda de Entrenamientos
+          </Typography>
         </Box>
 
         {trainings.length === 0 && (
           <Paper sx={{ p: 3, textAlign: 'center', border: '2px dashed #e2e8f0', bgcolor: '#f8fafc', borderRadius: 3, mb: 2 }}>
-              <FitnessCenter sx={{ fontSize: 40, color: '#cbd5e1', mb: 1 }} />
-              <Typography color="textSecondary" sx={{ fontWeight: 500 }}>No hay entrenamientos asignados aún.</Typography>
-              <Typography variant="caption" color="textSecondary">Arrastra una plantilla al calendario para empezar.</Typography>
+            <FitnessCenter sx={{ fontSize: 40, color: '#cbd5e1', mb: 1 }} />
+            <Typography color="textSecondary" sx={{ fontWeight: 500 }}>No hay entrenamientos asignados aún.</Typography>
+            <Typography variant="caption" color="textSecondary">Arrastra una plantilla al calendario para empezar.</Typography>
           </Paper>
         )}
         <WeeklyCalendar trainings={trainings} athleteId={id} onTrainingCreated={handleTrainingCreated} />
       </Box>
 
       {/* --- HERRAMIENTAS FLOTANTES (LIBRERÍA) --- */}
-      <Fab 
-        color="primary" 
-        aria-label="library" 
+      <Fab
+        color="primary"
+        aria-label="library"
         sx={{ position: 'fixed', bottom: 32, right: 32, bgcolor: '#0F172A', zIndex: 1000 }}
         onClick={() => setIsLibraryOpen(true)}
       >
@@ -163,7 +160,7 @@ const handleTrainingCreated = (training) => {
         onClose={() => setIsLibraryOpen(false)}
       >
         <Box sx={{ width: 350, height: '100%' }}>
-            <TemplateLibrary />
+          <TemplateLibrary />
         </Box>
       </Drawer>
 
