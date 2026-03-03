@@ -289,7 +289,7 @@ class IntegrationCallbackView(APIView):
             return self._redirect_frontend("error", provider, "missing_user",
                                           "Alumno not linked to User")
         
-        from .oauth_credentials import persist_oauth_tokens
+        from .oauth_credentials import persist_oauth_tokens, persist_oauth_tokens_v2
         
         credential_result = persist_oauth_tokens(
             provider=provider,
@@ -300,6 +300,44 @@ class IntegrationCallbackView(APIView):
             expires_at=expires_at,
             extra_data=sanitize_oauth_payload(athlete_data) if athlete_data else None,
         )
+
+        # P0: Also persist to canonical OAuthCredential (primary store for inbound processing).
+        # This runs after the allauth bridge succeeds; failure is logged but non-blocking
+        # so the athlete gets the OAuth success redirect regardless.
+        if credential_result.success:
+            v2_result = persist_oauth_tokens_v2(
+                provider=provider,
+                alumno=alumno,
+                token_data={
+                    "access_token": access_token,
+                    "refresh_token": refresh_token,
+                    "expires_at": expires_at,
+                },
+                external_user_id=external_user_id,
+            )
+            if v2_result.success:
+                logger.info(
+                    "strava.oauth.credential_upsert",
+                    extra={
+                        "event_name": "strava.oauth.credential_upsert",
+                        "provider": provider,
+                        "alumno_id": alumno.id,
+                        "reason_code": "OAUTH_CALLBACK_PERSISTED",
+                        "outcome": "success",
+                    },
+                )
+            else:
+                logger.error(
+                    "strava.oauth.credential_upsert",
+                    extra={
+                        "event_name": "strava.oauth.credential_upsert",
+                        "provider": provider,
+                        "alumno_id": alumno.id,
+                        "reason_code": "OAUTH_CALLBACK_PERSISTED",
+                        "outcome": "fail",
+                        "error_reason": v2_result.error_reason,
+                    },
+                )
         
         if not credential_result.success:
             # Fail-closed: Cannot persist credentials → mark as failed

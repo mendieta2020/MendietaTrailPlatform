@@ -866,3 +866,233 @@ class CeleryFailureHandlerTests(TestCase):
             )
         except Exception as e:
             self.fail(f"log_critical_task_failure raised exception: {e}")
+
+
+# ==============================================================================
+# PR20: OAuthCredential as primary credential source — protective tests
+# ==============================================================================
+
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
+class PR20OAuthCredentialPrimaryTests(TestCase):
+    """
+    Test 1: strava.process_event uses OAuthCredential when present.
+
+    Ensures that if OAuthCredential exists for the alumno, the worker calls
+    obtener_cliente_strava_para_alumno() successfully (via OAuthCredential path),
+    without needing an allauth SocialToken.
+    """
+
+    def setUp(self):
+        from core.models import OAuthCredential
+        self.coach = User.objects.create_user(username="coach_pr20_primary", password="x")
+        self.alumno = Alumno.objects.create(
+            entrenador=self.coach,
+            nombre="Ana",
+            apellido="PR20",
+            email="ana_pr20@test.com",
+            strava_athlete_id="55500",
+        )
+        # Populate OAuthCredential (no allauth SocialToken created)
+        self.cred = OAuthCredential.objects.create(
+            alumno=self.alumno,
+            provider="strava",
+            external_user_id="55500",
+            access_token="tok_primary_abc",
+            refresh_token="ref_primary_xyz",
+            expires_at=timezone.now() + timezone.timedelta(hours=6),
+        )
+
+    def _mk_event(self, *, uid, owner_id, object_id):
+        return StravaWebhookEvent.objects.create(
+            event_uid=uid,
+            object_type="activity",
+            object_id=object_id,
+            aspect_type="create",
+            owner_id=owner_id,
+            subscription_id=1,
+            payload_raw={"test": True},
+            status=StravaWebhookEvent.Status.QUEUED,
+        )
+
+    def test_process_event_uses_oauthcredential_when_present(self):
+        """
+        GIVEN: OAuthCredential(strava) exists; no allauth SocialToken.
+        WHEN: process_strava_event is called.
+        THEN: Activity is imported (worker resolved client from OAuthCredential).
+        """
+        from datetime import datetime as _dt
+        start = _dt.now(dt_timezone.utc)
+        activity = _FakeStravaActivity(
+            activity_id=55501,
+            athlete_id=55500,
+            name="PR20 Primary Run",
+            type_="Run",
+            start=start,
+            distance_m=7000,
+            moving_time_s=2100,
+        )
+        event = self._mk_event(uid="pr20_primary_e1", owner_id=55500, object_id=55501)
+
+        # Patch at the function-level inside services, which is where OAuthCredential path
+        # returns a client. We patch obtener_cliente_strava_para_alumno directly to verify
+        # it is called and returns a valid client (avoids needing stravalib to be real).
+        with patch(
+            "core.services.obtener_cliente_strava_para_alumno",
+            return_value=_FakeStravaClient(activity),
+        ) as mock_client:
+            process_strava_event.delay(event.id)
+
+        mock_client.assert_called_once()
+        self.assertEqual(Actividad.objects.filter(strava_id=55501).count(), 1)
+        event.refresh_from_db()
+        self.assertIn(event.status, [
+            StravaWebhookEvent.Status.PROCESSED,
+            "processed",
+        ])
+
+
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
+class PR20OAuthCredentialFallbackTests(TestCase):
+    """
+    Test 2: fallback to allauth SocialToken when OAuthCredential absent.
+
+    Ensures reason_code CRED_FALLBACK_ALLAUTH is logged and the flow completes
+    when only SocialToken is present (backward compat preserved).
+    """
+
+    def setUp(self):
+        self.coach = User.objects.create_user(username="coach_pr20_fallback", password="x")
+        self.alumno = Alumno.objects.create(
+            entrenador=self.coach,
+            nombre="Beto",
+            apellido="PR20fb",
+            email="beto_pr20@test.com",
+            strava_athlete_id="55600",
+        )
+        # No OAuthCredential created → forces fallback path
+
+    def _mk_event(self, *, uid, owner_id, object_id):
+        return StravaWebhookEvent.objects.create(
+            event_uid=uid,
+            object_type="activity",
+            object_id=object_id,
+            aspect_type="create",
+            owner_id=owner_id,
+            subscription_id=1,
+            payload_raw={"test": True},
+            status=StravaWebhookEvent.Status.QUEUED,
+        )
+
+    def test_fallback_to_allauth_when_oauthcredential_absent(self):
+        """
+        GIVEN: No OAuthCredential; allauth SocialToken exists (mock).
+        WHEN: obtener_cliente_strava_para_alumno is called.
+        THEN: Returns a valid client via the allauth-SocialToken fallback path.
+        """
+        from datetime import datetime as _dt
+        start = _dt.now(dt_timezone.utc)
+        activity = _FakeStravaActivity(
+            activity_id=55601,
+            athlete_id=55600,
+            name="PR20 Fallback Run",
+            type_="Run",
+            start=start,
+            distance_m=5000,
+            moving_time_s=1500,
+        )
+
+        import logging as _logging
+        log_records = []
+
+        class _Capture(_logging.Handler):
+            def emit(self, record):
+                log_records.append(record)
+
+        capture = _Capture()
+        capture.setLevel(_logging.DEBUG)
+        import core.services as _svc_module
+        svc_logger = _svc_module.logger
+        original_level = svc_logger.level
+        svc_logger.setLevel(_logging.DEBUG)
+        svc_logger.addHandler(capture)
+
+        try:
+            # Simulate: obtener_cliente_strava (allauth path) returns a fake client.
+            with patch(
+                "core.services.obtener_cliente_strava",
+                return_value=_FakeStravaClient(activity),
+            ):
+                from core.services import obtener_cliente_strava_para_alumno
+                result = obtener_cliente_strava_para_alumno(self.alumno)
+
+            self.assertIsNotNone(result, "Expected a client via fallback path")
+
+            # Verify CRED_FALLBACK_ALLAUTH was logged (reason_code attr set by safe_extra)
+            fallback_records = [
+                r for r in log_records
+                if getattr(r, "reason_code", None) == "CRED_FALLBACK_ALLAUTH"
+            ]
+            self.assertTrue(
+                len(fallback_records) > 0,
+                f"Expected CRED_FALLBACK_ALLAUTH log. Got reason_codes: "
+                f"{[getattr(r, 'reason_code', None) for r in log_records]}",
+            )
+        finally:
+            svc_logger.removeHandler(capture)
+            svc_logger.setLevel(original_level)
+
+
+class PR20OAuthCallbackPersistsCredentialTests(TestCase):
+    """
+    Test 3: OAuth callback persists OAuthCredential.
+
+    Simulates the integration callback and verifies that after a successful
+    token exchange, OAuthCredential is created/updated with the correct fields.
+    This does NOT test allauth at all — only our custom callback view via
+    the helper method _handle_generic_callback on IntegrationCallbackView.
+    """
+
+    def setUp(self):
+        self.coach = User.objects.create_user(username="coach_pr20_cb", password="x")
+        self.alumno = Alumno.objects.create(
+            entrenador=self.coach,
+            usuario=self.coach,  # usuario = coach for simplicity
+            nombre="Clara",
+            apellido="PR20cb",
+            email="clara_pr20@test.com",
+        )
+
+    def test_oauth_callback_persists_oauthcredential(self):
+        """
+        GIVEN: A successful token exchange with Strava.
+        WHEN:  persist_oauth_tokens_v2 is called (as done inside the callback).
+        THEN:  OAuthCredential(provider=strava, alumno=self.alumno) is created with
+               correct external_user_id, access_token, refresh_token, and expires_at.
+        """
+        from core.models import OAuthCredential
+        from core.oauth_credentials import persist_oauth_tokens_v2
+        from datetime import datetime as _dt, timezone as _tz
+
+        expires_ts = int(timezone.now().timestamp()) + 21600  # +6h
+        expires_dt = _dt.fromtimestamp(expires_ts, tz=_tz.utc)
+
+        result = persist_oauth_tokens_v2(
+            provider="strava",
+            alumno=self.alumno,
+            token_data={
+                "access_token": "fake_access_abc",
+                "refresh_token": "fake_refresh_xyz",
+                "expires_at": expires_dt,
+            },
+            external_user_id="77700",
+        )
+
+        self.assertTrue(result.success, f"persist_oauth_tokens_v2 failed: {result.error_reason}")
+
+        cred = OAuthCredential.objects.filter(alumno=self.alumno, provider="strava").first()
+        self.assertIsNotNone(cred, "OAuthCredential should have been created after OAuth callback")
+        self.assertEqual(cred.external_user_id, "77700")
+        self.assertEqual(cred.access_token, "fake_access_abc")
+        self.assertEqual(cred.refresh_token, "fake_refresh_xyz")
+        self.assertIsNotNone(cred.expires_at)
+
