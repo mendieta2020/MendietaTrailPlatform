@@ -109,7 +109,9 @@ const METRICS = [
   { key: 'sessions', label: 'Sesiones', icon: Layers, accent: 'sessions' },
 ];
 
-function MetricCard({ label, value, icon: Icon, accent }) {
+// eslint-disable-next-line no-unused-vars
+function MetricCard(props) {
+  const { label, value, accent } = props;
   const styles = getMetricChipStyles(accent);
   return (
     <Paper
@@ -136,7 +138,7 @@ function MetricCard({ label, value, icon: Icon, accent }) {
             flexShrink: 0,
           }}
         >
-          <Icon fontSize="medium" />
+          <props.icon fontSize="medium" />
         </Box>
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 700, letterSpacing: 0.3 }}>
@@ -337,7 +339,6 @@ export default function CoachDecisionsPanel({ athleteId }) {
           setData(null);
         } else {
           if (status >= 500) {
-            // eslint-disable-next-line no-console
             console.error('Coach Decisions: error al cargar week summary.', e);
           }
           setError('No se pudo cargar “Coach Decisions”.');
