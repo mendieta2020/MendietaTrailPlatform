@@ -263,6 +263,36 @@ DATABASES = {
     ),
 }
 
+# ==============================================================================
+#  CACHÉ: Redis (OAuth State) / LocMem (Fall-back local/test)
+# ==============================================================================
+# REDIS_URL primary, CELERY_BROKER_URL fallback if it's Redis.
+_REDIS_URL = get_env_variable("REDIS_URL", default="", required=False)
+if not _REDIS_URL:
+    # Try CELERY_BROKER_URL but only if it maps to redis://
+    _BROKER_URL = get_env_variable("CELERY_BROKER_URL", default="", required=False)
+    if _BROKER_URL.startswith("redis://") or _BROKER_URL.startswith("rediss://"):
+        _REDIS_URL = _BROKER_URL
+
+if _REDIS_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": _REDIS_URL,
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            }
+        }
+    }
+else:
+    # Fail-closed checking relies on the word "LocMemCache" to be rejected in prod
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "unique-mtp-fall-closed",
+        }
+    }
+
 
 # ==============================================================================
 #  SEGURIDAD Y PASSWORD

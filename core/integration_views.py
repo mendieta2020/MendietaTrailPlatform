@@ -124,12 +124,24 @@ class IntegrationStartView(APIView):
             )
         
         # Generate state with alumno_id (securely signed)
-        state = generate_oauth_state(
-            provider=provider,
-            user_id=request.user.id,
-            alumno_id=alumno.id,  # ← Track which alumno is connecting
-            redirect_uri=callback_uri,
-        )
+        try:
+            state = generate_oauth_state(
+                provider=provider,
+                user_id=request.user.id,
+                alumno_id=alumno.id,  # ← Track which alumno is connecting
+                redirect_uri=callback_uri,
+            )
+        except RuntimeError as e:
+            if "Shared cache required" in str(e):
+                return Response(
+                    {
+                        "error": "cache_not_shared",
+                        "message": "OAuth temporarily unavailable",
+                        "reason_code": "CACHE_NOT_SHARED"
+                    },
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+            raise
         
         # Get OAuth URL from provider
         oauth_url = provider_obj.get_oauth_authorize_url(state, callback_uri)
@@ -137,10 +149,12 @@ class IntegrationStartView(APIView):
         logger.info(
             "oauth.start.success",
             extra={
+                "event_name": "oauth.start.success",
                 "provider": provider,
                 "user_id": request.user.id,
                 "alumno_id": alumno.id,
                 "callback_uri": callback_uri,
+                "outcome": "success",
             },
         )
         
