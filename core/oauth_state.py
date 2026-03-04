@@ -148,7 +148,7 @@ def validate_and_consume_nonce(state: str) -> tuple[Optional[dict], Optional[str
     
     # Validate timestamp (basic replay protection even if cache fails)
     now_ts = int(datetime.now(dt_timezone.utc).timestamp())
-    if now_ts - timestamp > NONCE_TTL_SECONDS:
+    if now_ts - timestamp >= NONCE_TTL_SECONDS:
         logger.warning(
             "oauth.state.expired",
             extra={
