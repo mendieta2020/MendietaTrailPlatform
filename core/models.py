@@ -826,6 +826,115 @@ class OAuthCredential(models.Model):
         return f"{self.provider}:alumno:{self.alumno_id}"
 
 
+class CompletedActivity(models.Model):
+    """
+    Immutable ledger of real activities received from external providers.
+
+    Design notes
+    ------------
+    - **Plan ≠ Real**: this model represents the *real* side only; planned
+      workouts live in Entrenamiento.  Never couple these two directly here.
+    - **Multi-tenant / fail-closed**: `organization` (coach user) is required
+      (non-nullable) — a row without an owner must never exist.
+    - **Idempotency**: the unique constraint on (organization, provider,
+      provider_activity_id) prevents duplicate ingestion.
+    - **Provider isolation**: raw_payload keeps the original vendor blob for
+      re-processing; no provider-specific parsing happens in this model.
+    """
+
+    class Provider(models.TextChoices):
+        STRAVA = "strava", "Strava"
+        GARMIN = "garmin", "Garmin"
+        COROS = "coros", "Coros"
+        SUUNTO = "suunto", "Suunto"
+        MANUAL = "manual", "Manual"
+        OTHER = "other", "Other"
+
+    # ------------------------------------------------------------------
+    # Tenant anchor (fail-closed: non-nullable)
+    # ------------------------------------------------------------------
+    organization = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="completed_activities",
+        db_index=True,
+        help_text="Coach / organisation that owns this activity record.",
+    )
+
+    # ------------------------------------------------------------------
+    # Athlete
+    # ------------------------------------------------------------------
+    alumno = models.ForeignKey(
+        "Alumno",
+        on_delete=models.CASCADE,
+        related_name="completed_activities",
+        db_index=True,
+        help_text="Athlete who performed the activity.",
+    )
+
+    # ------------------------------------------------------------------
+    # Activity data
+    # ------------------------------------------------------------------
+    sport = models.CharField(
+        max_length=50,
+        choices=TIPO_ACTIVIDAD,
+        db_index=True,
+        help_text="Normalised sport type (TIPO_ACTIVIDAD).",
+    )
+    start_time = models.DateTimeField(db_index=True)
+    duration_s = models.IntegerField(help_text="Elapsed duration in seconds.")
+    distance_m = models.FloatField(default=0.0, help_text="Distance in metres.")
+    elevation_gain_m = models.FloatField(
+        null=True, blank=True, help_text="Cumulative elevation gain in metres. NULL = data not available."
+    )
+
+    # ------------------------------------------------------------------
+    # Provider provenance
+    # ------------------------------------------------------------------
+    provider = models.CharField(
+        max_length=20,
+        choices=Provider.choices,
+        db_index=True,
+    )
+    provider_activity_id = models.CharField(
+        max_length=120,
+        db_index=True,
+        help_text="Opaque ID assigned by the provider (e.g. Strava activity id).",
+    )
+
+    # ------------------------------------------------------------------
+    # Raw audit payload (provider-specific; never parse here)
+    # ------------------------------------------------------------------
+    raw_payload = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Original provider payload kept for auditing and future re-processing.",
+    )
+
+    # ------------------------------------------------------------------
+    # Timestamps
+    # ------------------------------------------------------------------
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-start_time"]
+        indexes = [
+            models.Index(fields=["organization", "-start_time"]),
+            models.Index(fields=["alumno", "-start_time"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "provider", "provider_activity_id"],
+                name="uniq_completed_activity_org_provider_id",
+            ),
+        ]
+        verbose_name = "Completed Activity"
+        verbose_name_plural = "Completed Activities"
+
+    def __str__(self):
+        return f"{self.sport} | {self.alumno_id} | {self.provider}:{self.provider_activity_id}"
+
+
 @receiver(post_save, sender=Pago)
 def actualizar_pago_alumno(sender, instance, **kwargs):
     if instance.es_valido:
