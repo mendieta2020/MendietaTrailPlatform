@@ -13,8 +13,8 @@ from django.core.signing import Signer, BadSignature
 
 logger = logging.getLogger(__name__)
 
-# Cache TTL for nonce (10 minutes default)
-NONCE_TTL_SECONDS = int(getattr(settings, "OAUTH_NONCE_TTL_SECONDS", 600))
+# Cache TTL for nonce (15 minutes default to avoid timeouts during Strava connect)
+NONCE_TTL_SECONDS = int(getattr(settings, "OAUTH_NONCE_TTL_SECONDS", 900))
 
 # Fail-open mode: allow OAuth if cache unavailable (default: False for security)
 NONCE_FAIL_OPEN = getattr(settings, "OAUTH_NONCE_FAIL_OPEN", False)
@@ -33,6 +33,22 @@ def generate_oauth_state(provider: str, user_id: int, alumno_id: int = None, red
     Returns:
         Signed state string to pass to OAuth provider
     """
+    if not settings.DEBUG:
+        # Enforce shared cache (Redis) in production. Fail-closed if memory cache is in use.
+        cache_backend = settings.CACHES.get("default", {}).get("BACKEND", "")
+        if "locmem" in cache_backend.lower() or "dummy" in cache_backend.lower():
+            logger.error(
+                "oauth.nonce.cache_not_shared",
+                extra={
+                    "event_name": "oauth.start.error",
+                    "provider": provider,
+                    "organization_id": None,
+                    "user_id": user_id,
+                    "outcome": "fail",
+                    "reason_code": "CACHE_NOT_SHARED",
+                }
+            )
+            raise RuntimeError("Shared cache required for OAuth in production")
     nonce = str(uuid.uuid4())
     timestamp = int(datetime.now(dt_timezone.utc).timestamp())
     
@@ -55,14 +71,28 @@ def generate_oauth_state(provider: str, user_id: int, alumno_id: int = None, red
         if alumno_id is not None:
             cache_data["alumno_id"] = alumno_id
         cache.set(cache_key, cache_data, timeout=NONCE_TTL_SECONDS)
+        
+        logger.info(
+            "oauth.nonce.stored",
+            extra={
+                "event_name": "oauth.start.success",
+                "provider": provider,
+                "user_id": user_id,
+                "alumno_id": alumno_id,
+                "outcome": "success",
+            },
+        )
     except Exception as e:
         logger.error(
             "oauth.nonce.cache_set_failed",
             extra={
+                "event_name": "oauth.start.error",
                 "provider": provider,
                 "user_id": user_id,
                 "alumno_id": alumno_id,
                 "error": str(e),
+                "outcome": "fail",
+                "reason_code": "CACHE_WRITE_ERROR",
             },
         )
         if not NONCE_FAIL_OPEN:
@@ -100,7 +130,13 @@ def validate_and_consume_nonce(state: str) -> tuple[Optional[dict], Optional[str
     except (BadSignature, json.JSONDecodeError, ValueError) as e:
         logger.warning(
             "oauth.state.malformed",
-            extra={"error": str(e), "state_prefix": state[:20] if state else ""},
+            extra={
+                "event_name": "oauth.callback.error",
+                "error": str(e),
+                "state_prefix": state[:20] if state else "",
+                "outcome": "fail",
+                "reason_code": "state_invalid_signature",
+            },
         )
         return None, "state_malformed"
     
@@ -112,13 +148,16 @@ def validate_and_consume_nonce(state: str) -> tuple[Optional[dict], Optional[str
     
     # Validate timestamp (basic replay protection even if cache fails)
     now_ts = int(datetime.now(dt_timezone.utc).timestamp())
-    if now_ts - timestamp > NONCE_TTL_SECONDS:
+    if now_ts - timestamp >= NONCE_TTL_SECONDS:
         logger.warning(
             "oauth.state.expired",
             extra={
+                "event_name": "oauth.callback.error",
                 "provider": provider,
                 "user_id": user_id,
                 "age_seconds": now_ts - timestamp,
+                "outcome": "fail",
+                "reason_code": "state_expired",
             },
         )
         return None, "state_expired"
@@ -133,9 +172,12 @@ def validate_and_consume_nonce(state: str) -> tuple[Optional[dict], Optional[str
             logger.warning(
                 "oauth.nonce.not_found",
                 extra={
+                    "event_name": "oauth.callback.error",
                     "provider": provider,
                     "user_id": user_id,
                     "nonce_hash": hash(nonce) % 1000000,  # Log hash, not nonce
+                    "outcome": "fail",
+                    "reason_code": "nonce_not_found_or_reused",
                 },
             )
             return None, "nonce_invalid_or_reused"
@@ -146,9 +188,11 @@ def validate_and_consume_nonce(state: str) -> tuple[Optional[dict], Optional[str
         logger.info(
             "oauth.nonce.consumed",
             extra={
+                "event_name": "oauth.callback.success",
                 "provider": provider,
                 "user_id": user_id,
                 "nonce_hash": hash(nonce) % 1000000,
+                "outcome": "success",
             },
         )
         
@@ -158,9 +202,12 @@ def validate_and_consume_nonce(state: str) -> tuple[Optional[dict], Optional[str
         logger.error(
             "oauth.nonce.cache_error",
             extra={
+                "event_name": "oauth.callback.error",
                 "provider": provider,
                 "user_id": user_id,
                 "error": str(e),
+                "outcome": "fail",
+                "reason_code": "CACHE_READ_ERROR",
             },
         )
         
@@ -168,7 +215,12 @@ def validate_and_consume_nonce(state: str) -> tuple[Optional[dict], Optional[str
             # Fail-open mode: allow but log warning
             logger.warning(
                 "oauth.nonce.cache_unavailable_fail_open",
-                extra={"provider": provider, "user_id": user_id},
+                extra={
+                    "event_name": "oauth.callback.warn",
+                    "provider": provider,
+                    "user_id": user_id,
+                    "outcome": "fail_open",
+                },
             )
             return payload, "nonce_cache_unavailable"
         else:

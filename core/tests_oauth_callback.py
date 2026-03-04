@@ -142,17 +142,22 @@ class TestIntegrationCallback:
     
     def test_callback_expired_state_rejected(self, client):
         """
-        GIVEN: Callback with expired state (timestamp > 10min old)
+        GIVEN: Callback with expired state (timestamp > 10min old) and valid nonce in cache
         WHEN: Callback validates state
         THEN: Redirects with error (state_expired)
+
+        NOTE: The nonce is seeded into the cache before the callback so that the
+        nonce-existence check passes and validation advances to the timestamp
+        expiration check, which correctly returns state_expired.
         """
         # Create expired state manually
         import uuid
         from datetime import datetime, timedelta, timezone as dt_timezone
-        
+        from django.core.cache import cache
+
         nonce = str(uuid.uuid4())
         old_timestamp = int((datetime.now(dt_timezone.utc) - timedelta(minutes=15)).timestamp())
-        
+
         payload = {
             "provider": "strava",
             "user_id": 999,
@@ -161,10 +166,18 @@ class TestIntegrationCallback:
             "ts": old_timestamp,
             "redirect_uri": "http://test.com/callback",
         }
-        
+
+        # Seed nonce into cache so the nonce-existence check passes.
+        # The timestamp (15 min old) will then trigger state_expired as expected.
+        cache.set(
+            f"oauth_nonce:strava:{nonce}",
+            {"user_id": 999, "alumno_id": 888},
+            timeout=600,
+        )
+
         signer = Signer()
         expired_state = signer.sign(json.dumps(payload))
-        
+
         response = client.get(
             "/api/integrations/strava/callback",
             {
@@ -172,7 +185,7 @@ class TestIntegrationCallback:
                 "state": expired_state,
             },
         )
-        
+
         # Assert: Redirect with error
         assert response.status_code == 302
         assert "status=error" in response.url
