@@ -1,10 +1,10 @@
 from django.contrib import admin
 from django.utils.html import format_html
 from .models import (
-    Equipo, Alumno, Pago, 
-    PlantillaEntrenamiento, Entrenamiento, 
+    Equipo, Alumno, Pago,
+    PlantillaEntrenamiento, Entrenamiento,
     Carrera, InscripcionCarrera, Actividad,
-    ExternalIdentity,
+    ExternalIdentity, CompletedActivity,
 )
 
 # ==============================================================================
@@ -141,3 +141,12 @@ class ActividadAdmin(admin.ModelAdmin):
     list_display = ('nombre', 'usuario', 'tipo_deporte', 'fecha_inicio', 'distancia')
     list_filter = ('tipo_deporte', 'fecha_inicio')
     search_fields = ('nombre', 'strava_id')
+
+
+@admin.register(CompletedActivity)
+class CompletedActivityAdmin(admin.ModelAdmin):
+    list_display = ('__str__', 'organization', 'alumno', 'sport', 'provider', 'start_time', 'duration_s', 'distance_m')
+    list_filter = ('provider', 'sport', 'start_time')
+    search_fields = ('provider_activity_id', 'alumno__nombre', 'alumno__apellido')
+    readonly_fields = ('created_at',)
+    raw_id_fields = ('organization', 'alumno')
