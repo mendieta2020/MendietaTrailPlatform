@@ -3,7 +3,7 @@
 **Version**: 1.0
 **Date**: 2026-03-05
 **Applies to**: Garmin, Suunto, Polar, COROS, Wahoo API partnership reviews
-**Contact**: engineering@quantoryn.com
+**Contact**: partnerships@quantoryn.com
 
 ---
 
@@ -245,7 +245,7 @@ Source: `core/integration_views.py` — `IntegrationDisconnectView`
   associated `Actividad`, `CompletedActivity`, `OAuthCredential`, and
   `OAuthIntegrationStatus` rows via Django CASCADE.
 - **Email request**: athletes or coaches can request full data deletion by emailing
-  `privacy@quantoryn.com`. Actioned within 30 days.
+  `support@quantoryn.com`. Actioned within 30 days.
 - **Self-service deletion API**: not yet implemented.
   Planned: `p1/data-deletion-request-api`.
 
