@@ -1,0 +1,4 @@
+Contact: mailto:security@quantoryn.com
+Policy: https://quantoryn.com/security
+Preferred-Languages: en
+Canonical: https://quantoryn.com/.well-known/security.txt
