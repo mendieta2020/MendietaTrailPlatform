@@ -437,7 +437,7 @@ ANALYTICS_MAX_RANGE_DAYS = int(
 #  EMAIL (DESARROLLO)
 # ==============================================================================
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-DEFAULT_FROM_EMAIL = 'Mendieta Platform <noreply@mendieta.ai>'
+DEFAULT_FROM_EMAIL = 'Quantoryn <noreply@quantoryn.com>'
 
 # ==============================================================================
 #  CORS & SEGURIDAD WEBHOOKS
@@ -488,9 +488,11 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 # --- REDIRECCIONES ---
-LOGIN_REDIRECT_URL = 'http://localhost:5173/dashboard'
-LOGOUT_REDIRECT_URL = 'http://localhost:5173/'
-ACCOUNT_CONNECT_REDIRECT_URL = 'http://localhost:5173/dashboard'
+# Derived from FRONTEND_BASE_URL (env-driven, defined above).
+# In development defaults to http://localhost:5173; in production must be set.
+LOGIN_REDIRECT_URL = f"{FRONTEND_BASE_URL}/dashboard"
+LOGOUT_REDIRECT_URL = f"{FRONTEND_BASE_URL}/"
+ACCOUNT_CONNECT_REDIRECT_URL = f"{FRONTEND_BASE_URL}/dashboard"
 
 # --- COMPORTAMIENTO SOCIAL ---
 SOCIALACCOUNT_LOGIN_ON_GET = True
@@ -528,6 +530,10 @@ SOCIALACCOUNT_PROVIDERS = {
 # ==============================================================================
 #  LOGGING (diagnóstico OAuth / allauth)
 # ==============================================================================
+# allauth loggers are scoped to DEBUG only in development; WARNING in production
+# to prevent OAuth payloads from surfacing in Railway's persistent log store.
+_allauth_log_level = "DEBUG" if DEBUG else "WARNING"
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -547,10 +553,10 @@ LOGGING = {
         "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
         # allauth (en particular socialaccount + oauth2) para ver el motivo real del
         # "Third-Party Login Failure".
-        "allauth": {"handlers": ["console"], "level": "DEBUG"},
-        "allauth.account": {"handlers": ["console"], "level": "DEBUG"},
-        "allauth.socialaccount": {"handlers": ["console"], "level": "DEBUG"},
-        "allauth.socialaccount.providers.oauth2": {"handlers": ["console"], "level": "DEBUG"},
+        "allauth": {"handlers": ["console"], "level": _allauth_log_level},
+        "allauth.account": {"handlers": ["console"], "level": _allauth_log_level},
+        "allauth.socialaccount": {"handlers": ["console"], "level": _allauth_log_level},
+        "allauth.socialaccount.providers.oauth2": {"handlers": ["console"], "level": _allauth_log_level},
         # requests/urllib3: útil para ver handshake HTTP (sin bodies por defecto).
         "urllib3": {"handlers": ["console"], "level": "DEBUG" if DEBUG else "WARNING"},
         "requests": {"handlers": ["console"], "level": "DEBUG" if DEBUG else "WARNING"},
