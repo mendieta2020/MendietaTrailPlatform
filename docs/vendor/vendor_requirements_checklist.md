@@ -68,7 +68,7 @@ Status legend: **DONE** ✅ | **PARTIAL** ⚠️ | **TODO** ❌
 | Fail-closed on missing tenant | ✅ DONE | Non-nullable `organization` on `CompletedActivity`; viewsets reject unscoped queries |
 | Raw payload retained for audit | ✅ DONE | `Actividad.datos_brutos` + `CompletedActivity.raw_payload` — `core/models.py` |
 | Data retention policy defined | ❌ TODO | No formal policy. PR: `p1/data-retention-policy-and-deletion-api` |
-| Athlete data deletion on request | ⚠️ PARTIAL | Email-based deletion documented (`privacy@quantoryn.com`, 30-day SLA). Self-service API not yet built. PR: `p1/data-deletion-request-api` |
+| Athlete data deletion on request | ⚠️ PARTIAL | Email-based deletion documented (`support@quantoryn.com`, 30-day SLA). Self-service API not yet built. PR: `p1/data-deletion-request-api` |
 | Data minimisation (only necessary fields fetched) | ⚠️ PARTIAL | Required vs Optional fields documented in `docs/vendor/vendor_data_access_spec.md` §B. Enforcement in code (field-level fetch filtering) not yet implemented. |
 
 ---

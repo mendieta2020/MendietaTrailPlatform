@@ -2,7 +2,7 @@
 
 **Version**: 1.0
 **Date**: 2026-03-05
-**Contact**: privacy@quantoryn.com
+**Contact**: support@quantoryn.com
 
 This document describes how Quantoryn handles the data it receives from activity providers:
 from the moment of OAuth token exchange through webhook ingestion, normalisation, storage,

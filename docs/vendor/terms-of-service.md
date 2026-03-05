@@ -149,6 +149,6 @@ courts of Córdoba, Argentina, unless a separate written agreement specifies oth
 ## 12. Contact
 
 **General enquiries**: partnerships@quantoryn.com
-**Privacy enquiries**: privacy@quantoryn.com
+**Privacy enquiries**: support@quantoryn.com
 **Security disclosures**: security@quantoryn.com
 **Full compliance documentation**: `docs/compliance/terms_of_service.md`

@@ -2,7 +2,7 @@
 
 **Effective date**: 2026-03-05
 **Last updated**: 2026-03-05
-**Contact**: privacy@quantoryn.com
+**Contact**: support@quantoryn.com
 
 ---
 
@@ -134,7 +134,7 @@ deletion will be published in a future update (`p1/data-retention-policy`).
 ## 9. Data deletion requests
 
 Athletes or coaches may request deletion of all personal data by emailing
-**privacy@quantoryn.com** with the subject line "Data Deletion Request".
+**support@quantoryn.com** with the subject line "Data Deletion Request".
 
 We will action deletion requests within **30 days** of verification.
 
@@ -153,7 +153,7 @@ Depending on your jurisdiction, you may have the right to:
 - Object to or restrict certain processing.
 - Receive a copy of your data in a portable format.
 
-To exercise any of these rights, contact **privacy@quantoryn.com**.
+To exercise any of these rights, contact **support@quantoryn.com**.
 
 ---
 
@@ -166,5 +166,5 @@ top of this document will reflect the most recent revision.
 
 ## 12. Contact
 
-**Privacy enquiries**: privacy@quantoryn.com
+**Privacy enquiries**: support@quantoryn.com
 **Mailing address**: [TODO: Legal entity address]

@@ -189,7 +189,7 @@ Platform:
 ```
 
 Activities already imported are retained. Coach retains visibility of historical data.
-Athlete can request full deletion via privacy@quantoryn.com (see `privacy-policy.md`).
+Athlete can request full deletion via support@quantoryn.com (see `privacy-policy.md`).
 
 ---
 

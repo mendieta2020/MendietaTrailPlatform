@@ -2,7 +2,7 @@
 
 **Effective date**: 2026-03-05
 **Last updated**: 2026-03-05
-**Contact**: engineering@quantoryn.com
+**Contact**: partnerships@quantoryn.com
 
 ---
 
@@ -151,6 +151,6 @@ Disputes shall be resolved in the courts of [TODO: jurisdiction].
 
 ## 12. Contact
 
-**Engineering / platform enquiries**: engineering@quantoryn.com
-**Privacy enquiries**: privacy@quantoryn.com
+**Engineering / platform enquiries**: partnerships@quantoryn.com
+**Privacy enquiries**: support@quantoryn.com
 **Mailing address**: [TODO: Legal entity address]

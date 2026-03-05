@@ -2,7 +2,7 @@
 
 **Effective date**: 2026-03-05
 **Last updated**: 2026-03-05
-**Privacy contact**: privacy@quantoryn.com
+**Privacy contact**: support@quantoryn.com
 **Location**: Córdoba, Argentina
 
 ---
@@ -119,7 +119,7 @@ A formal per-field data retention schedule is in development and will be publish
 ## 8. Data deletion requests
 
 Athletes and coaches may request deletion of all personal data by contacting us at
-**privacy@quantoryn.com** with the subject "Data Deletion Request".
+**support@quantoryn.com** with the subject "Data Deletion Request".
 
 We will acknowledge the request within 48 hours and complete deletion within 30 days of
 identity verification.
@@ -138,7 +138,7 @@ You have the right to:
 - Object to or restrict processing
 - Receive your data in a portable format
 
-To exercise any of these rights, contact **privacy@quantoryn.com**.
+To exercise any of these rights, contact **support@quantoryn.com**.
 
 ---
 
@@ -151,5 +151,5 @@ this document reflects the most recent revision.
 
 ## 11. Contact
 
-**Privacy enquiries**: privacy@quantoryn.com
+**Privacy enquiries**: support@quantoryn.com
 **Full compliance documentation**: `docs/compliance/privacy_policy.md`

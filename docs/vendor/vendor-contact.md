@@ -19,8 +19,8 @@
 | Topic | Contact | Use for |
 |---|---|---|
 | **API partnerships** | partnerships@quantoryn.com | New provider integration requests, capability discussions, partnership agreements |
-| **Technical integration** | engineering@quantoryn.com | API technical questions, OAuth implementation, webhook configuration, data format clarifications |
-| **Privacy and data** | privacy@quantoryn.com | Data handling questions, DPA discussions, athlete data deletion requests, GDPR / privacy compliance |
+| **Technical integration** | partnerships@quantoryn.com | API technical questions, OAuth implementation, webhook configuration, data format clarifications |
+| **Privacy and data** | support@quantoryn.com | Data handling questions, DPA discussions, athlete data deletion requests, GDPR / privacy compliance |
 | **Security disclosures** | security@quantoryn.com | Vulnerability reports, responsible disclosure, security questionnaires |
 | **General enquiries** | partnerships@quantoryn.com | All other vendor enquiries |
 
