@@ -1,0 +1,22 @@
+import React from 'react';
+import Box from '@mui/material/Box';
+import Typography from '@mui/material/Typography';
+import PublicLayout from '../../components/PublicLayout';
+import MarkdownRenderer from '../../components/MarkdownRenderer';
+import content from '../../content/terms_of_service.md?raw';
+
+const TermsPage = () => (
+  <PublicLayout>
+    <Box sx={{ maxWidth: 860, mx: 'auto', px: { xs: 2, md: 4 }, py: { xs: 4, md: 8 } }}>
+      <Typography
+        variant="overline"
+        sx={{ color: '#F57C00', fontWeight: 700, letterSpacing: '0.1em', display: 'block', mb: 0.5 }}
+      >
+        Legal
+      </Typography>
+      <MarkdownRenderer content={content} />
+    </Box>
+  </PublicLayout>
+);
+
+export default TermsPage;

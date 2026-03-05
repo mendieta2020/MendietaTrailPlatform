@@ -18,6 +18,13 @@ import Alerts from './pages/Alerts';
 import Connections from './pages/Connections';
 import { useAuth } from './context/AuthContext';
 
+// 3. Páginas públicas (sin autenticación requerida)
+import LandingPage from './pages/public/LandingPage';
+import PrivacyPage from './pages/public/PrivacyPage';
+import TermsPage from './pages/public/TermsPage';
+import SecurityPage from './pages/public/SecurityPage';
+import VendorPage from './pages/public/VendorPage';
+
 
 // --- COMPONENTE DE SEGURIDAD (GUARDIÁN) ---
 // Verifica si existe un token válido. Si no, redirige al Login.
@@ -48,9 +55,14 @@ function App() {
       <BrowserRouter>
         <Routes>
 
-          {/* RUTA PÚBLICA: Login */}
-          <Route path="/" element={<Login />} />
+          {/* ── RUTAS PÚBLICAS (sin autenticación) ───────── */}
+          <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/security" element={<SecurityPage />} />
+          <Route path="/vendor" element={<VendorPage />} />
+          <Route path="/vendor/:doc" element={<VendorPage />} />
 
           {/* --- RUTAS PRIVADAS (ÁREA SEGURA) --- */}
 
