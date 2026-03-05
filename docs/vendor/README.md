@@ -9,6 +9,7 @@ COROS, and Wahoo.
 | Document | Purpose |
 |---|---|
 | [`platform_overview.md`](platform_overview.md) | What the product does, who uses it, core data flow, current provider status |
+| [`vendor_data_access_spec.md`](vendor_data_access_spec.md) | **Data access specification** — what data we request, per-sport needs, Required vs Optional, Phase 1 vs Phase 2, justification mapping, user control |
 | [`security_and_compliance.md`](security_and_compliance.md) | Token handling, CSRF/CORS, tenant isolation, logging policy |
 | [`integration_architecture.md`](integration_architecture.md) | Provider-agnostic connect → ingest → normalize → reconcile flow |
 | [`data_model_plan_vs_real.md`](data_model_plan_vs_real.md) | Why PlannedWorkout ≠ CompletedActivity; idempotency; auditability |
@@ -19,9 +20,10 @@ COROS, and Wahoo.
 ## How to review
 
 1. Start with **platform_overview.md** for context.
-2. Read **security_and_compliance.md** and **integration_architecture.md** for technical due-diligence.
-3. Use **strava_proof_of_integration.md** as the live evidence anchor.
-4. Use **vendor_requirements_checklist.md** to assess readiness gaps.
+2. Read **vendor_data_access_spec.md** for the data request scope and justification.
+3. Read **security_and_compliance.md** and **integration_architecture.md** for technical due-diligence.
+4. Use **strava_proof_of_integration.md** as the live evidence anchor.
+5. Use **vendor_requirements_checklist.md** to assess readiness gaps.
 
 ## Repository structure at a glance
 
