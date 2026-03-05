@@ -27,6 +27,16 @@ class HealthzTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["checks"]["db"], "ok")
 
+    def test_healthz_head_ok(self):
+        response = self.client.head("/healthz")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"")
+
+    def test_healthz_head_has_content_type(self):
+        response = self.client.head("/healthz")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("application/json", response.get("Content-Type", ""))
+
     def test_healthz_celery_ok(self):
         with patch("analytics.health_views.health_ping.apply_async") as mock_apply:
             mock_apply.return_value.get.return_value = "pong"

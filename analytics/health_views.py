@@ -3,7 +3,7 @@ import logging
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.http import JsonResponse
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_http_methods
 from kombu import Connection
 from kombu.exceptions import OperationalError as KombuOperationalError
 
@@ -22,7 +22,7 @@ def _json_status(*, ok: bool, checks: dict, http_status: int | None = None) -> J
     )
 
 
-@require_GET
+@require_http_methods(["GET", "HEAD"])
 def healthz(request):
     try:
         get_user_model().objects.exists()
