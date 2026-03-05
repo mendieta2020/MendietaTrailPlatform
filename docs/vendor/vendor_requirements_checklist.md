@@ -48,6 +48,18 @@ Status legend: **DONE** ✅ | **PARTIAL** ⚠️ | **TODO** ❌
 
 ---
 
+## Data specification
+
+| Requirement | Status | Evidence / Gap |
+|---|---|---|
+| Data access justification documented | ✅ DONE | `docs/vendor/vendor_data_access_spec.md` — per-field justification table (§D), Required vs Optional separation (§B), Phase 1 vs Phase 2 scope strategy (§E) |
+| Per-sport data needs documented | ✅ DONE | `docs/vendor/vendor_data_access_spec.md` §C — Running/Trail, Cycling, MTB, Strength; roadmap Triathlon/Swimming |
+| Stream access justification (why summary is insufficient) | ✅ DONE | `docs/vendor/vendor_data_access_spec.md` §B.2 — terrain-aware analytics require instantaneous correlation; downsampling offer documented |
+| Data minimisation scope strategy | ✅ DONE | `docs/vendor/vendor_data_access_spec.md` §E — Phase 1 minimised surface vs Phase 2 advanced; cadence/temp/respiration deferred |
+| User control and revoke pathway documented | ✅ DONE | `docs/vendor/vendor_data_access_spec.md` §G — disconnect endpoint, cascade delete, email deletion; self-service API noted as TODO |
+
+---
+
 ## Data handling
 
 | Requirement | Status | Evidence / Gap |
@@ -56,8 +68,8 @@ Status legend: **DONE** ✅ | **PARTIAL** ⚠️ | **TODO** ❌
 | Fail-closed on missing tenant | ✅ DONE | Non-nullable `organization` on `CompletedActivity`; viewsets reject unscoped queries |
 | Raw payload retained for audit | ✅ DONE | `Actividad.datos_brutos` + `CompletedActivity.raw_payload` — `core/models.py` |
 | Data retention policy defined | ❌ TODO | No formal policy. PR: `p1/data-retention-policy-and-deletion-api` |
-| Athlete data deletion on request | ❌ TODO | No dedicated deletion API endpoint. PR: `p1/data-deletion-request-api` |
-| Data minimisation (only necessary fields fetched) | ⚠️ PARTIAL | Raw payload stored; field-level minimisation not enforced. Acceptable for audit stage. |
+| Athlete data deletion on request | ⚠️ PARTIAL | Email-based deletion documented (`privacy@quantoryn.com`, 30-day SLA). Self-service API not yet built. PR: `p1/data-deletion-request-api` |
+| Data minimisation (only necessary fields fetched) | ⚠️ PARTIAL | Required vs Optional fields documented in `docs/vendor/vendor_data_access_spec.md` §B. Enforcement in code (field-level fetch filtering) not yet implemented. |
 
 ---
 
@@ -78,9 +90,9 @@ Status legend: **DONE** ✅ | **PARTIAL** ⚠️ | **TODO** ❌
 
 | Status | Count |
 |---|---|
-| ✅ DONE | 21 |
-| ⚠️ PARTIAL | 4 |
-| ❌ TODO | 8 |
+| ✅ DONE | 26 |
+| ⚠️ PARTIAL | 5 |
+| ❌ TODO | 7 |
 
 Remaining blockers for first vendor submission: legal entity name registered, DPA template,
-token encryption at rest.
+token encryption at rest, formal data retention schedule.
