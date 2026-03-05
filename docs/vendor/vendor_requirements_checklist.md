@@ -8,8 +8,8 @@ Status legend: **DONE** ✅ | **PARTIAL** ⚠️ | **TODO** ❌
 
 | Requirement | Status | Evidence / Gap |
 |---|---|---|
-| Privacy Policy (public URL) | ❌ TODO | Not in repo. Needed: hosted page. PR: `p0/privacy-policy-page` |
-| Terms of Service (public URL) | ❌ TODO | Not in repo. Needed: hosted page. PR: `p0/terms-of-service-page` |
+| Privacy Policy (public URL) | ✅ DONE | `docs/compliance/privacy_policy.md` — covers data sources, storage, token handling, deletion, third-party sharing |
+| Terms of Service (public URL) | ✅ DONE | `docs/compliance/terms_of_service.md` — covers acceptable use, athlete data ownership, liability |
 | Legal entity name registered | ❌ TODO | Not in repo. Required for partnership agreements |
 | DPA / data processing agreement template | ❌ TODO | Required by Garmin, Polar. PR: `p1/dpa-template` |
 | License (open-source clarity) | ✅ DONE | MIT License — `LICENSE` (root) |
@@ -66,7 +66,7 @@ Status legend: **DONE** ✅ | **PARTIAL** ⚠️ | **TODO** ❌
 | Requirement | Status | Evidence / Gap |
 |---|---|---|
 | Structured logs with event names | ✅ DONE | `event_name`, `provider`, `outcome`, `reason_code` in all integration logs |
-| Security contact email | ❌ TODO | Needed for vendor forms. PR: `p0/security-contact-and-disclosure-policy` |
+| Security contact email | ✅ DONE | `security@quantoryn.com` — `docs/compliance/security_policy.md` §1; includes disclosure policy and response SLAs |
 | Incident response process | ❌ TODO | No runbook. PR: `p1/incident-response-runbook` |
 | Public status page | ❌ TODO | No status page. Nice-to-have for enterprise partnerships |
 | Application deployed on managed cloud | ✅ DONE | Railway (`railway.toml`) with PostgreSQL + Redis |
@@ -78,9 +78,9 @@ Status legend: **DONE** ✅ | **PARTIAL** ⚠️ | **TODO** ❌
 
 | Status | Count |
 |---|---|
-| ✅ DONE | 18 |
+| ✅ DONE | 21 |
 | ⚠️ PARTIAL | 4 |
-| ❌ TODO | 11 |
+| ❌ TODO | 8 |
 
-Critical blockers for first vendor submission: Privacy Policy, Terms of Service, legal entity,
-and security contact email.
+Remaining blockers for first vendor submission: legal entity name registered, DPA template,
+token encryption at rest.
