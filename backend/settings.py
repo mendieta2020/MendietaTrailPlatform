@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 # Detectar tests (y permitir fallback local si Postgres no está configurado).
 RUNNING_TESTS = "test" in sys.argv
+# TESTING also catches pytest invocations (sys.argv[0] = "pytest", not "test").
+TESTING = "pytest" in sys.modules or "test" in sys.argv
 PRIMARY_COMMAND = sys.argv[1] if len(sys.argv) > 1 else ""
 # Para comandos de management (migrate/makemigrations/etc) NO exigimos secretos runtime.
 # Esto evita que el repo sea "inmigrable" en CI/dev sin .env completo.
@@ -73,10 +75,11 @@ COOKIE_AUTH_SECURE = get_env_variable(
     default=("True" if not DEBUG else "False"),
     required=False,
 ) == "True"
-# Alineamos cookies CSRF con el modo cookie auth (token visible para JS).
+# Alineamos cookies CSRF y SESSION con el modo cookie auth (token visible para JS).
 CSRF_COOKIE_SECURE = COOKIE_AUTH_SECURE
 CSRF_COOKIE_SAMESITE = COOKIE_AUTH_SAMESITE
 CSRF_COOKIE_DOMAIN = COOKIE_AUTH_DOMAIN
+SESSION_COOKIE_SECURE = COOKIE_AUTH_SECURE  # W012: required by check --deploy
 
 # --- CONFIGURACIÓN DE HOSTS (Ngrok Ready) ---
 if DEBUG:
@@ -303,6 +306,38 @@ AUTH_PASSWORD_VALIDATORS = [
     { 'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator', },
     { 'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator', },
 ]
+
+# ------------------------------------------------------------------------------
+#  SecurityMiddleware hardening (PR-4)
+#
+#  Railway terminates TLS at its edge and forwards requests over plain HTTP to
+#  gunicorn.  SECURE_PROXY_SSL_HEADER teaches Django to trust the
+#  X-Forwarded-Proto header set by Railway so that:
+#    - SECURE_SSL_REDIRECT detects the request is already HTTPS → no redirect loop.
+#    - request.is_secure() returns True → secure cookie flags work correctly.
+#
+#  All HSTS / redirect settings are gated on `not DEBUG` so local development
+#  and the test runner are unaffected.
+# ------------------------------------------------------------------------------
+# Tell Django to trust Railway's TLS termination proxy header.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Redirect plain-HTTP requests to HTTPS in production only.
+# Safe because SECURE_PROXY_SSL_HEADER is set above — no redirect loop.
+# TESTING guard: pytest does not set DEBUG=True, so we gate on TESTING as well
+# to prevent 301 redirects during the test suite (CI regression fix).
+SECURE_SSL_REDIRECT = not DEBUG and not TESTING
+
+# HSTS: 1 year, subdomains, preload — production only.
+SECURE_HSTS_SECONDS = 31536000 if (not DEBUG and not TESTING) else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG and not TESTING
+SECURE_HSTS_PRELOAD = not DEBUG and not TESTING
+
+# Prevent MIME-type sniffing — safe to enable unconditionally.
+SECURE_CONTENT_TYPE_NOSNIFF = True
+
+# Limit Referer header to same origin on cross-origin requests.
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
