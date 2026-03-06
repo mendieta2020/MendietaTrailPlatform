@@ -4,6 +4,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.contrib.admin.views.decorators import staff_member_required
 
 # Importamos la vista del dashboard directamente (Vista Clásica)
 from core.views import dashboard_entrenador
@@ -44,6 +45,17 @@ schema_view = get_schema_view(
    permission_classes=(SwaggerAccessPermission,),
 )
 
+# ==============================================================================
+# TEMPORARY — Sentry production verification endpoint.
+# Purpose: trigger exactly one backend exception to confirm Sentry ingestion.
+# Usage:   GET /internal/sentry-test/ while logged in as a Django staff user.
+# REMOVE THIS VIEW AND ITS URL PATTERN after confirming the event in Sentry.
+# ==============================================================================
+@staff_member_required
+def _sentry_test_view(request):
+    raise RuntimeError("Sentry production verification")
+
+
 urlpatterns = [
     # 0. Landing institucional (sin auth, sin datos privados) — PR16
     path('', landing, name='landing'),
@@ -64,7 +76,10 @@ urlpatterns = [
     # 4. Dashboard del Entrenador (Vista Legacy/Django Template)
     path('dashboard/', dashboard_entrenador, name='dashboard_principal'),
 
-    # ============================================================== 
+    # TEMPORARY — remove after Sentry event confirmed in dashboard
+    path('internal/sentry-test/', _sentry_test_view, name='sentry_test'),
+
+    # ==============================================================
     # 0. Healthchecks (observabilidad mínima)
     path('healthz', healthz, name='healthz'),
     path('healthz/celery', healthz_celery, name='healthz_celery'),
