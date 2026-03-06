@@ -333,6 +333,12 @@ SECURE_HSTS_SECONDS = 31536000 if (not DEBUG and not TESTING) else 0
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG and not TESTING
 SECURE_HSTS_PRELOAD = not DEBUG and not TESTING
 
+# Exempt Railway's deploy healthcheck probe from HTTPS redirect.
+# Without this, Railway calls GET /healthz over plain HTTP and receives 301,
+# causing the deploy to fail at network healthcheck.
+# All other production routes remain HTTPS-enforced.
+SECURE_REDIRECT_EXEMPT = [r"^healthz$"]
+
 # Prevent MIME-type sniffing — safe to enable unconditionally.
 SECURE_CONTENT_TYPE_NOSNIFF = True
 

@@ -27,6 +27,12 @@ class HealthzTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["checks"]["db"], "ok")
 
+    @override_settings(SECURE_SSL_REDIRECT=True, SECURE_PROXY_SSL_HEADER=None)
+    def test_healthz_not_redirected_when_ssl_redirect_enabled(self):
+        """SECURE_REDIRECT_EXEMPT must exempt /healthz so Railway gets 200 not 301."""
+        response = self.client.get("/healthz")
+        self.assertEqual(response.status_code, 200)
+
     def test_healthz_head_ok(self):
         response = self.client.head("/healthz")
         self.assertEqual(response.status_code, 200)
