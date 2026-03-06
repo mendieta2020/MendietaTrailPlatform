@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 # Detectar tests (y permitir fallback local si Postgres no está configurado).
 RUNNING_TESTS = "test" in sys.argv
+# TESTING also catches pytest invocations (sys.argv[0] = "pytest", not "test").
+TESTING = "pytest" in sys.modules or "test" in sys.argv
 PRIMARY_COMMAND = sys.argv[1] if len(sys.argv) > 1 else ""
 # Para comandos de management (migrate/makemigrations/etc) NO exigimos secretos runtime.
 # Esto evita que el repo sea "inmigrable" en CI/dev sin .env completo.
@@ -322,12 +324,14 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # Redirect plain-HTTP requests to HTTPS in production only.
 # Safe because SECURE_PROXY_SSL_HEADER is set above — no redirect loop.
-SECURE_SSL_REDIRECT = not DEBUG
+# TESTING guard: pytest does not set DEBUG=True, so we gate on TESTING as well
+# to prevent 301 redirects during the test suite (CI regression fix).
+SECURE_SSL_REDIRECT = not DEBUG and not TESTING
 
 # HSTS: 1 year, subdomains, preload — production only.
-SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
-SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
-SECURE_HSTS_PRELOAD = not DEBUG
+SECURE_HSTS_SECONDS = 31536000 if (not DEBUG and not TESTING) else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG and not TESTING
+SECURE_HSTS_PRELOAD = not DEBUG and not TESTING
 
 # Prevent MIME-type sniffing — safe to enable unconditionally.
 SECURE_CONTENT_TYPE_NOSNIFF = True
