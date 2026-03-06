@@ -11,10 +11,17 @@ const _sentryDsn = import.meta.env.VITE_SENTRY_DSN;
 if (_sentryDsn) {
   Sentry.init({
     dsn: _sentryDsn,
-    environment: import.meta.env.MODE,
-    tracesSampleRate: 0.1,
+    environment: import.meta.env.VITE_SENTRY_ENVIRONMENT,
+    release: import.meta.env.VITE_SENTRY_RELEASE,
+    tracesSampleRate: 0,
     sendDefaultPii: false,
   });
+
+  // TEMPORARY — remove after Sentry frontend verification is confirmed (PR10).
+  // Throws only when visiting /sentry-test; no other route is affected.
+  if (window.location.pathname === "/sentry-test") {
+    throw new Error("Sentry Frontend Verification Test");
+  }
 }
 
 // NOTA DE ARQUITECTURA:
