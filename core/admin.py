@@ -6,6 +6,7 @@ from .models import (
     Carrera, InscripcionCarrera, Actividad,
     ExternalIdentity, CompletedActivity,
     Organization, Team, Membership,
+    Coach, Athlete,
 )
 
 # ==============================================================================
@@ -173,3 +174,19 @@ class MembershipAdmin(admin.ModelAdmin):
     list_filter = ("role", "is_active", "organization")
     search_fields = ("user__username", "user__email")
     readonly_fields = ("joined_at",)
+
+
+@admin.register(Coach)
+class CoachAdmin(admin.ModelAdmin):
+    list_display = ("user", "organization", "is_active", "years_experience", "created_at")
+    list_filter = ("organization", "is_active")
+    search_fields = ("user__username", "user__email")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(Athlete)
+class AthleteAdmin(admin.ModelAdmin):
+    list_display = ("user", "organization", "coach", "team", "is_active", "created_at")
+    list_filter = ("organization", "is_active", "team")
+    search_fields = ("user__username", "user__email")
+    readonly_fields = ("created_at", "updated_at")

@@ -1071,3 +1071,127 @@ class Membership(models.Model):
 
     def __str__(self):
         return f"{self.user} / {self.organization} [{self.role}]"
+
+
+class Coach(models.Model):
+    """
+    Organization-scoped coach identity.
+
+    A Coach is a User who holds a Membership.role = 'coach' or 'owner'
+    within a specific Organization. This model makes that relationship
+    explicit for use as a FK anchor in planning and assignment entities.
+
+    A User may be a Coach in multiple Organizations.
+    Each Coach record represents one (User, Organization) pairing.
+    The UniqueConstraint enforces one active Coach record per (user, org) pair.
+
+    Do NOT confuse with the legacy 'entrenador' User FK pattern on Alumno.
+    entrenador = legacy pattern (User directly FK'd on Alumno, Spanish-named).
+    Coach = new organization-first model (organization-scoped, English-named).
+    Migration from entrenador → Coach is a separate, explicitly scoped PR.
+    """
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="coach_profiles",
+        db_index=True,
+    )
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="coaches",
+        db_index=True,
+    )
+    bio = models.TextField(blank=True, default="")
+    certifications = models.TextField(blank=True, default="")
+    specialties = models.CharField(max_length=300, blank=True, default="")
+    years_experience = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "organization"],
+                condition=Q(is_active=True),
+                name="uniq_active_coach_user_org",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["organization", "is_active"]),
+        ]
+
+    def __str__(self):
+        return f"Coach:{self.user_id} @ {self.organization_id}"
+
+
+class Athlete(models.Model):
+    """
+    Organization-scoped athlete identity.
+
+    An Athlete is a User who holds a Membership.role = 'athlete'
+    within a specific Organization. This model is the FK anchor for
+    all athlete-specific domain entities: profile, goals, assignments,
+    activities, and analytics.
+
+    Organization scoping is non-nullable and fail-closed.
+    A row without an organization must never exist.
+
+    Do NOT confuse with the legacy 'Alumno' model.
+    Alumno = legacy Spanish model (entrenador-scoped, per-coach, not per-org).
+    Athlete = new organization-first model (organization-scoped, English-named).
+    Migration from Alumno → Athlete is a separate, explicitly scoped PR.
+    """
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="athlete_profiles",
+        db_index=True,
+    )
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="athletes",
+        db_index=True,
+    )
+    coach = models.ForeignKey(
+        "Coach",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="athletes",
+        db_index=True,
+        help_text=(
+            "Primary coach for this athlete within this organization. "
+            "Nullable: an athlete may exist before a coach is assigned. "
+            "Full multi-coach assignment patterns are handled by PR-104 "
+            "AthleteCoachAssignment."
+        ),
+    )
+    team = models.ForeignKey(
+        "Team",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="athletes",
+        db_index=True,
+    )
+    notes = models.TextField(blank=True, default="")
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "organization"],
+                condition=Q(is_active=True),
+                name="uniq_active_athlete_user_org",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["organization", "team", "is_active"]),
+            models.Index(fields=["organization", "is_active"]),
+        ]
+
+    def __str__(self):
+        return f"Athlete:{self.user_id} @ {self.organization_id}"
