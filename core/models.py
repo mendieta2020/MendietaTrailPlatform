@@ -1195,3 +1195,86 @@ class Athlete(models.Model):
 
     def __str__(self):
         return f"Athlete:{self.user_id} @ {self.organization_id}"
+
+
+class AthleteCoachAssignment(models.Model):
+    """
+    Explicit assignment of a Coach to an Athlete within an Organization.
+
+    Role types:
+    - primary: The lead coach. Only one primary assignment may be active
+      per (athlete, organization) at any given time. Enforced by both
+      a DB UniqueConstraint and the service layer.
+    - assistant: Supporting coach. Multiple active assistants allowed.
+
+    Active state: an assignment is active when ended_at is None.
+    ended_at is set (never deleted) when the relationship ends, preserving
+    the full coaching history.
+
+    Tenancy: organization FK is non-nullable. athlete.organization and
+    coach.organization must both equal this organization. Validated at
+    the service layer in core/services_assignment.py.
+
+    is_active property derives from ended_at to avoid dual-state
+    inconsistency between a boolean flag and the ended_at timestamp.
+    """
+
+    class Role(models.TextChoices):
+        PRIMARY = "primary", "Primary"
+        ASSISTANT = "assistant", "Assistant"
+
+    athlete = models.ForeignKey(
+        "Athlete",
+        on_delete=models.CASCADE,
+        related_name="coach_assignments",
+        db_index=True,
+    )
+    coach = models.ForeignKey(
+        "Coach",
+        on_delete=models.CASCADE,
+        related_name="athlete_assignments",
+        db_index=True,
+    )
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="athlete_coach_assignments",
+        db_index=True,
+    )
+    role = models.CharField(max_length=20, choices=Role.choices, db_index=True)
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    ended_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="coach_assignments_made",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            # One active primary coach per (athlete, organization) at a time
+            models.UniqueConstraint(
+                fields=["athlete", "organization"],
+                condition=Q(role="primary", ended_at__isnull=True),
+                name="uniq_active_primary_coach_per_athlete_org",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["athlete", "organization", "role"]),
+            models.Index(fields=["coach", "organization"]),
+            models.Index(fields=["organization", "role"]),
+        ]
+
+    @property
+    def is_active(self) -> bool:
+        """An assignment is active when ended_at is None."""
+        return self.ended_at is None
+
+    def __str__(self):
+        status = "active" if self.ended_at is None else "ended"
+        return (
+            f"Athlete:{self.athlete_id} ← {self.role} Coach:{self.coach_id} "
+            f"@ Org:{self.organization_id} [{status}]"
+        )
