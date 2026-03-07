@@ -5,7 +5,7 @@ from .models import (
     PlantillaEntrenamiento, Entrenamiento,
     Carrera, InscripcionCarrera, Actividad,
     ExternalIdentity, CompletedActivity,
-    Organization, Team,
+    Organization, Team, Membership,
 )
 
 # ==============================================================================
@@ -165,3 +165,11 @@ class TeamAdmin(admin.ModelAdmin):
     list_display = ("name", "organization", "is_active")
     list_filter = ("organization", "is_active")
     search_fields = ("name",)
+
+
+@admin.register(Membership)
+class MembershipAdmin(admin.ModelAdmin):
+    list_display = ("user", "organization", "role", "is_active", "joined_at")
+    list_filter = ("role", "is_active", "organization")
+    search_fields = ("user__username", "user__email")
+    readonly_fields = ("joined_at",)

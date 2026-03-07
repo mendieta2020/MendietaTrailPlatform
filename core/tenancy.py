@@ -1,6 +1,7 @@
+from django.core.exceptions import PermissionDenied
 from rest_framework.exceptions import NotFound
 
-from core.models import Alumno, Equipo
+from core.models import Alumno, Equipo, Membership
 
 
 _NOT_FOUND_MESSAGE = "Athlete not found"
@@ -80,3 +81,66 @@ class CoachTenantAPIViewMixin:
             return Equipo.objects.get(id=int(group_id), entrenador=request.user)
         except Equipo.DoesNotExist as exc:
             raise NotFound("Group not found") from exc
+
+
+# ==============================================================================
+#  ORGANIZATION-FIRST TENANCY GATE — P1 (PR-102)
+#  These functions are for new P1+ views only.
+#  Do not use on existing entrenador-scoped views.
+# ==============================================================================
+
+def get_active_membership(user, organization_id: int) -> Membership:
+    """
+    Resolve an active Membership for (user, organization).
+
+    Fail-closed: raises PermissionDenied if no active membership exists.
+    Never returns None — callers can assume a valid Membership on success.
+
+    Usage:
+        membership = get_active_membership(request.user, org_id)
+        # Proceeds only if membership is active
+    """
+    try:
+        return Membership.objects.get(
+            user=user,
+            organization_id=organization_id,
+            is_active=True,
+        )
+    except Membership.DoesNotExist:
+        raise PermissionDenied("No active membership for this organization.")
+
+
+def require_role(user, organization_id: int, allowed_roles: list) -> Membership:
+    """
+    Resolve membership and verify the user has one of the allowed roles.
+
+    Fail-closed: raises PermissionDenied on missing membership OR wrong role.
+
+    Usage:
+        membership = require_role(request.user, org_id, ["owner", "coach"])
+    """
+    membership = get_active_membership(user, organization_id)
+    if membership.role not in allowed_roles:
+        raise PermissionDenied(
+            f"Role '{membership.role}' is not authorized for this action."
+        )
+    return membership
+
+
+class OrgTenantMixin:
+    """
+    DRF ViewSet mixin for organization-scoped endpoints.
+
+    Resolves and caches the active Membership on each request.
+    Subclasses access `self.membership` and `self.organization` after
+    calling `self.resolve_membership(org_id)`.
+
+    Replaces the legacy CoachTenantAPIViewMixin for new P1+ views.
+    Do not use this on existing views.
+    """
+
+    def resolve_membership(self, organization_id: int) -> Membership:
+        membership = get_active_membership(self.request.user, organization_id)
+        self.membership = membership
+        self.organization = membership.organization
+        return membership
