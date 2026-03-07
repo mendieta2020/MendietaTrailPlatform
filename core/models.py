@@ -1007,3 +1007,67 @@ class Team(models.Model):
 
     def __str__(self):
         return f"{self.organization.name} / {self.name}"
+
+
+class Membership(models.Model):
+    """
+    Access gate between a User and an Organization.
+
+    Fail-closed: a user is authorized to access an organization's data only
+    if they have an active Membership record with an appropriate role.
+    Missing membership = deny, regardless of other user properties.
+
+    Multi-tenant discipline:
+    - All organization-scoped queries must validate membership first.
+    - Never infer membership from request context — always resolve explicitly.
+    """
+
+    class Role(models.TextChoices):
+        OWNER = "owner", "Owner"
+        COACH = "coach", "Coach"
+        ATHLETE = "athlete", "Athlete"
+        STAFF = "staff", "Staff"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="memberships",
+        db_index=True,
+    )
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="memberships",
+        db_index=True,
+    )
+    role = models.CharField(max_length=20, choices=Role.choices, db_index=True)
+    staff_title = models.CharField(
+        max_length=60, blank=True, default="",
+        help_text="e.g. physiotherapist, nutritionist, doctor, admin"
+    )
+    team = models.ForeignKey(
+        "Team",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="memberships",
+        db_index=True,
+    )
+    is_active = models.BooleanField(default=True, db_index=True)
+    joined_at = models.DateTimeField(auto_now_add=True)
+    left_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "organization"],
+                condition=Q(is_active=True),
+                name="uniq_active_membership_user_org",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["organization", "role", "is_active"]),
+            models.Index(fields=["user", "is_active"]),
+        ]
+
+    def __str__(self):
+        return f"{self.user} / {self.organization} [{self.role}]"
