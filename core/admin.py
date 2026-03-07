@@ -5,6 +5,7 @@ from .models import (
     PlantillaEntrenamiento, Entrenamiento,
     Carrera, InscripcionCarrera, Actividad,
     ExternalIdentity, CompletedActivity,
+    Organization, Team,
 )
 
 # ==============================================================================
@@ -150,3 +151,17 @@ class CompletedActivityAdmin(admin.ModelAdmin):
     search_fields = ('provider_activity_id', 'alumno__nombre', 'alumno__apellido')
     readonly_fields = ('created_at',)
     raw_id_fields = ('organization', 'alumno')
+
+
+@admin.register(Organization)
+class OrganizationAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug", "is_active", "created_at")
+    search_fields = ("name", "slug")
+    prepopulated_fields = {"slug": ("name",)}
+
+
+@admin.register(Team)
+class TeamAdmin(admin.ModelAdmin):
+    list_display = ("name", "organization", "is_active")
+    list_filter = ("organization", "is_active")
+    search_fields = ("name",)
