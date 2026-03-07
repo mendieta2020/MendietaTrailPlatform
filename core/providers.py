@@ -45,6 +45,7 @@ SUPPORTED_PROVIDERS: list[str] = [
     "coros",
     "suunto",
     "polar",
+    "wahoo",
 ]
 
 # Legacy: PROVIDERS dict kept for any consumer that imported it directly

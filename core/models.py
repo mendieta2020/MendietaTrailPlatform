@@ -342,6 +342,8 @@ class Actividad(models.Model):
         GARMIN = "garmin", "garmin"
         COROS = "coros", "coros"
         SUUNTO = "suunto", "suunto"
+        POLAR = "polar", "polar"
+        WAHOO = "wahoo", "wahoo"
         MANUAL = "manual", "manual"
         OTHER = "other", "other"
 
@@ -847,6 +849,8 @@ class CompletedActivity(models.Model):
         GARMIN = "garmin", "Garmin"
         COROS = "coros", "Coros"
         SUUNTO = "suunto", "Suunto"
+        POLAR = "polar", "Polar"
+        WAHOO = "wahoo", "Wahoo"
         MANUAL = "manual", "Manual"
         OTHER = "other", "Other"
 
