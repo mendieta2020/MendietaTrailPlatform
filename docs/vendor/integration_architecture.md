@@ -146,3 +146,98 @@ Fields defined and used consistently across `core/webhooks.py`, `core/oauth_stat
 | `notifications` | Coach alerts (deviations, milestones) |
 
 Configuration: `backend/celery.py`, `backend/settings.py`.
+
+---
+
+## Provider Adapter Architecture
+
+### Two-layer provider design
+
+Provider integration is split across two distinct layers, each with a separate
+responsibility:
+
+```
+core/providers/<provider>.py          — Registry / capability declaration layer
+integrations/<provider>/provider.py   — Implementation / adapter layer
+```
+
+**Layer 1 — Registry (core/providers/)**
+
+`IntegrationProvider` (ABC defined in `core/providers/base.py`) is the capability
+contract. Every provider declares what it supports via `capabilities()` before any
+implementation exists. The registry (`core/providers/registry.py`) auto-registers
+all providers at import time. The frontend uses this layer to show "Connected",
+"Coming Soon", and "Disabled" states without needing live implementations.
+
+| File | Class | Purpose |
+|---|---|---|
+| `core/providers/strava.py` | `StravaProvider` | enabled=True, full capabilities declared |
+| `core/providers/garmin.py` | `GarminProvider` | enabled=False, capabilities stub |
+| `core/providers/coros.py` | `CorosProvider` | enabled=False, capabilities stub |
+| `core/providers/suunto.py` | `SuuntoProvider` | enabled=False, capabilities stub |
+| `core/providers/polar.py` | `PolarProvider` | enabled=False, capabilities stub |
+| `core/providers/wahoo.py` | `WahooProvider` | enabled=False, capabilities stub |
+
+**Layer 2 — Adapters (integrations/<provider>/)**
+
+`ProviderAdapter` classes contain the actual implementation: OAuth flow,
+API calls, activity mapping, token refresh. They are never imported from
+`core/` — only from their provider-specific ingestion tasks.
+
+| File | Class | Status |
+|---|---|---|
+| `integrations/strava/oauth.py` | `LoggedStravaOAuth2Adapter` | Production |
+| `integrations/strava/mapper.py` | `normalize_strava_activity()` | Production |
+| `integrations/strava/normalizer.py` | `normalize_strava_activity_payload()` | Production |
+| `integrations/garmin/provider.py` | `GarminProviderAdapter` | Stub |
+| `integrations/coros/provider.py` | `CorosProviderAdapter` | Stub |
+| `integrations/suunto/provider.py` | `SuuntoProviderAdapter` | Stub |
+| `integrations/polar/provider.py` | `PolarProviderAdapter` | Stub |
+| `integrations/wahoo/provider.py` | `WahooProviderAdapter` | Stub |
+
+### Provider data flow (per-provider)
+
+```
+OAuth callback
+  → integrations/<provider>/provider.py:exchange_code_for_token()
+  → core/models.py:OAuthCredential (upsert, provider-agnostic store)
+  → core/models.py:ExternalIdentity (link athlete to provider identity)
+
+New activity (webhook or poll)
+  → integrations/<provider>/mapper.py (raw JSON → stable dict)
+  → integrations/<provider>/normalizer.py (stable dict → NormalizedActivity TypedDict)
+  → decide_activity_creation() (product rules: sport + distance filter)
+  → core/models.py:Actividad.objects.update_or_create(source=PROVIDER, source_object_id=...)
+  → analytics pipeline (DailyActivityAgg → PMCHistory → InjuryRiskSnapshot)
+```
+
+### Provider source enum
+
+`Actividad.Source` and `CompletedActivity.Provider` are the single source of truth
+for which providers can produce activity data. All values are lowercase slugs matching
+`provider_id` in the registry:
+
+| Value | Provider | Status |
+|---|---|---|
+| `strava` | Strava | Production |
+| `garmin` | Garmin Connect | Schema-ready, adapter stub |
+| `coros` | COROS | Schema-ready, adapter stub |
+| `suunto` | Suunto | Schema-ready, adapter stub |
+| `polar` | Polar Accesslink | Schema-ready, adapter stub |
+| `wahoo` | Wahoo Cloud API | Schema-ready, adapter stub |
+| `manual` | Manual entry | Production |
+| `other` | Other | Production |
+
+### Rules
+
+1. **Provider logic stays in `integrations/`.** `core/` models and views never import
+   from `integrations/<provider>/`. Data crosses the boundary as normalised Python dicts.
+2. **Enable via registry, not by editing models.** To activate a new provider:
+   set `enabled=True` in `core/providers/<provider>.py` and implement the adapter.
+3. **Idempotency is not optional.** Every adapter must produce a stable `provider_activity_id`
+   so `Actividad`'s `(source, source_object_id)` UniqueConstraint can deduplicate retries.
+4. **Normalise to the business TypedDict.** Adapters must produce a dict compatible with
+   `NormalizedStravaBusinessActivity` (or its future multi-provider equivalent) before
+   handing off to the domain ingestion pipeline.
+5. **Tokens never leave `integrations/`.** Token refresh logic lives exclusively in
+   `integrations/<provider>/` and writes back only to `OAuthCredential`.
