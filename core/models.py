@@ -946,3 +946,64 @@ def actualizar_pago_alumno(sender, instance, **kwargs):
         if not alumno.fecha_ultimo_pago or instance.fecha_pago > alumno.fecha_ultimo_pago:
             alumno.fecha_ultimo_pago = instance.fecha_pago
             alumno.save()
+
+
+# ==============================================================================
+#  DOMAIN FOUNDATION — P1 (organization-first architecture)
+# ==============================================================================
+
+class Organization(models.Model):
+    """
+    Tenant root for all Quantoryn domain entities.
+    Every organization-scoped record must reference this model.
+
+    Multi-tenant discipline: queries must always filter by organization.
+    An organization without an active CoachSubscription is read-only.
+    """
+    name = models.CharField(max_length=200)
+    slug = models.SlugField(max_length=100, unique=True)
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Organization"
+        verbose_name_plural = "Organizations"
+        indexes = [
+            models.Index(fields=["slug"]),
+            models.Index(fields=["is_active", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class Team(models.Model):
+    """
+    A named subgroup within an Organization.
+    Athletes are assigned to teams for training group segmentation.
+
+    Tenancy: Team is scoped to Organization. Queries must filter by
+    organization before filtering by team.
+    """
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="teams",
+        db_index=True,
+    )
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default="")
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("organization", "name")
+        indexes = [
+            models.Index(fields=["organization", "is_active"]),
+        ]
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.organization.name} / {self.name}"
