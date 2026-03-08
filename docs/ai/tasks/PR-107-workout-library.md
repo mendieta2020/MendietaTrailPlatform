@@ -176,3 +176,27 @@ class WorkoutLibraryModelTests(TestCase):
 ---
 
 *Capsule last updated: 2026-03-07 · See also: `docs/ai/CONSTITUTION.md`, `docs/product/DOMAIN_MODEL.md`*
+
+---
+
+## Addendum — 2026-03-08: Capsule Unexecuted / Branch Naming Collision
+
+**This capsule has not been executed.**
+
+Branch `p1/pr107-athlete-goal` delivered `AthleteGoal` (the unblocked second half
+of the PR-105 scope) rather than `WorkoutLibrary`. This was a deliberate product
+sequencing decision: AthleteGoal required RaceEvent (PR-106) before it could be
+built; once RaceEvent landed, AthleteGoal was delivered immediately.
+
+**Effect:**
+The PR-107 number was consumed in practice by AthleteGoal. WorkoutLibrary —
+the content of this capsule — remains unimplemented. Zero migrations, zero models,
+zero tests for WorkoutLibrary exist in the codebase as of 2026-03-08.
+
+**Resolution:**
+Do not renumber this capsule. WorkoutLibrary is assigned to slot **PR-111** in
+the extended execution lane. This capsule's specification is unchanged and is the
+authoritative implementation guide for PR-111.
+
+See `docs/ai/playbooks/EXECUTION-BASELINE-PR101-PR120.md`, Known Divergences D1,
+and the Extended Lane Summary.

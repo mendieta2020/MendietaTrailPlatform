@@ -342,3 +342,44 @@ class LegacyCoexistenceTests(TestCase):
 ---
 
 *Capsule last updated: 2026-03-07 · See also: `docs/ai/CONSTITUTION.md`, `docs/product/DOMAIN_MODEL.md`*
+
+---
+
+## Addendum — 2026-03-08: Architecture Reality Note
+
+Before implementing this capsule, the following pre-existing conditions in the
+codebase must be understood:
+
+### 1. `CompletedActivity.organization` points to User, not Organization
+
+The current `CompletedActivity.organization` field is:
+```python
+organization = models.ForeignKey(settings.AUTH_USER_MODEL, ...)
+```
+It uses the Django User model as an organization proxy. This predates the `Organization`
+model introduced in PR-101 and is not on the organization-first P1 architecture.
+
+**Scope of this PR (PR-110 / extended lane PR-114):**
+- Add `athlete` FK (nullable, backward-compatible) — this is additive and safe.
+- Add `ActivityStream` model — this is a new table; no blast radius.
+- Add domain invariant tests — always additive.
+- Do **not** migrate `organization` from User to Organization in this PR.
+
+**The full `organization` FK migration** (User → Organization) is deferred to a
+separate explicitly scoped PR after the extended lane (post-PR-120). It requires:
+- A data migration that maps existing User FKs to Organization rows
+- A careful backward-compatibility plan for Strava ingestion and existing queries
+- An explicit ADR (architecture decision record)
+This debt is tracked in `docs/ai/playbooks/EXECUTION-BASELINE-PR101-PR120.md`,
+Known Divergences D2.
+
+### 2. `CompletedActivity.alumno` points to legacy `Alumno`, not `Athlete`
+
+The current model uses `alumno = ForeignKey("Alumno", ...)`. This PR adds
+`athlete = ForeignKey("Athlete", null=True, blank=True, ...)` as the new-domain
+FK alongside the legacy one. Both coexist. Backfill is a separate task.
+
+### 3. `ActivityStream` does not yet exist
+
+The `ActivityStream` model specified in this capsule is not yet implemented.
+No migration, no model class, no tests. This PR creates it from scratch.
