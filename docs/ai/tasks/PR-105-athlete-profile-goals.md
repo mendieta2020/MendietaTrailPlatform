@@ -296,3 +296,29 @@ class AthleteGoalTests(TestCase):
 ---
 
 *Capsule last updated: 2026-03-07 · See also: `docs/ai/CONSTITUTION.md`, `docs/product/DOMAIN_MODEL.md`*
+
+---
+
+## Addendum — 2026-03-08: Split Delivery
+
+This PR was delivered in two passes.
+
+**Pass 1 — AthleteProfile (delivered as PR-105):**
+AthleteProfile was implemented and merged. Migration `0066_athlete_profile_goals.py`.
+Tests: `core/tests_athlete_profile.py`. Model-level `clean()` + `save()→full_clean()`
+enforces `profile.organization == athlete.organization` (fail-closed).
+
+**AthleteGoal blocked:**
+AthleteGoal requires a clean organization-first FK target (`RaceEvent`). The legacy
+`Carrera` model has no `organization` FK and is not org-first. AthleteGoal was
+therefore blocked pending PR-106 (RaceEvent).
+
+**Pass 2 — AthleteGoal (delivered on branch `p1/pr107-athlete-goal`):**
+After RaceEvent (PR-106) was implemented, AthleteGoal was delivered on a branch
+numerically labeled PR-107. Migration `0068_athlete_goal.py`.
+Tests: `core/tests_athlete_goal.py`. Both cross-org invariants (athlete-org and
+target_event-org) enforced in `clean()`.
+
+**Current status:** Both AthleteProfile and AthleteGoal are fully implemented and tested.
+The only residual effect of the split delivery is a branch naming divergence at PR-107.
+See `docs/ai/playbooks/EXECUTION-BASELINE-PR101-PR120.md`, Known Divergences D1.
