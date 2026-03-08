@@ -1672,3 +1672,56 @@ class AthleteGoal(models.Model):
             f"[{self.priority}] {self.title}{event_part} "
             f"({self.status}) — Athlete:{self.athlete_id}"
         )
+
+
+# ==============================================================================
+# PR-111: WorkoutLibrary — organization-scoped workout template container
+# ==============================================================================
+
+class WorkoutLibrary(models.Model):
+    """
+    Named collection of workout templates for an Organization.
+
+    The library is the container from which coaches select and assign
+    workouts to athletes. Templates inside the library are PlannedWorkout
+    records with is_template=True and a library FK pointing here (PR-112).
+
+    Visibility:
+    - is_public=True: all coaches in the organization can view and use
+      templates from this library.
+    - is_public=False: private library, visible only to created_by coach.
+
+    Multi-tenant: organization FK is non-nullable. Cross-org access is denied.
+    """
+
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="workout_libraries",
+        db_index=True,
+    )
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default="")
+    is_public = models.BooleanField(
+        default=True,
+        help_text="If True, all coaches in the organization can access this library.",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="workout_libraries_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("organization", "name")
+        indexes = [
+            models.Index(fields=["organization", "is_public"]),
+        ]
+        ordering = ["name"]
+
+    def __str__(self):
+        visibility = "public" if self.is_public else "private"
+        return f"{self.name} ({visibility}) — Org:{self.organization_id}"
