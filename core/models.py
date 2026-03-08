@@ -1278,3 +1278,177 @@ class AthleteCoachAssignment(models.Model):
             f"Athlete:{self.athlete_id} ← {self.role} Coach:{self.coach_id} "
             f"@ Org:{self.organization_id} [{status}]"
         )
+
+
+class AthleteProfile(models.Model):
+    """
+    Physical and performance profile for an Athlete.
+
+    Values feed analytics computation: training zones, TSS scaling,
+    PMC modeling, and injury risk thresholds.
+
+    One profile per athlete (OneToOneField). Updates are timestamped.
+    All physiological fields are nullable — real athletes may not have
+    all values measured at profile creation time.
+
+    Zone fields (hr_zones_json, pace_zones_json, power_zones_json) store
+    structured zone data as JSON. This supports both manual entry and
+    future automatic recalculation from provider data or test results.
+
+    Multi-tenant: organization comes through the athlete relation.
+    The explicit organization FK is included for query efficiency on
+    org-level analytics sweeps without joining through Athlete.
+
+    Note: AthleteGoal is implemented in a separate PR once RaceEvent
+    (PR-106) is available as a clean FK target.
+    """
+
+    class Discipline(models.TextChoices):
+        RUN = "run", "Running"
+        TRAIL = "trail", "Trail Running"
+        BIKE = "bike", "Cycling"
+        SWIM = "swim", "Swimming"
+        TRIATHLON = "triathlon", "Triathlon"
+        OTHER = "other", "Other"
+
+    # ------------------------------------------------------------------
+    # Identity anchors
+    # ------------------------------------------------------------------
+    athlete = models.OneToOneField(
+        "Athlete",
+        on_delete=models.CASCADE,
+        related_name="profile",
+    )
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="athlete_profiles",
+        db_index=True,
+    )
+
+    # ------------------------------------------------------------------
+    # Demographics
+    # ------------------------------------------------------------------
+    birth_date = models.DateField(
+        null=True, blank=True,
+        help_text="Full birth date. Preferred over age field when available.",
+    )
+    age = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Age in years. Used when birth_date is unknown.",
+    )
+    height_cm = models.FloatField(null=True, blank=True)
+    weight_kg = models.FloatField(null=True, blank=True)
+    bmi = models.FloatField(
+        null=True, blank=True,
+        help_text="Body Mass Index. May be manually entered or computed.",
+    )
+
+    # ------------------------------------------------------------------
+    # Cardiovascular
+    # ------------------------------------------------------------------
+    resting_hr_bpm = models.PositiveSmallIntegerField(null=True, blank=True)
+    max_hr_bpm = models.PositiveSmallIntegerField(null=True, blank=True)
+
+    # ------------------------------------------------------------------
+    # Performance metrics
+    # ------------------------------------------------------------------
+    vo2max = models.FloatField(
+        null=True, blank=True,
+        help_text="VO2max in ml/kg/min (lab or estimated).",
+    )
+    ftp_watts = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Functional Threshold Power in watts (cycling).",
+    )
+    vam = models.FloatField(
+        null=True, blank=True,
+        help_text="Velocidad Ascensión Media in m/h (vertical climbing speed).",
+    )
+    lactate_threshold_pace_s_per_km = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Lactate threshold pace in seconds per km (running).",
+    )
+    running_economy = models.FloatField(
+        null=True, blank=True,
+        help_text="Running economy in ml O2/kg/km.",
+    )
+    training_age_years = models.PositiveSmallIntegerField(null=True, blank=True)
+    dominant_discipline = models.CharField(
+        max_length=20,
+        choices=Discipline.choices,
+        blank=True, default="",
+    )
+
+    # ------------------------------------------------------------------
+    # Injury state
+    # ------------------------------------------------------------------
+    is_injured = models.BooleanField(
+        default=False, db_index=True,
+        help_text="Current injury flag. Affects training load recommendations.",
+    )
+    injury_notes = models.TextField(blank=True, default="")
+
+    # ------------------------------------------------------------------
+    # Training zones (JSON — supports manual entry and auto-recalculation)
+    # ------------------------------------------------------------------
+    hr_zones_json = models.JSONField(
+        default=dict, blank=True,
+        help_text=(
+            "Heart rate zones as JSON. "
+            "Structure: {z1: {min_bpm, max_bpm}, z2: ..., ...}. "
+            "May be manually entered or auto-recalculated from max_hr_bpm."
+        ),
+    )
+    pace_zones_json = models.JSONField(
+        default=dict, blank=True,
+        help_text=(
+            "Running pace zones as JSON. "
+            "Structure: {z1: {min_s_km, max_s_km}, ...}. "
+            "May be manually entered or auto-recalculated from lactate_threshold."
+        ),
+    )
+    power_zones_json = models.JSONField(
+        default=dict, blank=True,
+        help_text=(
+            "Cycling power zones as JSON. "
+            "Structure: {z1: {min_w, max_w}, ...}. "
+            "May be manually entered or auto-recalculated from ftp_watts."
+        ),
+    )
+
+    # ------------------------------------------------------------------
+    # Freeform notes + audit
+    # ------------------------------------------------------------------
+    notes = models.TextField(blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="athlete_profile_updates",
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["organization"]),
+        ]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if (
+            self.athlete_id is not None
+            and self.organization_id is not None
+            and self.athlete.organization_id != self.organization_id
+        ):
+            raise ValidationError(
+                "AthleteProfile.organization must match athlete.organization. "
+                "Cross-organization profiles are not permitted."
+            )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Profile: Athlete:{self.athlete_id} @ Org:{self.organization_id}"
