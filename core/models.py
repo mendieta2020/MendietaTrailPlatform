@@ -1529,3 +1529,146 @@ class RaceEvent(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.event_date}) [{self.organization_id}]"
+
+
+# ==============================================================================
+# PR-107: AthleteGoal — athlete objective model
+# ==============================================================================
+
+class AthleteGoal(models.Model):
+    """
+    A declared performance objective for an Athlete within an organization.
+
+    Supports both race-linked goals (target_event set) and personal goals
+    (target_event null, target_date used instead).
+
+    Priority belongs here — the same RaceEvent may have different importance
+    for different athletes. A coach may not want all athletes targeting the
+    same race as their A priority.
+
+    Invariants enforced at model level:
+    - goal.organization must equal athlete.organization
+    - if target_event is set: target_event.organization must equal goal.organization
+    - at most one active goal per (athlete, priority)
+
+    Multi-tenant: organization FK is non-nullable.
+    """
+
+    class Priority(models.TextChoices):
+        A = "A", "A — Peak goal"
+        B = "B", "B — Secondary goal"
+        C = "C", "C — Developmental goal"
+
+    class GoalType(models.TextChoices):
+        FINISH = "finish", "Finish"
+
+    class Status(models.TextChoices):
+        PLANNED = "planned", "Planned"
+        ACTIVE = "active", "Active"
+        PAUSED = "paused", "Paused"
+        COMPLETED = "completed", "Completed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="athlete_goals",
+        db_index=True,
+    )
+    athlete = models.ForeignKey(
+        "Athlete",
+        on_delete=models.CASCADE,
+        related_name="goals",
+        db_index=True,
+    )
+    target_event = models.ForeignKey(
+        "RaceEvent",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="athlete_goals",
+    )
+    title = models.CharField(max_length=300)
+    priority = models.CharField(
+        max_length=5,
+        choices=Priority.choices,
+        db_index=True,
+    )
+    goal_type = models.CharField(
+        max_length=20,
+        choices=GoalType.choices,
+        default=GoalType.FINISH,
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PLANNED,
+        db_index=True,
+    )
+    target_date = models.DateField(
+        null=True, blank=True,
+        help_text="Target date for personal goals not linked to a RaceEvent.",
+        db_index=True,
+    )
+    coach_notes = models.TextField(blank=True, default="")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="athlete_goals_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["athlete", "priority"],
+                condition=Q(status="active"),
+                name="uniq_active_priority_per_athlete",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["organization", "status"]),
+            models.Index(fields=["athlete", "status", "priority"]),
+        ]
+        ordering = ["priority", "target_date"]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        errors = {}
+
+        # Invariant 1: goal.organization must match athlete.organization
+        if (
+            self.athlete_id is not None
+            and self.organization_id is not None
+            and self.athlete.organization_id != self.organization_id
+        ):
+            errors["organization"] = (
+                "AthleteGoal.organization must match athlete.organization. "
+                "Cross-organization goals are not permitted."
+            )
+
+        # Invariant 2: if target_event is set, it must belong to the same org
+        if (
+            self.target_event_id is not None
+            and self.organization_id is not None
+            and self.target_event.organization_id != self.organization_id
+        ):
+            errors["target_event"] = (
+                "target_event.organization must match goal.organization. "
+                "Cross-organization event links are not permitted."
+            )
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        event_part = f" → {self.target_event.name}" if self.target_event_id else ""
+        return (
+            f"[{self.priority}] {self.title}{event_part} "
+            f"({self.status}) — Athlete:{self.athlete_id}"
+        )
