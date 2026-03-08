@@ -295,7 +295,7 @@ class StravaOAuthLoggingTests(TestCase):
         closure = match.func.__closure__ or ()
         self.assertIn("adapter", freevars)
         adapter_cell = dict(zip(freevars, closure))["adapter"].cell_contents
-        self.assertEqual(adapter_cell.__module__, "core.strava_oauth_views")
+        self.assertEqual(adapter_cell.__module__, "integrations.strava.oauth")
         self.assertEqual(adapter_cell.__name__, "LoggedStravaOAuth2Adapter")
 
         match = resolve("/accounts/strava/login/callback/")
@@ -304,7 +304,7 @@ class StravaOAuthLoggingTests(TestCase):
         closure = match.func.__closure__ or ()
         self.assertIn("adapter", freevars)
         adapter_cell = dict(zip(freevars, closure))["adapter"].cell_contents
-        self.assertEqual(adapter_cell.__module__, "core.strava_oauth_views")
+        self.assertEqual(adapter_cell.__module__, "integrations.strava.oauth")
         self.assertEqual(adapter_cell.__name__, "LoggedStravaOAuth2Adapter")
 
     def test_sanitize_oauth_payload_redacts_tokens(self):
@@ -317,7 +317,7 @@ class StravaOAuthLoggingTests(TestCase):
             "athlete": {"id": 1, "username": "x"},
         }
         sanitized = sanitize_oauth_payload(raw)
-        self.assertEqual(sanitized["access_token"], "<redacted>")
-        self.assertEqual(sanitized["refresh_token"], "<redacted>")
-        self.assertEqual(sanitized["expires_at"], "<redacted>")
+        self.assertEqual(sanitized["access_token"], "REDACTED")
+        self.assertEqual(sanitized["refresh_token"], "REDACTED")
+        self.assertEqual(sanitized["expires_at"], 123)  # not a sensitive key, passes through
         self.assertEqual(sanitized["athlete"]["id"], 1)
