@@ -7,7 +7,7 @@ from .models import (
     ExternalIdentity, CompletedActivity,
     Organization, Team, Membership,
     Coach, Athlete, AthleteCoachAssignment,
-    AthleteProfile,
+    AthleteProfile, RaceEvent,
 )
 
 # ==============================================================================
@@ -207,3 +207,11 @@ class AthleteProfileAdmin(admin.ModelAdmin):
     list_filter = ("organization", "is_injured", "dominant_discipline")
     search_fields = ("athlete__user__username",)
     readonly_fields = ("updated_at",)
+
+
+@admin.register(RaceEvent)
+class RaceEventAdmin(admin.ModelAdmin):
+    list_display = ("name", "organization", "discipline", "event_date", "location", "country", "distance_km")
+    list_filter = ("organization", "discipline", "event_date")
+    search_fields = ("name", "location", "country")
+    readonly_fields = ("created_at", "updated_at")

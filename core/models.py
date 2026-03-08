@@ -1452,3 +1452,80 @@ class AthleteProfile(models.Model):
 
     def __str__(self):
         return f"Profile: Athlete:{self.athlete_id} @ Org:{self.organization_id}"
+
+
+# ==============================================================================
+# PR-106: RaceEvent — organization-scoped competition catalog
+# ==============================================================================
+
+class RaceEvent(models.Model):
+    """
+    A target competition registered by an organization.
+
+    Used as the anchor for AthleteGoal.target_event (PR-105/future) and
+    training block periodization. Each organization maintains its own event
+    catalog — two organizations may independently register the same race.
+
+    Priority belongs in AthleteGoal (per athlete), not here.
+
+    Multi-tenant: organization FK is non-nullable.
+    All queries must filter by organization.
+    """
+
+    class Discipline(models.TextChoices):
+        RUN = "run", "Running"
+        TRAIL = "trail", "Trail Running"
+        BIKE = "bike", "Cycling"
+        SWIM = "swim", "Swimming"
+        TRIATHLON = "triathlon", "Triathlon"
+        OTHER = "other", "Other"
+
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="race_events",
+        db_index=True,
+    )
+    name = models.CharField(max_length=300)
+    discipline = models.CharField(
+        max_length=20,
+        choices=Discipline.choices,
+        db_index=True,
+    )
+    event_date = models.DateField(db_index=True)
+    location = models.CharField(max_length=300, blank=True, default="")
+    country = models.CharField(max_length=100, blank=True, default="")
+    distance_km = models.FloatField(null=True, blank=True)
+    elevation_gain_m = models.FloatField(
+        null=True, blank=True,
+        help_text="Total elevation gain in meters (relevant for trail/MTB events).",
+    )
+    event_url = models.URLField(
+        blank=True, default="",
+        help_text="Official event URL.",
+    )
+    notes = models.TextField(blank=True, default="")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="race_events_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "name", "event_date"],
+                name="uniq_race_event_per_org_name_date",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["organization", "event_date"]),
+            models.Index(fields=["organization", "discipline", "event_date"]),
+        ]
+        ordering = ["event_date"]
+
+    def __str__(self):
+        return f"{self.name} ({self.event_date}) [{self.organization_id}]"
