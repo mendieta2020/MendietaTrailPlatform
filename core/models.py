@@ -1725,3 +1725,345 @@ class WorkoutLibrary(models.Model):
     def __str__(self):
         visibility = "public" if self.is_public else "private"
         return f"{self.name} ({visibility}) — Org:{self.organization_id}"
+
+
+# ==============================================================================
+# PR-112: PlannedWorkout + WorkoutBlock + WorkoutInterval
+# Structured planning domain models — plan-side only, Plan ≠ Real.
+# ==============================================================================
+
+class PlannedWorkout(models.Model):
+    """
+    A reusable workout prescription stored inside a WorkoutLibrary.
+
+    PLAN ≠ REAL INVARIANT:
+    This model stores coaching intent only. It must never store execution
+    outcomes (actual distance, actual duration, actual HR, actual power).
+    CompletedActivity is the source of truth for what actually happened.
+    PlanRealCompare (future PR) is the explicit reconciliation record.
+
+    Modification audit:
+    - structure_version increments when the prescription is materially changed.
+    - Never reset to 1 after creation.
+
+    Multi-tenant: organization FK is non-nullable. library.organization must
+    equal organization (enforced in clean()).
+    """
+
+    class Discipline(models.TextChoices):
+        RUN = "run", "Running"
+        TRAIL = "trail", "Trail Running"
+        BIKE = "bike", "Cycling"
+        SWIM = "swim", "Swimming"
+        STRENGTH = "strength", "Strength"
+        MOBILITY = "mobility", "Mobility"
+        TRIATHLON = "triathlon", "Triathlon"
+        OTHER = "other", "Other"
+
+    class SessionType(models.TextChoices):
+        BASE = "base", "Base / Easy"
+        THRESHOLD = "threshold", "Threshold"
+        INTERVAL = "interval", "Interval"
+        LONG = "long", "Long"
+        RECOVERY = "recovery", "Recovery"
+        RACE_SIMULATION = "race_simulation", "Race Simulation"
+        STRENGTH = "strength", "Strength"
+        MOBILITY = "mobility", "Mobility"
+        OTHER = "other", "Other"
+
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="planned_workouts",
+        db_index=True,
+    )
+    library = models.ForeignKey(
+        "WorkoutLibrary",
+        on_delete=models.CASCADE,
+        related_name="planned_workouts",
+        db_index=True,
+    )
+    name = models.CharField(max_length=300)
+    description = models.TextField(blank=True, default="")
+    discipline = models.CharField(
+        max_length=20,
+        choices=Discipline.choices,
+        db_index=True,
+    )
+    session_type = models.CharField(
+        max_length=20,
+        choices=SessionType.choices,
+        default=SessionType.OTHER,
+        db_index=True,
+    )
+    estimated_duration_seconds = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Coach-estimated total duration in seconds. Planning only.",
+    )
+    estimated_distance_meters = models.FloatField(
+        null=True, blank=True,
+        help_text="Coach-estimated total distance in meters. Planning only.",
+    )
+    structure_version = models.PositiveSmallIntegerField(
+        default=1,
+        help_text="Increments on material prescription changes. Never reset.",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="planned_workouts_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["organization", "discipline", "session_type"]),
+            models.Index(fields=["library"]),
+        ]
+        ordering = ["name"]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if (
+            self.library_id is not None
+            and self.organization_id is not None
+            and self.library.organization_id != self.organization_id
+        ):
+            raise ValidationError(
+                "PlannedWorkout.organization must match library.organization. "
+                "Cross-organization workout prescriptions are not permitted."
+            )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return (
+            f"{self.name} [{self.discipline}/{self.session_type}] "
+            f"v{self.structure_version} — Org:{self.organization_id}"
+        )
+
+
+class WorkoutBlock(models.Model):
+    """
+    An ordered top-level section of a PlannedWorkout.
+
+    Examples: Warm-up, Main Set, Cooldown, Drills, Strength, Custom.
+
+    Blocks define the macro structure of the session. Each block has an
+    order_index that determines its position within the workout. The
+    optional video_url supports strength and drill coaching workflows
+    where technique video context is valuable.
+
+    Multi-tenant: organization FK is non-nullable. planned_workout.organization
+    must equal organization (enforced in clean()).
+    """
+
+    class BlockType(models.TextChoices):
+        WARMUP = "warmup", "Warm-Up"
+        MAIN = "main", "Main Set"
+        COOLDOWN = "cooldown", "Cool-Down"
+        DRILL = "drill", "Drill"
+        STRENGTH = "strength", "Strength"
+        CUSTOM = "custom", "Custom"
+
+    planned_workout = models.ForeignKey(
+        "PlannedWorkout",
+        on_delete=models.CASCADE,
+        related_name="blocks",
+        db_index=True,
+    )
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="workout_blocks",
+        db_index=True,
+    )
+    order_index = models.PositiveSmallIntegerField(
+        help_text="Position of this block within the workout. Must be unique per workout.",
+    )
+    block_type = models.CharField(
+        max_length=20,
+        choices=BlockType.choices,
+        default=BlockType.CUSTOM,
+        db_index=True,
+    )
+    name = models.CharField(
+        max_length=200, blank=True, default="",
+        help_text="Optional label for display. Defaults to block_type if blank.",
+    )
+    description = models.TextField(blank=True, default="")
+    video_url = models.URLField(
+        blank=True, default="",
+        help_text="Optional technique/demo video link for strength and drill blocks.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["planned_workout", "order_index"],
+                name="uniq_block_order_per_workout",
+            ),
+        ]
+        ordering = ["order_index"]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if (
+            self.planned_workout_id is not None
+            and self.organization_id is not None
+            and self.planned_workout.organization_id != self.organization_id
+        ):
+            raise ValidationError(
+                "WorkoutBlock.organization must match planned_workout.organization. "
+                "Cross-organization blocks are not permitted."
+            )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        label = self.name or self.block_type
+        return f"Block[{self.order_index}] {label} → Workout:{self.planned_workout_id}"
+
+
+class WorkoutInterval(models.Model):
+    """
+    An ordered instruction or repetition step inside a WorkoutBlock.
+
+    Examples:
+    - 5 × 1000m @ threshold pace with 90s recovery
+    - 20 min @ Z2 HR
+    - 3 × 10 push-ups (STRENGTH block, video_url for form)
+
+    Intensity is expressed via metric_type, which determines which target
+    fields are meaningful. All target fields are nullable — not every
+    interval type uses all of them.
+
+    An interval may be duration-based, distance-based, or purely
+    descriptive (FREE). Do not force a metric that is not specified.
+
+    Multi-tenant: organization FK is non-nullable. block.organization
+    must equal organization (enforced in clean()).
+    """
+
+    class MetricType(models.TextChoices):
+        HR_ZONE = "hr_zone", "HR Zone"
+        PACE = "pace", "Pace"
+        POWER = "power", "Power"
+        RPE = "rpe", "RPE"
+        FREE = "free", "Free / Descriptive"
+
+    block = models.ForeignKey(
+        "WorkoutBlock",
+        on_delete=models.CASCADE,
+        related_name="intervals",
+        db_index=True,
+    )
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="workout_intervals",
+        db_index=True,
+    )
+    order_index = models.PositiveSmallIntegerField(
+        help_text="Position of this interval within the block. Must be unique per block.",
+    )
+    metric_type = models.CharField(
+        max_length=20,
+        choices=MetricType.choices,
+        default=MetricType.FREE,
+        db_index=True,
+    )
+    description = models.TextField(
+        blank=True, default="",
+        help_text="Human-readable instruction. Always useful; required for FREE type.",
+    )
+
+    # Duration / distance — either, both, or neither may be set
+    duration_seconds = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Interval duration in seconds.",
+    )
+    distance_meters = models.FloatField(
+        null=True, blank=True,
+        help_text="Interval distance in meters.",
+    )
+
+    # Intensity target range — interpretation depends on metric_type
+    target_value_low = models.FloatField(
+        null=True, blank=True,
+        help_text=(
+            "Lower bound of intensity target. "
+            "HR zone number / pace s/km min / power watts min / RPE low."
+        ),
+    )
+    target_value_high = models.FloatField(
+        null=True, blank=True,
+        help_text="Upper bound of intensity target.",
+    )
+    target_label = models.CharField(
+        max_length=100, blank=True, default="",
+        help_text='Human-readable intensity label, e.g. "Z2", "threshold", "10k pace".',
+    )
+
+    # Recovery
+    recovery_seconds = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Rest/recovery duration after each repetition, in seconds.",
+    )
+    recovery_distance_meters = models.FloatField(
+        null=True, blank=True,
+        help_text="Recovery distance (e.g. walk 200m) after each repetition.",
+    )
+
+    # Optional video for strength/drill coaching context
+    video_url = models.URLField(
+        blank=True, default="",
+        help_text="Optional demonstration video for strength or drill intervals.",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["block", "order_index"],
+                name="uniq_interval_order_per_block",
+            ),
+        ]
+        ordering = ["order_index"]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if (
+            self.block_id is not None
+            and self.organization_id is not None
+            and self.block.organization_id != self.organization_id
+        ):
+            raise ValidationError(
+                "WorkoutInterval.organization must match block.organization. "
+                "Cross-organization intervals are not permitted."
+            )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        metric = self.metric_type
+        label = self.target_label or metric
+        duration = f"{self.duration_seconds}s" if self.duration_seconds else ""
+        distance = f"{self.distance_meters}m" if self.distance_meters else ""
+        extent = duration or distance or "open"
+        return (
+            f"Interval[{self.order_index}] {label} × {extent} "
+            f"→ Block:{self.block_id}"
+        )

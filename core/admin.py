@@ -8,6 +8,7 @@ from .models import (
     Organization, Team, Membership,
     Coach, Athlete, AthleteCoachAssignment,
     AthleteProfile, RaceEvent, AthleteGoal, WorkoutLibrary,
+    PlannedWorkout, WorkoutBlock, WorkoutInterval,
 )
 
 # ==============================================================================
@@ -231,3 +232,30 @@ class WorkoutLibraryAdmin(admin.ModelAdmin):
     list_filter = ("organization", "is_public")
     search_fields = ("name", "description")
     readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(PlannedWorkout)
+class PlannedWorkoutAdmin(admin.ModelAdmin):
+    list_display = ("name", "organization", "library", "discipline", "session_type", "estimated_duration_seconds", "created_at")
+    list_filter = ("organization", "discipline", "session_type")
+    search_fields = ("name", "description")
+    readonly_fields = ("created_at", "updated_at")
+    raw_id_fields = ("library",)
+
+
+@admin.register(WorkoutBlock)
+class WorkoutBlockAdmin(admin.ModelAdmin):
+    list_display = ("planned_workout", "organization", "order_index", "block_type", "name", "created_at")
+    list_filter = ("organization", "block_type")
+    search_fields = ("name", "description")
+    readonly_fields = ("created_at", "updated_at")
+    raw_id_fields = ("planned_workout",)
+
+
+@admin.register(WorkoutInterval)
+class WorkoutIntervalAdmin(admin.ModelAdmin):
+    list_display = ("block", "organization", "order_index", "metric_type", "duration_seconds", "distance_meters", "created_at")
+    list_filter = ("organization", "metric_type")
+    search_fields = ("description", "target_label")
+    readonly_fields = ("created_at", "updated_at")
+    raw_id_fields = ("block",)
