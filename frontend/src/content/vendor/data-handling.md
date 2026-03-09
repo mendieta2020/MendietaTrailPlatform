@@ -155,7 +155,7 @@ operate on normalised data. The raw payload is retained separately for audit.
 | Webhook event log | Event ID, type, status, timestamps | Platform backend only |
 | Application logs | Structured fields; no credentials or PII values | Platform operators only |
 
-No data class is accessible across organisation boundaries.
+No data class is accessible across organization boundaries.
 
 ---
 
@@ -165,7 +165,7 @@ Quantoryn's retention approach follows these principles:
 
 **Keep what is needed for coaching continuity.**
 Activity history, load calculations, and plan compliance records are retained for
-as long as the athlete is active within an organisation. Coaches need historical data
+as long as the athlete is active within an organization. Coaches need historical data
 to understand long-term adaptation.
 
 **Delete promptly on athlete removal.**
@@ -178,7 +178,7 @@ Raw provider payloads are retained alongside normalised records so that any calc
 can be verified or reproduced against the original source data.
 
 **Honour deletion requests unconditionally.**
-Athlete or coach deletion requests are actioned within 30 days. See `privacy-policy.md`
+Athlete or coach deletion requests are actioned within 30 days. See Privacy Policy
 for the full process.
 
 | Data type | Retention | Deletion trigger |
@@ -204,6 +204,6 @@ development. The values above reflect current operational practice.
 | Webhook endpoint verification (fail-closed) | Enforced — 403 if verification token not configured |
 | OAuth nonce replay protection | Enforced — single-use nonce, Redis TTL |
 | Multi-tenant query isolation | Enforced — database-level filter on every request |
-| Token encryption at rest | Planned (`p1/encrypt-oauth-tokens-at-rest`) |
+| Token encryption at rest | Planned — near-term improvement |
 
-Full security documentation: `docs/compliance/security_policy.md`
+Full security documentation: Security Policy at quantoryn.com/security

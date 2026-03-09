@@ -2,23 +2,23 @@
 
 **Effective date**: 2026-03-05
 **Last updated**: 2026-03-05
-**Contact**: partnerships@quantoryn.com
+**Contact**: support@quantoryn.com
 
 ---
 
 ## 1. Acceptance
 
-By accessing or using the Quantoryn platform ("the Service"), you ("Coach", "Organisation",
+By accessing or using the Quantoryn platform ("the Service"), you ("Coach", "Organization",
 or "Athlete") agree to be bound by these Terms of Service ("Terms").
 
-If you are using the Service on behalf of an organisation, you represent that you have
-authority to bind that organisation to these Terms.
+If you are using the Service on behalf of an organization, you represent that you have
+authority to bind that organization to these Terms.
 
 ---
 
 ## 2. Description of the Service
 
-Quantoryn is a scientific coaching operating system for endurance sports organisations.
+Quantoryn is a scientific coaching operating system for endurance sports organizations.
 It allows coaches to:
 
 - Create and assign structured training plans to athletes.
@@ -34,12 +34,12 @@ fitness application.
 
 ## 3. Accounts and access
 
-### 3.1 Coach / organisation accounts
+### 3.1 Coach / organization accounts
 
-Each coach creates an organisation on the platform. The coach is the **organisation
+Each coach creates an organization on the platform. The coach is the **organization
 administrator** and is responsible for:
 
-- All athletes registered under their organisation.
+- All athletes registered under their organization.
 - The accuracy of data entered on behalf of athletes.
 - Ensuring that athletes have consented to connecting their provider accounts.
 - Keeping login credentials confidential.
@@ -53,7 +53,7 @@ third-party provider integrations at any time. Athletes are not directly billed 
 
 You may not use the Service to:
 
-- Access data belonging to another coach's organisation.
+- Access data belonging to another coach's organization.
 - Circumvent authentication, multi-tenant isolation, or rate limiting controls.
 - Upload, transmit, or store malicious code.
 - Violate any applicable law or regulation.
@@ -63,14 +63,14 @@ You may not use the Service to:
 
 ## 4. Third-party provider integrations
 
-Connecting an athlete's account to a third-party provider (e.g. Strava, Garmin) is subject
-to that provider's own terms of service and privacy policy. Quantoryn is not responsible
+Connecting an athlete's account to a third-party provider (e.g. Strava) is subject to
+that provider's own terms of service and privacy policy. Quantoryn is not responsible
 for the data practices of third-party providers.
 
 By connecting a provider account, the coach confirms that:
 
-- The athlete has authorised the connection.
-- The data received will be used solely for coaching analytics within the organisation.
+- The athlete has authorized the connection.
+- The data received will be used solely for coaching analytics within the organization.
 
 ---
 
@@ -78,18 +78,18 @@ By connecting a provider account, the coach confirms that:
 
 Athletes retain ownership of their personal data and activity data at all times.
 
-- Coaches may view, analyse, and act upon athlete data only for coaching purposes within
+- Coaches may view, analyze, and act upon athlete data only for coaching purposes within
   the platform.
-- Coaches may not export, sell, or share athlete data outside the organisation.
-- Athlete data is deleted from Quantoryn upon request (see Privacy Policy §9) or when the
-  athlete record is removed from the organisation.
+- Coaches may not export, sell, or share athlete data outside the organization.
+- Athlete data is deleted from Quantoryn upon request (see Privacy Policy §10) or when the
+  athlete record is removed from the organization.
 
 ---
 
 ## 6. Intellectual property
 
-The Quantoryn platform, its codebase, analytics models, and associated documentation are
-the intellectual property of [TODO: Legal entity name].
+The Quantoryn platform, its analytics models, and associated documentation are the
+intellectual property of Quantoryn and its developers.
 
 Athlete and coach data remains the property of the respective data subjects. Quantoryn
 holds no intellectual property rights over user-generated content (training plans, activity
@@ -104,7 +104,7 @@ uninterrupted or error-free operation of the Service.
 
 Planned maintenance will be communicated via the application interface where practicable.
 Quantoryn is not liable for disruptions caused by third-party infrastructure (cloud
-providers, provider APIs, Redis, PostgreSQL).
+providers, provider APIs, database or cache services).
 
 ---
 
@@ -116,7 +116,7 @@ To the fullest extent permitted by applicable law:
   arising from your use of the Service.
 - Quantoryn's total liability for any claim arising out of these Terms shall not exceed the
   amount you paid for the Service in the twelve months preceding the claim.
-- The platform provides coaching analytics tools — it does not replace the judgement of a
+- The platform provides coaching analytics tools — it does not replace the judgment of a
   qualified coach or medical professional. Quantoryn is not liable for training decisions
   made on the basis of platform output.
 
@@ -144,13 +144,13 @@ of the revised Terms.
 
 ## 11. Governing law
 
-These Terms are governed by the laws of [TODO: jurisdiction — e.g. Argentina / Spain / EU].
-Disputes shall be resolved in the courts of [TODO: jurisdiction].
+These Terms are governed by the laws of Argentina.
+Disputes shall be resolved in the courts of Córdoba, Argentina.
 
 ---
 
 ## 12. Contact
 
-**Engineering / platform enquiries**: partnerships@quantoryn.com
-**Privacy enquiries**: support@quantoryn.com
-**Mailing address**: [TODO: Legal entity address]
+**General inquiries**: support@quantoryn.com
+**API and partnership inquiries**: partnerships@quantoryn.com
+**Privacy inquiries**: support@quantoryn.com

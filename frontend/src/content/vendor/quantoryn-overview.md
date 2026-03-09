@@ -8,7 +8,7 @@
 
 ## What Quantoryn is
 
-Quantoryn is a scientific operating system for endurance coaching organisations.
+Quantoryn is a scientific operating system for endurance coaching organizations.
 
 It is not a consumer fitness app. It is not a social network. It is a private, organisation-scoped
 platform that gives coaches a structured, evidence-based view of how their athletes are training
@@ -25,7 +25,7 @@ and when it does not, the analytical tools to understand why are absent.
 
 Quantoryn closes that gap by:
 
-1. Connecting to provider APIs (Strava live; Garmin, COROS, Polar, Suunto, Wahoo planned)
+1. Connecting to provider APIs (Strava live; Garmin, COROS, Polar, Suunto, Wahoo under partnership review)
 2. Ingesting completed activities automatically via webhooks and backfill
 3. Normalising provider data to a unified coaching schema
 4. Comparing planned workouts against completed activities
@@ -121,8 +121,8 @@ re-processing. Recalculating a metric with a new algorithm version does not dest
 
 | Document | Content |
 |---|---|
-| `integration-architecture.md` | How providers connect, ingest, and normalise into the platform |
-| `data-handling.md` | OAuth lifecycle, webhook ingestion, retention philosophy |
-| `privacy-policy.md` | How athlete data is collected, stored, and protected |
-| `terms-of-service.md` | Platform usage terms |
-| `vendor-contact.md` | Official contact information |
+| Integration Architecture | How providers connect, ingest, and normalize into the platform |
+| Data Handling | OAuth lifecycle, webhook ingestion, retention philosophy |
+| Privacy Policy | How athlete data is collected, stored, and protected |
+| Terms of Service | Platform usage terms |
+| Vendor Contact | Official contact information |
