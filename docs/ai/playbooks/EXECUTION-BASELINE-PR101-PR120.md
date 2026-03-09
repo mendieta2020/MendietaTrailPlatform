@@ -43,7 +43,7 @@ for each PR. This document establishes:
 
 ## Baseline Summary
 
-### Implemented (as of 2026-03-08, latest migration: 0068_athlete_goal)
+### Implemented (as of 2026-03-08, latest migration: 0070_planned_workout_structure)
 
 | Model(s) | Capsule | Migration | Test file(s) | Status |
 |----------|---------|-----------|--------------|--------|
@@ -54,6 +54,8 @@ for each PR. This document establishes:
 | AthleteProfile | PR-105 | 0066 | tests_athlete_profile.py | ✅ Done |
 | RaceEvent | PR-106 | 0067 | tests_race_event.py | ✅ Done |
 | AthleteGoal | PR-105 spec / PR-107 branch* | 0068 | tests_athlete_goal.py | ✅ Done |
+| WorkoutLibrary | PR-107 capsule / PR-111 slot | 0069 | tests_workout_library.py | ✅ Done |
+| PlannedWorkout, WorkoutBlock, WorkoutInterval | PR-108 capsule / PR-112 slot | 0070 | tests_planned_workout.py | ✅ Done |
 
 *See Known Divergences, item D1.
 
@@ -61,8 +63,6 @@ for each PR. This document establishes:
 
 | Capsule | Content | Extended Lane Slot |
 |---------|---------|--------------------|
-| PR-107 | WorkoutLibrary | PR-111 |
-| PR-108 | PlannedWorkout + WorkoutBlock + WorkoutInterval | PR-112 |
 | PR-109 | WorkoutAssignment + services_workout.py | PR-113 |
 | PR-110 | CompletedActivity + ActivityStream normalization | PR-114 |
 
@@ -139,8 +139,8 @@ and tested. The only residual effect is the branch naming (D1 above).
 | `CompletedActivity.organization` → User (not Organization) | High | PR-114 partial; full migration post-PR-120 | Structural technical debt. Must not be ignored. |
 | No API surface for any P1 domain model | Medium | PR-115, PR-116, PR-117 | AthleteGoal, RaceEvent, AthleteProfile are model-complete but unreachable from the product. |
 | `StravaDiagnosticsView` is AllowAny; exposes `subscription_id` | Medium | Carry-over from P0 | Not in PR-111–120 scope. Separate P0 fix. |
-| Plan≠Real not formally tested in new domain | Medium | PR-112 | `PlannedWorkout` does not yet exist; invariant tests cannot be written until PR-112. |
-| `WorkoutLibrary` blocking planning domain | Medium | PR-111 (next) | Cannot build PlannedWorkout without it. |
+| Plan≠Real formally tested in PR-112 | ✅ Resolved | PR-112 done | `PlanNotRealInvariantTests` class present and green (44 tests). |
+| Planning domain chain unblocked | ✅ Resolved | PR-112 done | WorkoutLibrary + PlannedWorkout + Block + Interval all implemented. |
 | `AlertDelivery` not wired | Low | Post-PR-120 | Alert objects created; no Slack/webhook notification. |
 | Frontend has zero P1 domain coverage | Low-Medium | PR-119, PR-120 | No goal, race event, or schedule UI exists. |
 
@@ -181,15 +181,20 @@ PR-102 (OrgTenantMixin)
 
 ## Recommended Next PR
 
-**PR-111 — WorkoutLibrary model** (capsule: PR-107)
+**PR-113 — WorkoutAssignment + services_workout.py** (capsule: PR-109)
 
 Rationale:
-- Lowest-risk remaining model PR (new table only, zero blast radius).
-- Hard prerequisite for the entire planning domain chain.
-- Capsule specification is complete and implementable immediately.
-- Without it, PR-112 through PR-118 are all blocked.
+- PR-111 (WorkoutLibrary) and PR-112 (PlannedWorkout / Block / Interval) are done.
+- WorkoutAssignment is the service-layer bridge that connects planning models to athletes.
+- Without it, the planning domain produces templates with no delivery mechanism to athletes.
+- PR-113 must be delivered before any WorkoutAssignment API (PR-117) or frontend work.
 
-See `docs/ai/tasks/PR-107-workout-library.md` for the full specification.
+**Parallel option — PR-114 (CompletedActivity + ActivityStream):**
+- PR-114 has no dependency on PR-113 and can be executed in parallel.
+- It is a prerequisite for PR-118 (Plan vs Real Reconciliation).
+- Consider pairing PR-113 and PR-114 in the same sprint.
+
+See `docs/ai/tasks/PR-110-completed-activity-normalization.md` (PR-114 slot) for the full specification.
 
 ---
 
