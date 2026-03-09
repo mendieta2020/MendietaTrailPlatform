@@ -17,6 +17,7 @@ from .integration_callback_views import IntegrationCallbackView
 from .identity_views import UserIdentityView
 from .connection_views import ProviderConnectionStatusView  # PR11
 from core.webhooks import StravaWebhookView, StravaDiagnosticsView  # PR-WebhookRoute
+from core.views_p1 import AthleteGoalViewSet, RaceEventViewSet  # PR-115
 
 # Creamos el router para la API REST estándar
 router = DefaultRouter()
@@ -99,4 +100,40 @@ urlpatterns = [
 
     # Ruta específica para tu Dashboard visual (Vista Legacy de Django)
     path('dashboard/', dashboard_entrenador, name='dashboard_entrenador'),
+
+    # ==============================================================================
+    # PR-115: P1 organization-first API — RaceEvent + AthleteGoal
+    # URL pattern: /api/p1/orgs/<org_id>/race-events/  and  /api/p1/orgs/<org_id>/goals/
+    # organization is resolved from the URL, never from the request body.
+    # ==============================================================================
+    path(
+        'p1/orgs/<int:org_id>/race-events/',
+        RaceEventViewSet.as_view({'get': 'list', 'post': 'create'}),
+        name='p1-race-event-list',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/race-events/<int:pk>/',
+        RaceEventViewSet.as_view({
+            'get': 'retrieve',
+            'put': 'update',
+            'patch': 'partial_update',
+            'delete': 'destroy',
+        }),
+        name='p1-race-event-detail',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/goals/',
+        AthleteGoalViewSet.as_view({'get': 'list', 'post': 'create'}),
+        name='p1-goal-list',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/goals/<int:pk>/',
+        AthleteGoalViewSet.as_view({
+            'get': 'retrieve',
+            'put': 'update',
+            'patch': 'partial_update',
+            'delete': 'destroy',
+        }),
+        name='p1-goal-detail',
+    ),
 ]

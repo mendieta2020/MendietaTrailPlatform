@@ -58,6 +58,7 @@ for each PR. This document establishes:
 | PlannedWorkout, WorkoutBlock, WorkoutInterval | PR-108 capsule / PR-112 slot | 0070 | tests_planned_workout.py | ✅ Done |
 | WorkoutAssignment + services_workout.py | PR-109 capsule / PR-113 slot | 0071 | tests_workout_assignment.py | ✅ Done |
 | CompletedActivity (athlete bridge) + ActivityStream | PR-110 capsule / PR-114 slot | 0072 | tests_completed_activity.py | ✅ Done |
+| AthleteGoal + RaceEvent CRUD API | PR-115 | no migration | tests_athlete_goal_api.py | ✅ Done |
 
 *See Known Divergences, item D1.
 
@@ -180,18 +181,18 @@ PR-102 (OrgTenantMixin)
 
 ## Recommended Next PR
 
-**PR-115 — AthleteGoal + RaceEvent CRUD API** (new scope)
+**PR-116 — AthleteProfile CRUD API** (or PR-117 in parallel)
 
-Rationale:
-- All model PRs (PR-111 through PR-114) are now complete.
-- The planning domain and execution domain foundations are in place.
-- PR-115 opens the first API surface for the product — goals and race events
-  are the most coach-facing data and the natural first surface to expose.
-- Depends on: PR-102 (OrgTenantMixin / require_role) already done.
+PR-115 is complete. The canonical P1 API pattern is established:
+`OrgTenantMixin` + `ViewSet.initial()` + `org_id` URL path + `perform_create` org injection.
 
-Parallel option — PR-116 (AthleteProfile API):
-- Can begin in parallel with PR-115 if capacity allows.
-- Both are API-only PRs with no new model work required.
+PR-116 (AthleteProfile API) and PR-117 (WorkoutAssignment API) can now be built
+in parallel using the pattern established by PR-115.
+
+- PR-116: Simpler — AthleteProfile is one-to-one with Athlete; no FK scoping complexity.
+- PR-117: Higher coach value — exposes the core planning → schedule flow.
+
+Recommended: PR-116 first (lowest risk, establishes profile surface), PR-117 immediately after.
 
 See extended lane summary below for the full dependency chain.
 
