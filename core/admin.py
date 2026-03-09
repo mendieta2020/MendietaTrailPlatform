@@ -9,6 +9,7 @@ from .models import (
     Coach, Athlete, AthleteCoachAssignment,
     AthleteProfile, RaceEvent, AthleteGoal, WorkoutLibrary,
     PlannedWorkout, WorkoutBlock, WorkoutInterval,
+    WorkoutAssignment,
 )
 
 # ==============================================================================
@@ -259,3 +260,12 @@ class WorkoutIntervalAdmin(admin.ModelAdmin):
     search_fields = ("description", "target_label")
     readonly_fields = ("created_at", "updated_at")
     raw_id_fields = ("block",)
+
+
+@admin.register(WorkoutAssignment)
+class WorkoutAssignmentAdmin(admin.ModelAdmin):
+    list_display = ("athlete", "planned_workout", "organization", "scheduled_date", "day_order", "status", "assigned_by", "assigned_at")
+    list_filter = ("organization", "status", "scheduled_date")
+    search_fields = ("athlete__user__username", "athlete__user__email", "planned_workout__name", "coach_notes", "athlete_notes")
+    readonly_fields = ("assigned_at", "updated_at", "effective_date")
+    raw_id_fields = ("athlete", "planned_workout")
