@@ -43,7 +43,7 @@ for each PR. This document establishes:
 
 ## Baseline Summary
 
-### Implemented (as of 2026-03-08, latest migration: 0070_planned_workout_structure)
+### Implemented (as of 2026-03-09, latest migration: 0071_workout_assignment)
 
 | Model(s) | Capsule | Migration | Test file(s) | Status |
 |----------|---------|-----------|--------------|--------|
@@ -56,6 +56,7 @@ for each PR. This document establishes:
 | AthleteGoal | PR-105 spec / PR-107 branch* | 0068 | tests_athlete_goal.py | ✅ Done |
 | WorkoutLibrary | PR-107 capsule / PR-111 slot | 0069 | tests_workout_library.py | ✅ Done |
 | PlannedWorkout, WorkoutBlock, WorkoutInterval | PR-108 capsule / PR-112 slot | 0070 | tests_planned_workout.py | ✅ Done |
+| WorkoutAssignment + services_workout.py | PR-109 capsule / PR-113 slot | 0071 | tests_workout_assignment.py | ✅ Done |
 
 *See Known Divergences, item D1.
 
@@ -63,7 +64,6 @@ for each PR. This document establishes:
 
 | Capsule | Content | Extended Lane Slot |
 |---------|---------|--------------------|
-| PR-109 | WorkoutAssignment + services_workout.py | PR-113 |
 | PR-110 | CompletedActivity + ActivityStream normalization | PR-114 |
 
 ### Not Yet Defined (new scope, accepted product decisions)
@@ -181,20 +181,16 @@ PR-102 (OrgTenantMixin)
 
 ## Recommended Next PR
 
-**PR-113 — WorkoutAssignment + services_workout.py** (capsule: PR-109)
+**PR-114 — CompletedActivity + ActivityStream normalization** (capsule: PR-110)
 
 Rationale:
-- PR-111 (WorkoutLibrary) and PR-112 (PlannedWorkout / Block / Interval) are done.
-- WorkoutAssignment is the service-layer bridge that connects planning models to athletes.
-- Without it, the planning domain produces templates with no delivery mechanism to athletes.
-- PR-113 must be delivered before any WorkoutAssignment API (PR-117) or frontend work.
+- PR-113 (WorkoutAssignment + services_workout.py) is done.
+- The entire planning domain chain (PR-111 through PR-113) is now complete.
+- PR-114 completes the execution-domain foundation needed for Plan vs Real (PR-118).
+- The `Athlete` FK (nullable, backward-compatible) and `ActivityStream` model are the
+  deliverables — no migration of `organization` from User → Organization in this PR.
 
-**Parallel option — PR-114 (CompletedActivity + ActivityStream):**
-- PR-114 has no dependency on PR-113 and can be executed in parallel.
-- It is a prerequisite for PR-118 (Plan vs Real Reconciliation).
-- Consider pairing PR-113 and PR-114 in the same sprint.
-
-See `docs/ai/tasks/PR-110-completed-activity-normalization.md` (PR-114 slot) for the full specification.
+See `docs/ai/tasks/PR-110-completed-activity-normalization.md` for the full specification.
 
 ---
 
