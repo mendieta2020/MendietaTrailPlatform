@@ -43,7 +43,7 @@ for each PR. This document establishes:
 
 ## Baseline Summary
 
-### Implemented (as of 2026-03-09, latest migration: 0071_workout_assignment)
+### Implemented (as of 2026-03-09, latest migration: 0072_completed_activity_normalization)
 
 | Model(s) | Capsule | Migration | Test file(s) | Status |
 |----------|---------|-----------|--------------|--------|
@@ -57,14 +57,13 @@ for each PR. This document establishes:
 | WorkoutLibrary | PR-107 capsule / PR-111 slot | 0069 | tests_workout_library.py | ✅ Done |
 | PlannedWorkout, WorkoutBlock, WorkoutInterval | PR-108 capsule / PR-112 slot | 0070 | tests_planned_workout.py | ✅ Done |
 | WorkoutAssignment + services_workout.py | PR-109 capsule / PR-113 slot | 0071 | tests_workout_assignment.py | ✅ Done |
+| CompletedActivity (athlete bridge) + ActivityStream | PR-110 capsule / PR-114 slot | 0072 | tests_completed_activity.py | ✅ Done |
 
 *See Known Divergences, item D1.
 
 ### Not Yet Implemented (capsule-defined scope)
 
-| Capsule | Content | Extended Lane Slot |
-|---------|---------|--------------------|
-| PR-110 | CompletedActivity + ActivityStream normalization | PR-114 |
+All capsules PR-107 through PR-110 are now implemented. Remaining work is in the "Not Yet Defined" extended lane below.
 
 ### Not Yet Defined (new scope, accepted product decisions)
 
@@ -181,16 +180,20 @@ PR-102 (OrgTenantMixin)
 
 ## Recommended Next PR
 
-**PR-114 — CompletedActivity + ActivityStream normalization** (capsule: PR-110)
+**PR-115 — AthleteGoal + RaceEvent CRUD API** (new scope)
 
 Rationale:
-- PR-113 (WorkoutAssignment + services_workout.py) is done.
-- The entire planning domain chain (PR-111 through PR-113) is now complete.
-- PR-114 completes the execution-domain foundation needed for Plan vs Real (PR-118).
-- The `Athlete` FK (nullable, backward-compatible) and `ActivityStream` model are the
-  deliverables — no migration of `organization` from User → Organization in this PR.
+- All model PRs (PR-111 through PR-114) are now complete.
+- The planning domain and execution domain foundations are in place.
+- PR-115 opens the first API surface for the product — goals and race events
+  are the most coach-facing data and the natural first surface to expose.
+- Depends on: PR-102 (OrgTenantMixin / require_role) already done.
 
-See `docs/ai/tasks/PR-110-completed-activity-normalization.md` for the full specification.
+Parallel option — PR-116 (AthleteProfile API):
+- Can begin in parallel with PR-115 if capacity allows.
+- Both are API-only PRs with no new model work required.
+
+See extended lane summary below for the full dependency chain.
 
 ---
 

@@ -10,6 +10,7 @@ from .models import (
     AthleteProfile, RaceEvent, AthleteGoal, WorkoutLibrary,
     PlannedWorkout, WorkoutBlock, WorkoutInterval,
     WorkoutAssignment,
+    ActivityStream,
 )
 
 # ==============================================================================
@@ -150,11 +151,11 @@ class ActividadAdmin(admin.ModelAdmin):
 
 @admin.register(CompletedActivity)
 class CompletedActivityAdmin(admin.ModelAdmin):
-    list_display = ('__str__', 'organization', 'alumno', 'sport', 'provider', 'start_time', 'duration_s', 'distance_m')
+    list_display = ('__str__', 'organization', 'alumno', 'athlete', 'sport', 'provider', 'start_time', 'duration_s', 'distance_m')
     list_filter = ('provider', 'sport', 'start_time')
     search_fields = ('provider_activity_id', 'alumno__nombre', 'alumno__apellido')
     readonly_fields = ('created_at',)
-    raw_id_fields = ('organization', 'alumno')
+    raw_id_fields = ('organization', 'alumno', 'athlete')
 
 
 @admin.register(Organization)
@@ -269,3 +270,12 @@ class WorkoutAssignmentAdmin(admin.ModelAdmin):
     search_fields = ("athlete__user__username", "athlete__user__email", "planned_workout__name", "coach_notes", "athlete_notes")
     readonly_fields = ("assigned_at", "updated_at", "effective_date")
     raw_id_fields = ("athlete", "planned_workout")
+
+
+@admin.register(ActivityStream)
+class ActivityStreamAdmin(admin.ModelAdmin):
+    list_display = ("completed_activity", "stream_type", "provider", "created_at")
+    list_filter = ("stream_type", "provider")
+    search_fields = ("completed_activity__provider_activity_id", "provider")
+    readonly_fields = ("created_at",)
+    raw_id_fields = ("completed_activity",)
