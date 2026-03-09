@@ -9,16 +9,16 @@
 
 ## 1. Who we are
 
-Quantoryn is an endurance training platform for coaching organisations. We provide coaches
+Quantoryn is an endurance training platform for coaching organizations. We provide coaches
 with tools to plan, monitor, and analyse athlete training. We are not a consumer service.
-Access to the platform is mediated by a coach organisation — individual athletes do not
+Access to the platform is mediated by a coach organization — individual athletes do not
 create independent accounts.
 
 ---
 
 ## 2. Data we collect
 
-### 2.1 Data provided by the coach organisation
+### 2.1 Data provided by the coach organization
 
 When a coach registers an athlete on the platform, they provide:
 
@@ -28,13 +28,12 @@ When a coach registers an athlete on the platform, they provide:
 - Training history and coaching notes
 
 This data is entered directly by the coach and is used exclusively for training plan
-construction and analytics within that organisation.
+construction and analytics within that organization.
 
 ### 2.2 Data received from connected activity providers
 
-When a coach connects an athlete's account to an external provider (Strava, and in future
-Garmin, COROS, Polar, Suunto, Wahoo), Quantoryn receives activity data via OAuth and
-webhooks:
+When a coach connects an athlete's account to an external provider (e.g. Strava),
+Quantoryn receives activity data via OAuth and webhooks:
 
 - Activity metadata: sport type, start time, duration, distance, elevation gain/loss
 - Physiological streams: heart rate, power, cadence, pace/speed
@@ -63,7 +62,7 @@ Athletes may revoke this connection at any time.
 | Logs | Security monitoring, incident investigation | No |
 
 We do not use athlete data for advertising. We do not sell, transfer, or share athlete
-data with any third party outside the coach's organisation.
+data with any third party outside the coach's organization.
 
 ---
 
@@ -97,22 +96,22 @@ Token storage encryption at rest is planned as a near-term improvement.
 
 ## 6. Multi-tenant isolation
 
-Every data record is scoped to a coach organisation. A coach can access data only for
-athletes within their own organisation. This isolation is enforced at the database query
+Every data record is scoped to a coach organization. A coach can access data only for
+athletes within their own organization. This isolation is enforced at the database query
 level on every request — it is not a UI-only control.
 
-Cross-organisation data access is architecturally impossible.
+Cross-organization data access is architecturally impossible.
 
 ---
 
 ## 7. Data retention
 
-Activity data is retained for as long as the athlete record is active in the organisation.
+Activity data is retained for as long as the athlete record is active in the organization.
 When an athlete record is deleted by the coach, associated activity data, credentials, and
 integration records are deleted by cascade.
 
-A formal per-field data retention schedule is in development and will be published at
-`docs/compliance/privacy_policy.md` when complete.
+A formal per-field data retention schedule is in development and will be reflected
+in a future revision of this policy.
 
 ---
 
@@ -151,5 +150,4 @@ this document reflects the most recent revision.
 
 ## 11. Contact
 
-**Privacy enquiries**: support@quantoryn.com
-**Full compliance documentation**: `docs/compliance/privacy_policy.md`
+**Privacy inquiries**: support@quantoryn.com

@@ -2,14 +2,14 @@
 
 **Version**: 1.0
 **Date**: 2026-03-05
-**Applies to**: Garmin, Suunto, Polar, COROS, Wahoo API partnership reviews
+**Applies to**: Prospective API partnership and technical review
 **Contact**: partnerships@quantoryn.com
 
 ---
 
 ## A. Executive Summary
 
-Quantoryn is a scientific coaching operating system for endurance sports organisations.
+Quantoryn is a scientific coaching operating system for endurance sports organizations.
 It is not a consumer app, a social network, or a data marketplace.
 
 We are requesting API access to enable **two strictly bounded use cases**:
@@ -204,22 +204,21 @@ analytics; we cannot downsample these without losing scientific validity.
 
 ## F. Storage and Retention
 
-Storage infrastructure is documented in `docs/compliance/privacy_policy.md` §4.
-Security posture and token handling are documented in `docs/compliance/security_policy.md`.
+Storage infrastructure is documented in the Privacy Policy.
+Security posture and token handling are documented in the Security Policy.
 
 Summary relevant to data access:
 
-- **Primary database**: PostgreSQL (Railway-managed). All normalised activity fields
-  stored in `Actividad` and `CompletedActivity` tables.
-- **Raw payload**: Stored verbatim in `datos_brutos` (JSON column) on `Actividad` and
-  `raw_payload` on `CompletedActivity` for audit and future re-processing.
+- **Primary database**: PostgreSQL (Railway-managed). All normalized activity fields
+  stored in separate normalized and raw tables.
+- **Raw payload**: Stored verbatim for audit and future re-processing.
   Never transmitted outside the platform.
-- **Cache**: Redis (Railway-managed). Used for OAuth nonces (15-min TTL) and Celery
+- **Cache**: Redis (Railway-managed). Used for OAuth nonces (15-min TTL) and background
   task queue only. No activity data stored in Redis.
 - **Retention**: Activity data is retained for as long as the athlete record is active.
   Data is cascade-deleted when an athlete record is removed.
-- **Formal retention schedule**: TODO — per-field schedule to be published.
-  See `p1/data-retention-policy`.
+- **Formal retention schedule**: A formal per-field retention schedule is being finalized
+  and will be reflected in an upcoming revision of the Privacy Policy.
 
 ---
 
@@ -239,15 +238,15 @@ Future webhook events from the provider for that athlete will be ignored.
 
 Source: `core/integration_views.py` — `IntegrationDisconnectView`
 
-### G.2 Data deletion (partially implemented)
+### G.2 Data deletion
 
-- **Cascade delete**: removing an athlete record from the organisation deletes all
-  associated `Actividad`, `CompletedActivity`, `OAuthCredential`, and
-  `OAuthIntegrationStatus` rows via Django CASCADE.
+- **Cascade delete**: removing an athlete record from the organization deletes all
+  associated activity records, credentials, and integration records.
 - **Email request**: athletes or coaches can request full data deletion by emailing
-  `support@quantoryn.com`. Actioned within 30 days.
-- **Self-service deletion API**: not yet implemented.
-  Planned: `p1/data-deletion-request-api`.
+  `support@quantoryn.com`. Actioned within 30 days of verification.
+- **Self-service deletion workflow**: deletion requests are currently handled through
+  a verified support workflow. A self-service deletion endpoint is a planned
+  near-term improvement.
 
 ### G.3 Scope of data held per athlete
 
@@ -265,20 +264,20 @@ Nothing is held beyond what is described above.
 
 ## H. Security Posture Summary
 
-Full security documentation: `docs/compliance/security_policy.md`
+Full security documentation: Security Policy at quantoryn.com/security
 
 | Control | Status |
 |---|---|
-| OAuth 2.0 with HMAC-signed state | Implemented — `core/oauth_state.py` |
+| OAuth 2.0 with HMAC-signed state | Implemented |
 | Single-use nonce replay protection | Implemented — Redis-backed, 15-min TTL |
-| Tokens never logged | Implemented — `integrations/strava/oauth.py` sanitises output |
-| Multi-tenant fail-closed isolation | Implemented — `TenantContextMiddleware` + non-nullable org FK |
-| Rate limiting on all API surfaces | Implemented — `core/throttling.py` |
-| CORS whitelist (no wildcard) | Implemented — `CORS_ALLOW_ALL_ORIGINS = False` |
-| Webhook verification token (fail-closed) | Implemented — `core/webhooks.py` |
-| Idempotent ingestion (duplicate-safe) | Implemented — `UniqueConstraint` on `(organization, provider, provider_activity_id)` |
-| Token encryption at rest | **TODO** — `p1/encrypt-oauth-tokens-at-rest` |
-| Formal incident response runbook | **TODO** — `p1/incident-response-runbook` |
+| Tokens never logged | Implemented — all log output sanitized before writing |
+| Multi-tenant fail-closed isolation | Implemented — middleware + non-nullable organization reference |
+| Rate limiting on all API surfaces | Implemented |
+| CORS restricted to allowlist origins | Implemented |
+| Webhook verification token (fail-closed) | Implemented |
+| Idempotent ingestion (duplicate-safe) | Implemented — unique constraint on (organization, provider, activity ID) |
+| Token encryption at rest | Planned — near-term improvement |
+| Formal incident response runbook | In progress |
 
 Security contact: **security@quantoryn.com**
 
@@ -296,11 +295,11 @@ any new provider via `integrations/<provider>/` without changes to the domain mo
 - Activity normalisation (sport type, units, elevation)
 
 **What we have architected but not yet implemented for non-Strava providers:**
-- OAuth credential storage: `OAuthCredential` model is provider-agnostic and ready
-- Integration status tracking: `OAuthIntegrationStatus` supports any provider key
-- Provider capability registry: `core/provider_capabilities.py` defines which
-  capabilities (webhooks, backfill, workout push) each provider supports
-- Outbound workout delivery: `integrations/outbound/workout_delivery.py` (planned)
+- OAuth credential storage: provider-agnostic credential model is ready for any provider
+- Integration status tracking: integration status model supports any provider key
+- Provider capability registry: capability declarations define which capabilities
+  (webhooks, backfill, workout push) each provider supports
+- Outbound workout delivery: structured workout push to provider devices (planned)
 
 We will not claim live integration status for any provider until it is production-verified
 and tested. This document describes the data we intend to request upon approval;

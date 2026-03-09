@@ -20,7 +20,7 @@ const PILLARS = [
   {
     icon: '🔌',
     title: 'Provider-agnostic',
-    body: 'Provider-specific logic is isolated in integrations/. Adding Garmin or COROS requires zero changes to domain models or analytics.',
+    body: 'Provider-specific logic is fully isolated. Adding a new provider requires zero changes to domain models or analytics.',
   },
   {
     icon: '📐',
@@ -110,8 +110,8 @@ const LandingPage = () => (
 
         <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
           <Button
-            component={Link}
-            to="/login"
+            component="a"
+            href="https://app.quantoryn.com"
             variant="contained"
             size="large"
             sx={{
@@ -147,16 +147,16 @@ const LandingPage = () => (
     {/* ── PROVIDER BADGE ───────────────────────────────── */}
     <Box sx={{ bgcolor: '#f9fafb', borderBottom: '1px solid #e8e8e8', py: 2, px: 4, textAlign: 'center' }}>
       <Typography sx={{ fontSize: '0.8rem', color: '#888', mb: 1, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-        Current integration
+        Integration status
       </Typography>
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
         {[
           { name: 'Strava', status: 'Live', color: '#FC4C02' },
-          { name: 'Garmin', status: 'Planned', color: '#888' },
-          { name: 'COROS', status: 'Planned', color: '#888' },
-          { name: 'Polar', status: 'Planned', color: '#888' },
-          { name: 'Suunto', status: 'Planned', color: '#888' },
-          { name: 'Wahoo', status: 'Planned', color: '#888' },
+          { name: 'Garmin', status: 'Under partnership review', color: '#888' },
+          { name: 'COROS', status: 'Under partnership review', color: '#888' },
+          { name: 'Polar', status: 'Under partnership review', color: '#888' },
+          { name: 'Suunto', status: 'Under partnership review', color: '#888' },
+          { name: 'Wahoo', status: 'Under partnership review', color: '#888' },
         ].map(({ name, status, color }) => (
           <Box key={name} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
             <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: color }} />
@@ -205,7 +205,7 @@ const LandingPage = () => (
         API & Vendor Partnerships
       </Typography>
       <Typography sx={{ color: '#666', mb: 4, maxWidth: 560, mx: 'auto' }}>
-        Requesting API access from Garmin, Suunto, Polar, COROS, or Wahoo?
+        Pursuing API partnerships for additional provider integrations?
         Our vendor documentation covers architecture, security posture, data handling, and integration specifications.
       </Typography>
       <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>

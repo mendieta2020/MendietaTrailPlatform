@@ -26,7 +26,7 @@ This means:
 ### Inbound-only / no data re-export
 
 Data received from provider APIs flows one direction: into Quantoryn's coaching database.
-It is never forwarded to another provider, aggregated across organisations, or transmitted
+It is never forwarded to another provider, aggregated across organizations, or transmitted
 to any third party.
 
 ### Fail-closed by default
@@ -77,7 +77,7 @@ enabled until an integration is live.
    - Verifies HMAC signature
    - Checks timestamp (expired if age ≥ 15 minutes)
    - Consumes and deletes nonce (single-use — replay is impossible)
-   - Verifies athlete belongs to the coach's organisation
+   - Verifies athlete belongs to the coach's organization
 
 6. Platform exchanges authorisation code for tokens
    POST to provider's token endpoint (server-side only)
@@ -145,10 +145,10 @@ Quantoryn stores two representations of every activity:
 | `elevation_gain_m` | Cumulative ascent in metres |
 | `provider` | Source provider identifier |
 | `provider_activity_id` | Opaque provider-assigned ID (idempotency key) |
-| `organization` | Owning coach organisation (non-nullable, fail-closed) |
+| `organization` | Owning coach organization (non-nullable, fail-closed) |
 
 **Raw payload** — original provider JSON, stored verbatim for audit and re-processing.
-Never transmitted outside the organisation boundary.
+Never transmitted outside the organization boundary.
 
 ---
 
@@ -205,7 +205,7 @@ duplicate and no processing occurs.
 **Layer 2 — Activity record deduplication**
 The activity storage table has a database-level unique constraint on
 `(organization, provider, provider_activity_id)`.
-Re-ingesting the same activity from the same provider for the same organisation is a no-op.
+Re-ingesting the same activity from the same provider for the same organization is a no-op.
 
 At-least-once delivery from any provider is therefore safe by design.
 
@@ -221,7 +221,7 @@ Every integration event produces a structured log entry with the following field
 | `provider` | Which provider triggered the event |
 | `outcome` | `success`, `error`, or `forbidden` |
 | `reason_code` | Machine-readable reason (e.g. `token_mismatch`, `state_expired`) |
-| `organization_id` | Owning coach organisation |
+| `organization_id` | Owning coach organization |
 | `user_id` | Authenticated user (never PII) |
 
 Tokens, secrets, and raw payloads never appear in log output.

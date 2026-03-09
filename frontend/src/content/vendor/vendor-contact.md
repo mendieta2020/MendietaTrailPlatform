@@ -10,7 +10,7 @@
 | **Category** | Endurance Training Platform |
 | **Description** | Scientific coaching operating system for endurance sports organisations |
 | **Location** | Córdoba, Argentina |
-| **Website** | [TODO: https://quantoryn.com] |
+| **Website** | https://quantoryn.com |
 
 ---
 
@@ -22,7 +22,7 @@
 | **Technical integration** | partnerships@quantoryn.com | API technical questions, OAuth implementation, webhook configuration, data format clarifications |
 | **Privacy and data** | support@quantoryn.com | Data handling questions, DPA discussions, athlete data deletion requests, GDPR / privacy compliance |
 | **Security disclosures** | security@quantoryn.com | Vulnerability reports, responsible disclosure, security questionnaires |
-| **General enquiries** | partnerships@quantoryn.com | All other vendor enquiries |
+| **General inquiries** | partnerships@quantoryn.com | All other vendor inquiries |
 
 ---
 
@@ -48,13 +48,13 @@ When contacting for an API integration review, we can provide:
 
 | Document | Content |
 |---|---|
-| `quantoryn-overview.md` | Platform philosophy, architecture, and principles |
-| `integration-architecture.md` | End-to-end integration flow, provider isolation model |
-| `data-handling.md` | OAuth lifecycle, webhook ingestion, retention, security controls |
-| `vendor_data_access_spec.md` | Per-sport data requirements, Required vs Optional fields, stream justification |
-| `privacy-policy.md` | Full privacy policy and data subject rights |
-| `terms-of-service.md` | Platform usage terms |
-| `docs/compliance/security_policy.md` | Security contact, vulnerability disclosure, tenant isolation |
+| Platform Overview | Platform philosophy, architecture, and principles |
+| Integration Architecture | End-to-end integration flow, provider isolation model |
+| Data Handling | OAuth lifecycle, webhook ingestion, retention, security controls |
+| Data Access Specification | Per-sport data requirements, Required vs Optional fields, stream justification |
+| Privacy Policy | Full privacy policy and data subject rights |
+| Terms of Service | Platform usage terms |
+| Security Policy | Security contact, vulnerability disclosure, tenant isolation |
 
 ---
 
@@ -74,7 +74,7 @@ We follow coordinated responsible disclosure:
 - Critical/High fix deployment within 30 days
 - Researcher credit on fix deployment (if desired)
 
-Full disclosure policy: `docs/compliance/security_policy.md`
+Full disclosure policy: see Security Policy at quantoryn.com/security
 
 ---
 
