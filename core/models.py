@@ -877,6 +877,24 @@ class CompletedActivity(models.Model):
     )
 
     # ------------------------------------------------------------------
+    # Athlete bridge (PR-114: organization-first domain FK, nullable for
+    # backward compatibility with rows ingested before PR-114).
+    # Backfill of legacy rows is a separate, explicitly scoped task.
+    # Both alumno and athlete coexist during the transition period.
+    # ------------------------------------------------------------------
+    athlete = models.ForeignKey(
+        "Athlete",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="completed_activities_v2",
+        db_index=True,
+        help_text=(
+            "Organization-first Athlete FK. Nullable for backward compatibility "
+            "with rows ingested before PR-114. Backfill is a separate task."
+        ),
+    )
+
+    # ------------------------------------------------------------------
     # Activity data
     # ------------------------------------------------------------------
     sport = models.CharField(
@@ -2250,4 +2268,72 @@ class WorkoutAssignment(models.Model):
             f"Assignment: Athlete:{self.athlete_id} ← "
             f"Workout:{self.planned_workout_id} on {self.effective_date} "
             f"#{self.day_order} [{self.status}]"
+        )
+
+
+class ActivityStream(models.Model):
+    """
+    Lightweight event/metadata stream attached to a CompletedActivity.
+
+    PLAN ≠ REAL: This model lives exclusively on the execution side.
+    It records ingestion events, normalization steps, and metric
+    snapshots for a CompletedActivity. It must never reference planning
+    models (PlannedWorkout, WorkoutAssignment) or store intent.
+
+    Design: event-stream, not physiological time-series.
+    Each record is an event in the activity's processing lifecycle.
+    Multiple records of the same stream_type are allowed (e.g., two
+    INGEST events for the same activity are valid — re-ingestion).
+    This is intentional: do not add a unique constraint on stream_type
+    alone, as that would prevent re-ingestion and event replay.
+
+    Provider boundary: `provider` is a CharField (string slug).
+    It must never be a FK to a provider registry. This keeps
+    the execution domain decoupled from the integration layer.
+
+    Multi-tenant: scoped through completed_activity.organization.
+    Always query via activity__organization — no direct org FK needed.
+    """
+
+    class StreamType(models.TextChoices):
+        INGEST = "ingest", "Ingest"
+        NORMALIZED = "normalized", "Normalized"
+        PROVIDER_UPDATE = "provider_update", "Provider Update"
+        METRIC_SNAPSHOT = "metric_snapshot", "Metric Snapshot"
+        CUSTOM = "custom", "Custom"
+
+    completed_activity = models.ForeignKey(
+        "CompletedActivity",
+        on_delete=models.CASCADE,
+        related_name="activity_streams",
+        db_index=True,
+    )
+    stream_type = models.CharField(
+        max_length=20,
+        choices=StreamType.choices,
+        db_index=True,
+    )
+    provider = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        help_text="Provider slug (e.g. 'strava'). String, never a FK.",
+    )
+    payload = models.JSONField(
+        help_text="Event payload. Structure is stream_type-dependent.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["completed_activity", "stream_type"]),
+            models.Index(fields=["completed_activity", "-created_at"]),
+        ]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return (
+            f"ActivityStream:{self.stream_type} "
+            f"→ Activity:{self.completed_activity_id} "
+            f"[{self.provider or 'no-provider'}]"
         )
