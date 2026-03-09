@@ -17,7 +17,7 @@ from .integration_callback_views import IntegrationCallbackView
 from .identity_views import UserIdentityView
 from .connection_views import ProviderConnectionStatusView  # PR11
 from core.webhooks import StravaWebhookView, StravaDiagnosticsView  # PR-WebhookRoute
-from core.views_p1 import AthleteGoalViewSet, RaceEventViewSet  # PR-115
+from core.views_p1 import AthleteGoalViewSet, AthleteProfileViewSet, RaceEventViewSet  # PR-115/116
 
 # Creamos el router para la API REST estándar
 router = DefaultRouter()
@@ -135,5 +135,26 @@ urlpatterns = [
             'delete': 'destroy',
         }),
         name='p1-goal-detail',
+    ),
+
+    # ==============================================================================
+    # PR-116: P1 organization-first API — AthleteProfile
+    # URL pattern: /api/p1/orgs/<org_id>/profiles/
+    # Lookup by athlete_id (OneToOne FK column), not by profile PK.
+    # No DELETE — profile deletion is out of scope for this PR.
+    # ==============================================================================
+    path(
+        'p1/orgs/<int:org_id>/profiles/',
+        AthleteProfileViewSet.as_view({'get': 'list', 'post': 'create'}),
+        name='p1-profile-list',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/profiles/<int:athlete_id>/',
+        AthleteProfileViewSet.as_view({
+            'get': 'retrieve',
+            'put': 'update',
+            'patch': 'partial_update',
+        }),
+        name='p1-profile-detail',
     ),
 ]
