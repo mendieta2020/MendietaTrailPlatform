@@ -2067,3 +2067,187 @@ class WorkoutInterval(models.Model):
             f"Interval[{self.order_index}] {label} × {extent} "
             f"→ Block:{self.block_id}"
         )
+
+
+class WorkoutAssignment(models.Model):
+    """
+    Assigns a PlannedWorkout to a specific Athlete on a specific date.
+
+    PLAN ≠ REAL INVARIANT:
+    This model records delivery, scheduling, and assignment-level
+    personalization only. It does NOT store execution outcomes (actual
+    distance, actual HR, actual power). Completion is recorded on
+    CompletedActivity. The link between assignment and completion is
+    established by PlanRealCompare (future PR-118).
+
+    Personalization without template mutation:
+    Assignment-level override fields (target_zone_override,
+    target_pace_override, target_rpe_override, target_power_override)
+    allow per-athlete personalization. The shared PlannedWorkout template
+    is NEVER modified by an assignment operation. Coaches can reuse one
+    template for many athletes and personalize each assignment independently.
+
+    Multiple sessions per day:
+    day_order supports ordered same-day training. The unique constraint
+    on (athlete, scheduled_date, day_order) prevents collisions while
+    allowing up to N sessions on the same date.
+
+    Day-swap:
+    athlete_moved_date records if the athlete rescheduled the session.
+    scheduled_date is NEVER modified after creation.
+
+    Multi-tenant: organization FK non-nullable. Both athlete and
+    planned_workout must belong to the same organization (enforced in clean()).
+    """
+
+    class Status(models.TextChoices):
+        PLANNED = "planned", "Planned"
+        MOVED = "moved", "Moved"
+        COMPLETED = "completed", "Completed"
+        SKIPPED = "skipped", "Skipped"
+        CANCELED = "canceled", "Canceled"
+
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="workout_assignments",
+        db_index=True,
+    )
+    athlete = models.ForeignKey(
+        "Athlete",
+        on_delete=models.CASCADE,
+        related_name="workout_assignments",
+        db_index=True,
+    )
+    planned_workout = models.ForeignKey(
+        "PlannedWorkout",
+        on_delete=models.CASCADE,
+        related_name="assignments",
+        db_index=True,
+    )
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="workout_assignments_made",
+    )
+
+    # Scheduling
+    scheduled_date = models.DateField(
+        db_index=True,
+        help_text="Original assignment date. Never modified after creation.",
+    )
+    athlete_moved_date = models.DateField(
+        null=True, blank=True, db_index=True,
+        help_text=(
+            "If the athlete rescheduled, this records the new execution date. "
+            "scheduled_date is never changed."
+        ),
+    )
+    day_order = models.PositiveSmallIntegerField(
+        default=1,
+        help_text="Order of this session within the day (1=first, 2=second, etc.).",
+    )
+
+    # Lifecycle
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PLANNED,
+        db_index=True,
+    )
+
+    # Assignment-level notes (visible to both coach and athlete)
+    coach_notes = models.TextField(
+        blank=True, default="",
+        help_text="Coach instructions specific to this assignment. Not stored on template.",
+    )
+    athlete_notes = models.TextField(
+        blank=True, default="",
+        help_text="Athlete feedback/notes. Written only by the athlete.",
+    )
+
+    # Assignment-level personalization overrides
+    # These allow per-athlete target adjustment without mutating the shared template.
+    target_zone_override = models.CharField(
+        max_length=100, blank=True, default="",
+        help_text='e.g. "Z3" — overrides library template zone for this athlete.',
+    )
+    target_pace_override = models.CharField(
+        max_length=100, blank=True, default="",
+        help_text='e.g. "4:30/km" — overrides library template pace for this athlete.',
+    )
+    target_rpe_override = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="RPE 1–10 override for this assignment. Null = use template default.",
+    )
+    target_power_override = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Power target in watts override. Null = use template default.",
+    )
+
+    # Snapshot versioning
+    snapshot_version = models.PositiveSmallIntegerField(
+        default=1,
+        help_text=(
+            "Records the PlannedWorkout.structure_version at assignment time. "
+            "Coaches can detect if the underlying template was updated after assignment."
+        ),
+    )
+
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["athlete", "scheduled_date", "day_order"],
+                name="uniq_assignment_athlete_date_order",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["athlete", "scheduled_date", "status"]),
+            models.Index(fields=["organization", "scheduled_date"]),
+            models.Index(fields=["planned_workout"]),
+        ]
+        ordering = ["scheduled_date", "day_order"]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        errors = {}
+        if (
+            self.athlete_id is not None
+            and self.organization_id is not None
+            and self.athlete.organization_id != self.organization_id
+        ):
+            errors["athlete"] = (
+                "WorkoutAssignment.athlete must belong to the same organization. "
+                "Cross-organization assignments are not permitted."
+            )
+        if (
+            self.planned_workout_id is not None
+            and self.organization_id is not None
+            and self.planned_workout.organization_id != self.organization_id
+        ):
+            errors["planned_workout"] = (
+                "WorkoutAssignment.planned_workout must belong to the same organization. "
+                "Cross-organization assignments are not permitted."
+            )
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    @property
+    def effective_date(self):
+        """Returns athlete_moved_date if set, otherwise scheduled_date."""
+        return self.athlete_moved_date or self.scheduled_date
+
+    def __str__(self):
+        return (
+            f"Assignment: Athlete:{self.athlete_id} ← "
+            f"Workout:{self.planned_workout_id} on {self.effective_date} "
+            f"#{self.day_order} [{self.status}]"
+        )
