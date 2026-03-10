@@ -1,7 +1,7 @@
 # Execution Baseline — PR-101 through PR-120
 > **Quantoryn / MendietaTrailPlatform**
 > Official execution lane for the P1 domain foundation and first product surface build-out.
-> **Last updated:** 2026-03-08
+> **Last updated:** 2026-03-09
 
 ---
 
@@ -60,6 +60,7 @@ for each PR. This document establishes:
 | CompletedActivity (athlete bridge) + ActivityStream | PR-110 capsule / PR-114 slot | 0072 | tests_completed_activity.py | ✅ Done |
 | AthleteGoal + RaceEvent CRUD API | PR-115 | no migration | tests_athlete_goal_api.py | ✅ Done |
 | AthleteProfile CRUD API | PR-116 | no migration | tests_athlete_profile_api.py | ✅ Done |
+| WorkoutAssignment API | PR-117 | no migration | tests_workout_assignment_api.py | ✅ Done |
 
 *See Known Divergences, item D1.
 
@@ -182,14 +183,11 @@ PR-102 (OrgTenantMixin)
 
 ## Recommended Next PR
 
-**PR-117 — WorkoutAssignment API**
+**PR-118 — Plan vs Real Reconciliation Foundation**
 
-PR-115 and PR-116 are complete. The P1 API pattern is fully established.
-
-PR-117 exposes the core coach workflow: assigning, moving, and personalizing
-workout assignments. It reuses the pattern from PR-115/116 (`OrgTenantMixin` +
-`org_id` URL + `perform_create` org injection) and wraps the existing
-`services_workout.py` service layer.
+PR-115, PR-116, and PR-117 are complete. The full planning API surface is now
+exposed. PR-118 adds the reconciliation foundation that links WorkoutAssignment
+(planning) to CompletedActivity (execution) via PlanRealCompare.
 
 See extended lane summary below for the full dependency chain.
 
