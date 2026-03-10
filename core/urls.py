@@ -17,7 +17,7 @@ from .integration_callback_views import IntegrationCallbackView
 from .identity_views import UserIdentityView
 from .connection_views import ProviderConnectionStatusView  # PR11
 from core.webhooks import StravaWebhookView, StravaDiagnosticsView  # PR-WebhookRoute
-from core.views_p1 import AthleteGoalViewSet, AthleteProfileViewSet, RaceEventViewSet  # PR-115/116
+from core.views_p1 import AthleteGoalViewSet, AthleteProfileViewSet, RaceEventViewSet, WorkoutAssignmentViewSet  # PR-115/116/117
 
 # Creamos el router para la API REST estándar
 router = DefaultRouter()
@@ -156,5 +156,26 @@ urlpatterns = [
             'patch': 'partial_update',
         }),
         name='p1-profile-detail',
+    ),
+
+    # ==============================================================================
+    # PR-117: P1 organization-first API — WorkoutAssignment
+    # URL pattern: /api/p1/orgs/<org_id>/assignments/
+    # organization is resolved from the URL, never from the request body.
+    # No DELETE — use status="canceled" to retire an assignment.
+    # ==============================================================================
+    path(
+        'p1/orgs/<int:org_id>/assignments/',
+        WorkoutAssignmentViewSet.as_view({'get': 'list', 'post': 'create'}),
+        name='p1-assignment-list',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/assignments/<int:pk>/',
+        WorkoutAssignmentViewSet.as_view({
+            'get': 'retrieve',
+            'put': 'update',
+            'patch': 'partial_update',
+        }),
+        name='p1-assignment-detail',
     ),
 ]

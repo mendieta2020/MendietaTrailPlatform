@@ -2,19 +2,19 @@
 core/serializers_p1.py
 
 Serializers for the P1 organization-first domain: RaceEvent, AthleteGoal,
-and AthleteProfile.
+AthleteProfile, and WorkoutAssignment.
 
 Design rules enforced here:
 - organization is NEVER a client-controlled field; it is injected by the ViewSet.
 - FK querysets are scoped to the request organization via serializer
   context["organization"]. The model's clean() provides a second enforcement layer.
 - No depth > 0: related objects are exposed as PKs only.
-- created_by / updated_by are set by the ViewSet; not writable by the client.
+- created_by / updated_by / assigned_by are set by the ViewSet; not writable by the client.
 """
 
 from rest_framework import serializers
 
-from core.models import Athlete, AthleteGoal, AthleteProfile, RaceEvent
+from core.models import Athlete, AthleteGoal, AthleteProfile, PlannedWorkout, RaceEvent, WorkoutAssignment
 
 
 class RaceEventSerializer(serializers.ModelSerializer):
@@ -172,3 +172,143 @@ class AthleteProfileSerializer(serializers.ModelSerializer):
         if self.instance is not None:
             self.fields["athlete_id"].read_only = True
             self.fields["athlete_id"].required = False
+
+
+# ==============================================================================
+# PR-117: WorkoutAssignment serializers
+# ==============================================================================
+
+_ASSIGNMENT_FIELDS = [
+    "id",
+    "athlete_id",
+    "planned_workout_id",
+    "assigned_by_id",
+    "scheduled_date",
+    "athlete_moved_date",
+    "day_order",
+    "status",
+    "coach_notes",
+    "athlete_notes",
+    "target_zone_override",
+    "target_pace_override",
+    "target_rpe_override",
+    "target_power_override",
+    "snapshot_version",
+    "assigned_at",
+    "updated_at",
+    "effective_date",
+]
+
+
+class WorkoutAssignmentSerializer(serializers.ModelSerializer):
+    """
+    Coach-write serializer for WorkoutAssignment.
+
+    - athlete_id and planned_workout_id querysets are scoped to
+      context["organization"] to prevent cross-org writes.
+    - assigned_by_id, snapshot_version, assigned_at, updated_at: read-only
+      (server-controlled; injected by the ViewSet).
+    - scheduled_date: writable on create, read-only on update.
+    - effective_date: computed property (athlete_moved_date ?? scheduled_date).
+    - organization: not exposed (server-injected in perform_create).
+    - validators = [] suppresses the auto-generated UniqueConstraint validator
+      that would raise KeyError on PATCH. The model's full_clean() and the DB
+      constraint remain the authoritative enforcement layer.
+    """
+
+    athlete_id = serializers.PrimaryKeyRelatedField(
+        source="athlete",
+        queryset=Athlete.objects.none(),
+    )
+    planned_workout_id = serializers.PrimaryKeyRelatedField(
+        source="planned_workout",
+        queryset=PlannedWorkout.objects.none(),
+    )
+    assigned_by_id = serializers.PrimaryKeyRelatedField(
+        source="assigned_by",
+        read_only=True,
+        allow_null=True,
+    )
+    effective_date = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WorkoutAssignment
+        fields = _ASSIGNMENT_FIELDS
+        read_only_fields = [
+            "id",
+            "assigned_by_id",
+            "snapshot_version",
+            "assigned_at",
+            "updated_at",
+            "effective_date",
+        ]
+        validators = []
+
+    def get_effective_date(self, obj):
+        return obj.effective_date
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        organization = self.context.get("organization")
+        if organization is not None:
+            self.fields["athlete_id"].queryset = Athlete.objects.filter(
+                organization=organization
+            )
+            self.fields["planned_workout_id"].queryset = PlannedWorkout.objects.filter(
+                organization=organization
+            )
+        # scheduled_date is immutable after creation.
+        if self.instance is not None:
+            self.fields["scheduled_date"].read_only = True
+            self.fields["scheduled_date"].required = False
+
+
+class WorkoutAssignmentAthleteSerializer(serializers.ModelSerializer):
+    """
+    Athlete-write serializer for WorkoutAssignment.
+
+    Only athlete_notes and athlete_moved_date are writable.
+    All other fields are read-only.
+    organization is not exposed.
+    """
+
+    athlete_id = serializers.PrimaryKeyRelatedField(
+        source="athlete",
+        read_only=True,
+    )
+    planned_workout_id = serializers.PrimaryKeyRelatedField(
+        source="planned_workout",
+        read_only=True,
+    )
+    assigned_by_id = serializers.PrimaryKeyRelatedField(
+        source="assigned_by",
+        read_only=True,
+        allow_null=True,
+    )
+    effective_date = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WorkoutAssignment
+        fields = _ASSIGNMENT_FIELDS
+        read_only_fields = [
+            "id",
+            "athlete_id",
+            "planned_workout_id",
+            "assigned_by_id",
+            "scheduled_date",
+            "day_order",
+            "status",
+            "coach_notes",
+            "target_zone_override",
+            "target_pace_override",
+            "target_rpe_override",
+            "target_power_override",
+            "snapshot_version",
+            "assigned_at",
+            "updated_at",
+            "effective_date",
+        ]
+        validators = []
+
+    def get_effective_date(self, obj):
+        return obj.effective_date
