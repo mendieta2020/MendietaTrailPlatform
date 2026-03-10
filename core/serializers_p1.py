@@ -14,7 +14,15 @@ Design rules enforced here:
 
 from rest_framework import serializers
 
-from core.models import Athlete, AthleteGoal, AthleteProfile, PlannedWorkout, RaceEvent, WorkoutAssignment
+from core.models import (
+    Athlete,
+    AthleteGoal,
+    AthleteProfile,
+    PlannedWorkout,
+    RaceEvent,
+    WorkoutAssignment,
+    WorkoutReconciliation,
+)
 
 
 class RaceEventSerializer(serializers.ModelSerializer):
@@ -312,3 +320,53 @@ class WorkoutAssignmentAthleteSerializer(serializers.ModelSerializer):
 
     def get_effective_date(self, obj):
         return obj.effective_date
+
+
+# ==============================================================================
+# PR-119: WorkoutReconciliation serializer
+# ==============================================================================
+
+_RECONCILIATION_FIELDS = [
+    "id",
+    "assignment_id",
+    "completed_activity_id",
+    "state",
+    "match_method",
+    "match_confidence",
+    "compliance_score",
+    "compliance_category",
+    "primary_target_used",
+    "score_detail",
+    "signals",
+    "reconciled_at",
+    "notes",
+    "created_at",
+    "updated_at",
+]
+
+
+class WorkoutReconciliationSerializer(serializers.ModelSerializer):
+    """
+    Read-only serializer for WorkoutReconciliation.
+
+    All fields are read-only — state transitions happen exclusively via service
+    function calls (reconcile, auto_match_and_reconcile, mark_assignment_missed).
+    The client never writes to this model directly.
+
+    organization is not exposed — it is always the URL-derived org.
+    """
+
+    assignment_id = serializers.PrimaryKeyRelatedField(
+        source="assignment",
+        read_only=True,
+    )
+    completed_activity_id = serializers.PrimaryKeyRelatedField(
+        source="completed_activity",
+        read_only=True,
+        allow_null=True,
+    )
+
+    class Meta:
+        model = WorkoutReconciliation
+        fields = _RECONCILIATION_FIELDS
+        read_only_fields = _RECONCILIATION_FIELDS

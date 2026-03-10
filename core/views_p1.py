@@ -2,7 +2,7 @@
 core/views_p1.py
 
 ViewSets for the P1 organization-first domain: RaceEvent, AthleteGoal,
-AthleteProfile, and WorkoutAssignment.
+AthleteProfile, WorkoutAssignment, and WorkoutReconciliation.
 
 Tenancy enforcement:
 - resolve_membership(org_id) is called in initial() after authentication.
@@ -19,19 +19,32 @@ OrgTenantMixin contract:
 - org_id comes from self.kwargs["org_id"] (URL path parameter).
 """
 
+import datetime
+
 from django.core.exceptions import ValidationError as DjangoValidationError
 
 from rest_framework import mixins, permissions, viewsets
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.response import Response
 
-from core.models import AthleteGoal, AthleteProfile, RaceEvent, WorkoutAssignment
+from core import services_reconciliation
+from core.models import (
+    Athlete,
+    AthleteGoal,
+    AthleteProfile,
+    CompletedActivity,
+    RaceEvent,
+    WorkoutAssignment,
+    WorkoutReconciliation,
+)
 from core.serializers_p1 import (
     AthleteGoalSerializer,
     AthleteProfileSerializer,
     RaceEventSerializer,
     WorkoutAssignmentAthleteSerializer,
     WorkoutAssignmentSerializer,
+    WorkoutReconciliationSerializer,
 )
 from core.tenancy import OrgTenantMixin
 
@@ -291,3 +304,163 @@ class WorkoutAssignmentViewSet(
         except DjangoValidationError as exc:
             detail = exc.message_dict if hasattr(exc, "message_dict") else {"detail": str(exc)}
             raise DRFValidationError(detail=detail)
+
+
+# ==============================================================================
+# PR-119: Reconciliation ViewSet
+# ==============================================================================
+
+
+class ReconciliationViewSet(OrgTenantMixin, viewsets.GenericViewSet):
+    """
+    Reconciliation endpoints nested under a WorkoutAssignment.
+
+    URL prefix: /api/p1/orgs/<org_id>/assignments/<assignment_id>/reconciliation/
+
+    Actions:
+    - retrieve  (GET)   — read reconciliation state; coach sees any, athlete sees own.
+    - reconcile (POST)  — coach-only; trigger auto or manual reconciliation.
+    - miss      (POST)  — coach-only; mark assignment as missed.
+
+    Plan ≠ Real invariant: these endpoints never modify PlannedWorkout or
+    CompletedActivity. All mutations go through services_reconciliation.
+
+    Tenancy: organization derived from URL org_id, never from request body.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = WorkoutReconciliationSerializer
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if getattr(self, "swagger_fake_view", False):
+            return
+        self.resolve_membership(self.kwargs["org_id"])
+
+    def _get_assignment(self):
+        """
+        Resolve the assignment from the URL, scoped to self.organization.
+        Athletes can only resolve their own assignments (fail-closed 404).
+        """
+        qs = WorkoutAssignment.objects.filter(
+            pk=self.kwargs["assignment_id"],
+            organization=self.organization,
+        )
+        if self.membership.role == "athlete":
+            qs = qs.filter(athlete__user=self.request.user)
+        try:
+            return qs.get()
+        except WorkoutAssignment.DoesNotExist:
+            raise NotFound("Assignment not found.")
+
+    def retrieve(self, request, *args, **kwargs):
+        assignment = self._get_assignment()
+        try:
+            rec = assignment.reconciliation
+        except WorkoutReconciliation.DoesNotExist:
+            raise NotFound("No reconciliation record for this assignment.")
+        return Response(WorkoutReconciliationSerializer(rec).data)
+
+    def reconcile(self, request, *args, **kwargs):
+        """
+        Trigger reconciliation for an assignment.
+
+        Body (optional):
+          completed_activity_id: int  — explicit match; omit to run auto-match.
+          notes: str                  — coach notes stored on the record.
+        """
+        if self.membership.role not in _WRITE_ROLES:
+            raise PermissionDenied("Only coaches and owners can trigger reconciliation.")
+        assignment = self._get_assignment()
+        activity_id = request.data.get("completed_activity_id")
+        notes = request.data.get("notes", "")
+        if activity_id:
+            try:
+                activity = CompletedActivity.objects.get(
+                    pk=activity_id,
+                    athlete__organization=self.organization,
+                )
+            except CompletedActivity.DoesNotExist:
+                raise NotFound("Activity not found.")
+            rec = services_reconciliation.reconcile(
+                assignment=assignment,
+                activity=activity,
+                notes=notes,
+            )
+        else:
+            rec = services_reconciliation.auto_match_and_reconcile(assignment=assignment)
+        return Response(WorkoutReconciliationSerializer(rec).data)
+
+    def miss(self, request, *args, **kwargs):
+        """Mark the assignment as MISSED. Coach-only."""
+        if self.membership.role not in _WRITE_ROLES:
+            raise PermissionDenied("Only coaches and owners can mark assignments missed.")
+        assignment = self._get_assignment()
+        notes = request.data.get("notes", "")
+        rec = services_reconciliation.mark_assignment_missed(
+            assignment=assignment, notes=notes
+        )
+        return Response(WorkoutReconciliationSerializer(rec).data)
+
+
+# ==============================================================================
+# PR-119: Athlete Weekly Adherence ViewSet
+# ==============================================================================
+
+
+class AthleteAdherenceViewSet(OrgTenantMixin, viewsets.GenericViewSet):
+    """
+    Weekly adherence aggregation for one athlete.
+
+    URL: /api/p1/orgs/<org_id>/athletes/<athlete_id>/adherence/
+    Query params:
+      week_start: YYYY-MM-DD (required) — Monday of the target week.
+
+    Role rules:
+    - coach/owner: can query any athlete in the org.
+    - athlete:     can only query their own adherence (fail-closed 404 otherwise).
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if getattr(self, "swagger_fake_view", False):
+            return
+        self.resolve_membership(self.kwargs["org_id"])
+
+    def retrieve(self, request, *args, **kwargs):
+        athlete_id = self.kwargs["athlete_id"]
+        qs = Athlete.objects.filter(pk=athlete_id, organization=self.organization)
+        if self.membership.role == "athlete":
+            qs = qs.filter(user=self.request.user)
+        try:
+            athlete = qs.get()
+        except Athlete.DoesNotExist:
+            raise NotFound("Athlete not found.")
+
+        week_start_str = request.query_params.get("week_start")
+        if not week_start_str:
+            raise DRFValidationError({"week_start": "Required query parameter."})
+        try:
+            week_start = datetime.date.fromisoformat(week_start_str)
+        except ValueError:
+            raise DRFValidationError({"week_start": "Invalid date format. Use YYYY-MM-DD."})
+
+        result = services_reconciliation.compute_weekly_adherence(
+            organization=self.organization,
+            athlete=athlete,
+            week_start=week_start,
+        )
+        return Response({
+            "week_start": result.week_start.isoformat(),
+            "week_end": result.week_end.isoformat(),
+            "organization_id": result.organization_id,
+            "athlete_id": result.athlete_id,
+            "planned_count": result.planned_count,
+            "reconciled_count": result.reconciled_count,
+            "missed_count": result.missed_count,
+            "unmatched_count": result.unmatched_count,
+            "avg_compliance_score": result.avg_compliance_score,
+            "adherence_pct": round(result.adherence_pct, 1),
+        })

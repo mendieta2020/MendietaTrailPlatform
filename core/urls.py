@@ -17,7 +17,14 @@ from .integration_callback_views import IntegrationCallbackView
 from .identity_views import UserIdentityView
 from .connection_views import ProviderConnectionStatusView  # PR11
 from core.webhooks import StravaWebhookView, StravaDiagnosticsView  # PR-WebhookRoute
-from core.views_p1 import AthleteGoalViewSet, AthleteProfileViewSet, RaceEventViewSet, WorkoutAssignmentViewSet  # PR-115/116/117
+from core.views_p1 import (  # PR-115/116/117/119
+    AthleteAdherenceViewSet,
+    AthleteGoalViewSet,
+    AthleteProfileViewSet,
+    RaceEventViewSet,
+    ReconciliationViewSet,
+    WorkoutAssignmentViewSet,
+)
 
 # Creamos el router para la API REST estándar
 router = DefaultRouter()
@@ -177,5 +184,37 @@ urlpatterns = [
             'patch': 'partial_update',
         }),
         name='p1-assignment-detail',
+    ),
+
+    # ==============================================================================
+    # PR-119: P1 organization-first API — WorkoutReconciliation
+    # Nested under assignments: /api/p1/orgs/<org_id>/assignments/<assignment_id>/reconciliation/
+    # State transitions via POST actions; no DELETE; no direct write surface.
+    # ==============================================================================
+    path(
+        'p1/orgs/<int:org_id>/assignments/<int:assignment_id>/reconciliation/',
+        ReconciliationViewSet.as_view({'get': 'retrieve'}),
+        name='p1-reconciliation-detail',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/assignments/<int:assignment_id>/reconciliation/reconcile/',
+        ReconciliationViewSet.as_view({'post': 'reconcile'}),
+        name='p1-reconciliation-reconcile',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/assignments/<int:assignment_id>/reconciliation/miss/',
+        ReconciliationViewSet.as_view({'post': 'miss'}),
+        name='p1-reconciliation-miss',
+    ),
+
+    # ==============================================================================
+    # PR-119: P1 organization-first API — Athlete Weekly Adherence
+    # URL: /api/p1/orgs/<org_id>/athletes/<athlete_id>/adherence/
+    # Query param: week_start=YYYY-MM-DD (required)
+    # ==============================================================================
+    path(
+        'p1/orgs/<int:org_id>/athletes/<int:athlete_id>/adherence/',
+        AthleteAdherenceViewSet.as_view({'get': 'retrieve'}),
+        name='p1-athlete-adherence',
     ),
 ]
