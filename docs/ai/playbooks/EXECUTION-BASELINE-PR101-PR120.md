@@ -61,6 +61,7 @@ for each PR. This document establishes:
 | AthleteGoal + RaceEvent CRUD API | PR-115 | no migration | tests_athlete_goal_api.py | ✅ Done |
 | AthleteProfile CRUD API | PR-116 | no migration | tests_athlete_profile_api.py | ✅ Done |
 | WorkoutAssignment API | PR-117 | no migration | tests_workout_assignment_api.py | ✅ Done |
+| Plan vs Real Reconciliation Foundation | PR-118 | 0073_reconciliation | tests_reconciliation.py | ✅ Done |
 
 *See Known Divergences, item D1.
 
@@ -183,11 +184,12 @@ PR-102 (OrgTenantMixin)
 
 ## Recommended Next PR
 
-**PR-118 — Plan vs Real Reconciliation Foundation**
+**PR-119 — Frontend: Athlete Goal Module**
 
-PR-115, PR-116, and PR-117 are complete. The full planning API surface is now
-exposed. PR-118 adds the reconciliation foundation that links WorkoutAssignment
-(planning) to CompletedActivity (execution) via PlanRealCompare.
+PR-118 is complete. The Plan vs Real reconciliation foundation is in place with
+deterministic scoring (0–120), confidence-aware auto-matching, and weekly
+adherence aggregation. Next: expose the reconciliation domain via an API and
+build the first frontend surface for athlete goals.
 
 See extended lane summary below for the full dependency chain.
 
