@@ -11,6 +11,7 @@ from .models import (
     PlannedWorkout, WorkoutBlock, WorkoutInterval,
     WorkoutAssignment,
     ActivityStream,
+    WorkoutReconciliation,
 )
 
 # ==============================================================================
@@ -279,3 +280,40 @@ class ActivityStreamAdmin(admin.ModelAdmin):
     search_fields = ("completed_activity__provider_activity_id", "provider")
     readonly_fields = ("created_at",)
     raw_id_fields = ("completed_activity",)
+
+
+# ==============================================================================
+#  PR-118: Plan vs Real Reconciliation
+# ==============================================================================
+
+@admin.register(WorkoutReconciliation)
+class WorkoutReconciliationAdmin(admin.ModelAdmin):
+    list_display = (
+        "assignment",
+        "organization",
+        "state",
+        "compliance_score",
+        "compliance_category",
+        "primary_target_used",
+        "match_method",
+        "match_confidence",
+        "reconciled_at",
+    )
+    list_filter = ("organization", "state", "compliance_category", "match_method")
+    search_fields = (
+        "assignment__planned_workout__name",
+        "assignment__athlete__user__username",
+        "notes",
+    )
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+        "reconciled_at",
+        "compliance_score",
+        "compliance_category",
+        "primary_target_used",
+        "score_detail",
+        "signals",
+        "match_confidence",
+    )
+    raw_id_fields = ("assignment", "completed_activity")

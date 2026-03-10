@@ -1826,6 +1826,27 @@ class PlannedWorkout(models.Model):
         default=1,
         help_text="Increments on material prescription changes. Never reset.",
     )
+
+    # PR-118: dominant target variable for compliance scoring
+    class PrimaryTarget(models.TextChoices):
+        DURATION      = "duration",       "Duration"
+        DISTANCE      = "distance",       "Distance"
+        ELEVATION_GAIN = "elevation_gain", "Elevation Gain"
+        PACE          = "pace",           "Pace"
+        HR_ZONE       = "hr_zone",        "Heart Rate Zone (future)"
+
+    primary_target_variable = models.CharField(
+        max_length=20,
+        choices=PrimaryTarget.choices,
+        blank=True,
+        default="",
+        help_text=(
+            "Dominant target variable for Plan vs Real compliance scoring. "
+            "If blank, the reconciliation engine auto-selects based on available "
+            "estimated targets. Options: duration, distance, elevation_gain, pace, hr_zone."
+        ),
+    )
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -2336,4 +2357,202 @@ class ActivityStream(models.Model):
             f"ActivityStream:{self.stream_type} "
             f"→ Activity:{self.completed_activity_id} "
             f"[{self.provider or 'no-provider'}]"
+        )
+
+
+# ==============================================================================
+#  PR-118: Plan vs Real Reconciliation — WorkoutReconciliation
+# ==============================================================================
+
+class WorkoutReconciliation(models.Model):
+    """
+    PR-118: Explicit Plan vs Real reconciliation record.
+
+    PLAN ≠ REAL INVARIANT:
+    This model bridges WorkoutAssignment (planning side) and CompletedActivity
+    (execution side) without merging them. Neither the assignment nor the
+    activity is ever modified by a reconciliation operation.
+
+    One record per assignment (OneToOneField on assignment).
+    The completed_activity FK is nullable: null means the assignment was
+    missed, unmatched, ambiguous, or is still pending.
+
+    State machine:
+        pending    → initial state; auto-matching not yet attempted
+        reconciled → assignment matched to an activity; compliance score computed
+        unmatched  → auto-matching found no candidate in the time window
+        missed     → effective_date has passed; no activity ever recorded
+        ambiguous  → multiple candidates found; fail-closed (score = None)
+        error      → matching or scoring raised an unexpected exception
+
+    Compliance score (0..120):
+        100 = planned target exactly met
+        <100 = under-compliance
+        >100 = over-compliance (athlete exceeded plan, hard cap at 120)
+        0   = no execution data available
+
+    Compliance categories (derived from score):
+        not_completed  0–59
+        regular        60–84
+        completed      85–100
+        over_completed 101–120
+
+    Signals: structured strings (ComplianceSignal constants in
+    services_reconciliation.py) stored as a JSON list for structured
+    analysis and future alert wiring.
+
+    Tenancy: organization FK is non-nullable, always derived from
+    assignment.organization. Never accepted from client input.
+
+    Interval-readiness: score_detail stores per-variable breakdown as JSON,
+    allowing future sub-session or block-level detail to be appended without
+    schema changes.
+    """
+
+    class State(models.TextChoices):
+        PENDING    = "pending",    "Pending"
+        RECONCILED = "reconciled", "Reconciled"
+        UNMATCHED  = "unmatched",  "Unmatched"
+        MISSED     = "missed",     "Missed"
+        AMBIGUOUS  = "ambiguous",  "Ambiguous (Multiple Candidates)"
+        ERROR      = "error",      "Error"
+
+    class MatchMethod(models.TextChoices):
+        AUTO   = "auto",   "Automatic"
+        MANUAL = "manual", "Manual (Coach Override)"
+        NONE   = "none",   "Not Matched"
+
+    # ------------------------------------------------------------------
+    # Tenant anchor — always derived from assignment, never client-set
+    # ------------------------------------------------------------------
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="workout_reconciliations",
+        db_index=True,
+        help_text="Tenant root. Always derived from assignment.organization.",
+    )
+
+    # ------------------------------------------------------------------
+    # Planning side (non-nullable: each reconciliation record belongs to
+    # exactly one assignment)
+    # ------------------------------------------------------------------
+    assignment = models.OneToOneField(
+        "WorkoutAssignment",
+        on_delete=models.CASCADE,
+        related_name="reconciliation",
+        help_text="The planned assignment being evaluated.",
+    )
+
+    # ------------------------------------------------------------------
+    # Execution side (nullable: null when missed / unmatched / pending)
+    # ------------------------------------------------------------------
+    completed_activity = models.ForeignKey(
+        "CompletedActivity",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="reconciliations",
+        help_text=(
+            "The matched real activity. Null when state is "
+            "missed, unmatched, pending, ambiguous, or error."
+        ),
+    )
+
+    # ------------------------------------------------------------------
+    # Reconciliation state
+    # ------------------------------------------------------------------
+    state = models.CharField(
+        max_length=20,
+        choices=State.choices,
+        default=State.PENDING,
+        db_index=True,
+    )
+
+    # ------------------------------------------------------------------
+    # Matching metadata
+    # ------------------------------------------------------------------
+    match_method = models.CharField(
+        max_length=10,
+        choices=MatchMethod.choices,
+        default=MatchMethod.NONE,
+        help_text="How the activity was matched to the assignment.",
+    )
+    match_confidence = models.FloatField(
+        null=True, blank=True,
+        help_text="0..1. Confidence score from automatic matching.",
+    )
+
+    # ------------------------------------------------------------------
+    # Compliance output
+    # ------------------------------------------------------------------
+    compliance_score = models.SmallIntegerField(
+        null=True, blank=True,
+        help_text="0..120. Null when no activity was matched.",
+    )
+    compliance_category = models.CharField(
+        max_length=20, blank=True, default="",
+        help_text="not_completed / regular / completed / over_completed.",
+    )
+    primary_target_used = models.CharField(
+        max_length=20, blank=True, default="",
+        help_text=(
+            "Variable that drove the compliance score "
+            "(duration / distance / pace / elevation_gain / hr_zone)."
+        ),
+    )
+
+    # ------------------------------------------------------------------
+    # Structured compliance detail + signals
+    # Schema: {variable: {planned, actual, ratio, score, signals: []}}
+    # Interval-ready: future block-level detail can be appended as
+    # {"blocks": [...]} without schema migration.
+    # ------------------------------------------------------------------
+    score_detail = models.JSONField(
+        default=dict, blank=True,
+        help_text=(
+            "Per-variable compliance breakdown. "
+            "Schema: {variable: {planned, actual, ratio, score, signals}}. "
+            "Populated when state=reconciled."
+        ),
+    )
+    signals = models.JSONField(
+        default=list, blank=True,
+        help_text=(
+            "Structured reconciliation signals (ComplianceSignal constants). "
+            "Examples: under_completed, duration_short, possible_overreaching."
+        ),
+    )
+
+    # ------------------------------------------------------------------
+    # Audit + extensibility
+    # ------------------------------------------------------------------
+    reconciled_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Timestamp when reconciliation score was last computed.",
+    )
+    notes = models.TextField(
+        blank=True, default="",
+        help_text=(
+            "System diagnostic or coach notes. Extension point for future "
+            "manual override workflow."
+        ),
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["organization", "state"]),
+            models.Index(fields=["organization", "-created_at"]),
+            models.Index(fields=["assignment"]),
+            models.Index(fields=["completed_activity"]),
+        ]
+        ordering = ["-created_at"]
+        verbose_name = "Workout Reconciliation"
+        verbose_name_plural = "Workout Reconciliations"
+
+    def __str__(self):
+        return (
+            f"Reconciliation: Assignment:{self.assignment_id} "
+            f"[{self.state}] score={self.compliance_score}"
         )
