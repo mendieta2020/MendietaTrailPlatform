@@ -312,6 +312,11 @@ class PasoEntrenamiento(models.Model):
 
 # --- OTROS MODELOS (Carreras, Actividades, Signal) ---
 class Carrera(models.Model):
+    entrenador = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='carreras_propias',
+    )
     nombre = models.CharField(max_length=200)
     fecha = models.DateField()
     distancia_km = models.FloatField()

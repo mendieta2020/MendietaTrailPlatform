@@ -59,6 +59,7 @@ class TenantSecurityAPITests(TestCase):
         )
 
         self.carrera = Carrera.objects.create(
+            entrenador=self.coach_a,
             nombre="Carrera Global",
             fecha=today,
             distancia_km=10.0,
@@ -84,7 +85,12 @@ class TenantSecurityAPITests(TestCase):
         res = self.client.get(f"/api/alumnos/{self.alumno_b.id}/actividades/")
         self.assertEqual(res.status_code, 404)
 
-    def test_fail_closed_when_model_has_no_tenant_field(self):
+    def test_carreras_scoped_to_coach_after_pr124(self):
+        # PR-124: FINDING-123-A resolved — Carrera now has entrenador FK.
+        # Coaches can list /api/carreras/ and see only their own records.
         self.client.force_authenticate(user=self.coach_a)
         res = self.client.get("/api/carreras/")
-        self.assertEqual(res.status_code, 403)
+        self.assertEqual(res.status_code, 200)
+        results = _api_list_results(res)
+        ids = [row["id"] for row in results]
+        self.assertIn(self.carrera.id, ids)

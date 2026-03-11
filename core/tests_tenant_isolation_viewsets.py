@@ -629,75 +629,93 @@ class EntrenamientoViewSetTenantIsolationTests(APITestCase):
 
 
 # ==============================================================================
-#  PR-123: Carrera – Fail-Closed Behavior (FINDING-123-A)
+#  PR-124: Carrera – Tenant Isolation (FINDING-123-A RESOLVED)
 # ==============================================================================
 
-class CarreraViewSetFailClosedTests(APITestCase):
+class CarreraViewSetTenantIsolationTests(APITestCase):
     """
-    Documents and asserts fail-closed behavior for CarreraViewSet.
-
-    FINDING-123-A: Carrera has no tenant field (no entrenador, alumno, uploaded_by,
-    usuario, or equipo). TenantModelViewSet.get_queryset() detects no tenant
-    filters and raises PermissionDenied(403) for all non-staff users.
-
-    Consequence: /api/carreras/ is inaccessible to coaches — the endpoint is
-    effectively broken for non-staff. This is fail-CLOSED (no cross-tenant leak)
-    but also BROKEN for legitimate coach use.
-
-    Action required (PR-124 candidate): Either add an `entrenador` FK to Carrera
-    to enable tenant scoping, OR explicitly mark CarreraViewSet as a public
-    read-only endpoint (bypassing TenantModelViewSet) if races are meant to be
-    shared globally across coaches.
-
-    DO NOT fix production code in this PR.
+    PR-124: FINDING-123-A RESOLVED.
+    Carrera ahora tiene campo entrenador (FK tenant).
+    TenantModelViewSet filtra automáticamente por entrenador=request.user.
     """
 
     def setUp(self):
-        self.coach_a = User.objects.create_user(username="coach_a_car", password="pass!")
-        self.staff = User.objects.create_user(username="staff_car", password="pass!", is_staff=True)
+        self.coach_a = User.objects.create_user(username='coach_a_carrera', password='pass')
+        self.coach_b = User.objects.create_user(username='coach_b_carrera', password='pass')
+        self.staff = User.objects.create_user(username='staff_carrera', password='pass', is_staff=True)
 
-        self.carrera = Carrera.objects.create(
-            nombre="Ultra Trail Test",
-            fecha=datetime.date.today(),
-            distancia_km=42.0,
+        self.carrera_a = Carrera.objects.create(
+            entrenador=self.coach_a,
+            nombre='Ultra Trail A',
+            fecha='2026-06-01',
+            distancia_km=50.0,
+            desnivel_positivo_m=2000,
+        )
+        self.carrera_b = Carrera.objects.create(
+            entrenador=self.coach_b,
+            nombre='Maratón B',
+            fecha='2026-07-01',
+            distancia_km=42.195,
+            desnivel_positivo_m=300,
         )
 
-    def test_coach_cannot_list_carreras_fail_closed(self):
-        """LIST /api/carreras/ as coach → 403 (fail-closed: no tenant field on Carrera)."""
-        self.client.force_authenticate(user=self.coach_a)
-        url = reverse("carrera-list")
-        response = self.client.get(url)
+    def _auth(self, user):
+        self.client.force_authenticate(user=user)
 
-        # FINDING-123-A: 403 means fail-closed, not a leak — but the endpoint
-        # is broken for legitimate coach use. Fix required in a future PR.
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+    # LIST isolation
+    def test_coach_sees_only_own_carreras_in_list(self):
+        self._auth(self.coach_a)
+        response = self.client.get('/api/carreras/')
+        self.assertEqual(response.status_code, 200)
+        nombres = [c['nombre'] for c in _results(response)]
+        self.assertIn('Ultra Trail A', nombres)
+        self.assertNotIn('Maratón B', nombres)
 
-    def test_coach_cannot_retrieve_any_carrera_fail_closed(self):
-        """RETRIEVE any carrera as coach → 403 (fail-closed before pk filter)."""
-        self.client.force_authenticate(user=self.coach_a)
-        url = reverse("carrera-detail", kwargs={"pk": self.carrera.pk})
-        response = self.client.get(url)
+    # RETRIEVE isolation
+    def test_coach_cannot_retrieve_other_coach_carrera(self):
+        self._auth(self.coach_a)
+        response = self.client.get(f'/api/carreras/{self.carrera_b.pk}/')
+        self.assertEqual(response.status_code, 404)
 
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+    def test_coach_can_retrieve_own_carrera(self):
+        self._auth(self.coach_a)
+        response = self.client.get(f'/api/carreras/{self.carrera_a.pk}/')
+        self.assertEqual(response.status_code, 200)
 
-    def test_staff_list_sees_all_carreras(self):
-        """Staff LIST → all carreras visible (staff bypasses tenant filter)."""
-        self.client.force_authenticate(user=self.staff)
-        url = reverse("carrera-list")
-        response = self.client.get(url)
+    # CREATE sets entrenador automatically
+    def test_create_sets_entrenador_from_request_user(self):
+        self._auth(self.coach_a)
+        payload = {
+            'nombre': 'Nueva Carrera Test',
+            'fecha': '2026-09-01',
+            'distancia_km': 21.0,
+            'desnivel_positivo_m': 500,
+        }
+        response = self.client.post('/api/carreras/', payload, format='json')
+        self.assertEqual(response.status_code, 201)
+        nueva = Carrera.objects.get(pk=response.data['id'])
+        self.assertEqual(nueva.entrenador, self.coach_a)
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        ids = {c["id"] for c in _results(response)}
-        self.assertIn(self.carrera.id, ids)
+    # UPDATE isolation
+    def test_coach_cannot_patch_other_coach_carrera(self):
+        self._auth(self.coach_a)
+        response = self.client.patch(
+            f'/api/carreras/{self.carrera_b.pk}/',
+            {'nombre': 'Hackeado'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 404)
 
-    def test_staff_retrieve_any_carrera(self):
-        """Staff RETRIEVE → 200 (no tenant filter for staff)."""
-        self.client.force_authenticate(user=self.staff)
-        url = reverse("carrera-detail", kwargs={"pk": self.carrera.pk})
-        response = self.client.get(url)
+    # DELETE isolation
+    def test_coach_cannot_delete_other_coach_carrera(self):
+        self._auth(self.coach_a)
+        response = self.client.delete(f'/api/carreras/{self.carrera_b.pk}/')
+        self.assertEqual(response.status_code, 404)
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["id"], self.carrera.id)
+    # Unauthenticated
+    def test_unauthenticated_gets_401(self):
+        response = self.client.get('/api/carreras/')
+        self.assertIn(response.status_code, [401, 403])
 
 
 # ==============================================================================
@@ -728,6 +746,7 @@ class InscripcionViewSetTenantIsolationTests(APITestCase):
         )
 
         carrera = Carrera.objects.create(
+            entrenador=self.coach_a,
             nombre="Carrera Inscripcion Test",
             fecha=datetime.date.today(),
             distancia_km=21.0,
