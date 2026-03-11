@@ -645,6 +645,9 @@ class CarreraViewSet(TenantModelViewSet):
     filter_backends = [filters.SearchFilter]
     search_fields = ['nombre', 'lugar']
 
+    def perform_create(self, serializer):
+        serializer.save(entrenador=self.request.user)
+
 
 class InscripcionViewSet(TenantModelViewSet):
     """

@@ -376,6 +376,7 @@ class CarreraSerializer(serializers.ModelSerializer):
     class Meta:
         model = Carrera
         fields = '__all__'
+        read_only_fields = ('entrenador',)
 
 class InscripcionCarreraSerializer(serializers.ModelSerializer):
     carrera = CarreraSerializer(read_only=True)
