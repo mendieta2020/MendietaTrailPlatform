@@ -1269,3 +1269,149 @@ class StravaDisconnectTests(TestCase):
             capture.found_secret,
             "access_token must NEVER appear in WARNING+ log records during disconnect",
         )
+
+
+class ObtenerClienteStravaLegacyTests(TestCase):
+    """
+    PR-122: Unit tests for the legacy `obtener_cliente_strava()` function.
+
+    Coverage:
+    - test_valid_token_returns_client: happy path — non-expired token returns a configured Client.
+    - test_expired_token_refresh_failure_returns_none_and_logs: inner except path — TOKEN_REFRESH_ERROR emitted.
+    - test_outer_exception_returns_none_and_logs: outer except path — TOKEN_LOOKUP_ERROR emitted.
+    """
+
+    def setUp(self):
+        from allauth.socialaccount.models import SocialApp, SocialAccount, SocialToken as _SocialToken
+
+        self.user = User.objects.create_user(username="legacy_strava_pr122", password="x")
+
+        self.social_app = SocialApp.objects.create(
+            provider="strava",
+            name="Strava",
+            client_id="test_client_id",
+            secret="test_secret",
+        )
+
+        self.social_account = SocialAccount.objects.create(
+            user=self.user,
+            provider="strava",
+            uid="99999",
+        )
+
+        self.social_token = _SocialToken.objects.create(
+            account=self.social_account,
+            app=self.social_app,
+            token="access_tok_pr122",
+            token_secret="refresh_tok_pr122",
+            expires_at=timezone.now() + timezone.timedelta(hours=6),
+        )
+
+    def _capture_services_logger(self):
+        """Return (handler, log_records list) for core.services logger."""
+        import logging as _logging
+        import core.services as _svc
+
+        records = []
+
+        class _Capture(_logging.Handler):
+            def emit(self, record):
+                records.append(record)
+
+        h = _Capture()
+        h.setLevel(_logging.WARNING)
+        _svc.logger.addHandler(h)
+        return h, records, _svc.logger
+
+    def test_valid_token_returns_client(self):
+        """
+        GIVEN: A non-expired SocialToken for the user.
+        WHEN:  obtener_cliente_strava(user) is called.
+        THEN:  Returns a stravalib Client with access_token set; no error logged.
+        """
+        from core.services import obtener_cliente_strava
+
+        result = obtener_cliente_strava(self.user)
+
+        self.assertIsNotNone(result, "Expected a valid Client for non-expired token")
+        self.assertEqual(result.access_token, "access_tok_pr122")
+
+    def test_expired_token_refresh_failure_returns_none_and_logs(self):
+        """
+        GIVEN: An expired SocialToken; client.refresh_access_token raises RuntimeError.
+        WHEN:  obtener_cliente_strava(user) is called.
+        THEN:  Returns None and emits a WARNING with event_name=strava.token.refresh_failed,
+               reason_code=TOKEN_REFRESH_ERROR, provider=strava, outcome=fail.
+               No token value appears in the log record.
+        """
+        from core.services import obtener_cliente_strava
+
+        self.social_token.expires_at = timezone.now() - timezone.timedelta(hours=1)
+        self.social_token.save()
+
+        h, records, svc_logger = self._capture_services_logger()
+        try:
+            with patch("core.services.Client") as MockClient:
+                fake_client = MockClient.return_value
+                fake_client.access_token = "access_tok_pr122"
+                fake_client.refresh_token = "refresh_tok_pr122"
+                fake_client.refresh_access_token.side_effect = RuntimeError("401 Unauthorized")
+
+                result = obtener_cliente_strava(self.user)
+        finally:
+            svc_logger.removeHandler(h)
+
+        self.assertIsNone(result, "Expected None on token refresh failure")
+
+        matching = [
+            r for r in records
+            if getattr(r, "event_name", None) == "strava.token.refresh_failed"
+        ]
+        self.assertTrue(
+            len(matching) > 0,
+            f"Expected strava.token.refresh_failed log. Got event_names: "
+            f"{[getattr(r, 'event_name', None) for r in records]}",
+        )
+        record = matching[0]
+        self.assertEqual(getattr(record, "reason_code", None), "TOKEN_REFRESH_ERROR")
+        self.assertEqual(getattr(record, "provider", None), "strava")
+        self.assertEqual(getattr(record, "outcome", None), "fail")
+        # Law 6: no token value in the log message
+        msg = record.getMessage()
+        self.assertNotIn("access_tok_pr122", msg)
+        self.assertNotIn("refresh_tok_pr122", msg)
+
+    def test_outer_exception_returns_none_and_logs(self):
+        """
+        GIVEN: SocialToken.objects.filter raises an unexpected exception (DB error simulated).
+        WHEN:  obtener_cliente_strava(user) is called.
+        THEN:  Returns None and emits a WARNING with event_name=strava.token.lookup_failed,
+               reason_code=TOKEN_LOOKUP_ERROR, provider=strava, outcome=fail.
+        """
+        from core.services import obtener_cliente_strava
+
+        h, records, svc_logger = self._capture_services_logger()
+        try:
+            with patch(
+                "core.services.SocialToken.objects.filter",
+                side_effect=Exception("DB unavailable"),
+            ):
+                result = obtener_cliente_strava(self.user)
+        finally:
+            svc_logger.removeHandler(h)
+
+        self.assertIsNone(result, "Expected None when outer exception occurs")
+
+        matching = [
+            r for r in records
+            if getattr(r, "event_name", None) == "strava.token.lookup_failed"
+        ]
+        self.assertTrue(
+            len(matching) > 0,
+            f"Expected strava.token.lookup_failed log. Got event_names: "
+            f"{[getattr(r, 'event_name', None) for r in records]}",
+        )
+        record = matching[0]
+        self.assertEqual(getattr(record, "reason_code", None), "TOKEN_LOOKUP_ERROR")
+        self.assertEqual(getattr(record, "provider", None), "strava")
+        self.assertEqual(getattr(record, "outcome", None), "fail")
