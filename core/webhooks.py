@@ -9,7 +9,7 @@ from django.views.decorators.http import require_http_methods
 from django.db import IntegrityError
 from django.db.models import F
 from django.utils import timezone
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.settings import api_settings
 from rest_framework.views import APIView
 
@@ -362,10 +362,9 @@ class StravaWebhookView(APIView):
 class StravaDiagnosticsView(APIView):
     """
     Runtime diagnostics endpoint to verify webhook config.
-    No secrets exposed. Unauthenticated access allowed to simplify checks.
+    Requires authentication. Returns only boolean readiness signals — never raw config values.
     """
-    authentication_classes = []
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
     throttle_classes = api_settings.DEFAULT_THROTTLE_CLASSES
 
     def get(self, request, *args, **kwargs):
@@ -373,7 +372,6 @@ class StravaDiagnosticsView(APIView):
         callback_url = getattr(settings, "PUBLIC_BASE_URL", None)
         return JsonResponse({
             "subscription_id_configured": sub_id is not None,
-            "subscription_id_value": sub_id,
             "callback_url_configured": callback_url is not None,
             "environment": "production" if not settings.DEBUG else "staging/dev"
         })
