@@ -10,8 +10,8 @@ from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from django.utils import timezone
-from allauth.socialaccount.models import SocialToken, SocialApp
-from stravalib.client import Client
+from allauth.socialaccount.models import SocialToken, SocialApp  # noqa: legacy — guarded by DISABLE_LEGACY_STRAVA_SYNC; scheduled for removal in P1
+from stravalib.client import Client  # noqa: legacy — guarded by DISABLE_LEGACY_STRAVA_SYNC; scheduled for removal in P1
 
 from analytics.injury_risk import compute_injury_risk
 from analytics.models import PMCHistory
@@ -168,6 +168,11 @@ def ejecutar_cruce_inteligente(actividad):
     1. Busca si la actividad YA estaba vinculada (Update).
     2. Si no, busca un plan PENDIENTE (Match).
     3. Califica cumplimiento (%).
+
+    # noqa: legacy — writes real fields onto Entrenamiento (Law 3 violation).
+    # Guarded at runtime by DISABLE_LEGACY_STRAVA_SYNC (default=True).
+    # Scheduled for removal in P1 once reconciliation migrates fully to
+    # services_reconciliation.py / WorkoutReconciliation model.
     """
     _ensure_legacy_strava_sync_allowed("ejecutar_cruce_inteligente")
     logger.info(
@@ -176,7 +181,11 @@ def ejecutar_cruce_inteligente(actividad):
     )
 
     email_usuario = actividad.usuario.email
-    alumno = Alumno.objects.filter(email=email_usuario).first()
+    # Scope by usuario FK (deterministic, avoids cross-tenant email collision).
+    alumno = Alumno.objects.filter(usuario=actividad.usuario).first()
+    if alumno is None:
+        # Fallback for legacy records where usuario FK is absent: match by email.
+        alumno = Alumno.objects.filter(email=email_usuario).first()
 
     if not alumno:
         return False
@@ -602,12 +611,34 @@ def obtener_cliente_strava(user, force_refresh: bool = False):
                 social_token.token_secret = refresh_response['refresh_token']
                 social_token.expires_at = timezone.make_aware(datetime.datetime.fromtimestamp(refresh_response['expires_at']))
                 social_token.save()
-                
+
                 client.access_token = social_token.token
                 client.refresh_token = social_token.token_secret
-            except: return None
+            except Exception as exc:
+                logger.warning(
+                    "strava.token.refresh_failed",
+                    extra=safe_extra({
+                        "event_name": "strava.token.refresh_failed",
+                        "provider": "strava",
+                        "outcome": "fail",
+                        "reason_code": "TOKEN_REFRESH_ERROR",
+                        "exc_type": type(exc).__name__,
+                    }),
+                )
+                return None
         return client
-    except: return None
+    except Exception as exc:
+        logger.warning(
+            "strava.token.lookup_failed",
+            extra=safe_extra({
+                "event_name": "strava.token.lookup_failed",
+                "provider": "strava",
+                "outcome": "fail",
+                "reason_code": "TOKEN_LOOKUP_ERROR",
+                "exc_type": type(exc).__name__,
+            }),
+        )
+        return None
 
 
 def obtener_cliente_strava_para_alumno(alumno: Alumno, *, force_refresh: bool = False):
@@ -872,13 +903,12 @@ def sincronizar_actividades_strava(user, dias_historial=None):
         )
         return nuevas, actualizadas, "OK"
 
-    except Exception as e:
-        error_msg = f"Error técnico: {str(e)}"
+    except Exception:
         logger.exception(
             "strava.legacy_sync_failed",
             extra=safe_extra({"user_id": user.id}),
         )
-        return nuevas, actualizadas, error_msg
+        return nuevas, actualizadas, "Error técnico"
 
 
 # ==============================================================================
