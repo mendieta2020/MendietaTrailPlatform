@@ -20,7 +20,7 @@ from rest_framework.views import APIView
 
 
 from .integration_models import OAuthIntegrationStatus
-from .models import Alumno
+from .models import Alumno, OAuthCredential
 from .oauth_state import generate_oauth_state
 from .providers import get_provider, list_providers
 
@@ -227,10 +227,10 @@ class IntegrationStatusView(APIView):
             integration_status = status_map.get(provider_id)
             
             if provider_id == "strava":
-                from integrations.strava.service import get_strava_connection
-                strava_account = get_strava_connection(alumno.usuario)
-                
-                if not strava_account:
+                # Law 4 fix (PR-127): use OAuthCredential (domain-agnostic canonical
+                # store) instead of integrations.strava.service.get_strava_connection.
+                cred = OAuthCredential.objects.filter(alumno=alumno, provider="strava").first()
+                if not cred:
                     integrations.append({
                         "provider": provider_id,
                         "name": provider_data["name"],
@@ -250,7 +250,7 @@ class IntegrationStatusView(APIView):
                         "enabled": provider_data["enabled"],
                         "status": "connected",
                         "connected": True,
-                        "athlete_id": strava_account.uid,
+                        "athlete_id": integration_status.athlete_id if integration_status else None,
                         "expires_at": integration_status.expires_at.isoformat() if (integration_status and integration_status.expires_at) else None,
                         "last_sync_at": integration_status.last_sync_at.isoformat() if (integration_status and integration_status.last_sync_at) else None,
                         "error_reason": "",

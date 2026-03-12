@@ -10,7 +10,8 @@ Coverage:
   f) organization_id passed = alumno.entrenador_id
 
 Patch targets:
-  - core.services.queue_workout_delivery   (PR14 delivery function)
+  - integrations.outbound.workout_delivery.queue_workout_delivery  (PR14 delivery function)
+      Patched at source because core/services.py uses a lazy import (Law 4, PR-127).
   - core.services.provider_supports        (PR13 capability gate)
     → patched in positive-path tests (a/e/f) because no provider currently
       declares CAP_OUTBOUND_WORKOUTS in PROVIDER_CAPABILITIES; patching
@@ -105,7 +106,7 @@ def test_coach_create_enqueues_for_eligible_provider():
     _connect_garmin(alumno)
     entrenamiento = _make_entrenamiento(alumno)
 
-    with patch("core.services.queue_workout_delivery") as mock_q, \
+    with patch("integrations.outbound.workout_delivery.queue_workout_delivery") as mock_q, \
          patch("core.services.provider_supports", side_effect=_provider_supports_garmin):
         trigger_workout_delivery_if_applicable(entrenamiento, actor_user=coach)
 
@@ -136,7 +137,7 @@ def test_strava_only_does_not_enqueue():
     alumno = _make_alumno(coach, suffix="_b")
     entrenamiento = _make_entrenamiento(alumno)
 
-    with patch("core.services.queue_workout_delivery") as mock_q:
+    with patch("integrations.outbound.workout_delivery.queue_workout_delivery") as mock_q:
         trigger_workout_delivery_if_applicable(entrenamiento, actor_user=coach)
 
     mock_q.assert_not_called()
@@ -160,7 +161,7 @@ def test_no_connected_providers_does_not_enqueue():
     entrenamiento = _make_entrenamiento(alumno)
     # No OAuthCredential created → compute_connection_status returns "disconnected"
 
-    with patch("core.services.queue_workout_delivery") as mock_q, \
+    with patch("integrations.outbound.workout_delivery.queue_workout_delivery") as mock_q, \
          patch("core.services.provider_supports", side_effect=_provider_supports_garmin):
         trigger_workout_delivery_if_applicable(entrenamiento, actor_user=coach)
 
@@ -188,7 +189,7 @@ def test_athlete_update_does_not_enqueue(client):
 
     endpoint = f"/api/entrenamientos/{entrenamiento.id}/"
 
-    with patch("core.services.queue_workout_delivery") as mock_q, \
+    with patch("integrations.outbound.workout_delivery.queue_workout_delivery") as mock_q, \
          patch("core.services.provider_supports", side_effect=_provider_supports_garmin):
         response = client.patch(
             endpoint,
@@ -232,7 +233,7 @@ def test_aplicar_a_equipo_enqueues_per_eligible_athlete(client):
     _connect_garmin(alumno1)
     _connect_garmin(alumno2)
 
-    with patch("core.services.queue_workout_delivery") as mock_q, \
+    with patch("integrations.outbound.workout_delivery.queue_workout_delivery") as mock_q, \
          patch("core.services.provider_supports", side_effect=_provider_supports_garmin):
         response = client.post(
             f"/api/plantillas/{plantilla.id}/aplicar_a_equipo/",
@@ -263,7 +264,7 @@ def test_organization_id_is_coach_id():
     _connect_garmin(alumno)
     entrenamiento = _make_entrenamiento(alumno)
 
-    with patch("core.services.queue_workout_delivery") as mock_q, \
+    with patch("integrations.outbound.workout_delivery.queue_workout_delivery") as mock_q, \
          patch("core.services.provider_supports", side_effect=_provider_supports_garmin):
         trigger_workout_delivery_if_applicable(entrenamiento, actor_user=coach)
 
