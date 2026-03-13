@@ -21,6 +21,9 @@ from core.models import (
     PlannedWorkout,
     RaceEvent,
     WorkoutAssignment,
+    WorkoutBlock,
+    WorkoutInterval,
+    WorkoutLibrary,
     WorkoutReconciliation,
 )
 
@@ -206,6 +209,188 @@ _ASSIGNMENT_FIELDS = [
     "updated_at",
     "effective_date",
 ]
+
+
+# ==============================================================================
+# PR-128: WorkoutLibrary + PlannedWorkout CRUD serializers
+# ==============================================================================
+
+
+class WorkoutIntervalSerializer(serializers.ModelSerializer):
+    """
+    Read/write serializer for WorkoutInterval.
+
+    block and organization are not exposed — injected by WorkoutIntervalViewSet.
+    """
+
+    class Meta:
+        model = WorkoutInterval
+        fields = [
+            "id",
+            "order_index",
+            "metric_type",
+            "description",
+            "duration_seconds",
+            "distance_meters",
+            "target_value_low",
+            "target_value_high",
+            "target_label",
+            "recovery_seconds",
+            "recovery_distance_meters",
+            "video_url",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class WorkoutBlockSerializer(serializers.ModelSerializer):
+    """
+    Write serializer for WorkoutBlock.
+
+    planned_workout and organization are not exposed — injected by WorkoutBlockViewSet.
+    """
+
+    class Meta:
+        model = WorkoutBlock
+        fields = [
+            "id",
+            "order_index",
+            "block_type",
+            "name",
+            "description",
+            "video_url",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class WorkoutBlockReadSerializer(serializers.ModelSerializer):
+    """
+    Read serializer for WorkoutBlock with nested intervals.
+    """
+
+    intervals = WorkoutIntervalSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = WorkoutBlock
+        fields = [
+            "id",
+            "order_index",
+            "block_type",
+            "name",
+            "description",
+            "video_url",
+            "intervals",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "intervals", "created_at", "updated_at"]
+
+
+class WorkoutLibrarySerializer(serializers.ModelSerializer):
+    """
+    Serializer for WorkoutLibrary.
+
+    organization is not exposed — injected by WorkoutLibraryViewSet.
+    created_by_id is read-only — set by the ViewSet in perform_create.
+    """
+
+    created_by_id = serializers.PrimaryKeyRelatedField(
+        source="created_by",
+        read_only=True,
+    )
+
+    class Meta:
+        model = WorkoutLibrary
+        fields = [
+            "id",
+            "name",
+            "description",
+            "is_public",
+            "created_by_id",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_by_id", "created_at", "updated_at"]
+
+
+class PlannedWorkoutWriteSerializer(serializers.ModelSerializer):
+    """
+    Write serializer for PlannedWorkout.
+
+    library and organization are URL-derived — injected by PlannedWorkoutViewSet
+    in perform_create and never accepted from the client.
+    created_by_id is read-only — set by the ViewSet in perform_create.
+    """
+
+    created_by_id = serializers.PrimaryKeyRelatedField(
+        source="created_by",
+        read_only=True,
+    )
+
+    class Meta:
+        model = PlannedWorkout
+        fields = [
+            "id",
+            "name",
+            "description",
+            "discipline",
+            "session_type",
+            "estimated_duration_seconds",
+            "estimated_distance_meters",
+            "primary_target_variable",
+            "created_by_id",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_by_id", "created_at", "updated_at"]
+
+
+class PlannedWorkoutReadSerializer(serializers.ModelSerializer):
+    """
+    Read serializer for PlannedWorkout with nested blocks.
+
+    library_id is read-only. blocks uses WorkoutBlockReadSerializer for
+    the full nested structure (blocks → intervals).
+    """
+
+    created_by_id = serializers.PrimaryKeyRelatedField(
+        source="created_by",
+        read_only=True,
+    )
+    library_id = serializers.PrimaryKeyRelatedField(
+        source="library",
+        read_only=True,
+    )
+    blocks = WorkoutBlockReadSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PlannedWorkout
+        fields = [
+            "id",
+            "library_id",
+            "name",
+            "description",
+            "discipline",
+            "session_type",
+            "estimated_duration_seconds",
+            "estimated_distance_meters",
+            "primary_target_variable",
+            "blocks",
+            "created_by_id",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "library_id",
+            "blocks",
+            "created_by_id",
+            "created_at",
+            "updated_at",
+        ]
 
 
 class WorkoutAssignmentSerializer(serializers.ModelSerializer):

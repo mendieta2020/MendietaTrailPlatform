@@ -17,13 +17,15 @@ from .integration_callback_views import IntegrationCallbackView
 from .identity_views import UserIdentityView
 from .connection_views import ProviderConnectionStatusView  # PR11
 from core.webhooks import StravaWebhookView, StravaDiagnosticsView  # PR-WebhookRoute
-from core.views_p1 import (  # PR-115/116/117/119
+from core.views_p1 import (  # PR-115/116/117/119/128
     AthleteAdherenceViewSet,
     AthleteGoalViewSet,
     AthleteProfileViewSet,
+    PlannedWorkoutViewSet,
     RaceEventViewSet,
     ReconciliationViewSet,
     WorkoutAssignmentViewSet,
+    WorkoutLibraryViewSet,
 )
 
 # Creamos el router para la API REST estándar
@@ -205,6 +207,42 @@ urlpatterns = [
         'p1/orgs/<int:org_id>/assignments/<int:assignment_id>/reconciliation/miss/',
         ReconciliationViewSet.as_view({'post': 'miss'}),
         name='p1-reconciliation-miss',
+    ),
+
+    # ==============================================================================
+    # PR-128: WorkoutLibrary CRUD
+    # URL: /api/p1/orgs/<org_id>/libraries/
+    # Nested workouts: /api/p1/orgs/<org_id>/libraries/<library_id>/workouts/
+    # ==============================================================================
+    path(
+        'p1/orgs/<int:org_id>/libraries/',
+        WorkoutLibraryViewSet.as_view({'get': 'list', 'post': 'create'}),
+        name='p1-library-list',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/libraries/<int:pk>/',
+        WorkoutLibraryViewSet.as_view({
+            'get': 'retrieve',
+            'put': 'update',
+            'patch': 'partial_update',
+            'delete': 'destroy',
+        }),
+        name='p1-library-detail',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/libraries/<int:library_id>/workouts/',
+        PlannedWorkoutViewSet.as_view({'get': 'list', 'post': 'create'}),
+        name='p1-library-workout-list',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/libraries/<int:library_id>/workouts/<int:pk>/',
+        PlannedWorkoutViewSet.as_view({
+            'get': 'retrieve',
+            'put': 'update',
+            'patch': 'partial_update',
+            'delete': 'destroy',
+        }),
+        name='p1-library-workout-detail',
     ),
 
     # ==============================================================================
