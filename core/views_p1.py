@@ -34,16 +34,21 @@ from core.models import (
     AthleteGoal,
     AthleteProfile,
     CompletedActivity,
+    PlannedWorkout,
     RaceEvent,
     WorkoutAssignment,
+    WorkoutLibrary,
     WorkoutReconciliation,
 )
 from core.serializers_p1 import (
     AthleteGoalSerializer,
     AthleteProfileSerializer,
+    PlannedWorkoutReadSerializer,
+    PlannedWorkoutWriteSerializer,
     RaceEventSerializer,
     WorkoutAssignmentAthleteSerializer,
     WorkoutAssignmentSerializer,
+    WorkoutLibrarySerializer,
     WorkoutReconciliationSerializer,
 )
 from core.tenancy import OrgTenantMixin
@@ -406,6 +411,151 @@ class ReconciliationViewSet(OrgTenantMixin, viewsets.GenericViewSet):
 # ==============================================================================
 # PR-119: Athlete Weekly Adherence ViewSet
 # ==============================================================================
+
+
+# ==============================================================================
+# PR-128: WorkoutLibrary + PlannedWorkout ViewSets
+# ==============================================================================
+
+
+class WorkoutLibraryViewSet(OrgTenantMixin, viewsets.ModelViewSet):
+    """
+    CRUD for organization-scoped WorkoutLibrary.
+
+    coach/owner: full CRUD.
+    athlete: read-only, public libraries only (is_public=True).
+
+    organization is derived from URL org_id; never from the request body.
+    """
+
+    serializer_class = WorkoutLibrarySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if getattr(self, "swagger_fake_view", False):
+            return
+        self.resolve_membership(self.kwargs["org_id"])
+
+    def get_queryset(self):
+        if not getattr(self, "organization", None):
+            return WorkoutLibrary.objects.none()
+        qs = WorkoutLibrary.objects.filter(organization=self.organization)
+        if self.membership.role == "athlete":
+            qs = qs.filter(is_public=True)
+        return qs
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        if getattr(self, "organization", None):
+            ctx["organization"] = self.organization
+        return ctx
+
+    def _require_write_role(self):
+        if self.membership.role not in _WRITE_ROLES:
+            raise PermissionDenied("Only coaches and owners can modify workout libraries.")
+
+    def perform_create(self, serializer):
+        self._require_write_role()
+        serializer.save(
+            organization=self.organization,
+            created_by=self.request.user,
+        )
+
+    def perform_update(self, serializer):
+        self._require_write_role()
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._require_write_role()
+        instance.delete()
+
+
+class PlannedWorkoutViewSet(OrgTenantMixin, viewsets.ModelViewSet):
+    """
+    CRUD for PlannedWorkout records nested under a WorkoutLibrary.
+
+    URL: /api/p1/orgs/<org_id>/libraries/<library_id>/workouts/
+
+    Tenancy: organization and library are derived from the URL only.
+    Library ownership is validated in initial() — fail-closed 404 if the
+    library does not belong to self.organization, or if an athlete attempts
+    to access a private library.
+
+    Serializer dispatch:
+    - GET  → PlannedWorkoutReadSerializer (includes nested blocks + intervals)
+    - write → PlannedWorkoutWriteSerializer (flat; library injected from URL)
+
+    coach/owner: full CRUD.
+    athlete: read-only, public libraries only.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if getattr(self, "swagger_fake_view", False):
+            return
+        self.resolve_membership(self.kwargs["org_id"])
+        # Validate library belongs to this org — fail-closed (never reveal existence).
+        library_qs = WorkoutLibrary.objects.filter(
+            pk=self.kwargs["library_id"],
+            organization=self.organization,
+        )
+        if self.membership.role == "athlete":
+            library_qs = library_qs.filter(is_public=True)
+        if not library_qs.exists():
+            raise NotFound("Library not found.")
+
+    def get_queryset(self):
+        if not getattr(self, "organization", None):
+            return PlannedWorkout.objects.none()
+        qs = PlannedWorkout.objects.filter(
+            organization=self.organization,
+            library_id=self.kwargs["library_id"],
+        )
+        if self.membership.role == "athlete":
+            qs = qs.filter(library__is_public=True)
+        return qs
+
+    def get_serializer_class(self):
+        if self.request.method == "GET":
+            return PlannedWorkoutReadSerializer
+        return PlannedWorkoutWriteSerializer
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        if getattr(self, "organization", None):
+            ctx["organization"] = self.organization
+        return ctx
+
+    def _require_write_role(self):
+        if self.membership.role not in _WRITE_ROLES:
+            raise PermissionDenied("Only coaches and owners can modify planned workouts.")
+
+    def perform_create(self, serializer):
+        self._require_write_role()
+        try:
+            serializer.save(
+                organization=self.organization,
+                library_id=self.kwargs["library_id"],
+                created_by=self.request.user,
+            )
+        except DjangoValidationError as exc:
+            detail = exc.message_dict if hasattr(exc, "message_dict") else {"detail": str(exc)}
+            raise DRFValidationError(detail=detail)
+
+    def perform_update(self, serializer):
+        self._require_write_role()
+        try:
+            serializer.save()
+        except DjangoValidationError as exc:
+            detail = exc.message_dict if hasattr(exc, "message_dict") else {"detail": str(exc)}
+            raise DRFValidationError(detail=detail)
+
+    def perform_destroy(self, instance):
+        self._require_write_role()
+        instance.delete()
 
 
 class AthleteAdherenceViewSet(OrgTenantMixin, viewsets.GenericViewSet):
