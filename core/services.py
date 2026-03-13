@@ -27,10 +27,9 @@ from .models import (
 from .schema_v1 import compute_metrics_v1
 from .utils.logging import safe_extra
 
-# PR15 — Outbound delivery imports
+# PR15 — Outbound delivery (provider-agnostic; workout_delivery imported lazily in function)
 from core.providers import SUPPORTED_PROVIDERS
 from core.provider_capabilities import provider_supports, CAP_OUTBOUND_WORKOUTS
-from integrations.outbound.workout_delivery import queue_workout_delivery
 
 logger = logging.getLogger(__name__)
 
@@ -972,6 +971,8 @@ def trigger_workout_delivery_if_applicable(entrenamiento, *, actor_user=None) ->
                 continue
 
             # Provider is eligible — enqueue delivery
+            # Lazy import: keeps domain services free of module-level provider imports (Law 4)
+            from integrations.outbound.workout_delivery import queue_workout_delivery  # noqa: PLC0415
             queue_workout_delivery(
                 organization_id=organization_id,
                 athlete_id=athlete_id,

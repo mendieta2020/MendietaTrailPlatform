@@ -30,30 +30,31 @@ Science is the source of truth. Reliability is the product.
 
 ---
 
-## Current Phase: P0
+## Current Phase: P1 *(P0 complete and deployed)*
 
-**P0 = vendor-grade reliability foundation.**
+**P1 = product buildout — Organization model, CRUD APIs, roster management, provider boundary cleanup.**
 
-### Allowed (P0)
-- Security / tenancy hardening
-- Strava reliability (OAuth / webhooks / ingestion / disconnect)
-- CI + smoke improvements
-- Observability improvements
-- Idempotency protections
-- Minimal UX tied to core flow
+### Allowed (P1)
+- All P0 work (security, reliability, tenancy hardening)
+- P1 CRUD endpoints: Organization, Team, Membership, Coach, Athlete
+- Roster management APIs (athlete assignments, coach views)
+- Provider boundary cleanup (Law 4 debt elimination)
+- Plan vs Real reconciliation endpoints
+- WorkoutLibrary and WorkoutAssignment CRUD
+- Structured observability improvements
+- Frontend components tied to P1 core flows
 
-### Forbidden unless explicitly requested (P0)
-- Broad refactors or rewrites
-- Large migrations
+### Forbidden unless explicitly requested (P1)
 - AI autonomy features
 - Social features / gamification
-- Multi-provider rollout
+- Multi-provider rollout (provider stubs remain disabled)
+- Large schema migrations not tied to P1 models
 
-### Release Lockdown Mode (≤ 30 days to launch)
-Default posture: **Risk = High**.
-- Prefer "stabilize" over "improve"
-- Avoid UI churn unless it fixes a real bug in the core flow
-- Any change must be reversible and covered by tests
+### Release Lockdown Mode
+**LIFTED** — P0 successfully deployed. Normal engineering posture resumed.
+- Default posture: **Risk = Medium** (down from High)
+- Drive-by refactors still prohibited — one PR = one idea
+- Any change touching OAuth / tenancy critical path still requires protective tests
 
 ---
 
@@ -176,4 +177,4 @@ Every agent response must include:
 
 ---
 
-*Last updated: 2026-03-06 · See also: `docs/ai/REPO_MAP.md`*
+*Last updated: 2026-03-12 · P1 transition. See also: `docs/ai/REPO_MAP.md`*

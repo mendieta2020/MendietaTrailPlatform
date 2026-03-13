@@ -1,10 +1,18 @@
 # CTO Agent Memory — Quantoryn Roadmap State
 
-## Current Phase: P0 COMPLETE — Ready for Production Deploy
-- P0 declared complete: 2026-03-12
+## Current Phase: P1 — Organization-First Coach Functionality
+- P0 deployed to production and validated via smoke test: 2026-03-12
+- P1 officially started: 2026-03-12
 - 900 tests green (baseline was ~390 at PR-112)
 - All Non-Negotiable Laws satisfied with test coverage
-- Release Lockdown Mode: ACTIVE until launch
+- Release Lockdown Mode: LIFTED — P1 feature work authorized
+
+## P1 Roadmap (PR-127 to PR-131)
+- PR-127: CONSTITUTION.md P1 upgrade + Law 4 provider boundary fix
+- PR-128: WorkoutLibrary + PlannedWorkout CRUD API (org-scoped)
+- PR-129: Coach + Athlete + Team roster API (org-scoped)
+- PR-130: P1 tenancy isolation test sweep (new ViewSets)
+- PR-131: Frontend coach dashboard — connect to P1 API
 
 ## PR History (completed, chronological)
 - PR-112 baseline (~390 tests)
@@ -20,17 +28,35 @@
 - PR-125: Webhook idempotency test sweep — 13 tests in 5 groups. All gaps closed.
 - PR-126: OAuth critical path hardening — 10 tests for disconnect + start edge cases. 900 tests green.
 
-## Deferred Items (NOT P0 blockers — track for P1/P2)
-1. API versioning (/api/v1/) — high risk, low urgency pre-launch [P1]
+## Deferred Items (from P0, tracked for P1/P2)
+1. API versioning (/api/v1/) — high risk, deferred to P2 [P2]
 2. Alert delivery channel — AlertaRendimiento exists but no dispatch [P1]
 3. HistorialFitness + PMCHistory — dual PMC stores, ambiguous lineage [P2]
-4. integration_views.py:230 — provider boundary violation (Law 4), pre-existing, low risk [P1]
-5. core/services.py:33 — imports from integrations.outbound (Law 4 adjacent) [P1]
+4. integration_views.py:230 — provider boundary violation (Law 4) [PR-127 target]
+5. core/services.py:33 — imports from integrations.outbound (Law 4 adjacent) [PR-127 target]
+
+## P1 API Surface — What Exists vs What's Missing
+### Already built (PRs 115-119):
+- RaceEventViewSet: /api/p1/orgs/<org_id>/race-events/
+- AthleteGoalViewSet: /api/p1/orgs/<org_id>/goals/
+- AthleteProfileViewSet: /api/p1/orgs/<org_id>/profiles/
+- WorkoutAssignmentViewSet: /api/p1/orgs/<org_id>/assignments/
+- ReconciliationViewSet: /api/p1/orgs/<org_id>/assignments/<id>/reconciliation/
+- AthleteAdherenceViewSet: /api/p1/orgs/<org_id>/athletes/<id>/adherence/
+
+### Missing (P1 gaps):
+- WorkoutLibrary CRUD (model exists, no API)
+- PlannedWorkout CRUD under library (model exists, no org-first API — legacy AlumnoPlannedWorkoutViewSet only)
+- Coach roster API (model exists, no API)
+- Athlete roster API (model exists, no API)
+- Team management API (model exists, no API)
+- Membership management API (model exists, no API)
 
 ## Architecture Notes
 - core/urls.py: legacy routes at /api/ root, P1 routes under /api/p1/orgs/<org_id>/
 - AllowAny usage: auth_views.py (login/refresh/logout) + StravaWebhookView (required by Strava) — ALL ACCEPTABLE
 - TenantModelViewSet: fail-closed, staff sees all, coach filters by entrenador/uploaded_by/alumno__entrenador
+- OrgTenantMixin: P1 pattern for org-scoped ViewSets (used in views_p1.py)
 - Last migration: 0074 (Carrera entrenador FK)
 - Test count: 900 (as of PR-126)
 
