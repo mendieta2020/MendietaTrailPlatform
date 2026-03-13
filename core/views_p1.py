@@ -37,6 +37,8 @@ from core.models import (
     PlannedWorkout,
     RaceEvent,
     WorkoutAssignment,
+    WorkoutBlock,
+    WorkoutInterval,
     WorkoutLibrary,
     WorkoutReconciliation,
 )
@@ -48,6 +50,9 @@ from core.serializers_p1 import (
     RaceEventSerializer,
     WorkoutAssignmentAthleteSerializer,
     WorkoutAssignmentSerializer,
+    WorkoutBlockReadSerializer,
+    WorkoutBlockSerializer,
+    WorkoutIntervalSerializer,
     WorkoutLibrarySerializer,
     WorkoutReconciliationSerializer,
 )
@@ -540,6 +545,171 @@ class PlannedWorkoutViewSet(OrgTenantMixin, viewsets.ModelViewSet):
                 organization=self.organization,
                 library_id=self.kwargs["library_id"],
                 created_by=self.request.user,
+            )
+        except DjangoValidationError as exc:
+            detail = exc.message_dict if hasattr(exc, "message_dict") else {"detail": str(exc)}
+            raise DRFValidationError(detail=detail)
+
+    def perform_update(self, serializer):
+        self._require_write_role()
+        try:
+            serializer.save()
+        except DjangoValidationError as exc:
+            detail = exc.message_dict if hasattr(exc, "message_dict") else {"detail": str(exc)}
+            raise DRFValidationError(detail=detail)
+
+    def perform_destroy(self, instance):
+        self._require_write_role()
+        instance.delete()
+
+
+class WorkoutBlockViewSet(OrgTenantMixin, viewsets.ModelViewSet):
+    """
+    CRUD for WorkoutBlock records nested under a PlannedWorkout.
+
+    URL: /api/p1/orgs/<org_id>/libraries/<library_id>/workouts/<workout_id>/blocks/
+
+    Tenancy: org, library, and workout are all validated in initial() — fail-closed
+    404 if any ancestor does not belong to self.organization.
+
+    Serializer dispatch:
+    - GET  → WorkoutBlockReadSerializer (includes nested intervals)
+    - write → WorkoutBlockSerializer (flat)
+
+    coach/owner: full CRUD.
+    athlete: read-only.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if getattr(self, "swagger_fake_view", False):
+            return
+        self.resolve_membership(self.kwargs["org_id"])
+        if not WorkoutLibrary.objects.filter(
+            pk=self.kwargs["library_id"], organization=self.organization
+        ).exists():
+            raise NotFound("Library not found.")
+        if not PlannedWorkout.objects.filter(
+            pk=self.kwargs["workout_id"],
+            organization=self.organization,
+            library_id=self.kwargs["library_id"],
+        ).exists():
+            raise NotFound("Workout not found.")
+
+    def get_queryset(self):
+        if not getattr(self, "organization", None):
+            return WorkoutBlock.objects.none()
+        return WorkoutBlock.objects.filter(
+            organization=self.organization,
+            planned_workout_id=self.kwargs["workout_id"],
+            planned_workout__library_id=self.kwargs["library_id"],
+        )
+
+    def get_serializer_class(self):
+        if self.request.method == "GET":
+            return WorkoutBlockReadSerializer
+        return WorkoutBlockSerializer
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        if getattr(self, "organization", None):
+            ctx["organization"] = self.organization
+        return ctx
+
+    def _require_write_role(self):
+        if self.membership.role not in _WRITE_ROLES:
+            raise PermissionDenied("Only coaches and owners can modify workout blocks.")
+
+    def perform_create(self, serializer):
+        self._require_write_role()
+        try:
+            serializer.save(
+                organization=self.organization,
+                planned_workout_id=self.kwargs["workout_id"],
+            )
+        except DjangoValidationError as exc:
+            detail = exc.message_dict if hasattr(exc, "message_dict") else {"detail": str(exc)}
+            raise DRFValidationError(detail=detail)
+
+    def perform_update(self, serializer):
+        self._require_write_role()
+        try:
+            serializer.save()
+        except DjangoValidationError as exc:
+            detail = exc.message_dict if hasattr(exc, "message_dict") else {"detail": str(exc)}
+            raise DRFValidationError(detail=detail)
+
+    def perform_destroy(self, instance):
+        self._require_write_role()
+        instance.delete()
+
+
+class WorkoutIntervalViewSet(OrgTenantMixin, viewsets.ModelViewSet):
+    """
+    CRUD for WorkoutInterval records nested under a WorkoutBlock.
+
+    URL: /api/p1/orgs/<org_id>/libraries/<library_id>/workouts/<workout_id>/blocks/<block_id>/intervals/
+
+    Tenancy: the full parent chain (library → workout → block) is validated in
+    initial() — fail-closed 404 if any ancestor does not belong to self.organization.
+
+    coach/owner: full CRUD.
+    athlete: read-only.
+    """
+
+    serializer_class = WorkoutIntervalSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if getattr(self, "swagger_fake_view", False):
+            return
+        self.resolve_membership(self.kwargs["org_id"])
+        if not WorkoutLibrary.objects.filter(
+            pk=self.kwargs["library_id"], organization=self.organization
+        ).exists():
+            raise NotFound("Library not found.")
+        if not PlannedWorkout.objects.filter(
+            pk=self.kwargs["workout_id"],
+            organization=self.organization,
+            library_id=self.kwargs["library_id"],
+        ).exists():
+            raise NotFound("Workout not found.")
+        if not WorkoutBlock.objects.filter(
+            pk=self.kwargs["block_id"],
+            organization=self.organization,
+            planned_workout_id=self.kwargs["workout_id"],
+        ).exists():
+            raise NotFound("Block not found.")
+
+    def get_queryset(self):
+        if not getattr(self, "organization", None):
+            return WorkoutInterval.objects.none()
+        return WorkoutInterval.objects.filter(
+            organization=self.organization,
+            block_id=self.kwargs["block_id"],
+            block__planned_workout_id=self.kwargs["workout_id"],
+            block__planned_workout__library_id=self.kwargs["library_id"],
+        )
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        if getattr(self, "organization", None):
+            ctx["organization"] = self.organization
+        return ctx
+
+    def _require_write_role(self):
+        if self.membership.role not in _WRITE_ROLES:
+            raise PermissionDenied("Only coaches and owners can modify workout intervals.")
+
+    def perform_create(self, serializer):
+        self._require_write_role()
+        try:
+            serializer.save(
+                organization=self.organization,
+                block_id=self.kwargs["block_id"],
             )
         except DjangoValidationError as exc:
             detail = exc.message_dict if hasattr(exc, "message_dict") else {"detail": str(exc)}
