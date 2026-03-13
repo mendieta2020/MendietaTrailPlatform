@@ -19,7 +19,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
-from core.models import Membership, Organization, PlannedWorkout, WorkoutLibrary
+from core.models import Membership, Organization, PlannedWorkout, WorkoutBlock, WorkoutInterval, WorkoutLibrary
 
 User = get_user_model()
 
@@ -72,6 +72,41 @@ def _workout_list_url(org_id, library_id):
 
 def _workout_detail_url(org_id, library_id, pk):
     return f"/api/p1/orgs/{org_id}/libraries/{library_id}/workouts/{pk}/"
+
+
+def _block(org, workout, order_index=1, block_type="warmup"):
+    return WorkoutBlock.objects.create(
+        organization=org,
+        planned_workout=workout,
+        order_index=order_index,
+        block_type=block_type,
+    )
+
+
+def _interval(org, block, order_index=1):
+    return WorkoutInterval.objects.create(
+        organization=org,
+        block=block,
+        order_index=order_index,
+        metric_type="free",
+        description="Test interval",
+    )
+
+
+def _block_list_url(org_id, library_id, workout_id):
+    return f"/api/p1/orgs/{org_id}/libraries/{library_id}/workouts/{workout_id}/blocks/"
+
+
+def _block_detail_url(org_id, library_id, workout_id, pk):
+    return f"/api/p1/orgs/{org_id}/libraries/{library_id}/workouts/{workout_id}/blocks/{pk}/"
+
+
+def _interval_list_url(org_id, library_id, workout_id, block_id):
+    return f"/api/p1/orgs/{org_id}/libraries/{library_id}/workouts/{workout_id}/blocks/{block_id}/intervals/"
+
+
+def _interval_detail_url(org_id, library_id, workout_id, block_id, pk):
+    return f"/api/p1/orgs/{org_id}/libraries/{library_id}/workouts/{workout_id}/blocks/{block_id}/intervals/{pk}/"
 
 
 # ==============================================================================
@@ -282,3 +317,161 @@ class TestTenancyIsolation:
     def test_unauthenticated_rejected(self):
         r = self.client.get(_library_list_url(self.org_a.pk))
         assert r.status_code == 401
+
+    def test_coach_cannot_access_other_org_block(self):
+        lib_b = _library(self.org_b, "Lib B")
+        workout_b = _workout(self.org_b, lib_b, "W-B")
+        block_b = _block(self.org_b, workout_b, order_index=1)
+        self.client.force_authenticate(user=self.coach_a)
+        r = self.client.get(
+            _block_detail_url(self.org_a.pk, lib_b.pk, workout_b.pk, block_b.pk)
+        )
+        assert r.status_code == 404
+
+    def test_coach_cannot_access_other_org_interval_via_cross_org_block_id(self):
+        lib_b = _library(self.org_b, "Lib B")
+        workout_b = _workout(self.org_b, lib_b, "W-B")
+        block_b = _block(self.org_b, workout_b, order_index=1)
+        interval_b = _interval(self.org_b, block_b, order_index=1)
+        self.client.force_authenticate(user=self.coach_a)
+        r = self.client.get(
+            _interval_detail_url(
+                self.org_a.pk, lib_b.pk, workout_b.pk, block_b.pk, interval_b.pk
+            )
+        )
+        assert r.status_code == 404
+
+
+# ==============================================================================
+# Group 4: WorkoutBlock CRUD
+# ==============================================================================
+
+@pytest.mark.django_db
+class TestWorkoutBlockCRUD:
+
+    def setup_method(self):
+        self.client = APIClient()
+        self.org = _org("BlockOrg")
+        self.coach_user = _user("block_coach")
+        _membership(self.coach_user, self.org, "coach")
+        self.library = _library(self.org, "Block Library")
+        self.workout = _workout(self.org, self.library, "Block Workout")
+
+    def test_coach_can_create_block(self):
+        self.client.force_authenticate(user=self.coach_user)
+        r = self.client.post(
+            _block_list_url(self.org.pk, self.library.pk, self.workout.pk),
+            {"order_index": 1, "block_type": "warmup", "name": "Warm-Up"},
+        )
+        assert r.status_code == 201
+        assert WorkoutBlock.objects.filter(
+            organization=self.org, planned_workout=self.workout, order_index=1
+        ).exists()
+
+    def test_coach_can_list_blocks_for_workout(self):
+        _block(self.org, self.workout, order_index=1)
+        _block(self.org, self.workout, order_index=2, block_type="main")
+        self.client.force_authenticate(user=self.coach_user)
+        r = self.client.get(
+            _block_list_url(self.org.pk, self.library.pk, self.workout.pk)
+        )
+        assert r.status_code == 200
+        results = r.data.get("results", r.data)
+        assert len(results) == 2
+
+    def test_block_in_wrong_workout_returns_404(self):
+        workout2 = _workout(self.org, self.library, "Workout 2")
+        block = _block(self.org, workout2, order_index=1)
+        self.client.force_authenticate(user=self.coach_user)
+        # Attempt to retrieve via self.workout's URL namespace — must 404
+        r = self.client.get(
+            _block_detail_url(self.org.pk, self.library.pk, self.workout.pk, block.pk)
+        )
+        assert r.status_code == 404
+
+    def test_coach_can_update_block(self):
+        block = _block(self.org, self.workout, order_index=1)
+        self.client.force_authenticate(user=self.coach_user)
+        r = self.client.patch(
+            _block_detail_url(self.org.pk, self.library.pk, self.workout.pk, block.pk),
+            {"name": "Updated Warm-Up"},
+        )
+        assert r.status_code == 200
+        block.refresh_from_db()
+        assert block.name == "Updated Warm-Up"
+
+    def test_coach_can_delete_block(self):
+        block = _block(self.org, self.workout, order_index=1)
+        self.client.force_authenticate(user=self.coach_user)
+        r = self.client.delete(
+            _block_detail_url(self.org.pk, self.library.pk, self.workout.pk, block.pk)
+        )
+        assert r.status_code == 204
+        assert not WorkoutBlock.objects.filter(pk=block.pk).exists()
+
+
+# ==============================================================================
+# Group 5: WorkoutInterval CRUD
+# ==============================================================================
+
+@pytest.mark.django_db
+class TestWorkoutIntervalCRUD:
+
+    def setup_method(self):
+        self.client = APIClient()
+        self.org = _org("IntervalOrg")
+        self.coach_user = _user("interval_coach")
+        _membership(self.coach_user, self.org, "coach")
+        self.library = _library(self.org, "Interval Library")
+        self.workout = _workout(self.org, self.library, "Interval Workout")
+        self.block = _block(self.org, self.workout, order_index=1, block_type="main")
+
+    def test_coach_can_create_interval(self):
+        self.client.force_authenticate(user=self.coach_user)
+        r = self.client.post(
+            _interval_list_url(
+                self.org.pk, self.library.pk, self.workout.pk, self.block.pk
+            ),
+            {"order_index": 1, "metric_type": "pace", "description": "5 × 1000m @ threshold"},
+        )
+        assert r.status_code == 201
+        assert WorkoutInterval.objects.filter(
+            organization=self.org, block=self.block, order_index=1
+        ).exists()
+
+    def test_coach_can_list_intervals_for_block(self):
+        _interval(self.org, self.block, order_index=1)
+        _interval(self.org, self.block, order_index=2)
+        self.client.force_authenticate(user=self.coach_user)
+        r = self.client.get(
+            _interval_list_url(
+                self.org.pk, self.library.pk, self.workout.pk, self.block.pk
+            )
+        )
+        assert r.status_code == 200
+        results = r.data.get("results", r.data)
+        assert len(results) == 2
+
+    def test_coach_can_update_interval(self):
+        interval = _interval(self.org, self.block, order_index=1)
+        self.client.force_authenticate(user=self.coach_user)
+        r = self.client.patch(
+            _interval_detail_url(
+                self.org.pk, self.library.pk, self.workout.pk, self.block.pk, interval.pk
+            ),
+            {"description": "Updated description"},
+        )
+        assert r.status_code == 200
+        interval.refresh_from_db()
+        assert interval.description == "Updated description"
+
+    def test_coach_can_delete_interval(self):
+        interval = _interval(self.org, self.block, order_index=1)
+        self.client.force_authenticate(user=self.coach_user)
+        r = self.client.delete(
+            _interval_detail_url(
+                self.org.pk, self.library.pk, self.workout.pk, self.block.pk, interval.pk
+            )
+        )
+        assert r.status_code == 204
+        assert not WorkoutInterval.objects.filter(pk=interval.pk).exists()

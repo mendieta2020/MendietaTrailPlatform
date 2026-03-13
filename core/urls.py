@@ -25,6 +25,8 @@ from core.views_p1 import (  # PR-115/116/117/119/128
     RaceEventViewSet,
     ReconciliationViewSet,
     WorkoutAssignmentViewSet,
+    WorkoutBlockViewSet,
+    WorkoutIntervalViewSet,
     WorkoutLibraryViewSet,
 )
 
@@ -243,6 +245,42 @@ urlpatterns = [
             'delete': 'destroy',
         }),
         name='p1-library-workout-detail',
+    ),
+
+    # ==============================================================================
+    # PR-128b: WorkoutBlock + WorkoutInterval CRUD
+    # URL: /api/p1/orgs/<org_id>/libraries/<library_id>/workouts/<workout_id>/blocks/
+    # Nested intervals: .../blocks/<block_id>/intervals/
+    # ==============================================================================
+    path(
+        'p1/orgs/<int:org_id>/libraries/<int:library_id>/workouts/<int:workout_id>/blocks/',
+        WorkoutBlockViewSet.as_view({'get': 'list', 'post': 'create'}),
+        name='p1-workout-block-list',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/libraries/<int:library_id>/workouts/<int:workout_id>/blocks/<int:pk>/',
+        WorkoutBlockViewSet.as_view({
+            'get': 'retrieve',
+            'put': 'update',
+            'patch': 'partial_update',
+            'delete': 'destroy',
+        }),
+        name='p1-workout-block-detail',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/libraries/<int:library_id>/workouts/<int:workout_id>/blocks/<int:block_id>/intervals/',
+        WorkoutIntervalViewSet.as_view({'get': 'list', 'post': 'create'}),
+        name='p1-workout-interval-list',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/libraries/<int:library_id>/workouts/<int:workout_id>/blocks/<int:block_id>/intervals/<int:pk>/',
+        WorkoutIntervalViewSet.as_view({
+            'get': 'retrieve',
+            'put': 'update',
+            'patch': 'partial_update',
+            'delete': 'destroy',
+        }),
+        name='p1-workout-interval-detail',
     ),
 
     # ==============================================================================
