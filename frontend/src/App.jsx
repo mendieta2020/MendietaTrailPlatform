@@ -16,6 +16,7 @@ import Teams from './pages/Teams';
 import TeamDetail from './pages/TeamDetail';
 import Alerts from './pages/Alerts';
 import Connections from './pages/Connections';
+import CoachDashboard from './pages/CoachDashboard';
 import { useAuth } from './context/AuthContext';
 
 // 3. Páginas públicas (sin autenticación requerida)
@@ -76,7 +77,17 @@ function App() {
             }
           />
 
-          {/* 2. Calendario de Temporada */}
+          {/* 2. Mi Organización (Coach Dashboard P1) */}
+          <Route
+            path="/coach-dashboard"
+            element={
+              <ProtectedRoute>
+                <CoachDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* 3. Calendario de Temporada */}
           <Route
             path="/calendar"
             element={

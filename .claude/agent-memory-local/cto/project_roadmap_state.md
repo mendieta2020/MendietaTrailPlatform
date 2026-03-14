@@ -4,12 +4,12 @@ description: Current state of P1 roadmap — last completed PR, next PR to ship,
 type: project
 ---
 
-Last completed PR: PR-130 (Tenancy Isolation Sweep — Roster ViewSets, 35 tests, merged 2026-03-14)
+Last completed PR: PR-131a (SessionStatusView returns memberships, merged 2026-03-14)
 
 **Why:** Track roadmap progress to dictate next PR correctly.
 **How to apply:** Use this to determine the next logical PR when the developer asks.
 
-Next PR: PR-131 — Frontend Coach Dashboard (first P1 UI connected to real P1 APIs). Requires a prerequisite backend micro-PR (PR-131a) to add org_id + memberships to SessionStatusView response.
+Next PR: PR-131b — Frontend OrgContext + P1 API services + CoachDashboard with roster cards. First P1 frontend PR connecting to real P1 backend APIs.
 
 P1 backend APIs completed (all with tenancy isolation tests):
 - Organization, Team, Membership, Coach, Athlete, AthleteCoachAssignment (PR-129 + PR-130)
@@ -18,8 +18,21 @@ P1 backend APIs completed (all with tenancy isolation tests):
 - WorkoutAssignment, WorkoutReconciliation (prior capsule PRs)
 - AthleteProfile, RaceEvent, AthleteGoal (PR-115/116)
 - Athlete Weekly Adherence (PR-119)
+- SessionStatusView with memberships (PR-131a)
 
 P1 frontend: no P1 API calls exist yet in frontend. All current pages call legacy /api/ endpoints.
+PR-131b will be the FIRST frontend PR consuming P1 APIs.
+
+SessionStatusView response contract (PR-131a):
+```json
+{
+  "username": "...",
+  "id": 1,
+  "memberships": [
+    {"org_id": 1, "org_name": "Org Name", "role": "coach", "is_active": true}
+  ]
+}
+```
 
 Test coverage milestones:
 - PR-123: 69 tenancy isolation tests for 8 legacy ViewSets

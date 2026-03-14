@@ -12,7 +12,8 @@ import {
   Groups,         // <--- NUEVO ICONO PARA GRUPOS
   Link as LinkIcon,  // Icono para Conexiones
   Logout,         // Icono para Cerrar Sesión
-  Settings        // Icono para Configuración (Futuro)
+  Settings,       // Icono para Configuración (Futuro)
+  Business        // Icono para Mi Organización
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { logoutSession } from '../api/authClient';
@@ -46,6 +47,7 @@ const Layout = ({ children }) => {
   // DEFINICIÓN DEL MENÚ LATERAL
   const menuItems = [
     { text: 'Inicio', icon: <Dashboard />, path: '/dashboard' },
+    { text: 'Mi Organización', icon: <Business />, path: '/coach-dashboard' },
     { text: 'Calendario', icon: <CalendarMonth />, path: '/calendar' },
     { text: 'Grupos', icon: <Groups />, path: '/teams' },
     { text: 'Alumnos', icon: <People />, path: '/athletes' },
