@@ -8,9 +8,10 @@
 - Release Lockdown Mode: LIFTED — P1 feature work authorized
 
 ## P1 Roadmap (PR-127 to PR-131)
-- PR-127: CONSTITUTION.md P1 upgrade + Law 4 provider boundary fix
-- PR-128: WorkoutLibrary + PlannedWorkout CRUD API (org-scoped)
-- PR-129: Coach + Athlete + Team roster API (org-scoped)
+- PR-127: CONSTITUTION.md P1 upgrade + Law 4 provider boundary fix [DONE]
+- PR-128a: WorkoutLibrary + PlannedWorkout CRUD API (org-scoped) [DONE]
+- PR-128b: WorkoutBlock + WorkoutInterval CRUD API (org-scoped) [DONE]
+- PR-129: Coach + Athlete + Team roster API (org-scoped) [NEXT]
 - PR-130: P1 tenancy isolation test sweep (new ViewSets)
 - PR-131: Frontend coach dashboard — connect to P1 API
 
@@ -27,13 +28,16 @@
 - PR-124: Fix CarreraViewSet — added entrenador FK to Carrera (migration 0074). FINDING-123-A resolved. 876 tests green.
 - PR-125: Webhook idempotency test sweep — 13 tests in 5 groups. All gaps closed.
 - PR-126: OAuth critical path hardening — 10 tests for disconnect + start edge cases. 900 tests green.
+- PR-127: CONSTITUTION.md P1 upgrade + Law 4 provider boundary fix. Tests green.
+- PR-128a: WorkoutLibrary + PlannedWorkout CRUD API (org-scoped). ViewSets, serializers, URLs under /api/p1/orgs/<org_id>/libraries/. Tests CI green.
+- PR-128b: WorkoutBlock + WorkoutInterval CRUD API. Nested under library/workout. Tests CI green.
 
 ## Deferred Items (from P0, tracked for P1/P2)
 1. API versioning (/api/v1/) — high risk, deferred to P2 [P2]
 2. Alert delivery channel — AlertaRendimiento exists but no dispatch [P1]
 3. HistorialFitness + PMCHistory — dual PMC stores, ambiguous lineage [P2]
-4. integration_views.py:230 — provider boundary violation (Law 4) [PR-127 target]
-5. core/services.py:33 — imports from integrations.outbound (Law 4 adjacent) [PR-127 target]
+4. [RESOLVED PR-127] integration_views.py:230 — provider boundary violation (Law 4)
+5. [RESOLVED PR-127] core/services.py:33 — imports from integrations.outbound (Law 4 adjacent)
 
 ## P1 API Surface — What Exists vs What's Missing
 ### Already built (PRs 115-119):
@@ -44,13 +48,18 @@
 - ReconciliationViewSet: /api/p1/orgs/<org_id>/assignments/<id>/reconciliation/
 - AthleteAdherenceViewSet: /api/p1/orgs/<org_id>/athletes/<id>/adherence/
 
+### Built (PRs 128a/128b):
+- WorkoutLibraryViewSet: /api/p1/orgs/<org_id>/libraries/
+- PlannedWorkoutViewSet: /api/p1/orgs/<org_id>/libraries/<library_id>/workouts/
+- WorkoutBlockViewSet: .../workouts/<workout_id>/blocks/
+- WorkoutIntervalViewSet: .../blocks/<block_id>/intervals/
+
 ### Missing (P1 gaps):
-- WorkoutLibrary CRUD (model exists, no API)
-- PlannedWorkout CRUD under library (model exists, no org-first API — legacy AlumnoPlannedWorkoutViewSet only)
 - Coach roster API (model exists, no API)
 - Athlete roster API (model exists, no API)
 - Team management API (model exists, no API)
 - Membership management API (model exists, no API)
+- AthleteCoachAssignment API (service layer exists in services_assignment.py, no API)
 
 ## Architecture Notes
 - core/urls.py: legacy routes at /api/ root, P1 routes under /api/p1/orgs/<org_id>/
