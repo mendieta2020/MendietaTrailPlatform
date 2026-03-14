@@ -2,6 +2,8 @@ from django.contrib.auth import get_user_model
 from django.test import override_settings
 from rest_framework.test import APITestCase
 
+from core.models import Membership, Organization
+
 
 class AuthHardeningTests(APITestCase):
     def setUp(self):
@@ -94,3 +96,88 @@ class AuthHardeningTests(APITestCase):
         self.assertIn("refresh", response.data)
         self.assertNotIn("mt_access", response.cookies)
         self.assertNotIn("mt_refresh", response.cookies)
+
+
+User = get_user_model()
+
+
+def _make_org(name, slug=None):
+    import uuid
+    slug = slug or name.lower().replace(" ", "-") + "-" + uuid.uuid4().hex[:6]
+    return Organization.objects.create(name=name, slug=slug)
+
+
+class SessionStatusMembershipsTests(APITestCase):
+    SESSION_URL = "/api/auth/session/"
+
+    def _login(self, user, password="pass-123"):
+        response = self.client.post(
+            "/api/token/",
+            {"username": user.username, "password": password},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.client.credentials(
+            HTTP_AUTHORIZATION="Bearer " + response.data["access"]
+        )
+
+    def test_session_returns_memberships(self):
+        """User with 1 active membership: response includes it with correct fields."""
+        user = User.objects.create_user(username="u_single", password="pass-123")
+        org = _make_org("Trail Academy")
+        Membership.objects.create(user=user, organization=org, role="coach", is_active=True)
+
+        self._login(user)
+        response = self.client.get(self.SESSION_URL)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("memberships", response.data)
+        self.assertEqual(len(response.data["memberships"]), 1)
+        m = response.data["memberships"][0]
+        self.assertEqual(m["org_id"], org.id)
+        self.assertEqual(m["org_name"], org.name)
+        self.assertEqual(m["role"], "coach")
+        self.assertTrue(m["is_active"])
+
+    def test_session_excludes_inactive_memberships(self):
+        """Only active memberships are returned; inactive ones are excluded."""
+        user = User.objects.create_user(username="u_inactive", password="pass-123")
+        org_active = _make_org("Active Org")
+        org_inactive = _make_org("Inactive Org")
+        Membership.objects.create(user=user, organization=org_active, role="owner", is_active=True)
+        Membership.objects.create(user=user, organization=org_inactive, role="athlete", is_active=False)
+
+        self._login(user)
+        response = self.client.get(self.SESSION_URL)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data["memberships"]), 1)
+        self.assertEqual(response.data["memberships"][0]["org_id"], org_active.id)
+
+    def test_session_no_memberships(self):
+        """User with no memberships returns an empty list, not an error."""
+        user = User.objects.create_user(username="u_nomem", password="pass-123")
+
+        self._login(user)
+        response = self.client.get(self.SESSION_URL)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("memberships", response.data)
+        self.assertEqual(response.data["memberships"], [])
+
+    def test_session_multiple_orgs(self):
+        """User with memberships in 2 orgs: both appear in the response."""
+        user = User.objects.create_user(username="u_multi", password="pass-123")
+        org1 = _make_org("Org One")
+        org2 = _make_org("Org Two")
+        Membership.objects.create(user=user, organization=org1, role="owner", is_active=True)
+        Membership.objects.create(user=user, organization=org2, role="coach", is_active=True)
+
+        self._login(user)
+        response = self.client.get(self.SESSION_URL)
+
+        self.assertEqual(response.status_code, 200)
+        org_ids = {m["org_id"] for m in response.data["memberships"]}
+        self.assertIn(org1.id, org_ids)
+        self.assertIn(org2.id, org_ids)
+        self.assertEqual(len(response.data["memberships"]), 2)

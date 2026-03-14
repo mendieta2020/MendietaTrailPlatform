@@ -7,6 +7,8 @@ from rest_framework.settings import api_settings
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
+from core.models import Membership
+
 
 def _get_lifetime_seconds(lifetime):
     try:
@@ -117,9 +119,24 @@ class SessionStatusView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        memberships = (
+            Membership.objects.filter(user=request.user, is_active=True)
+            .select_related("organization")
+            .order_by("organization_id")
+        )
+        membership_list = [
+            {
+                "org_id": m.organization_id,
+                "org_name": m.organization.name,
+                "role": m.role,
+                "is_active": m.is_active,
+            }
+            for m in memberships
+        ]
         return Response(
             {
                 "username": request.user.username,
                 "id": request.user.id,
+                "memberships": membership_list,
             }
         )
