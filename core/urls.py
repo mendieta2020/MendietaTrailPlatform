@@ -29,6 +29,13 @@ from core.views_p1 import (  # PR-115/116/117/119/128
     WorkoutIntervalViewSet,
     WorkoutLibraryViewSet,
 )
+from core.views_p1_roster import (  # PR-129
+    AthleteCoachAssignmentViewSet,
+    AthleteRosterViewSet,
+    CoachViewSet,
+    MembershipViewSet,
+    TeamViewSet,
+)
 
 # Creamos el router para la API REST estándar
 router = DefaultRouter()
@@ -292,5 +299,98 @@ urlpatterns = [
         'p1/orgs/<int:org_id>/athletes/<int:athlete_id>/adherence/',
         AthleteAdherenceViewSet.as_view({'get': 'retrieve'}),
         name='p1-athlete-adherence',
+    ),
+
+    # ==============================================================================
+    # PR-129: Roster API — Coach, Athlete (roster), Team, Membership,
+    #         AthleteCoachAssignment
+    # All routes are organization-scoped: org is derived from org_id in the URL,
+    # never from the request body.
+    # NOTE: AthleteRosterViewSet uses /roster/athletes/ to avoid collision with
+    #       the existing /athletes/<athlete_id>/adherence/ route above.
+    # ==============================================================================
+
+    # Coach CRUD
+    path(
+        'p1/orgs/<int:org_id>/coaches/',
+        CoachViewSet.as_view({'get': 'list', 'post': 'create'}),
+        name='p1-coach-list',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/coaches/<int:pk>/',
+        CoachViewSet.as_view({
+            'get': 'retrieve',
+            'put': 'update',
+            'patch': 'partial_update',
+            'delete': 'destroy',
+        }),
+        name='p1-coach-detail',
+    ),
+
+    # Athlete Roster CRUD
+    path(
+        'p1/orgs/<int:org_id>/roster/athletes/',
+        AthleteRosterViewSet.as_view({'get': 'list', 'post': 'create'}),
+        name='p1-roster-athlete-list',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/roster/athletes/<int:pk>/',
+        AthleteRosterViewSet.as_view({
+            'get': 'retrieve',
+            'put': 'update',
+            'patch': 'partial_update',
+            'delete': 'destroy',
+        }),
+        name='p1-roster-athlete-detail',
+    ),
+
+    # Team CRUD
+    path(
+        'p1/orgs/<int:org_id>/teams/',
+        TeamViewSet.as_view({'get': 'list', 'post': 'create'}),
+        name='p1-team-list',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/teams/<int:pk>/',
+        TeamViewSet.as_view({
+            'get': 'retrieve',
+            'put': 'update',
+            'patch': 'partial_update',
+            'delete': 'destroy',
+        }),
+        name='p1-team-detail',
+    ),
+
+    # Membership (no destroy)
+    path(
+        'p1/orgs/<int:org_id>/memberships/',
+        MembershipViewSet.as_view({'get': 'list', 'post': 'create'}),
+        name='p1-membership-list',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/memberships/<int:pk>/',
+        MembershipViewSet.as_view({
+            'get': 'retrieve',
+            'put': 'update',
+            'patch': 'partial_update',
+        }),
+        name='p1-membership-detail',
+    ),
+
+    # AthleteCoachAssignment (list, create, retrieve, end)
+    path(
+        'p1/orgs/<int:org_id>/coach-assignments/',
+        AthleteCoachAssignmentViewSet.as_view({'get': 'list', 'post': 'create'}),
+        name='p1-coach-assignment-list',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/coach-assignments/<int:pk>/',
+        AthleteCoachAssignmentViewSet.as_view({'get': 'retrieve'}),
+        name='p1-coach-assignment-detail',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/coach-assignments/<int:pk>/end/',
+        AthleteCoachAssignmentViewSet.as_view({'post': 'end'}),
+        name='p1-coach-assignment-end',
     ),
 ]
