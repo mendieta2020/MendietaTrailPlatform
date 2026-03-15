@@ -275,9 +275,43 @@ class WorkoutAssignmentViewSet(
     def get_queryset(self):
         if not getattr(self, "organization", None):
             return WorkoutAssignment.objects.none()
-        qs = WorkoutAssignment.objects.filter(organization=self.organization)
+        qs = WorkoutAssignment.objects.filter(
+            organization=self.organization
+        ).select_related("planned_workout")
         if self.membership.role == "athlete":
             qs = qs.filter(athlete__user=self.request.user)
+        else:
+            # Coach/owner only: optional athlete_id filter.
+            athlete_id = self.request.query_params.get("athlete_id")
+            if athlete_id:
+                try:
+                    qs = qs.filter(athlete_id=int(athlete_id))
+                except (ValueError, TypeError):
+                    raise DRFValidationError(
+                        {"athlete_id": "Must be a positive integer."}
+                    )
+
+        # Date range filters apply to both roles.
+        date_from = self.request.query_params.get("date_from")
+        if date_from:
+            try:
+                qs = qs.filter(
+                    scheduled_date__gte=datetime.date.fromisoformat(date_from)
+                )
+            except ValueError:
+                raise DRFValidationError(
+                    {"date_from": "Invalid date format. Use YYYY-MM-DD."}
+                )
+        date_to = self.request.query_params.get("date_to")
+        if date_to:
+            try:
+                qs = qs.filter(
+                    scheduled_date__lte=datetime.date.fromisoformat(date_to)
+                )
+            except ValueError:
+                raise DRFValidationError(
+                    {"date_to": "Invalid date format. Use YYYY-MM-DD."}
+                )
         return qs
 
     def get_serializer_class(self):
