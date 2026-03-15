@@ -32,7 +32,7 @@ function rosterReducer(state, action) {
   }
 }
 
-export default function RosterSection({ orgId }) {
+export default function RosterSection({ orgId, onSelectAthlete }) {
   const [tab, setTab] = React.useState(0);
   const [state, dispatch] = useReducer(rosterReducer, initialState);
 
@@ -93,7 +93,12 @@ export default function RosterSection({ orgId }) {
         <Grid container spacing={2}>
           {items.map((item) => (
             <Grid item xs={12} sm={6} md={4} key={item.id}>
-              <Card {...{ [prop]: item }} />
+              <Box
+                onClick={prop === 'athlete' && onSelectAthlete ? () => onSelectAthlete(item.id) : undefined}
+                sx={prop === 'athlete' && onSelectAthlete ? { cursor: 'pointer' } : undefined}
+              >
+                <Card {...{ [prop]: item }} />
+              </Box>
             </Grid>
           ))}
         </Grid>
