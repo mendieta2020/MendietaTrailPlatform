@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Box, Typography, Paper, Alert, CircularProgress, Chip } from '@mui/material';
 import Layout from '../components/Layout';
 import RosterSection from '../components/roster/RosterSection';
+import AssignmentCalendar from '../components/AssignmentCalendar';
 import { useOrg } from '../context/OrgContext';
 
 export default function CoachDashboard() {
   const { activeOrg, orgLoading } = useOrg();
+  const [selectedAthleteId, setSelectedAthleteId] = useState(null);
 
   if (orgLoading) {
     return (
@@ -38,7 +40,10 @@ export default function CoachDashboard() {
         </Box>
       </Paper>
 
-      <RosterSection orgId={activeOrg.org_id} />
+      <RosterSection orgId={activeOrg.org_id} onSelectAthlete={setSelectedAthleteId} />
+      {selectedAthleteId !== null && (
+        <AssignmentCalendar athleteId={selectedAthleteId} orgId={activeOrg.org_id} />
+      )}
     </Layout>
   );
 }
