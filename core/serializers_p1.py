@@ -193,6 +193,7 @@ _ASSIGNMENT_FIELDS = [
     "id",
     "athlete_id",
     "planned_workout_id",
+    "planned_workout_title",
     "assigned_by_id",
     "scheduled_date",
     "athlete_moved_date",
@@ -417,6 +418,7 @@ class WorkoutAssignmentSerializer(serializers.ModelSerializer):
         source="planned_workout",
         queryset=PlannedWorkout.objects.none(),
     )
+    planned_workout_title = serializers.SerializerMethodField()
     assigned_by_id = serializers.PrimaryKeyRelatedField(
         source="assigned_by",
         read_only=True,
@@ -429,6 +431,7 @@ class WorkoutAssignmentSerializer(serializers.ModelSerializer):
         fields = _ASSIGNMENT_FIELDS
         read_only_fields = [
             "id",
+            "planned_workout_title",
             "assigned_by_id",
             "snapshot_version",
             "assigned_at",
@@ -436,6 +439,11 @@ class WorkoutAssignmentSerializer(serializers.ModelSerializer):
             "effective_date",
         ]
         validators = []
+
+    def get_planned_workout_title(self, obj):
+        if obj.planned_workout_id is None:
+            return None
+        return obj.planned_workout.name
 
     def get_effective_date(self, obj):
         return obj.effective_date
@@ -473,6 +481,7 @@ class WorkoutAssignmentAthleteSerializer(serializers.ModelSerializer):
         source="planned_workout",
         read_only=True,
     )
+    planned_workout_title = serializers.SerializerMethodField()
     assigned_by_id = serializers.PrimaryKeyRelatedField(
         source="assigned_by",
         read_only=True,
@@ -487,6 +496,7 @@ class WorkoutAssignmentAthleteSerializer(serializers.ModelSerializer):
             "id",
             "athlete_id",
             "planned_workout_id",
+            "planned_workout_title",
             "assigned_by_id",
             "scheduled_date",
             "day_order",
@@ -502,6 +512,11 @@ class WorkoutAssignmentAthleteSerializer(serializers.ModelSerializer):
             "effective_date",
         ]
         validators = []
+
+    def get_planned_workout_title(self, obj):
+        if obj.planned_workout_id is None:
+            return None
+        return obj.planned_workout.name
 
     def get_effective_date(self, obj):
         return obj.effective_date
