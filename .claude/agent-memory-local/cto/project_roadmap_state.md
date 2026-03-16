@@ -4,33 +4,31 @@ description: Current state of P1 roadmap — last completed PR, next PR to ship,
 type: project
 ---
 
-Last completed PR: PR-132 (Backend WorkoutAssignment filters + planned_workout_title, merged 2026-03-15)
+Last completed PR: PR-131c (Frontend AssignmentCalendar, merged 2026-03-16) + PR-132 (Backend WorkoutAssignment filters, merged 2026-03-15) + fix/auth-members-login (merged 2026-03-16)
 
 **Why:** Track roadmap progress to dictate next PR correctly.
 **How to apply:** Use this to determine the next logical PR when the developer asks.
 
-Next PR: PR-131c — Frontend: AssignmentCalendar component in CoachDashboard. Uses react-big-calendar + date-fns to show WorkoutAssignment events for a selected athlete in the active org.
+Next PR: PR-133 — Tenancy isolation test sweep for Workout ViewSets (WorkoutLibrary, PlannedWorkout, WorkoutBlock, WorkoutInterval, WorkoutAssignment). Mirrors the PR-130 pattern.
 
-P1 backend APIs completed (all with tenancy isolation tests):
-- Organization, Team, Membership, Coach, Athlete, AthleteCoachAssignment (PR-129 + PR-130)
-- WorkoutLibrary, PlannedWorkout (PR-128a)
-- WorkoutBlock, WorkoutInterval (PR-128b)
-- WorkoutAssignment with filters: athlete_id, date_from, date_to, status, workout_library_id (PR-132)
-- WorkoutReconciliation (prior capsule PRs)
-- AthleteProfile, RaceEvent, AthleteGoal (PR-115/116)
+P1 backend APIs completed:
+- Organization, Team, Membership, Coach, Athlete, AthleteCoachAssignment (PR-129 + PR-130 tenancy)
+- WorkoutLibrary, PlannedWorkout (PR-128a) -- NO tenancy sweep yet
+- WorkoutBlock, WorkoutInterval (PR-128b) -- NO tenancy sweep yet
+- WorkoutAssignment with filters (PR-132) -- NO tenancy sweep yet
+- WorkoutReconciliation (prior capsule PRs) -- NO tenancy sweep yet
+- AthleteProfile, RaceEvent, AthleteGoal (PR-115/116) -- NO tenancy sweep yet
 - Athlete Weekly Adherence (PR-119)
 - SessionStatusView with memberships (PR-131a)
 
 P1 frontend completed:
 - OrgContext (multi-org switcher) + CoachDashboard + RosterSection (PR-131b)
+- AssignmentCalendar in CoachDashboard (PR-131c)
 
-WorkoutAssignment API shape (after PR-132):
-- Endpoint: GET /api/p1/orgs/<org_id>/assignments/?athlete_id=&date_from=&date_to=&status=&workout_library_id=
-- Response fields: id, athlete_id, planned_workout_id, planned_workout_title, assigned_by_id,
-  scheduled_date, athlete_moved_date, day_order, status, coach_notes, athlete_notes,
-  target_zone_override, target_pace_override, target_rpe_override, target_power_override,
-  snapshot_version, assigned_at, updated_at, effective_date
-- planned_workout_title: derived from planned_workout.name (read-only SerializerMethodField)
+TENANCY SWEEP DEBT:
+- PR-130 covered: CoachViewSet, AthleteRosterViewSet, TeamViewSet, MembershipViewSet, AthleteCoachAssignmentViewSet
+- PR-133 target: WorkoutLibraryViewSet, PlannedWorkoutViewSet, WorkoutBlockViewSet, WorkoutIntervalViewSet, WorkoutAssignmentViewSet
+- Still pending after PR-133: RaceEventViewSet, AthleteGoalViewSet, AthleteProfileViewSet, ReconciliationViewSet, AthleteAdherenceViewSet
 
 Test coverage milestones:
 - PR-123: 69 tenancy isolation tests for 8 legacy ViewSets
