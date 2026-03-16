@@ -47,7 +47,8 @@ export const AuthProvider = ({ children }) => {
         try {
             await loginWithCredentials({ username, password });
 
-            setUser({ username });
+            const { data } = await fetchSession();
+            setUser(data);
             if (import.meta.env.DEV) {
                 console.debug('[Auth] login success');
             }
