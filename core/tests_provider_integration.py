@@ -281,7 +281,7 @@ class TestGenericOAuthCallback:
 # PR8: Provider Registry Hardening — Protective Tests
 # ===========================================================================
 
-DISABLED_PROVIDERS = ["garmin", "coros", "suunto", "polar", "wahoo"]
+DISABLED_PROVIDERS = ["garmin", "coros", "polar", "wahoo"]
 
 
 @pytest.mark.django_db

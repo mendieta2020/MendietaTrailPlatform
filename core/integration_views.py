@@ -512,6 +512,13 @@ class IntegrationDisconnectView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Guard: provider exists but is not enabled — cannot disconnect what was never connectable
+        if not getattr(provider_obj, "enabled", False):
+            return Response(
+                {"error": "unsupported", "message": f"Provider '{provider}' is not enabled"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # --- Structured log: start ---
         logger.info(
             "oauth.disconnect.start",
@@ -607,10 +614,11 @@ class IntegrationDisconnectView(APIView):
         )
 
         # --- Structured log: done ---
+        disconnect_done_event = f"{provider}.disconnect.done"
         logger.info(
-            "oauth.disconnect.done",
+            disconnect_done_event,
             extra={
-                "event_name": "oauth.disconnect.done",
+                "event_name": disconnect_done_event,
                 "user_id": request.user.id,
                 "organization_id": organization_id,
                 "provider": provider,
