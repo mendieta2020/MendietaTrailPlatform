@@ -739,10 +739,10 @@ class ExternalIdentity(models.Model):
 
     class Provider(models.TextChoices):
         STRAVA = "strava", "strava"
+        SUUNTO = "suunto", "suunto"
         # Futuros providers:
         # GARMIN = "garmin", "garmin"
         # COROS = "coros", "coros"
-        # SUUNTO = "suunto", "suunto"
 
     class Status(models.TextChoices):
         UNLINKED = "unlinked", "unlinked"

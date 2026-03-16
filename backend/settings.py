@@ -93,6 +93,9 @@ else:
 # - opcional para tests y para comandos de management (migrate/makemigrations/etc)
 STRAVA_CLIENT_ID = get_env_variable("STRAVA_CLIENT_ID", default="", required=(REQUIRE_RUNTIME_SECRETS and not DEBUG))
 STRAVA_CLIENT_SECRET = get_env_variable("STRAVA_CLIENT_SECRET", default="", required=(REQUIRE_RUNTIME_SECRETS and not DEBUG))
+
+SUUNTO_CLIENT_ID = get_env_variable("SUUNTO_CLIENT_ID", default="", required=False)
+SUUNTO_CLIENT_SECRET = get_env_variable("SUUNTO_CLIENT_SECRET", default="", required=False)
 STRAVA_WEBHOOK_VERIFY_TOKEN = get_env_variable(
     "STRAVA_WEBHOOK_VERIFY_TOKEN",
     default="",

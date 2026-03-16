@@ -1,12 +1,7 @@
 """
-Suunto OAuth integration provider — STUB (disabled).
+Suunto OAuth integration provider.
 
-Status: Coming Soon — not yet enabled for production.
-
-Notes:
-- Suunto uses OAuth 2.0 authorization code flow.
-- Requires SUUNTO_CLIENT_ID + SUUNTO_CLIENT_SECRET in settings.
-- API docs: https://www.suunto.com/en-gb/sports-tech/suunto-developer-program/
+Delegates all provider-specific logic to integrations/suunto/oauth.py (Law 4).
 """
 from typing import Dict
 
@@ -15,10 +10,11 @@ from .base import IntegrationProvider
 
 class SuuntoProvider(IntegrationProvider):
     """
-    Suunto integration provider stub.
+    Suunto integration provider — OAuth 2.0 authorization code flow.
 
-    enabled=False: Not yet implemented. Provider is registered in the
-    catalog so the frontend can show "Coming Soon" state.
+    All Suunto-specific URLs and response parsing are isolated in
+    integrations/suunto/oauth.py. This provider class is the domain-layer
+    entry point and MUST NOT contain any Suunto-specific HTTP logic.
     """
 
     @property
@@ -31,30 +27,24 @@ class SuuntoProvider(IntegrationProvider):
 
     @property
     def enabled(self) -> bool:
-        return False
+        return True
 
     def capabilities(self) -> Dict[str, bool]:
         return {
-            "supports_refresh": False,
-            "supports_activity_fetch": False,
-            "supports_webhooks": False,
+            "supports_refresh": True,
+            "supports_activity_fetch": False,  # Phase 2
+            "supports_webhooks": False,         # Phase 2
             "supports_workout_push": False,
         }
 
     def get_oauth_authorize_url(self, state: str, callback_uri: str) -> str:
-        raise NotImplementedError(
-            "SuuntoProvider is not yet implemented. "
-            "Provider must be enabled before use."
-        )
+        from integrations.suunto.oauth import build_authorize_url
+        return build_authorize_url(state, callback_uri)
 
     def exchange_code_for_token(self, code: str, callback_uri: str) -> Dict:
-        raise NotImplementedError(
-            "SuuntoProvider is not yet implemented. "
-            "Provider must be enabled before use."
-        )
+        from integrations.suunto.oauth import exchange_code_for_token
+        return exchange_code_for_token(code, callback_uri)
 
     def get_external_user_id(self, token_data: Dict) -> str:
-        raise NotImplementedError(
-            "SuuntoProvider is not yet implemented. "
-            "Provider must be enabled before use."
-        )
+        from integrations.suunto.oauth import get_external_user_id
+        return get_external_user_id(token_data)
