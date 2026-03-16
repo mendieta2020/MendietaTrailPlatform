@@ -1,11 +1,14 @@
 # integrations/suunto/ — Suunto Sports Tracking Services integration layer
-# Status: STUB — not yet implemented.
+# Phase 2: FIT ingestion implemented (PR-135).
+# Phase 1: OAuth flow (oauth.py). Status: active.
 #
-# Modules (to be populated when vendor access is granted):
-#   provider.py  — SuuntoProviderAdapter (OAuth 2.0 flow + webhook ingestion)
+# Modules:
+#   oauth.py                   — OAuth 2.0 flow helpers
+#   client.py                  — Suunto API HTTP client
+#   parser.py                  — .FIT binary parser
+#   services_suunto_ingest.py  — Idempotent ingestion into CompletedActivity
+#   tasks.py                   — Celery fan-out tasks
 #
 # Notes:
-#   Suunto uses OAuth 2.0 authorization code flow.
-#   Requires SUUNTO_CLIENT_ID + SUUNTO_CLIENT_SECRET in settings.
-#   Suunto STS API supports webhooks for live activity delivery.
-#   API reference: https://www.suunto.com/en-gb/sports-tech/suunto-developer-program/
+#   Requires SUUNTO_CLIENT_ID, SUUNTO_CLIENT_SECRET, SUUNTO_SUBSCRIPTION_KEY in settings.
+#   Requires fitparse in requirements.txt.
