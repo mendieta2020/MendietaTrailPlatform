@@ -7,7 +7,7 @@ export function listCoaches(orgId) {
 }
 
 export function listAthletes(orgId) {
-  return client.get(`${p1Base(orgId)}/athletes/`);
+  return client.get(`${p1Base(orgId)}/roster/athletes/`);
 }
 
 export function listTeams(orgId) {
@@ -15,7 +15,7 @@ export function listTeams(orgId) {
 }
 
 export function getAthlete(orgId, id) {
-  return client.get(`${p1Base(orgId)}/athletes/${id}/`);
+  return client.get(`${p1Base(orgId)}/roster/athletes/${id}/`);
 }
 
 export function listMemberships(orgId) {
