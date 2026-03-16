@@ -359,6 +359,257 @@ class StravaWebhookView(APIView):
         return strava_webhook(request._request)
 
 
+# ==============================================================================
+#  SUUNTO WEBHOOK
+# ==============================================================================
+
+def suunto_webhook(request):
+    """
+    Suunto webhook endpoint — real-time workout delivery.
+
+    Accepts POST only (Suunto does not require a GET handshake challenge).
+    Flow:
+      1. Validate Ocp-Apim-Subscription-Key header (fail-closed 403).
+      2. Parse JSON body and extract username + workout_key (400 on bad payload).
+      3. Compute deterministic event_uid; StravaWebhookEvent.get_or_create.
+      4. If duplicate → noop 200.
+      5. If new + unlinked identity → LINK_REQUIRED, 200 (will retry on link).
+      6. If new + linked → enqueue suunto.ingest_workout, 200.
+
+    Law 4: Provider-specific logic delegated to integrations/suunto/webhook.py.
+    Law 5: Idempotency guaranteed by event_uid UniqueConstraint.
+    Law 6: No tokens or keys are ever logged.
+    """
+    from integrations.suunto.webhook import (
+        validate_suunto_webhook_auth,
+        parse_suunto_webhook_payload,
+        compute_suunto_event_uid,
+    )
+    from integrations.suunto.tasks import ingest_workout as suunto_ingest_workout
+
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    t0 = time.monotonic()
+    event = None
+    created = False
+
+    try:
+        # ------------------------------------------------------------------ #
+        # 1. Auth — validate subscription key (fail-closed)
+        # ------------------------------------------------------------------ #
+        if not validate_suunto_webhook_auth(request):
+            return HttpResponse(status=403)
+
+        # ------------------------------------------------------------------ #
+        # 2. Parse payload
+        # ------------------------------------------------------------------ #
+        parsed = parse_suunto_webhook_payload(request.body)
+        if parsed is None:
+            return HttpResponse("Payload inválido", status=400)
+
+        username = parsed["username"]
+        workout_key = parsed["workout_key"]
+        event_type = parsed["event_type"]
+
+        # ------------------------------------------------------------------ #
+        # 3. Deterministic event_uid + idempotent persist
+        # ------------------------------------------------------------------ #
+        event_uid = compute_suunto_event_uid(parsed)
+
+        try:
+            event, created = StravaWebhookEvent.objects.get_or_create(
+                event_uid=event_uid,
+                defaults={
+                    "provider": "suunto",
+                    # object_id and owner_id are BigIntegerField; Suunto uses
+                    # string identifiers so we store 0 as placeholder — the
+                    # real IDs live in payload_raw.
+                    "object_type": "workout",
+                    "object_id": 0,
+                    "aspect_type": event_type,
+                    "owner_id": 0,
+                    "payload_raw": parsed,
+                    "status": StravaWebhookEvent.Status.RECEIVED,
+                },
+            )
+        except IntegrityError:
+            created = False
+            event = StravaWebhookEvent.objects.filter(event_uid=event_uid).first()
+            if event is None:
+                logger.exception(
+                    "suunto_webhook.event_persist_failed_integrity_no_event",
+                    extra={"event_uid": event_uid, "username": username, "workout_key": workout_key},
+                )
+                return HttpResponse(status=500)
+        except Exception:
+            logger.exception(
+                "suunto_webhook.event_persist_failed",
+                extra={"event_uid": event_uid, "username": username, "workout_key": workout_key},
+            )
+            return HttpResponse(status=500)
+
+        duration_ms = int((time.monotonic() - t0) * 1000)
+
+        # ------------------------------------------------------------------ #
+        # 4. Duplicate handling
+        # ------------------------------------------------------------------ #
+        if not created:
+            if event:
+                StravaWebhookEvent.objects.filter(pk=event.pk).update(
+                    duplicate_count=F("duplicate_count") + 1,
+                    last_duplicate_at=timezone.now(),
+                )
+                if event.status in {
+                    StravaWebhookEvent.Status.RECEIVED,
+                    StravaWebhookEvent.Status.FAILED,
+                }:
+                    try:
+                        StravaWebhookEvent.objects.filter(pk=event.pk).update(
+                            status=StravaWebhookEvent.Status.QUEUED,
+                            last_error="",
+                            error_message="",
+                            discard_reason="",
+                        )
+                        suunto_ingest_workout.delay(
+                            alumno_id=event.payload_raw.get("_resolved_alumno_id", 0),
+                            external_workout_id=workout_key,
+                        )
+                        logger.info(
+                            "suunto_webhook.outcome",
+                            extra={
+                                "event_name": "suunto_webhook.outcome",
+                                "event_uid": event_uid,
+                                "username": username,
+                                "workout_key": workout_key,
+                                "status": "requeued",
+                                "duration_ms": duration_ms,
+                            },
+                        )
+                        return HttpResponse(status=200)
+                    except Exception as exc:
+                        _mark_event_failed(event, error=exc)
+                        return HttpResponse(status=503)
+
+            logger.info(
+                "suunto_webhook.outcome",
+                extra={
+                    "event_name": "suunto_webhook.outcome",
+                    "event_uid": event_uid,
+                    "username": username,
+                    "workout_key": workout_key,
+                    "status": "duplicate",
+                    "duration_ms": duration_ms,
+                },
+            )
+            return HttpResponse(status=200)
+
+        # ------------------------------------------------------------------ #
+        # 5. Seed canonical identity (UNLINKED if not seen before)
+        # ------------------------------------------------------------------ #
+        try:
+            ExternalIdentity.objects.get_or_create(
+                provider="suunto",
+                external_user_id=username,
+                defaults={"status": ExternalIdentity.Status.UNLINKED},
+            )
+        except Exception:
+            logger.exception(
+                "suunto_webhook.external_identity_seed_failed",
+                extra={"username": username},
+            )
+
+        # ------------------------------------------------------------------ #
+        # 6. Resolve Alumno via linked ExternalIdentity
+        # ------------------------------------------------------------------ #
+        linked_identity = (
+            ExternalIdentity.objects.filter(
+                provider="suunto",
+                external_user_id=username,
+                status=ExternalIdentity.Status.LINKED,
+                alumno__isnull=False,
+            )
+            .select_related("alumno")
+            .first()
+        )
+
+        if linked_identity is None:
+            StravaWebhookEvent.objects.filter(pk=event.pk).update(
+                status=StravaWebhookEvent.Status.LINK_REQUIRED,
+                discard_reason="no_linked_alumno",
+            )
+            logger.warning(
+                "suunto_webhook.outcome",
+                extra={
+                    "event_name": "suunto_webhook.outcome",
+                    "event_uid": event_uid,
+                    "username": username,
+                    "workout_key": workout_key,
+                    "status": "link_required",
+                    "duration_ms": duration_ms,
+                },
+            )
+            return HttpResponse(status=200)
+
+        alumno_id = linked_identity.alumno.pk
+
+        # Stash resolved alumno_id in payload_raw so requeue can use it.
+        StravaWebhookEvent.objects.filter(pk=event.pk).update(
+            status=StravaWebhookEvent.Status.QUEUED,
+            payload_raw={**parsed, "_resolved_alumno_id": alumno_id},
+        )
+
+        # ------------------------------------------------------------------ #
+        # 7. Enqueue ingestion task — respond 200 ASAP
+        # ------------------------------------------------------------------ #
+        try:
+            suunto_ingest_workout.delay(
+                alumno_id=alumno_id,
+                external_workout_id=workout_key,
+            )
+        except Exception as exc:
+            _mark_event_failed(event, error=exc)
+            return HttpResponse(status=503)
+
+        logger.info(
+            "suunto_webhook.outcome",
+            extra={
+                "event_name": "suunto_webhook.outcome",
+                "event_uid": event_uid,
+                "username": username,
+                "workout_key": workout_key,
+                "alumno_id": alumno_id,
+                "status": "enqueued",
+                "duration_ms": duration_ms,
+            },
+        )
+        return HttpResponse(status=200)
+
+    except Exception as exc:
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        logger.exception(
+            "suunto_webhook.error",
+            extra={
+                "event_name": "suunto_webhook.error",
+                "error": str(exc),
+                "status": "error",
+                "duration_ms": duration_ms,
+            },
+        )
+        if event is not None:
+            _mark_event_failed(event, error=exc, attempts_increment=True)
+        return HttpResponse(status=500)
+
+
+class SuuntoWebhookView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = api_settings.DEFAULT_THROTTLE_CLASSES
+
+    def post(self, request, *args, **kwargs):
+        return suunto_webhook(request._request)
+
+
 class StravaDiagnosticsView(APIView):
     """
     Runtime diagnostics endpoint to verify webhook config.
