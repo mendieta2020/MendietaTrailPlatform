@@ -96,6 +96,7 @@ STRAVA_CLIENT_SECRET = get_env_variable("STRAVA_CLIENT_SECRET", default="", requ
 
 SUUNTO_CLIENT_ID = get_env_variable("SUUNTO_CLIENT_ID", default="", required=False)
 SUUNTO_CLIENT_SECRET = get_env_variable("SUUNTO_CLIENT_SECRET", default="", required=False)
+SUUNTO_SUBSCRIPTION_KEY = get_env_variable("SUUNTO_SUBSCRIPTION_KEY", default="", required=False)
 STRAVA_WEBHOOK_VERIFY_TOKEN = get_env_variable(
     "STRAVA_WEBHOOK_VERIFY_TOKEN",
     default="",
@@ -457,6 +458,7 @@ CELERY_TASK_DEFAULT_QUEUE = get_env_variable(
 )
 CELERY_TASK_ROUTES = {
     "strava.*": {"queue": "strava_ingest"},
+    "suunto.*": {"queue": "suunto_ingest"},
     "analytics.*": {"queue": "analytics_recompute"},
     "notifications.*": {"queue": "notifications"},
 }

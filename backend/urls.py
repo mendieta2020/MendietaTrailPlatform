@@ -11,7 +11,7 @@ from core.strava_oauth_views import oauth2_callback as strava_oauth2_callback
 from core.strava_oauth_views import oauth2_login as strava_oauth2_login
 
 # --- Importamos el Webhook Listener ---
-from core.webhooks import StravaWebhookView
+from core.webhooks import StravaWebhookView, SuuntoWebhookView
 
 # --- Importaciones para Documentación (Swagger) y Autenticación (JWT) ---
 from drf_yasg.views import get_schema_view
@@ -74,6 +74,7 @@ urlpatterns = [
     # 5. WEBHOOKS (La "Oreja" del sistema)
     # ==============================================================
     path('webhooks/strava/', StravaWebhookView.as_view(), name='strava_webhook'),
+    path('webhooks/suunto/', SuuntoWebhookView.as_view(), name='suunto_webhook'),
 
     # ==============================================================
     # 6. API REST ENDPOINTS (El Corazón del SaaS React)
