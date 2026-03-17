@@ -2297,6 +2297,67 @@ class WorkoutAssignment(models.Model):
         )
 
 
+class WorkoutDeliveryRecord(models.Model):
+    """
+    Tracks the outbound delivery of a WorkoutAssignment to a provider device.
+
+    One record per (assignment, provider) — enforced by UniqueConstraint.
+    This is the idempotency anchor for the suunto.push_guide Celery task.
+
+    PLAN ≠ REAL: This model lives on the planning/delivery side.
+    It records push attempts only — never execution outcomes.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        SENT = "sent", "Sent"
+        FAILED = "failed", "Failed"
+
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="workout_delivery_records",
+        db_index=True,
+    )
+    assignment = models.ForeignKey(
+        "WorkoutAssignment",
+        on_delete=models.CASCADE,
+        related_name="delivery_records",
+        db_index=True,
+    )
+    provider = models.CharField(max_length=40, db_index=True)
+    external_guide_id = models.CharField(max_length=200, blank=True, default="")
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    snapshot_version = models.PositiveSmallIntegerField(
+        default=1,
+        help_text="PlannedWorkout.structure_version captured at push time.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["assignment", "provider"],
+                name="uniq_delivery_record_assignment_provider",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["organization", "provider", "status"]),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"DeliveryRecord({self.pk}) {self.provider} "
+            f"assignment={self.assignment_id} status={self.status}"
+        )
+
+
 class ActivityStream(models.Model):
     """
     Lightweight event/metadata stream attached to a CompletedActivity.

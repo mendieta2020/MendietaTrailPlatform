@@ -88,3 +88,38 @@ def download_fit_file(
     )
     response.raise_for_status()
     return response.content
+
+
+def push_guide(
+    access_token: str,
+    subscription_key: str,
+    *,
+    payload: dict,
+) -> dict:
+    """
+    Push a workout guide to SuuntoPlus so it appears on the athlete's watch.
+
+    Returns the API response dict, which includes 'guideId' on success.
+
+    Raises:
+        requests.HTTPError: on 4xx/5xx responses.
+    """
+    response = requests.post(
+        f"{_SUUNTO_API_BASE}/guide",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Ocp-Apim-Subscription-Key": subscription_key,
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=_TIMEOUT,
+    )
+    logger.info(
+        "suunto.api.push_guide",
+        extra={
+            "event_name": "suunto.api.push_guide",
+            "status_code": response.status_code,
+        },
+    )
+    response.raise_for_status()
+    return response.json()

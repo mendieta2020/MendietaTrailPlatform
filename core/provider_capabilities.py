@@ -7,6 +7,7 @@ CAP_BACKFILL = "backfill"
 
 PROVIDER_CAPABILITIES: dict[str, set[str]] = {
     "strava": {CAP_INBOUND_ACTIVITIES, CAP_WEBHOOKS, CAP_BACKFILL},
+    "suunto": {CAP_INBOUND_ACTIVITIES, CAP_OUTBOUND_WORKOUTS},
 }
 
 # Add default baseline capabilities for any provider in SUPPORTED_PROVIDERS 

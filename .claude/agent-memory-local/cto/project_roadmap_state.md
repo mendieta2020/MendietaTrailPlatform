@@ -4,12 +4,19 @@ description: Current state of P1 roadmap — last completed PR, next PR to ship,
 type: project
 ---
 
-Last completed PR: PR-135 (Suunto FIT Activity Ingestion, merged). Celery tasks + client + parser + idempotent ingest exist.
+Last completed PR: PR-136 (Suunto Webhook Subscription + Real-Time Delivery, merged 2026-03-17).
 
 **Why:** Track roadmap progress to dictate next PR correctly.
 **How to apply:** Use this to determine the next logical PR when the developer asks.
 
-Current PR in design: PR-136 — Suunto Webhook Subscription + Real-Time Delivery (branch: pr-136-suunto-webhooks). Brief delivered 2026-03-16.
+Current PR in design: PR-137 — SuuntoPlus Guides (workout push to watch). Brief delivered 2026-03-17. Branch: pr-137-suunto-guides.
+Key decisions for PR-137:
+- New model WorkoutDeliveryRecord (provider-agnostic, UniqueConstraint on assignment+provider)
+- Builder pattern in integrations/suunto/guides.py (pure function, no DB)
+- REST endpoint: @action on WorkoutAssignmentViewSet (POST .../push/)
+- Celery task suunto.push_guide with exponential backoff
+- Idempotency via snapshot_version comparison on delivery record
+- CAP_OUTBOUND_WORKOUTS added to suunto capability set
 
 P1 backend APIs completed:
 - Organization, Team, Membership, Coach, Athlete, AthleteCoachAssignment (PR-129 + PR-130 tenancy)

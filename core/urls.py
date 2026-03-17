@@ -196,6 +196,12 @@ urlpatterns = [
         }),
         name='p1-assignment-detail',
     ),
+    # PR-137: SuuntoPlus Guide push action
+    path(
+        'p1/orgs/<int:org_id>/assignments/<int:pk>/push/',
+        WorkoutAssignmentViewSet.as_view({'post': 'push'}),
+        name='p1-assignment-push',
+    ),
 
     # ==============================================================================
     # PR-119: P1 organization-first API — WorkoutReconciliation
