@@ -39,6 +39,7 @@ def push_guide(self, *, assignment_id: int, organization_id: int, alumno_id: int
     from core.models import OAuthCredential, WorkoutAssignment, WorkoutDeliveryRecord
     from integrations.suunto.client import push_guide as client_push_guide
     from integrations.suunto.guides import build_guide_payload
+    from integrations.suunto.oauth import ensure_fresh_token
 
     # ── 1. Idempotency guard ─────────────────────────────────────────────────
     try:
@@ -99,10 +100,11 @@ def push_guide(self, *, assignment_id: int, organization_id: int, alumno_id: int
     # ── 4. Build payload and push ─────────────────────────────────────────────
     payload = build_guide_payload(assignment.planned_workout)
     subscription_key = getattr(settings, "SUUNTO_SUBSCRIPTION_KEY", "")
+    access_token = ensure_fresh_token(credential)
 
     try:
         response = client_push_guide(
-            credential.access_token,
+            access_token,
             subscription_key,
             payload=payload,
         )

@@ -31,6 +31,7 @@ def sync_athlete_workouts(self, *, alumno_id: int, days_back: int = 7) -> None:
     """
     from core.models import OAuthCredential
     from integrations.suunto.client import list_workouts
+    from integrations.suunto.oauth import ensure_fresh_token
 
     try:
         credential = OAuthCredential.objects.get(alumno_id=alumno_id, provider="suunto")
@@ -47,7 +48,8 @@ def sync_athlete_workouts(self, *, alumno_id: int, days_back: int = 7) -> None:
 
     subscription_key = getattr(settings, "SUUNTO_SUBSCRIPTION_KEY", "")
     try:
-        workouts = list_workouts(credential.access_token, subscription_key, days_back=days_back)
+        access_token = ensure_fresh_token(credential)
+        workouts = list_workouts(access_token, subscription_key, days_back=days_back)
     except Exception as exc:
         logger.warning(
             "suunto.sync.list_failed",
@@ -80,6 +82,7 @@ def ingest_workout(self, *, alumno_id: int, external_workout_id: str) -> None:
     """
     from core.models import OAuthCredential
     from integrations.suunto.client import download_fit_file
+    from integrations.suunto.oauth import ensure_fresh_token
     from integrations.suunto.parser import parse_fit_bytes
     from integrations.suunto.services_suunto_ingest import ingest_suunto_workout
 
@@ -99,7 +102,8 @@ def ingest_workout(self, *, alumno_id: int, external_workout_id: str) -> None:
 
     subscription_key = getattr(settings, "SUUNTO_SUBSCRIPTION_KEY", "")
     try:
-        fit_bytes = download_fit_file(credential.access_token, subscription_key, external_workout_id)
+        access_token = ensure_fresh_token(credential)
+        fit_bytes = download_fit_file(access_token, subscription_key, external_workout_id)
         fit_data = parse_fit_bytes(fit_bytes)
         ingest_suunto_workout(alumno_id=alumno_id, external_workout_id=external_workout_id, fit_data=fit_data)
     except Exception as exc:
