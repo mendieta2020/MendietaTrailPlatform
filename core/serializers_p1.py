@@ -15,9 +15,11 @@ Design rules enforced here:
 from rest_framework import serializers
 
 from core.models import (
+    Alumno,
     Athlete,
     AthleteGoal,
     AthleteProfile,
+    ExternalIdentity,
     PlannedWorkout,
     RaceEvent,
     WorkoutAssignment,
@@ -543,6 +545,58 @@ _RECONCILIATION_FIELDS = [
     "created_at",
     "updated_at",
 ]
+
+
+# ==============================================================================
+# PR-X4: ExternalIdentity serializer
+# ==============================================================================
+
+
+class ExternalIdentitySerializer(serializers.ModelSerializer):
+    """
+    Serializer for ExternalIdentity.
+
+    alumno_id queryset is scoped to alumnos owned by the authenticated coach
+    (Alumno.entrenador == request.user). This prevents cross-coach FK injection
+    at the serializer boundary.
+
+    status and linked_at are computed by the ViewSet on create/update; they are
+    never accepted from the client (read-only).
+
+    validators = [] suppresses the conditional UniqueConstraint validator for
+    (provider, alumno) which raises KeyError on PATCH when alumno is absent
+    from the partial payload. DB integrity is the enforcement layer.
+    """
+
+    alumno_id = serializers.PrimaryKeyRelatedField(
+        source="alumno",
+        queryset=Alumno.objects.none(),  # overridden in __init__ from request.user
+        allow_null=True,
+        required=False,
+    )
+
+    class Meta:
+        model = ExternalIdentity
+        fields = [
+            "id",
+            "provider",
+            "external_user_id",
+            "alumno_id",
+            "status",
+            "linked_at",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "status", "linked_at", "created_at", "updated_at"]
+        validators = []
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get("request")
+        if request is not None and request.user.is_authenticated:
+            self.fields["alumno_id"].queryset = Alumno.objects.filter(
+                entrenador=request.user
+            )
 
 
 class WorkoutReconciliationSerializer(serializers.ModelSerializer):

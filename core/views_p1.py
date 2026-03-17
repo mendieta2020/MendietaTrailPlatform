@@ -23,6 +23,7 @@ import datetime
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 
 from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action
@@ -37,6 +38,7 @@ from core.models import (
     AthleteGoal,
     AthleteProfile,
     CompletedActivity,
+    ExternalIdentity,
     OAuthCredential,
     PlannedWorkout,
     RaceEvent,
@@ -50,6 +52,7 @@ from core.models import (
 from core.serializers_p1 import (
     AthleteGoalSerializer,
     AthleteProfileSerializer,
+    ExternalIdentitySerializer,
     PlannedWorkoutReadSerializer,
     PlannedWorkoutWriteSerializer,
     RaceEventSerializer,
@@ -882,3 +885,85 @@ class AthleteAdherenceViewSet(OrgTenantMixin, viewsets.GenericViewSet):
             "avg_compliance_score": result.avg_compliance_score,
             "adherence_pct": round(result.adherence_pct, 1),
         })
+
+
+# ==============================================================================
+# PR-X4: ExternalIdentity ViewSet
+# ==============================================================================
+
+
+class ExternalIdentityViewSet(OrgTenantMixin, viewsets.ModelViewSet):
+    """
+    CRUD for ExternalIdentity records scoped to the authenticated coach's alumnos.
+
+    Tenancy (dual-layer, fail-closed):
+    - OrgTenantMixin.resolve_membership(org_id) validates active org membership.
+    - get_queryset() filters by alumno__entrenador=request.user (legacy coach-scope).
+      A coach only sees/modifies identities whose alumno belongs to them.
+
+    Write: owner/coach only. Athletes cannot write.
+
+    status and linked_at are auto-computed on create/update:
+    - alumno provided → status=LINKED, linked_at=now()
+    - alumno absent/null → status=UNLINKED, linked_at=None
+
+    URL: /api/p1/orgs/<org_id>/external-identities/
+    """
+
+    serializer_class = ExternalIdentitySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if getattr(self, "swagger_fake_view", False):
+            return
+        self.resolve_membership(self.kwargs["org_id"])
+
+    def get_queryset(self):
+        if not getattr(self, "organization", None):
+            return ExternalIdentity.objects.none()
+        return ExternalIdentity.objects.filter(
+            alumno__entrenador=self.request.user
+        ).order_by("-created_at")
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        if getattr(self, "organization", None):
+            ctx["organization"] = self.organization
+        return ctx
+
+    def _require_write_role(self):
+        if self.membership.role not in _WRITE_ROLES:
+            raise PermissionDenied("Only coaches and owners can manage external identities.")
+
+    def perform_create(self, serializer):
+        self._require_write_role()
+        alumno = serializer.validated_data.get("alumno")
+        link_status = ExternalIdentity.Status.LINKED if alumno else ExternalIdentity.Status.UNLINKED
+        linked_at = timezone.now() if alumno else None
+        serializer.save(status=link_status, linked_at=linked_at)
+
+    def perform_update(self, serializer):
+        self._require_write_role()
+        # Determine new alumno value (may be absent on PATCH → keep existing).
+        alumno = serializer.validated_data.get("alumno", serializer.instance.alumno)
+        alumno_explicitly_cleared = (
+            "alumno" in serializer.validated_data
+            and serializer.validated_data["alumno"] is None
+        )
+        if alumno and serializer.instance.status != ExternalIdentity.Status.LINKED:
+            serializer.save(
+                status=ExternalIdentity.Status.LINKED,
+                linked_at=timezone.now(),
+            )
+        elif alumno_explicitly_cleared:
+            serializer.save(
+                status=ExternalIdentity.Status.UNLINKED,
+                linked_at=None,
+            )
+        else:
+            serializer.save()
+
+    def perform_destroy(self, instance):
+        self._require_write_role()
+        instance.delete()
