@@ -352,7 +352,7 @@ class TestDisabledProvidersInStatusEndpoint:
     """
 
     def test_disabled_providers_appear_in_status_endpoint(self, client, django_user_model):
-        """Status endpoint returns all 6 providers (1 enabled + 5 disabled)."""
+        """Status endpoint returns all 6 providers (2 enabled: strava+suunto, 4 disabled)."""
         user = django_user_model.objects.create_user(
             username="athlete_status_pr8",
             email="athlete_status_pr8@test.com",
