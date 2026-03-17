@@ -33,8 +33,8 @@ class SuuntoProvider(IntegrationProvider):
         return {
             "supports_refresh": True,
             "supports_activity_fetch": False,  # Phase 2
-            "supports_webhooks": False,         # Phase 2
-            "supports_workout_push": False,
+            "supports_webhooks": True,
+            "supports_workout_push": True,
         }
 
     def get_oauth_authorize_url(self, state: str, callback_uri: str) -> str:
