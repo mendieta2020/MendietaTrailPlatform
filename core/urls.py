@@ -17,10 +17,11 @@ from .integration_callback_views import IntegrationCallbackView
 from .identity_views import UserIdentityView
 from .connection_views import ProviderConnectionStatusView  # PR11
 from core.webhooks import StravaWebhookView, StravaDiagnosticsView  # PR-WebhookRoute
-from core.views_p1 import (  # PR-115/116/117/119/128
+from core.views_p1 import (  # PR-115/116/117/119/128/X4
     AthleteAdherenceViewSet,
     AthleteGoalViewSet,
     AthleteProfileViewSet,
+    ExternalIdentityViewSet,
     PlannedWorkoutViewSet,
     RaceEventViewSet,
     ReconciliationViewSet,
@@ -397,5 +398,23 @@ urlpatterns = [
         'p1/orgs/<int:org_id>/coach-assignments/<int:pk>/end/',
         AthleteCoachAssignmentViewSet.as_view({'post': 'end'}),
         name='p1-coach-assignment-end',
+    ),
+
+    # PR-X4: ExternalIdentity Linking API
+    # URL: /api/p1/orgs/<org_id>/external-identities/
+    path(
+        'p1/orgs/<int:org_id>/external-identities/',
+        ExternalIdentityViewSet.as_view({'get': 'list', 'post': 'create'}),
+        name='p1-external-identity-list',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/external-identities/<int:pk>/',
+        ExternalIdentityViewSet.as_view({
+            'get': 'retrieve',
+            'put': 'update',
+            'patch': 'partial_update',
+            'delete': 'destroy',
+        }),
+        name='p1-external-identity-detail',
     ),
 ]
