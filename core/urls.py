@@ -98,13 +98,12 @@ urlpatterns = [
          name='athlete-planned-workouts-detail'),
     
     # OAuth Integration Management
-    
-    # OAuth Integration Management
+    # IMPORTANT: static paths must come before dynamic <str:provider> patterns to avoid shadowing.
+    path('integrations/status', IntegrationStatusView.as_view(), name='integration_status'),  # All providers status
     path('integrations/<str:provider>/start', IntegrationStartView.as_view(), name='integration_start'),
     path('integrations/<str:provider>/callback', IntegrationCallbackView.as_view(), name='integration_callback'),
     path('integrations/<str:provider>/disconnect/', IntegrationDisconnectView.as_view(), name='integration_disconnect'),
-    path('integrations/<str:provider>/status', ProviderStatusView.as_view(), name='provider_status'),  # NEW: Provider-specific status
-    path('integrations/status', IntegrationStatusView.as_view(), name='integration_status'),  # All providers status
+    path('integrations/<str:provider>/status', ProviderStatusView.as_view(), name='provider_status'),  # Per-provider status
 
     # PR11: Non-Strava provider connection status (derived from OAuthCredential)
     path('connections/', ProviderConnectionStatusView.as_view(), name='provider_connections'),
