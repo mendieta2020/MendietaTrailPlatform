@@ -77,12 +77,14 @@ def _make_alumno(user, entrenador=None):
 
 
 def _make_suunto_credential(alumno):
+    from datetime import timezone as dt_tz
     return OAuthCredential.objects.create(
         alumno=alumno,
         provider="suunto",
         external_user_id=f"suunto-user-{alumno.pk}",
         access_token="fake-access-token",
         refresh_token="fake-refresh-token",
+        expires_at=datetime.datetime(2099, 1, 1, tzinfo=dt_tz.utc),
     )
 
 
