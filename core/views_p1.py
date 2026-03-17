@@ -22,22 +22,27 @@ OrgTenantMixin contract:
 import datetime
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.shortcuts import get_object_or_404
 
-from rest_framework import mixins, permissions, viewsets
+from rest_framework import mixins, permissions, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
 from core import services_reconciliation
 from core.models import (
+    Alumno,
     Athlete,
     AthleteGoal,
     AthleteProfile,
     CompletedActivity,
+    OAuthCredential,
     PlannedWorkout,
     RaceEvent,
     WorkoutAssignment,
     WorkoutBlock,
+    WorkoutDeliveryRecord,
     WorkoutInterval,
     WorkoutLibrary,
     WorkoutReconciliation,
@@ -348,6 +353,65 @@ class WorkoutAssignmentViewSet(
         except DjangoValidationError as exc:
             detail = exc.message_dict if hasattr(exc, "message_dict") else {"detail": str(exc)}
             raise DRFValidationError(detail=detail)
+
+    @action(detail=True, methods=["post"], url_path="push")
+    def push(self, request, *args, **kwargs):
+        """
+        POST /api/p1/orgs/<org_id>/assignments/<pk>/push/
+
+        Enqueue a SuuntoPlus Guide push so the PlannedWorkout appears on the
+        athlete's Suunto watch.
+
+        Requires coach or owner role. Returns 202 Accepted when the Celery
+        task is enqueued. The task is idempotent: a second push on an already-
+        sent assignment is a noop.
+        """
+        from core.provider_capabilities import CAP_OUTBOUND_WORKOUTS, provider_supports
+
+        if self.membership.role not in _WRITE_ROLES:
+            raise PermissionDenied("Only coaches and owners can push workouts.")
+
+        assignment = get_object_or_404(
+            WorkoutAssignment,
+            pk=self.kwargs["pk"],
+            organization=self.organization,
+        )
+
+        provider = "suunto"
+
+        if not provider_supports(provider, CAP_OUTBOUND_WORKOUTS):
+            return Response(
+                {"detail": "provider_no_outbound", "provider": provider},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Bridge Athlete → Alumno → OAuthCredential
+        # Alumno.usuario is a OneToOneField to User (related_name='perfil_alumno').
+        alumno = getattr(assignment.athlete.user, "perfil_alumno", None)
+        if alumno is None:
+            return Response(
+                {"detail": "no_suunto_credential"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not OAuthCredential.objects.filter(alumno=alumno, provider=provider).exists():
+            return Response(
+                {"detail": "no_suunto_credential"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Lazy import: Law 4 — integrations/ must not be imported at module level in core/
+        from integrations.suunto.tasks_guides import push_guide  # noqa: PLC0415
+
+        push_guide.delay(
+            assignment_id=assignment.pk,
+            organization_id=self.organization.pk,
+            alumno_id=alumno.pk,
+        )
+
+        return Response(
+            {"status": "queued", "assignment_id": assignment.pk},
+            status=status.HTTP_202_ACCEPTED,
+        )
 
 
 # ==============================================================================
