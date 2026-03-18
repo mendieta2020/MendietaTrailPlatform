@@ -1,0 +1,275 @@
+================================================================================
+  RADIOGRAFIA CTO — AUDITORIA DE CIERRE DE FASE P1
+  Quantoryn / MendietaTrailPlatform
+  Fecha: 2026-03-18
+  Autor: CTO Agent (Opus 4.6)
+================================================================================
+
+I. ESTADO DE PRs COMPLETADOS (CONFIRMADO)
+================================================================================
+
+Todos los PRs de P1 estan fusionados en main. Ultimo commit:
+  cb8309f — Merge PR #233 (feat/pr-138-frontend-suunto-connection)
+
+PRs de la epica Suunto (cerrada):
+  - PR-134: Suunto OAuth Phase 1 (connect/callback/disconnect)
+  - PR-135: Suunto FIT Activity Ingestion
+  - PR-136: Suunto Webhook Subscription + Real-Time Delivery
+  - PR-137: SuuntoPlus Guides (workout push to watch)
+  - PR-X3:  Suunto Token Refresh (auto-renovacion OAuth)
+  - PR-X4:  ExternalIdentity API (strict org tenancy)
+  - PR-138: Frontend CoachDashboard Suunto connection UI + fallback modal
+
+PRs de P1 Core (cerrados):
+  - PR-128a/b: WorkoutLibrary, PlannedWorkout, WorkoutBlock, WorkoutInterval CRUD
+  - PR-129: Coach, Athlete, Team, Membership, AthleteCoachAssignment Roster API
+  - PR-130: Tenancy isolation sweep (35 tests)
+  - PR-131a: SessionStatusView con memberships
+  - PR-131b: Frontend OrgContext + CoachDashboard + RosterSection
+  - PR-132: WorkoutAssignment filters + title
+
+Estado: BRANCH MAIN LIMPIA (clean). 935+ tests en CI.
+
+
+II. INVENTARIO DE DEUDAS TECNICAS
+================================================================================
+
+--- D2: CompletedActivity.organization apunta a User (no a Organization) ---
+
+  ESTADO: ABIERTA — RIESGO MEDIO-ALTO
+
+  Evidencia (core/models.py, linea 865):
+    organization = models.ForeignKey(
+        settings.AUTH_USER_MODEL,  # <-- DEBERIA SER Organization
+        on_delete=models.CASCADE,
+        related_name="completed_activities",
+    )
+
+  Impacto:
+  - El campo se llama "organization" pero apunta a User (coach).
+  - Toda la capa de ingestion (Strava + Suunto) escribe este campo
+    como el User del coach, no como la Organization P1.
+  - Esto significa que CompletedActivity NO esta integrada con el
+    modelo de tenancy P1 (Organization-based).
+  - Los ViewSets P1 que consultan CompletedActivity tienen que hacer
+    joins indirectos via alumno -> Athlete -> organization.
+  - Es una bomba de tiempo para multi-coach organizations.
+
+  Severidad: BLOQUEANTE para declarar P1 "Production Ready" si se
+  pretende que Organization sea el tenant root real.
+
+
+--- D3: Modelo legacy Alumno vs Athlete (coexistencia) ---
+
+  ESTADO: ABIERTA — RIESGO MEDIO
+
+  Situacion actual:
+  - Alumno (linea 112): modelo legacy con FK a User (entrenador),
+    campos biometricos, strava_athlete_id hardcoded, zonas FC, etc.
+  - Athlete (linea 1152): modelo P1, FK a Organization, limpio.
+  - CompletedActivity tiene AMBOS FKs:
+      alumno = FK(Alumno)     — obligatorio, no-nullable
+      athlete = FK(Athlete)   — nullable, bridge PR-114
+  - ExternalIdentity: FK a Alumno (no a Athlete ni a User)
+  - OAuthCredential: FK a Alumno (campo "alumno")
+  - Entrenamiento: FK a Alumno
+  - Actividad: FK a Alumno + User
+  - Toda la ingestion pipeline (Strava + Suunto) crea records usando Alumno.
+
+  Modelos legacy activos en produccion:
+    1. Alumno         — tenant anchor para TODA la ingestion actual
+    2. Entrenamiento   — planned workouts legacy (coexiste con PlannedWorkout P1)
+    3. Actividad       — activities legacy (coexiste con CompletedActivity)
+    4. Equipo          — teams legacy (coexiste con Team P1)
+    5. Pago            — pagos (no tiene equivalente P1)
+    6. Carrera         — carreras
+    7. InscripcionCarrera — inscripciones
+    8. PlantillaEntrenamiento — templates legacy
+
+  ViewSets legacy activos (core/views.py):
+    - AlumnoViewSet, EntrenamientoViewSet, EquipoViewSet,
+      CarreraViewSet, InscripcionViewSet, PagoViewSet,
+      ActividadViewSet, AlumnoPlannedWorkoutViewSet,
+      PlantillaViewSet, VideoUploadViewSet
+
+  Todos usan TenantModelViewSet con tenancy basada en User (entrenador),
+  NO en Organization.
+
+  Severidad: TOLERABLE durante transicion. No bloquea P1 si se acepta
+  que los modelos legacy coexisten y se deprecan gradualmente en P2.
+
+
+--- D7: CELERY_TASK_ROUTES sin Queue correspondiente ---
+
+  ESTADO: ABIERTA — RIESGO ALTO (BUG EN PRODUCCION)
+
+  Evidencia:
+  - settings.py (linea 459-464):
+      CELERY_TASK_ROUTES = {
+          "strava.*":        {"queue": "strava_ingest"},
+          "suunto.*":        {"queue": "suunto_ingest"},       # <-- RUTA
+          "analytics.*":     {"queue": "analytics_recompute"},
+          "notifications.*": {"queue": "notifications"},
+      }
+
+  - celery.py (linea 47-52):
+      app.conf.task_queues = (
+          Queue("default"),
+          Queue("strava_ingest"),
+          Queue("analytics_recompute"),
+          Queue("notifications"),
+      )
+      # FALTA: Queue("suunto_ingest")  <-- NO EXISTE
+
+  Impacto:
+  - Las tareas Suunto (suunto.sync_athlete_workouts, suunto.ingest_workout,
+    suunto.push_guide) se enrutan a la cola "suunto_ingest" que NO esta
+    declarada en task_queues.
+  - En Celery con Redis, si el worker no consume la cola, los mensajes
+    se acumulan en Redis indefinidamente (backpressure silenciosa).
+  - En produccion, NINGUNA tarea Suunto se ejecutaria a menos que haya
+    un worker levantado con -Q suunto_ingest explicitamente.
+  - Esto es un BUG FUNCIONAL: Suunto ingestion esta silenciosamente rota.
+
+  Severidad: CRITICO — Fix inmediato requerido (1 linea de codigo).
+
+
+--- FINDING-X4-A: ExternalIdentityViewSet usa legacy coach scope ---
+
+  ESTADO: ABIERTA — RIESGO BAJO
+
+  El ViewSet usa alumno__entrenador para scope en lugar del patron P1
+  Organization-Membership. Funciona correctamente pero es inconsistente
+  con el resto de P1 ViewSets.
+
+  Severidad: BAJA. Se unifica cuando se resuelva D3.
+
+
+--- FINDING-X4-B: Test faltante para PATCH alumno=null en ExternalIdentity ---
+
+  ESTADO: ABIERTA — RIESGO BAJO
+
+  No existe test para el caso de unlink explicito via API.
+
+  Severidad: BAJA. Es un gap de cobertura, no un bug.
+
+
+III. ANALISIS DE MODELOS: LEGACY vs P1
+================================================================================
+
+  LEGACY (User-scoped)          P1 (Organization-scoped)     RELACION
+  -------------------------     -------------------------    ----------
+  Alumno                        Athlete                      Coexisten (bridge FK)
+  Entrenamiento                 PlannedWorkout               Paralelos (sin bridge)
+  Actividad                     CompletedActivity            Paralelos (sin bridge)
+  Equipo                        Team                         Paralelos (sin bridge)
+  Pago                          (sin equivalente)            Solo legacy
+  Carrera                       RaceEvent                    Paralelos (sin bridge)
+  InscripcionCarrera            (sin equivalente)            Solo legacy
+  PlantillaEntrenamiento        WorkoutLibrary               Paralelos (sin bridge)
+
+  Ingestion pipeline (Strava + Suunto) escribe en:
+    - Actividad (legacy) Y CompletedActivity (P1) — ambos
+    - Usa Alumno como anchor, no Athlete
+
+  Frontend CoachDashboard (P1) lee de:
+    - API P1 (/api/p1/orgs/<org_id>/athletes/, etc.)
+    - NO del API legacy (/api/alumnos/, etc.)
+
+  Conclusion: hay DOS mundos funcionando en paralelo. El frontend P1
+  solo ve el mundo P1. La ingestion solo escribe en el mundo legacy
+  (con bridge parcial a P1 via CompletedActivity.athlete nullable).
+
+
+IV. DECISION ARQUITECTONICA
+================================================================================
+
+DECISION: INICIAR P2 CON DEUDA CONTROLADA
+
+Justificacion:
+
+  1. Limpiar D2+D3 completamente (migrar toda la ingestion de Alumno a
+     Athlete, cambiar CompletedActivity.organization de User a Organization,
+     migrar ExternalIdentity y OAuthCredential de Alumno a Athlete/User)
+     es una operacion de alto riesgo con migracion de datos en produccion,
+     cambios en pipeline de ingestion Strava+Suunto, y modificacion de
+     8+ ViewSets. Es un proyecto de 2-3 semanas minimo.
+
+  2. Los modelos P1 (Organization, Membership, Team, Coach, Athlete) YA
+     estan en produccion y el frontend P1 YA los usa. La coexistencia
+     es funcional.
+
+  3. La ingestion funciona correctamente hoy con Alumno como anchor.
+     La unica limitacion es que no soporta multi-coach per organization
+     (que no es un caso de uso P1).
+
+  4. D7 (Celery queue faltante) es un bug critico pero trivial de fixear
+     (1 linea). No justifica retrasar P2.
+
+CONDICIONES PARA INICIAR P2:
+
+  A. FIX OBLIGATORIO antes de P2 (1 PR):
+     - D7: Agregar Queue("suunto_ingest") a celery.py
+     - FINDING-X4-B: Test para PATCH alumno=null
+     - Son 2 cambios triviales, un solo PR.
+
+  B. DEUDA CONTROLADA que se lleva a P2:
+     - D2: CompletedActivity.organization -> Organization (se resuelve
+       dentro de la epica "Legacy Migration" en P2)
+     - D3: Alumno -> Athlete migration (misma epica)
+     - FINDING-X4-A: ExternalIdentityViewSet scope (se resuelve con D3)
+
+  C. DEUDA INACEPTABLE (no se lleva a P2):
+     - D7 DEBE resolverse antes de declarar P1 cerrada. Las tareas
+       Suunto estan silenciosamente rotas sin la cola declarada.
+
+
+V. PLAN DE PRs PARA CERRAR P1
+================================================================================
+
+PR-139: "P1 Closure — Celery queue fix + ExternalIdentity test gap"
+  Scope:
+    1. backend/celery.py: agregar Queue("suunto_ingest") a task_queues
+    2. core/tests_p1_external_identity.py: test para PATCH alumno=null
+    3. (Opcional) docs/ai/CONSTITUTION.md: actualizar fase a "P1 CLOSED, P2 READY"
+  Riesgo: BAJO
+  LOC estimado: ~30
+  CI: debe pasar verde
+
+Despues de PR-139, P1 se declara CERRADA.
+
+
+VI. ROADMAP P2 (PREVIEW — NO EJECUTAR AUN)
+================================================================================
+
+P2 = Platform maturity + Legacy migration + Athlete-facing features.
+
+Epicas tentativas:
+  1. Legacy Migration (D2+D3): migrar ingestion pipeline de Alumno a
+     Athlete, cambiar CompletedActivity.organization, backfill data.
+  2. Athlete Portal: frontend athlete-facing (ver sus workouts, compliance).
+  3. Notification Pipeline: Alert delivery via webhook/email.
+  4. API Versioning: /api/v1/ prefix migration.
+  5. Third Provider: Garmin o Coros (stubs ya existen).
+
+La prioridad de estas epicas se decide DESPUES de cerrar P1.
+
+
+VII. RESUMEN EJECUTIVO
+================================================================================
+
+Estado P1: CASI CERRADO. Un PR trivial (PR-139) bloquea el cierre.
+
+Bug critico encontrado: CELERY_TASK_ROUTES enruta tareas Suunto a cola
+"suunto_ingest" que no esta declarada en task_queues. Las tareas Suunto
+estan silenciosamente sin ejecutarse en produccion.
+
+Decision: Iniciar P2 con deuda controlada (D2, D3 como epica "Legacy
+Migration"). D7 se resuelve inmediatamente en PR-139.
+
+Proximo PR: PR-139 (Celery queue fix + test gap). Estimado: 30 LOC,
+riesgo bajo, cierra P1.
+
+================================================================================
+  FIN DE RADIOGRAFIA
+================================================================================

@@ -1,60 +1,58 @@
 ---
 name: P1 Roadmap State
-description: Current state of P1 roadmap — last completed PR, next PR to ship, and overall progress
+description: Current state of P1 roadmap — P1 audit complete, one PR remains before closure, then P2 begins
 type: project
 ---
 
-Last completed PR: PR-X4 (ExternalIdentity API with strict org tenancy, merged 2026-03-17).
+Last completed PR: PR-138 (Frontend CoachDashboard Suunto connection UI + fallback modal, merged 2026-03-18).
 
 **Why:** Track roadmap progress to dictate next PR correctly.
 **How to apply:** Use this to determine the next logical PR when the developer asks.
 
-## ✅ SUUNTO BACKEND EPIC — CLOSED (2026-03-17)
+## P1 STATUS: AUDIT COMPLETE — ONE PR TO CLOSURE (2026-03-18)
 
-All Suunto backend milestones are complete and merged:
-- PR-134: Suunto OAuth Phase 1 (connect/callback/disconnect) — MERGED
-- PR-135: Suunto FIT Activity Ingestion — MERGED
-- PR-136: Suunto Webhook Subscription + Real-Time Delivery — MERGED
-- PR-137: SuuntoPlus Guides (workout push to watch) — MERGED
-- PR-X3: Suunto Token Refresh (auto-renovación OAuth) — MERGED
-- PR-X4: Suunto ExternalIdentity API (endpoint + strict org tenancy) — MERGED
+P1 Closure Audit performed 2026-03-18. Full report: `Radiografia_CTO_Cierre_P1.txt` (repo root).
 
-## ➡️ NEXT OFFICIAL STEP: Frontend React → P1 APIs integration
+### Critical finding: D7 Celery Queue Bug
+- `CELERY_TASK_ROUTES` routes `suunto.*` to `suunto_ingest` queue
+- `app.conf.task_queues` in `celery.py` does NOT declare `Queue("suunto_ingest")`
+- Result: Suunto tasks are silently unprocessed in production
+- Fix: 1 line in `backend/celery.py`
 
-Connect the React frontend to the P1 backend APIs built during this phase.
+### Blocking PR for P1 Closure:
+- **PR-139**: Celery queue fix (`Queue("suunto_ingest")`) + ExternalIdentity PATCH unlink test
+- Scope: ~30 LOC, risk LOW
+- After PR-139 merges, P1 is CLOSED
 
-P1 backend APIs completed:
-- Organization, Team, Membership, Coach, Athlete, AthleteCoachAssignment (PR-129 + PR-130 tenancy)
-- WorkoutLibrary, PlannedWorkout (PR-128a) + tenancy sweep (PR-133)
-- WorkoutBlock, WorkoutInterval (PR-128b) + tenancy sweep (PR-133)
-- WorkoutAssignment with filters (PR-132) + tenancy sweep (PR-133)
-- WorkoutReconciliation (prior capsule PRs)
-- AthleteProfile, RaceEvent, AthleteGoal (PR-115/116)
-- Athlete Weekly Adherence (PR-119)
-- SessionStatusView with memberships (PR-131a)
+### Controlled Debt carried into P2:
+- D2: `CompletedActivity.organization` FK points to User (not Organization)
+- D3: Alumno vs Athlete coexistence — entire ingestion pipeline uses Alumno
+- FINDING-X4-A: ExternalIdentityViewSet uses legacy coach scope
 
-P1 frontend completed:
-- OrgContext (multi-org switcher) + CoachDashboard + RosterSection (PR-131b)
-- AssignmentCalendar in CoachDashboard (PR-131c)
+### P2 Preview (do NOT start until PR-139 merged):
+1. Legacy Migration epic (D2+D3): migrate ingestion from Alumno to Athlete, change CompletedActivity.organization FK
+2. Athlete Portal: athlete-facing frontend
+3. Notification Pipeline: Alert delivery
+4. API Versioning: /api/v1/
+5. Third Provider: Garmin or Coros
 
-Multi-provider expansion:
-- PR-134: Suunto OAuth Phase 1 (connect/callback/disconnect) — MERGED
-- PR-135: Suunto FIT Activity Ingestion — MERGED (tasks, client, parser, ingest service)
-- PR-136: Suunto Webhook Subscription + Real-Time Delivery — MERGED
-- PR-137: SuuntoPlus Guides (workout push to watch) — MERGED
-- PR-X3: Suunto Token Auto-Refresh — MERGED
-- PR-X4: Suunto ExternalIdentity API — MERGED
-- Existing infra: provider registry (6 providers registered, only strava + suunto enabled)
-- ExternalIdentity.Provider: STRAVA + SUUNTO (added in PR-134)
-- StravaWebhookEvent model already supports multi-provider (provider field exists)
+## Completed P1 PRs (all merged to main)
 
-TENANCY SWEEP DEBT — RESOLVED:
-- RaceEventViewSet, AthleteGoalViewSet, AthleteProfileViewSet, ReconciliationViewSet, AthleteAdherenceViewSet — completed as part of P1 sweep
+Suunto Epic:
+- PR-134: Suunto OAuth Phase 1
+- PR-135: Suunto FIT Activity Ingestion
+- PR-136: Suunto Webhook Subscription
+- PR-137: SuuntoPlus Guides
+- PR-X3: Suunto Token Refresh
+- PR-X4: ExternalIdentity API
+- PR-138: Frontend Suunto Connection UI
 
-Test coverage milestones:
-- Total: 935+ tests (as of PR-133; additional tests added in PR-X3, PR-X4)
+P1 Core:
+- PR-128a/b: WorkoutLibrary/PlannedWorkout/Block/Interval CRUD
+- PR-129: Roster API (Coach, Athlete, Team, Membership, Assignment)
+- PR-130: Tenancy isolation sweep
+- PR-131a: SessionStatusView with memberships
+- PR-131b: Frontend OrgContext + CoachDashboard
+- PR-132: WorkoutAssignment filters
 
-## Deferred Items (Technical Debt — future PRs)
-
-- **FINDING-X4-A:** `ExternalIdentityViewSet.get_queryset` uses legacy coach scope (`alumno__entrenador`) instead of P1 org-membership pattern. Will be unified in D2/D3 tenancy debt cleanup.
-- **FINDING-X4-B:** No test for explicit unlink via `PATCH alumno=null` on ExternalIdentity. Needs a targeted test in a future tenancy hardening PR.
+Test baseline: 935+ tests

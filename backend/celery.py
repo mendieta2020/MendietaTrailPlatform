@@ -47,6 +47,7 @@ app.config_from_object('django.conf:settings', namespace='CELERY')
 app.conf.task_queues = (
     Queue("default"),
     Queue("strava_ingest"),
+    Queue("suunto_ingest"),
     Queue("analytics_recompute"),
     Queue("notifications"),
 )

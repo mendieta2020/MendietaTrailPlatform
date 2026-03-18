@@ -151,6 +151,28 @@ class TestExternalIdentityFunctional:
         assert r.json()["alumno_id"] == self.alumno.id
         assert r.json()["status"] == "linked"
 
+    def test_patch_alumno_null_unlinks_identity(self):
+        """FINDING-X4-B: PATCH {"alumno_id": null} → alumno cleared, status=unlinked, linked_at=None."""
+        identity = _identity(self.alumno, provider="suunto", external_user_id="sn-unlink-test")
+        assert identity.status == ExternalIdentity.Status.LINKED
+
+        self.client.force_authenticate(self.coach)
+        r = self.client.patch(
+            _detail_url(self.org.id, identity.id),
+            {"alumno_id": None},
+            format="json",
+        )
+        assert r.status_code == status.HTTP_200_OK
+        data = r.json()
+        assert data["alumno_id"] is None
+        assert data["status"] == "unlinked"
+        assert data["linked_at"] is None
+
+        # Verify persisted in DB
+        identity.refresh_from_db()
+        assert identity.alumno is None
+        assert identity.status == ExternalIdentity.Status.UNLINKED
+
     def test_delete_identity(self):
         """DELETE removes the identity."""
         identity = _identity(self.alumno, provider="suunto", external_user_id="sn-delete")
