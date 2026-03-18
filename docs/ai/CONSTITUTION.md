@@ -30,29 +30,30 @@ Science is the source of truth. Reliability is the product.
 
 ---
 
-## Current Phase: P1 *(P0 complete and deployed)*
+## Current Phase: P2 *(P0 + P1 complete and deployed)*
 
-**P1 = product buildout — Organization model, CRUD APIs, roster management, provider boundary cleanup.**
+**P1 = CLOSED as of 2026-03-18.** All P1 deliverables shipped: Organization model, CRUD APIs, roster management, provider boundary cleanup, ExternalIdentity API, WorkoutAssignment filters, frontend OrgContext, reconciliation endpoints.
 
-### Allowed (P1)
-- All P0 work (security, reliability, tenancy hardening)
-- P1 CRUD endpoints: Organization, Team, Membership, Coach, Athlete
-- Roster management APIs (athlete assignments, coach views)
-- Provider boundary cleanup (Law 4 debt elimination)
-- Plan vs Real reconciliation endpoints
-- WorkoutLibrary and WorkoutAssignment CRUD
+**P2 = Historical Data, Analytics & Billing.**
+
+### Allowed (P2)
+- All P0 + P1 work (security, reliability, tenancy hardening)
+- Historical data ingestion and backfill pipelines
+- Analytics computation: PMC, TSS, ATL/CTL/TSB, injury risk
+- Billing integration (subscription tiers, usage gates)
+- Multi-provider rollout (garmin, coros, suunto, polar, wahoo — explicit activation per provider)
+- Coach analytics dashboards and athlete progress views
 - Structured observability improvements
-- Frontend components tied to P1 core flows
+- Frontend components tied to P2 core flows
 
-### Forbidden unless explicitly requested (P1)
-- AI autonomy features
+### Forbidden unless explicitly requested (P2)
+- AI autonomy / recommendation features
 - Social features / gamification
-- Multi-provider rollout (provider stubs remain disabled)
-- Large schema migrations not tied to P1 models
+- Any schema migration not tied to P2 models
 
 ### Release Lockdown Mode
-**LIFTED** — P0 successfully deployed. Normal engineering posture resumed.
-- Default posture: **Risk = Medium** (down from High)
+**LIFTED** — P1 successfully deployed. Normal engineering posture continues.
+- Default posture: **Risk = Medium**
 - Drive-by refactors still prohibited — one PR = one idea
 - Any change touching OAuth / tenancy critical path still requires protective tests
 
