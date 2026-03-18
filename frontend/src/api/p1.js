@@ -58,6 +58,10 @@ export function listPlannedWorkouts(orgId, libId) {
   return client.get(`${p1Base(orgId)}/libraries/${libId}/workouts/`);
 }
 
+export function getPlannedWorkout(orgId, libId, workoutId) {
+  return client.get(`${p1Base(orgId)}/libraries/${libId}/workouts/${workoutId}/`);
+}
+
 export function createPlannedWorkout(orgId, libId, data) {
   return client.post(`${p1Base(orgId)}/libraries/${libId}/workouts/`, data);
 }

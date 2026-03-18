@@ -231,6 +231,7 @@ class WorkoutIntervalSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "order_index",
+            "repetitions",
             "metric_type",
             "description",
             "duration_seconds",

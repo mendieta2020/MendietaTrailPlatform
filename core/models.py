@@ -2019,6 +2019,10 @@ class WorkoutInterval(models.Model):
     order_index = models.PositiveSmallIntegerField(
         help_text="Position of this interval within the block. Must be unique per block.",
     )
+    repetitions = models.PositiveIntegerField(
+        default=1,
+        help_text="Number of times this interval is repeated (e.g., 5 for '5 × 1000m').",
+    )
     metric_type = models.CharField(
         max_length=20,
         choices=MetricType.choices,

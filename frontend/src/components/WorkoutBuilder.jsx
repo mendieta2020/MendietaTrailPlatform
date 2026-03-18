@@ -15,7 +15,9 @@ import {
 } from '@mui/icons-material';
 import {
   createPlannedWorkout,
+  updatePlannedWorkout,
   createWorkoutBlock,
+  deleteWorkoutBlock,
   createWorkoutInterval,
 } from '../api/p1';
 
@@ -62,6 +64,7 @@ const METRIC_TYPES = [
 
 const emptyInterval = () => ({
   description: '',
+  repetitions: 1,
   duration_seconds: '',
   distance_meters: '',
   metric_type: 'rpe',
@@ -86,11 +89,60 @@ const INITIAL_FORM = {
   estimated_distance_km: '',
 };
 
-export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSaved }) {
+// Map a PlannedWorkoutReadSerializer response → internal form + blocks state
+function workoutToFormState(workout) {
+  const form = {
+    name: workout.name ?? '',
+    description: workout.description ?? '',
+    discipline: workout.discipline ?? 'trail',
+    session_type: workout.session_type ?? 'other',
+    estimated_duration_minutes: workout.estimated_duration_seconds
+      ? String(Math.round(workout.estimated_duration_seconds / 60))
+      : '',
+    estimated_distance_km: workout.estimated_distance_meters
+      ? String(workout.estimated_distance_meters / 1000)
+      : '',
+  };
+  const blocks = (workout.blocks ?? []).map((b, bIdx) => ({
+    id: b.id,
+    name: b.name ?? '',
+    block_type: b.block_type ?? 'main',
+    order_index: b.order_index ?? bIdx + 1,
+    open: true,
+    intervals: (b.intervals ?? []).map((iv) => ({
+      description: iv.description ?? '',
+      repetitions: iv.repetitions ?? 1,
+      duration_seconds: iv.duration_seconds != null ? String(iv.duration_seconds) : '',
+      distance_meters: iv.distance_meters != null ? String(iv.distance_meters) : '',
+      metric_type: iv.metric_type ?? 'rpe',
+      target_label: iv.target_label ?? '',
+      recovery_seconds: iv.recovery_seconds != null ? String(iv.recovery_seconds) : '',
+    })),
+  }));
+  return { form, blocks };
+}
+
+export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSaved, editWorkout, onUpdated }) {
+  const isEditMode = !!editWorkout;
+
   const [form, setForm] = useState(INITIAL_FORM);
   const [blocks, setBlocks] = useState([emptyBlock(1)]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  // Populate form when editWorkout changes (entering edit mode)
+  React.useEffect(() => {
+    if (open && editWorkout) {
+      const { form: f, blocks: b } = workoutToFormState(editWorkout);
+      setForm(f);
+      setBlocks(b);
+      setError('');
+    } else if (open && !editWorkout) {
+      setForm(INITIAL_FORM);
+      setBlocks([emptyBlock(1)]);
+      setError('');
+    }
+  }, [open, editWorkout]);
 
   const resetState = useCallback(() => {
     setForm(INITIAL_FORM);
@@ -152,7 +204,6 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
     setError('');
 
     try {
-      // 1. Create the PlannedWorkout — field names and units match backend model
       const workoutPayload = {
         name: form.name.trim(),
         description: form.description.trim(),
@@ -165,10 +216,28 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
           estimated_distance_meters: Number(form.estimated_distance_km) * 1000,
         }),
       };
-      const workoutRes = await createPlannedWorkout(orgId, libraryId, workoutPayload);
-      const workoutId = workoutRes.data.id;
 
-      // 2. Create blocks + intervals sequentially
+      let workoutId;
+      let workoutData;
+
+      if (isEditMode) {
+        // PATCH workout metadata
+        const res = await updatePlannedWorkout(orgId, libraryId, editWorkout.id, workoutPayload);
+        workoutId = editWorkout.id;
+        workoutData = res.data;
+
+        // Delete all existing blocks (cascades their intervals)
+        for (const existingBlock of editWorkout.blocks ?? []) {
+          await deleteWorkoutBlock(orgId, libraryId, workoutId, existingBlock.id);
+        }
+      } else {
+        // Create new PlannedWorkout
+        const res = await createPlannedWorkout(orgId, libraryId, workoutPayload);
+        workoutId = res.data.id;
+        workoutData = res.data;
+      }
+
+      // Create blocks + intervals (same for both create and edit)
       for (const block of blocks) {
         const blockPayload = {
           name: block.name.trim() || BLOCK_TYPES.find((t) => t.value === block.block_type)?.label,
@@ -182,6 +251,7 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
           const iv = block.intervals[idx];
           const ivPayload = {
             order_index: idx + 1,
+            repetitions: Number(iv.repetitions) || 1,
             metric_type: iv.metric_type,
             ...(iv.description.trim() && { description: iv.description.trim() }),
             ...(iv.duration_seconds && { duration_seconds: Number(iv.duration_seconds) }),
@@ -193,7 +263,11 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
         }
       }
 
-      onSaved(workoutRes.data);
+      if (isEditMode) {
+        onUpdated?.(workoutData);
+      } else {
+        onSaved(workoutData);
+      }
       handleClose();
     } catch (err) {
       const data = err?.response?.data;
@@ -204,7 +278,6 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
       } else if (data.detail) {
         setError(data.detail);
       } else {
-        // Show the first field-level validation error from the backend
         const firstKey = Object.keys(data)[0];
         const firstMsg = Array.isArray(data[firstKey]) ? data[firstKey][0] : String(data[firstKey]);
         setError(`${firstKey}: ${firstMsg}`);
@@ -220,7 +293,9 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pb: 1 }}>
         <FitnessCenterIcon sx={{ color: '#F57C00' }} />
-        <Typography variant="h6" fontWeight={700}>Nuevo Entrenamiento</Typography>
+        <Typography variant="h6" fontWeight={700}>
+          {isEditMode ? 'Editar Entrenamiento' : 'Nuevo Entrenamiento'}
+        </Typography>
       </DialogTitle>
 
       <Divider />
@@ -349,8 +424,8 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                   <Box sx={{ px: 2, py: 1.5, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
 
                     {/* Interval header */}
-                    <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 40px', gap: 1, px: 0.5 }}>
-                      {['Nombre / Descripción', 'Duración (seg)', 'Distancia (m)', 'Métrica', 'Valor objetivo', 'Descanso (seg)', ''].map((h) => (
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 60px 1fr 1fr 1fr 1fr 1fr 40px', gap: 1, px: 0.5 }}>
+                      {['Nombre / Descripción', 'Reps', 'Duración (seg)', 'Distancia (m)', 'Métrica', 'Valor objetivo', 'Descanso (seg)', ''].map((h) => (
                         <Typography key={h} variant="caption" color="text.secondary" fontWeight={600} sx={{ textTransform: 'uppercase', fontSize: '0.65rem' }}>
                           {h}
                         </Typography>
@@ -358,8 +433,9 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                     </Box>
 
                     {block.intervals.map((iv, iIdx) => (
-                      <Box key={iIdx} sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 40px', gap: 1, alignItems: 'center' }}>
+                      <Box key={iIdx} sx={{ display: 'grid', gridTemplateColumns: '2fr 60px 1fr 1fr 1fr 1fr 1fr 40px', gap: 1, alignItems: 'center' }}>
                         <TextField value={iv.description} onChange={setIntervalField(bIdx, iIdx, 'description')} size="small" placeholder="Intervalo…" />
+                        <TextField value={iv.repetitions} onChange={setIntervalField(bIdx, iIdx, 'repetitions')} size="small" type="number" inputProps={{ min: 1 }} placeholder="1" />
                         <TextField value={iv.duration_seconds} onChange={setIntervalField(bIdx, iIdx, 'duration_seconds')} size="small" type="number" inputProps={{ min: 0 }} placeholder="300" />
                         <TextField value={iv.distance_meters} onChange={setIntervalField(bIdx, iIdx, 'distance_meters')} size="small" type="number" inputProps={{ min: 0 }} placeholder="400" />
                         <TextField select value={iv.metric_type} onChange={setIntervalField(bIdx, iIdx, 'metric_type')} size="small">
@@ -405,7 +481,7 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
           variant="contained"
           sx={{ borderRadius: 2, minWidth: 140 }}
         >
-          {saving ? <CircularProgress size={20} color="inherit" /> : 'Guardar entrenamiento'}
+          {saving ? <CircularProgress size={20} color="inherit" /> : (isEditMode ? 'Actualizar entrenamiento' : 'Guardar entrenamiento')}
         </Button>
       </DialogActions>
     </Dialog>
