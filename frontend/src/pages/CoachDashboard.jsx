@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Typography, Paper, Alert, CircularProgress, Chip, Button } from '@mui/material';
 import LinkIcon from '@mui/icons-material/Link';
+import { Building2 } from 'lucide-react';
 import Layout from '../components/Layout';
 import RosterSection from '../components/roster/RosterSection';
 import AssignmentCalendar from '../components/AssignmentCalendar';
@@ -37,16 +38,40 @@ export default function CoachDashboard() {
   if (!activeOrg) {
     return (
       <Layout>
-        <Alert severity="warning" sx={{ mt: 2 }}>
-          No tienes organizaciones asignadas.
-        </Alert>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            py: 16,
+            textAlign: 'center',
+          }}
+        >
+          <Building2 style={{ width: 48, height: 48, color: '#cbd5e1', marginBottom: 16 }} />
+          <Typography variant="h6" fontWeight={600} color="text.primary" gutterBottom>
+            Sin organización asignada
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Contacta a tu administrador para que te asigne a una organización.
+          </Typography>
+        </Box>
       </Layout>
     );
   }
 
   return (
     <Layout>
-      <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+      <Paper
+        sx={{
+          p: 3,
+          mb: 3,
+          borderRadius: 3,
+          border: '1px solid',
+          borderColor: 'divider',
+          boxShadow: '0 1px 3px 0 rgba(0,0,0,0.06)',
+        }}
+      >
         <Box
           sx={{
             display: 'flex',
@@ -60,7 +85,12 @@ export default function CoachDashboard() {
             <Typography variant="h5" fontWeight={700}>
               {activeOrg.org_name}
             </Typography>
-            <Chip label={activeOrg.role} size="small" color="primary" variant="outlined" />
+            <Chip
+              label={activeOrg.role}
+              size="small"
+              variant="outlined"
+              sx={{ borderColor: '#F57C00', color: '#F57C00', fontWeight: 600 }}
+            />
           </Box>
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -79,11 +109,15 @@ export default function CoachDashboard() {
             <Button
               size="small"
               variant="outlined"
-              color="secondary"
               startIcon={<LinkIcon />}
               onClick={() => setConnectionsOpen(true)}
+              sx={{
+                color: '#F57C00',
+                borderColor: '#F57C00',
+                '&:hover': { borderColor: '#e65100', bgcolor: 'rgba(245,124,0,0.04)' },
+              }}
             >
-              Manage Connections
+              Gestionar Conexiones
             </Button>
           </Box>
         </Box>
