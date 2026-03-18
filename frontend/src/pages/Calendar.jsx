@@ -358,8 +358,8 @@ export default function CalendarPage() {
       setSaveError(null);
 
       createAssignment(orgId, {
-        planned_workout: workout.id,
-        athlete: selectedAthleteId,
+        planned_workout_id: workout.id,
+        athlete_id: selectedAthleteId,
         scheduled_date: scheduledDate,
       })
         .then((res) => {

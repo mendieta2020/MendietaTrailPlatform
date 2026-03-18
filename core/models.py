@@ -1220,6 +1220,60 @@ class Athlete(models.Model):
         return f"Athlete:{self.user_id} @ {self.organization_id}"
 
 
+# ==============================================================================
+# PR-143: AthleteZone — physiological threshold anchors per athlete
+# ==============================================================================
+
+class AthleteZone(models.Model):
+    """
+    Current physiological threshold anchors for an Athlete.
+
+    Stores the three primary zone anchors used for TSS/IF calculations
+    and intensity zone derivation:
+    - ftp_watts: Functional Threshold Power (cycling/running power)
+    - lthr_bpm: Lactate Threshold Heart Rate in beats per minute
+    - threshold_pace_sec_per_km: Threshold running pace in seconds per km
+
+    All fields are nullable: a zone record may exist without all anchors being set.
+    Multi-tenant: organization is derived from athlete.organization — no direct FK needed.
+    OneToOne: one active zone record per athlete. Update in place; do not append rows.
+    """
+
+    athlete = models.OneToOneField(
+        "Athlete",
+        on_delete=models.CASCADE,
+        related_name="zone",
+    )
+    ftp_watts = models.FloatField(
+        null=True, blank=True,
+        help_text="Functional Threshold Power in watts.",
+    )
+    lthr_bpm = models.FloatField(
+        null=True, blank=True,
+        help_text="Lactate Threshold Heart Rate in beats per minute.",
+    )
+    threshold_pace_sec_per_km = models.FloatField(
+        null=True, blank=True,
+        help_text="Threshold running pace in seconds per kilometre.",
+    )
+    recorded_at = models.DateTimeField(
+        auto_now=True,
+        help_text="Timestamp of last update.",
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["athlete"]),
+        ]
+
+    def __str__(self):
+        return (
+            f"AthleteZone Athlete:{self.athlete_id} "
+            f"FTP={self.ftp_watts}W LTHR={self.lthr_bpm}bpm "
+            f"Pace={self.threshold_pace_sec_per_km}s/km"
+        )
+
+
 class AthleteCoachAssignment(models.Model):
     """
     Explicit assignment of a Coach to an Athlete within an Organization.
@@ -1849,6 +1903,23 @@ class PlannedWorkout(models.Model):
             "Dominant target variable for Plan vs Real compliance scoring. "
             "If blank, the reconciliation engine auto-selects based on available "
             "estimated targets. Options: duration, distance, elevation_gain, pace, hr_zone."
+        ),
+    )
+
+    # PR-143: Advanced metrics — training load intent anchors
+    planned_tss = models.FloatField(
+        null=True, blank=True,
+        help_text=(
+            "Planned Training Stress Score. "
+            "Coach-estimated TSS for the session. Planning only — never derived from "
+            "execution data (Plan ≠ Real invariant)."
+        ),
+    )
+    planned_if = models.FloatField(
+        null=True, blank=True,
+        help_text=(
+            "Planned Intensity Factor (0.0–1.5+). "
+            "Ratio of planned NP/AP to athlete FTP. Planning only."
         ),
     )
 
