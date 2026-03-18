@@ -1,5 +1,6 @@
 import React, { useReducer, useEffect } from 'react';
 import { Tabs, Tab, Box, Grid, CircularProgress, Alert, Typography } from '@mui/material';
+import { Users, UserCheck, Users2 } from 'lucide-react';
 import { listAthletes, listCoaches, listTeams } from '../../api/p1';
 import AthleteCard from './AthleteCard';
 import CoachCard from './CoachCard';
@@ -70,12 +71,12 @@ export default function RosterSection({ orgId, onSelectAthlete }) {
   }
 
   const tabs = [
-    { label: 'Atletas', items: state.athletes, Card: AthleteCard, prop: 'athlete', empty: 'atletas' },
-    { label: 'Coaches', items: state.coaches, Card: CoachCard, prop: 'coach', empty: 'coaches' },
-    { label: 'Equipos', items: state.teams, Card: TeamCard, prop: 'team', empty: 'equipos' },
+    { label: 'Atletas', items: state.athletes, Card: AthleteCard, prop: 'athlete', emptyTitle: 'No hay atletas aún', emptySubtitle: 'Agrega atletas a la organización usando "Gestionar Conexiones".', EmptyIcon: Users },
+    { label: 'Coaches', items: state.coaches, Card: CoachCard, prop: 'coach', emptyTitle: 'No hay coaches aún', emptySubtitle: 'Los coaches asignados a esta organización aparecerán aquí.', EmptyIcon: UserCheck },
+    { label: 'Equipos', items: state.teams, Card: TeamCard, prop: 'team', emptyTitle: 'No hay equipos aún', emptySubtitle: 'Crea equipos para organizar a tus atletas por grupos de entrenamiento.', EmptyIcon: Users2 },
   ];
 
-  const { items, Card, prop, empty } = tabs[tab];
+  const { items, Card, prop, emptyTitle, emptySubtitle, EmptyIcon } = tabs[tab];
 
   return (
     <Box>
@@ -86,9 +87,24 @@ export default function RosterSection({ orgId, onSelectAthlete }) {
       </Tabs>
 
       {items.length === 0 ? (
-        <Typography color="text.secondary">
-          No hay {empty} en esta organización.
-        </Typography>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            py: 10,
+            textAlign: 'center',
+          }}
+        >
+          <EmptyIcon style={{ width: 48, height: 48, color: '#cbd5e1', marginBottom: 16 }} />
+          <Typography variant="h6" fontWeight={600} sx={{ color: '#374151' }}>
+            {emptyTitle}
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#6b7280', mt: 0.5, maxWidth: 360 }}>
+            {emptySubtitle}
+          </Typography>
+        </Box>
       ) : (
         <Grid container spacing={2}>
           {items.map((item) => (

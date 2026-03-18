@@ -19,6 +19,7 @@ import {
   ExpandLess as ExpandLessIcon,
   LibraryBooks as LibraryBooksIcon,
 } from '@mui/icons-material';
+import { FolderOpen, Dumbbell } from 'lucide-react';
 import Layout from '../components/Layout';
 import WorkoutBuilder from '../components/WorkoutBuilder';
 import { useOrg } from '../context/OrgContext';
@@ -283,7 +284,7 @@ export default function WorkoutLibraryPage() {
           variant="contained"
           startIcon={<AddIcon />}
           onClick={() => setNewLibOpen(true)}
-          sx={{ borderRadius: 2 }}
+          sx={{ borderRadius: 2, bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' } }}
         >
           Nueva librería
         </Button>
@@ -299,15 +300,29 @@ export default function WorkoutLibraryPage() {
       ) : libraries.length === 0 ? (
         <Paper
           variant="outlined"
-          sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 8, borderRadius: 3, borderStyle: 'dashed' }}
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            py: 10,
+            borderRadius: 3,
+            borderStyle: 'dashed',
+            borderColor: '#e2e8f0',
+            bgcolor: '#fafafa',
+          }}
         >
-          <FolderOpenIcon sx={{ fontSize: 56, color: '#cbd5e1', mb: 2 }} />
-          <Typography variant="h6" color="text.secondary" fontWeight={600}>Sin librerías</Typography>
-          <Typography variant="body2" color="text.disabled" sx={{ mb: 3 }}>
-            Crea tu primera librería para organizar tus entrenamientos.
+          <FolderOpen style={{ width: 48, height: 48, color: '#cbd5e1', marginBottom: 16 }} />
+          <Typography variant="h6" fontWeight={600} sx={{ color: '#374151' }}>Sin librerías aún</Typography>
+          <Typography variant="body2" sx={{ color: '#6b7280', mt: 0.5, mb: 3 }}>
+            Crea tu primera librería para organizar y estructurar tus entrenamientos.
           </Typography>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setNewLibOpen(true)} sx={{ borderRadius: 2 }}>
-            Crear librería
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setNewLibOpen(true)}
+            sx={{ borderRadius: 2, bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' } }}
+          >
+            Crear primera librería
           </Button>
         </Paper>
       ) : (
@@ -388,7 +403,7 @@ export default function WorkoutLibraryPage() {
               size="small"
               startIcon={<AddIcon />}
               onClick={() => { setEditWorkout(null); setBuilderOpen(true); }}
-              sx={{ borderRadius: 2 }}
+              sx={{ borderRadius: 2, bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' } }}
             >
               Nuevo entrenamiento
             </Button>
@@ -402,17 +417,22 @@ export default function WorkoutLibraryPage() {
               <CircularProgress size={28} />
             </Box>
           ) : workouts.length === 0 ? (
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 6 }}>
-              <RunIcon sx={{ fontSize: 40, color: '#cbd5e1', mb: 1 }} />
-              <Typography variant="body2" color="text.secondary">Esta librería no tiene entrenamientos todavía.</Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 8, textAlign: 'center' }}>
+              <Dumbbell style={{ width: 48, height: 48, color: '#cbd5e1', marginBottom: 16 }} />
+              <Typography variant="h6" fontWeight={600} sx={{ color: '#374151' }}>
+                Librería vacía
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#6b7280', mt: 0.5, mb: 3 }}>
+                Agrega el primer entrenamiento a esta librería para empezar a asignarlo en el calendario.
+              </Typography>
               <Button
-                variant="outlined"
+                variant="contained"
                 startIcon={<AddIcon />}
                 size="small"
                 onClick={() => { setEditWorkout(null); setBuilderOpen(true); }}
-                sx={{ mt: 2, borderRadius: 2 }}
+                sx={{ borderRadius: 2, bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' } }}
               >
-                Crear el primero
+                Crear primer entrenamiento
               </Button>
             </Box>
           ) : (
@@ -523,7 +543,12 @@ export default function WorkoutLibraryPage() {
           <Button onClick={() => setNewLibOpen(false)} disabled={newLibSaving} variant="outlined" sx={{ borderRadius: 2 }}>
             Cancelar
           </Button>
-          <Button onClick={handleCreateLibrary} disabled={newLibSaving} variant="contained" sx={{ borderRadius: 2, minWidth: 100 }}>
+          <Button
+            onClick={handleCreateLibrary}
+            disabled={newLibSaving}
+            variant="contained"
+            sx={{ borderRadius: 2, minWidth: 100, bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' }, '&.Mui-disabled': { bgcolor: '#fed7aa' } }}
+          >
             {newLibSaving ? <CircularProgress size={18} color="inherit" /> : 'Crear'}
           </Button>
         </DialogActions>

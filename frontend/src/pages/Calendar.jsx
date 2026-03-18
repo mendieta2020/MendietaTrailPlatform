@@ -36,6 +36,7 @@ import MenuOpenIcon from '@mui/icons-material/MenuOpen';
 import MenuIcon from '@mui/icons-material/Menu';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FitnessCenterIcon from '@mui/icons-material/FitnessCenter';
+import { Users, BookOpen } from 'lucide-react';
 import Layout from '../components/Layout';
 import { useOrg } from '../context/OrgContext';
 import { listAthletes, listTeams, listLibraries, listPlannedWorkouts } from '../api/p1';
@@ -179,9 +180,15 @@ function LibrarySidebar({ orgId, onDragStart, onDragEnd }) {
 
   if (!libState.data.length) {
     return (
-      <Typography variant="caption" sx={{ color: '#718096', display: 'block', p: 1 }}>
-        Sin librerías. Crea entrenamientos en /library.
-      </Typography>
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4, textAlign: 'center', px: 1 }}>
+        <BookOpen style={{ width: 28, height: 28, color: '#4a5568', marginBottom: 8 }} />
+        <Typography variant="caption" sx={{ color: '#718096', display: 'block', fontWeight: 600 }}>
+          Sin librerías
+        </Typography>
+        <Typography variant="caption" sx={{ color: '#4a5568', display: 'block', mt: 0.5, lineHeight: 1.4 }}>
+          Crea entrenamientos en Librería para arrastrarlos aquí.
+        </Typography>
+      </Box>
     );
   }
 
@@ -647,16 +654,15 @@ export default function CalendarPage() {
                   border: '2px dashed #e2e8f0',
                 }}
               >
-                <Box sx={{ textAlign: 'center' }}>
-                  <Typography variant="h6" color="text.secondary" fontWeight={500}>
+                <Box sx={{ textAlign: 'center', px: 4 }}>
+                  <Users
+                    style={{ width: 48, height: 48, color: '#cbd5e1', marginBottom: 16 }}
+                  />
+                  <Typography variant="h6" fontWeight={600} sx={{ color: '#374151' }}>
                     Selecciona un atleta o grupo
                   </Typography>
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ mt: 0.5 }}
-                  >
-                    Elige un atleta o grupo en el desplegable para ver el calendario.
+                  <Typography variant="body2" sx={{ color: '#6b7280', mt: 0.5 }}>
+                    Elige en el desplegable de arriba para visualizar y gestionar el calendario de entrenamientos.
                   </Typography>
                 </Box>
               </Paper>
