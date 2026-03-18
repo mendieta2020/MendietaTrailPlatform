@@ -9,3 +9,7 @@ export function listAssignments(orgId, { athleteId, dateFrom, dateTo } = {}) {
   if (dateTo) params.date_to = dateTo;
   return client.get(`${p1Base(orgId)}/assignments/`, { params });
 }
+
+export function createAssignment(orgId, data) {
+  return client.post(`${p1Base(orgId)}/assignments/`, data);
+}
