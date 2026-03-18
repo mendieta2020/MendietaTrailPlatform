@@ -19,52 +19,60 @@ import {
   createWorkoutInterval,
 } from '../api/p1';
 
+// Values match backend PlannedWorkout.Discipline choices (lowercase)
 const SPORT_OPTIONS = [
-  { value: 'TRAIL', label: 'Trail Running' },
-  { value: 'RUN', label: 'Running' },
-  { value: 'BIKE', label: 'Ciclismo' },
-  { value: 'WALK', label: 'Caminata' },
-  { value: 'STRENGTH', label: 'Fuerza / Funcional' },
-  { value: 'OTHER', label: 'Otro' },
+  { value: 'trail', label: 'Trail Running' },
+  { value: 'run', label: 'Running' },
+  { value: 'bike', label: 'Ciclismo' },
+  { value: 'strength', label: 'Fuerza / Funcional' },
+  { value: 'mobility', label: 'Movilidad' },
+  { value: 'other', label: 'Otro' },
 ];
 
-const DIFFICULTY_OPTIONS = [
-  { value: 'EASY', label: 'Fácil', color: '#22c55e' },
-  { value: 'MODERATE', label: 'Moderado', color: '#f59e0b' },
-  { value: 'HARD', label: 'Difícil', color: '#ef4444' },
-  { value: 'VERY_HARD', label: 'Muy Difícil', color: '#7c3aed' },
+// Values match backend PlannedWorkout.SessionType choices (lowercase)
+const SESSION_TYPE_OPTIONS = [
+  { value: 'base', label: 'Base / Fácil' },
+  { value: 'threshold', label: 'Umbral' },
+  { value: 'interval', label: 'Intervalos' },
+  { value: 'long', label: 'Largo' },
+  { value: 'recovery', label: 'Recuperación' },
+  { value: 'race_simulation', label: 'Simulación de Carrera' },
+  { value: 'strength', label: 'Fuerza' },
+  { value: 'other', label: 'Otro' },
 ];
 
+// Values match backend WorkoutBlock.BlockType choices (lowercase)
 const BLOCK_TYPES = [
-  { value: 'WARMUP', label: 'Calentamiento', color: '#fb923c' },
-  { value: 'ACTIVE', label: 'Bloque Principal', color: '#3b82f6' },
-  { value: 'COOLDOWN', label: 'Enfriamiento', color: '#a3e635' },
-  { value: 'REST', label: 'Descanso', color: '#94a3b8' },
-  { value: 'TRANSITION', label: 'Transición', color: '#c084fc' },
+  { value: 'warmup', label: 'Calentamiento', color: '#fb923c' },
+  { value: 'main', label: 'Bloque Principal', color: '#3b82f6' },
+  { value: 'cooldown', label: 'Enfriamiento', color: '#a3e635' },
+  { value: 'drill', label: 'Técnica / Drills', color: '#94a3b8' },
+  { value: 'strength', label: 'Fuerza', color: '#c084fc' },
+  { value: 'custom', label: 'Personalizado', color: '#f59e0b' },
 ];
 
-const INTENSITY_TYPES = [
-  { value: 'RPE', label: 'RPE (1–10)' },
-  { value: 'HR_ZONE', label: 'Zona FC (Z1–Z5)' },
-  { value: 'PACE', label: 'Ritmo (min/km)' },
-  { value: 'POWER', label: 'Vatios' },
-  { value: 'OPEN', label: 'Libre' },
+// Values match backend WorkoutInterval.MetricType choices (lowercase)
+const METRIC_TYPES = [
+  { value: 'rpe', label: 'RPE (1–10)' },
+  { value: 'hr_zone', label: 'Zona FC (Z1–Z5)' },
+  { value: 'pace', label: 'Ritmo (min/km)' },
+  { value: 'power', label: 'Vatios' },
+  { value: 'free', label: 'Libre' },
 ];
 
 const emptyInterval = () => ({
-  name: '',
+  description: '',
   duration_seconds: '',
   distance_meters: '',
-  intensity_type: 'RPE',
-  intensity_value: '',
-  rest_duration_seconds: '',
-  repetitions: 1,
+  metric_type: 'rpe',
+  target_label: '',
+  recovery_seconds: '',
 });
 
-const emptyBlock = (order) => ({
+const emptyBlock = (order_index) => ({
   name: '',
-  block_type: 'ACTIVE',
-  order,
+  block_type: 'main',
+  order_index,
   open: true,
   intervals: [emptyInterval()],
 });
@@ -72,11 +80,10 @@ const emptyBlock = (order) => ({
 const INITIAL_FORM = {
   name: '',
   description: '',
-  sport_type: 'TRAIL',
-  difficulty: 'MODERATE',
+  discipline: 'trail',
+  session_type: 'other',
   estimated_duration_minutes: '',
   estimated_distance_km: '',
-  notes: '',
 };
 
 export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSaved }) {
@@ -114,7 +121,7 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
   };
 
   const removeBlock = (bIdx) => {
-    setBlocks((prev) => prev.filter((_, i) => i !== bIdx).map((b, i) => ({ ...b, order: i + 1 })));
+    setBlocks((prev) => prev.filter((_, i) => i !== bIdx).map((b, i) => ({ ...b, order_index: i + 1 })));
   };
 
   const setIntervalField = (bIdx, iIdx, key) => (e) => {
@@ -145,15 +152,18 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
     setError('');
 
     try {
-      // 1. Create the PlannedWorkout
+      // 1. Create the PlannedWorkout — field names and units match backend model
       const workoutPayload = {
         name: form.name.trim(),
         description: form.description.trim(),
-        sport_type: form.sport_type,
-        difficulty: form.difficulty,
-        notes: form.notes.trim(),
-        ...(form.estimated_duration_minutes && { estimated_duration_minutes: Number(form.estimated_duration_minutes) }),
-        ...(form.estimated_distance_km && { estimated_distance_km: Number(form.estimated_distance_km) }),
+        discipline: form.discipline,
+        session_type: form.session_type,
+        ...(form.estimated_duration_minutes && {
+          estimated_duration_seconds: Math.round(Number(form.estimated_duration_minutes) * 60),
+        }),
+        ...(form.estimated_distance_km && {
+          estimated_distance_meters: Number(form.estimated_distance_km) * 1000,
+        }),
       };
       const workoutRes = await createPlannedWorkout(orgId, libraryId, workoutPayload);
       const workoutId = workoutRes.data.id;
@@ -163,22 +173,21 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
         const blockPayload = {
           name: block.name.trim() || BLOCK_TYPES.find((t) => t.value === block.block_type)?.label,
           block_type: block.block_type,
-          order: block.order,
+          order_index: block.order_index,
         };
         const blockRes = await createWorkoutBlock(orgId, libraryId, workoutId, blockPayload);
         const blockId = blockRes.data.id;
 
-        for (let order = 0; order < block.intervals.length; order++) {
-          const iv = block.intervals[order];
+        for (let idx = 0; idx < block.intervals.length; idx++) {
+          const iv = block.intervals[idx];
           const ivPayload = {
-            order: order + 1,
-            ...(iv.name.trim() && { name: iv.name.trim() }),
+            order_index: idx + 1,
+            metric_type: iv.metric_type,
+            ...(iv.description.trim() && { description: iv.description.trim() }),
             ...(iv.duration_seconds && { duration_seconds: Number(iv.duration_seconds) }),
             ...(iv.distance_meters && { distance_meters: Number(iv.distance_meters) }),
-            intensity_type: iv.intensity_type,
-            ...(iv.intensity_value && { intensity_value: iv.intensity_value }),
-            ...(iv.rest_duration_seconds && { rest_duration_seconds: Number(iv.rest_duration_seconds) }),
-            repetitions: Number(iv.repetitions) || 1,
+            ...(iv.target_label && { target_label: iv.target_label }),
+            ...(iv.recovery_seconds && { recovery_seconds: Number(iv.recovery_seconds) }),
           };
           await createWorkoutInterval(orgId, libraryId, workoutId, blockId, ivPayload);
         }
@@ -187,8 +196,19 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
       onSaved(workoutRes.data);
       handleClose();
     } catch (err) {
-      const detail = err?.response?.data?.detail || err?.response?.data?.name?.[0] || 'Error al guardar el entrenamiento.';
-      setError(detail);
+      const data = err?.response?.data;
+      if (!data) {
+        setError('Error al guardar el entrenamiento.');
+      } else if (typeof data === 'string') {
+        setError(data);
+      } else if (data.detail) {
+        setError(data.detail);
+      } else {
+        // Show the first field-level validation error from the backend
+        const firstKey = Object.keys(data)[0];
+        const firstMsg = Array.isArray(data[firstKey]) ? data[firstKey][0] : String(data[firstKey]);
+        setError(`${firstKey}: ${firstMsg}`);
+      }
     } finally {
       setSaving(false);
     }
@@ -225,28 +245,23 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
             placeholder="Ej: Fartlek 8×400m, Carrera larga en montaña…"
           />
           <TextField
-            label="Descripción"
+            label="Descripción / Notas para el atleta"
             value={form.description}
             onChange={setField('description')}
             fullWidth
             size="small"
             multiline
             rows={2}
-            placeholder="Objetivo del entrenamiento…"
+            placeholder="Objetivo del entrenamiento, instrucciones adicionales…"
           />
 
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-            <TextField select label="Deporte" value={form.sport_type} onChange={setField('sport_type')} size="small" fullWidth>
+            <TextField select label="Deporte" value={form.discipline} onChange={setField('discipline')} size="small" fullWidth>
               {SPORT_OPTIONS.map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
             </TextField>
-            <TextField select label="Dificultad" value={form.difficulty} onChange={setField('difficulty')} size="small" fullWidth>
-              {DIFFICULTY_OPTIONS.map((o) => (
-                <MenuItem key={o.value} value={o.value}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: o.color }} />
-                    {o.label}
-                  </Box>
-                </MenuItem>
+            <TextField select label="Tipo de sesión" value={form.session_type} onChange={setField('session_type')} size="small" fullWidth>
+              {SESSION_TYPE_OPTIONS.map((o) => (
+                <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
               ))}
             </TextField>
             <TextField
@@ -266,16 +281,6 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
               inputProps={{ min: 0, step: 0.1 }}
             />
           </Box>
-          <TextField
-            label="Notas para el atleta"
-            value={form.notes}
-            onChange={setField('notes')}
-            fullWidth
-            size="small"
-            multiline
-            rows={2}
-            placeholder="Instrucciones adicionales, equipo necesario…"
-          />
         </Box>
 
         <Divider sx={{ mb: 3 }} />
@@ -345,7 +350,7 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
 
                     {/* Interval header */}
                     <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 40px', gap: 1, px: 0.5 }}>
-                      {['Nombre / Descripción', 'Duración (seg)', 'Distancia (m)', 'Tipo intensidad', 'Valor', 'Descanso (seg)', ''].map((h) => (
+                      {['Nombre / Descripción', 'Duración (seg)', 'Distancia (m)', 'Métrica', 'Valor objetivo', 'Descanso (seg)', ''].map((h) => (
                         <Typography key={h} variant="caption" color="text.secondary" fontWeight={600} sx={{ textTransform: 'uppercase', fontSize: '0.65rem' }}>
                           {h}
                         </Typography>
@@ -354,14 +359,14 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
 
                     {block.intervals.map((iv, iIdx) => (
                       <Box key={iIdx} sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 40px', gap: 1, alignItems: 'center' }}>
-                        <TextField value={iv.name} onChange={setIntervalField(bIdx, iIdx, 'name')} size="small" placeholder="Intervalo…" />
+                        <TextField value={iv.description} onChange={setIntervalField(bIdx, iIdx, 'description')} size="small" placeholder="Intervalo…" />
                         <TextField value={iv.duration_seconds} onChange={setIntervalField(bIdx, iIdx, 'duration_seconds')} size="small" type="number" inputProps={{ min: 0 }} placeholder="300" />
                         <TextField value={iv.distance_meters} onChange={setIntervalField(bIdx, iIdx, 'distance_meters')} size="small" type="number" inputProps={{ min: 0 }} placeholder="400" />
-                        <TextField select value={iv.intensity_type} onChange={setIntervalField(bIdx, iIdx, 'intensity_type')} size="small">
-                          {INTENSITY_TYPES.map((t) => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
+                        <TextField select value={iv.metric_type} onChange={setIntervalField(bIdx, iIdx, 'metric_type')} size="small">
+                          {METRIC_TYPES.map((t) => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
                         </TextField>
-                        <TextField value={iv.intensity_value} onChange={setIntervalField(bIdx, iIdx, 'intensity_value')} size="small" placeholder="Z3 / 7" />
-                        <TextField value={iv.rest_duration_seconds} onChange={setIntervalField(bIdx, iIdx, 'rest_duration_seconds')} size="small" type="number" inputProps={{ min: 0 }} placeholder="90" />
+                        <TextField value={iv.target_label} onChange={setIntervalField(bIdx, iIdx, 'target_label')} size="small" placeholder="Z3 / 7 / 4:30" />
+                        <TextField value={iv.recovery_seconds} onChange={setIntervalField(bIdx, iIdx, 'recovery_seconds')} size="small" type="number" inputProps={{ min: 0 }} placeholder="90" />
                         <Tooltip title="Eliminar intervalo">
                           <span>
                             <IconButton size="small" onClick={() => removeInterval(bIdx, iIdx)} disabled={block.intervals.length === 1}>
