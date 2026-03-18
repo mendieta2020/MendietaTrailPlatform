@@ -13,9 +13,13 @@ Enforces:
 No API, no notifications, no async in this module.
 """
 
+import logging
+
 from django.core.exceptions import ValidationError
 
-from .models import WorkoutAssignment
+from .models import Athlete, WorkoutAssignment
+
+logger = logging.getLogger(__name__)
 
 
 def assign_workout_to_athlete(
@@ -128,6 +132,84 @@ def personalize_workout_assignment(
         update_fields.append("target_power_override")
     assignment.save(update_fields=update_fields)
     return assignment
+
+
+def bulk_assign_team_workout(
+    *,
+    planned_workout,
+    team,
+    organization,
+    scheduled_date,
+    day_order: int = 1,
+    assigned_by=None,
+    coach_notes: str = "",
+) -> list:
+    """
+    Create a WorkoutAssignment for every active Athlete in a Team.
+
+    Validates:
+    - planned_workout.organization == organization
+    - team.organization == organization
+
+    Uses bulk_create for efficiency. Idempotency: athletes who already have
+    an assignment for (planned_workout, scheduled_date, day_order) are skipped.
+
+    Returns the list of created WorkoutAssignment objects.
+    """
+    if planned_workout.organization_id != organization.id:
+        raise ValidationError("planned_workout does not belong to this organization.")
+    if team.organization_id != organization.id:
+        raise ValidationError("team does not belong to this organization.")
+
+    athletes = list(Athlete.objects.filter(team=team, organization=organization))
+    if not athletes:
+        return []
+
+    existing_athlete_ids = set(
+        WorkoutAssignment.objects.filter(
+            organization=organization,
+            planned_workout=planned_workout,
+            scheduled_date=scheduled_date,
+            day_order=day_order,
+            athlete__in=athletes,
+        ).values_list("athlete_id", flat=True)
+    )
+
+    snapshot_version = planned_workout.structure_version
+    to_create = [
+        WorkoutAssignment(
+            organization=organization,
+            athlete=athlete,
+            planned_workout=planned_workout,
+            assigned_by=assigned_by,
+            scheduled_date=scheduled_date,
+            day_order=day_order,
+            coach_notes=coach_notes,
+            snapshot_version=snapshot_version,
+        )
+        for athlete in athletes
+        if athlete.id not in existing_athlete_ids
+    ]
+
+    if not to_create:
+        return []
+
+    created = WorkoutAssignment.objects.bulk_create(to_create)
+
+    logger.info(
+        "workout_assignment.bulk_team_created",
+        extra={
+            "event_name": "workout_assignment.bulk_team_created",
+            "organization_id": organization.id,
+            "actor_id": assigned_by.id if assigned_by else None,
+            "team_id": team.id,
+            "planned_workout_id": planned_workout.id,
+            "scheduled_date": str(scheduled_date),
+            "count": len(created),
+            "outcome": "success",
+        },
+    )
+    return created
 
 
 def add_athlete_note_to_assignment(
