@@ -65,6 +65,8 @@ function fetchReducer(state, action) {
       return { ...state, loading: false, error: action.error };
     case 'CLEAR':
       return { data: [], loading: false, error: null };
+    case 'ADD_EVENT':
+      return { ...state, data: [...state.data, action.event] };
     default:
       return state;
   }
@@ -366,24 +368,21 @@ export default function CalendarPage() {
           const a = res.data;
           const day = parseISO(a.effective_date ?? a.scheduled_date);
           eventsDispatch({
-            type: 'FETCH_SUCCESS',
-            data: [
-              ...eventsState.data,
-              {
-                id: a.id,
-                title: a.planned_workout_title ?? workout.name,
-                start: day,
-                end: day,
-                allDay: true,
-                resource: a,
-              },
-            ],
+            type: 'ADD_EVENT',
+            event: {
+              id: a.id,
+              title: a.planned_workout_title ?? workout.name,
+              start: day,
+              end: day,
+              allDay: true,
+              resource: a,
+            },
           });
         })
         .catch(() => setSaveError('Error al asignar el entrenamiento. Intenta de nuevo.'))
         .finally(() => setSaving(false));
     },
-    [orgId, selectedAthleteId, eventsState.data]
+    [orgId, selectedAthleteId]
   );
 
   // ── Calendar styling ──────────────────────────────────────────────────────

@@ -32,12 +32,12 @@ export function OrgProvider({ children }) {
       return;
     }
 
-    const savedId = sessionStorage.getItem(SESSION_KEY);
+    const savedId = localStorage.getItem(SESSION_KEY);
     const saved = savedId
       ? userMemberships.find((m) => String(m.org_id) === savedId)
       : null;
     const resolved = saved ?? userMemberships[0];
-    sessionStorage.setItem(SESSION_KEY, String(resolved.org_id));
+    localStorage.setItem(SESSION_KEY, String(resolved.org_id));
     dispatch({ type: 'RESOLVE', activeOrgId: resolved.org_id });
   }, [user, authLoading]);
 
@@ -48,7 +48,7 @@ export function OrgProvider({ children }) {
   function setActiveOrg(orgId) {
     const found = memberships.find((m) => m.org_id === orgId);
     if (!found) return;
-    sessionStorage.setItem(SESSION_KEY, String(found.org_id));
+    localStorage.setItem(SESSION_KEY, String(found.org_id));
     dispatch({ type: 'SET_ACTIVE', orgId });
   }
 
