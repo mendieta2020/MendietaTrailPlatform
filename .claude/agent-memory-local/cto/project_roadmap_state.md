@@ -4,19 +4,24 @@ description: Current state of P1 roadmap — last completed PR, next PR to ship,
 type: project
 ---
 
-Last completed PR: PR-136 (Suunto Webhook Subscription + Real-Time Delivery, merged 2026-03-17).
+Last completed PR: PR-X4 (ExternalIdentity API with strict org tenancy, merged 2026-03-17).
 
 **Why:** Track roadmap progress to dictate next PR correctly.
 **How to apply:** Use this to determine the next logical PR when the developer asks.
 
-Current PR in design: PR-137 — SuuntoPlus Guides (workout push to watch). Brief delivered 2026-03-17. Branch: pr-137-suunto-guides.
-Key decisions for PR-137:
-- New model WorkoutDeliveryRecord (provider-agnostic, UniqueConstraint on assignment+provider)
-- Builder pattern in integrations/suunto/guides.py (pure function, no DB)
-- REST endpoint: @action on WorkoutAssignmentViewSet (POST .../push/)
-- Celery task suunto.push_guide with exponential backoff
-- Idempotency via snapshot_version comparison on delivery record
-- CAP_OUTBOUND_WORKOUTS added to suunto capability set
+## ✅ SUUNTO BACKEND EPIC — CLOSED (2026-03-17)
+
+All Suunto backend milestones are complete and merged:
+- PR-134: Suunto OAuth Phase 1 (connect/callback/disconnect) — MERGED
+- PR-135: Suunto FIT Activity Ingestion — MERGED
+- PR-136: Suunto Webhook Subscription + Real-Time Delivery — MERGED
+- PR-137: SuuntoPlus Guides (workout push to watch) — MERGED
+- PR-X3: Suunto Token Refresh (auto-renovación OAuth) — MERGED
+- PR-X4: Suunto ExternalIdentity API (endpoint + strict org tenancy) — MERGED
+
+## ➡️ NEXT OFFICIAL STEP: Frontend React → P1 APIs integration
+
+Connect the React frontend to the P1 backend APIs built during this phase.
 
 P1 backend APIs completed:
 - Organization, Team, Membership, Coach, Athlete, AthleteCoachAssignment (PR-129 + PR-130 tenancy)
@@ -33,24 +38,23 @@ P1 frontend completed:
 - AssignmentCalendar in CoachDashboard (PR-131c)
 
 Multi-provider expansion:
-- PR-134: Suunto OAuth Phase 1 (connect/callback/disconnect) — DONE, deployed
+- PR-134: Suunto OAuth Phase 1 (connect/callback/disconnect) — MERGED
 - PR-135: Suunto FIT Activity Ingestion — MERGED (tasks, client, parser, ingest service)
-- PR-136: Suunto Webhook Subscription + Real-Time Delivery — IN DESIGN
-- Existing infra: provider registry (6 providers registered, only strava enabled)
+- PR-136: Suunto Webhook Subscription + Real-Time Delivery — MERGED
+- PR-137: SuuntoPlus Guides (workout push to watch) — MERGED
+- PR-X3: Suunto Token Auto-Refresh — MERGED
+- PR-X4: Suunto ExternalIdentity API — MERGED
+- Existing infra: provider registry (6 providers registered, only strava + suunto enabled)
 - ExternalIdentity.Provider: STRAVA + SUUNTO (added in PR-134)
 - StravaWebhookEvent model already supports multi-provider (provider field exists)
 
-TENANCY SWEEP DEBT (still pending):
-- RaceEventViewSet, AthleteGoalViewSet, AthleteProfileViewSet, ReconciliationViewSet, AthleteAdherenceViewSet
+TENANCY SWEEP DEBT — RESOLVED:
+- RaceEventViewSet, AthleteGoalViewSet, AthleteProfileViewSet, ReconciliationViewSet, AthleteAdherenceViewSet — completed as part of P1 sweep
 
 Test coverage milestones:
-- Total: 935+ tests (as of PR-133)
+- Total: 935+ tests (as of PR-133; additional tests added in PR-X3, PR-X4)
 
-Key architecture findings for PR-136:
-- StravaWebhookEvent model has `provider` field (default="strava") — can reuse for suunto
-- UniqueConstraint: (provider, event_uid) — already multi-provider compatible
-- Suunto API uses `Ocp-Apim-Subscription-Key` header (Azure APIM pattern), NOT HMAC signature
-- SUUNTO_SUBSCRIPTION_KEY is already used in client.py for API calls — same key for webhook verification
-- Suunto is "webhook-push" architecture per vendor_integration_playbook.md
-- Existing Celery task `suunto.ingest_workout` already handles FIT download + parse + persist
-- CELERY_TASK_ROUTES needs `suunto.*` queue entry
+## Deferred Items (Technical Debt — future PRs)
+
+- **FINDING-X4-A:** `ExternalIdentityViewSet.get_queryset` uses legacy coach scope (`alumno__entrenador`) instead of P1 org-membership pattern. Will be unified in D2/D3 tenancy debt cleanup.
+- **FINDING-X4-B:** No test for explicit unlink via `PATCH alumno=null` on ExternalIdentity. Needs a targeted test in a future tenancy hardening PR.

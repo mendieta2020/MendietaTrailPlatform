@@ -1,13 +1,28 @@
-import React, { useState } from 'react';
-import { Box, Typography, Paper, Alert, CircularProgress, Chip } from '@mui/material';
+import React, { useEffect, useState } from 'react';
+import { Box, Typography, Paper, Alert, CircularProgress, Chip, Button } from '@mui/material';
+import LinkIcon from '@mui/icons-material/Link';
 import Layout from '../components/Layout';
 import RosterSection from '../components/roster/RosterSection';
 import AssignmentCalendar from '../components/AssignmentCalendar';
+import ManageConnectionsModal from '../components/roster/ManageConnectionsModal';
 import { useOrg } from '../context/OrgContext';
+import { listExternalIdentities } from '../api/p1';
 
 export default function CoachDashboard() {
   const { activeOrg, orgLoading } = useOrg();
   const [selectedAthleteId, setSelectedAthleteId] = useState(null);
+  const [connectionsOpen, setConnectionsOpen] = useState(false);
+  const [activeConnectionCount, setActiveConnectionCount] = useState(null);
+
+  useEffect(() => {
+    if (!activeOrg) return;
+    listExternalIdentities(activeOrg.org_id)
+      .then((res) => {
+        const identities = res.data?.results ?? res.data ?? [];
+        setActiveConnectionCount(identities.filter((i) => i.status === 'linked').length);
+      })
+      .catch(() => setActiveConnectionCount(null));
+  }, [activeOrg]);
 
   if (orgLoading) {
     return (
@@ -32,18 +47,59 @@ export default function CoachDashboard() {
   return (
     <Layout>
       <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-          <Typography variant="h5" fontWeight={700}>
-            {activeOrg.org_name}
-          </Typography>
-          <Chip label={activeOrg.role} size="small" color="primary" variant="outlined" />
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+            flexWrap: 'wrap',
+            justifyContent: 'space-between',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+            <Typography variant="h5" fontWeight={700}>
+              {activeOrg.org_name}
+            </Typography>
+            <Chip label={activeOrg.role} size="small" color="primary" variant="outlined" />
+          </Box>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            {activeConnectionCount !== null && (
+              <Chip
+                label={
+                  activeConnectionCount > 0
+                    ? `${activeConnectionCount} conexión${activeConnectionCount !== 1 ? 'es' : ''} activa${activeConnectionCount !== 1 ? 's' : ''}`
+                    : 'Sin conexiones activas'
+                }
+                size="small"
+                color={activeConnectionCount > 0 ? 'success' : 'default'}
+                variant="outlined"
+              />
+            )}
+            <Button
+              size="small"
+              variant="outlined"
+              color="secondary"
+              startIcon={<LinkIcon />}
+              onClick={() => setConnectionsOpen(true)}
+            >
+              Manage Connections
+            </Button>
+          </Box>
         </Box>
       </Paper>
 
       <RosterSection orgId={activeOrg.org_id} onSelectAthlete={setSelectedAthleteId} />
+
       {selectedAthleteId !== null && (
         <AssignmentCalendar athleteId={selectedAthleteId} orgId={activeOrg.org_id} />
       )}
+
+      <ManageConnectionsModal
+        open={connectionsOpen}
+        onClose={() => setConnectionsOpen(false)}
+        orgId={activeOrg.org_id}
+      />
     </Layout>
   );
 }

@@ -21,3 +21,15 @@ export function getAthlete(orgId, id) {
 export function listMemberships(orgId) {
   return client.get(`${p1Base(orgId)}/memberships/`);
 }
+
+export function listExternalIdentities(orgId) {
+  return client.get(`${p1Base(orgId)}/external-identities/`);
+}
+
+export function createExternalIdentity(orgId, data) {
+  return client.post(`${p1Base(orgId)}/external-identities/`, data);
+}
+
+export function deleteExternalIdentity(orgId, id) {
+  return client.delete(`${p1Base(orgId)}/external-identities/${id}/`);
+}
