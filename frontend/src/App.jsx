@@ -17,6 +17,7 @@ import TeamDetail from './pages/TeamDetail';
 import Alerts from './pages/Alerts';
 import Connections from './pages/Connections';
 import CoachDashboard from './pages/CoachDashboard';
+import WorkoutLibraryPage from './pages/WorkoutLibraryPage';
 import { useAuth } from './context/AuthContext';
 
 // 3. Páginas públicas (sin autenticación requerida)
@@ -87,7 +88,17 @@ function App() {
             }
           />
 
-          {/* 3. Calendario de Temporada */}
+          {/* 3. Librería de Entrenamientos (P2) */}
+          <Route
+            path="/library"
+            element={
+              <ProtectedRoute>
+                <WorkoutLibraryPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* 4. Calendario de Temporada */}
           <Route
             path="/calendar"
             element={
