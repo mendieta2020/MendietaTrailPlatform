@@ -67,6 +67,7 @@ class AthleteRosterSerializer(serializers.ModelSerializer):
     coach_id and team_id querysets are scoped to context["organization"]
     to prevent cross-org FK writes at the serializer layer.
     organization is not exposed — injected by AthleteRosterViewSet.
+    first_name / last_name are read-only, derived from athlete.user.
     """
 
     user_id = serializers.PrimaryKeyRelatedField(
@@ -85,12 +86,22 @@ class AthleteRosterSerializer(serializers.ModelSerializer):
         allow_null=True,
         required=False,
     )
+    first_name = serializers.SerializerMethodField()
+    last_name = serializers.SerializerMethodField()
+
+    def get_first_name(self, obj):
+        return obj.user.first_name if obj.user_id else ""
+
+    def get_last_name(self, obj):
+        return obj.user.last_name if obj.user_id else ""
 
     class Meta:
         model = Athlete
         fields = [
             "id",
             "user_id",
+            "first_name",
+            "last_name",
             "coach_id",
             "team_id",
             "notes",
