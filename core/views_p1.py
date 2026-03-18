@@ -42,6 +42,7 @@ from core.models import (
     OAuthCredential,
     PlannedWorkout,
     RaceEvent,
+    Team,
     WorkoutAssignment,
     WorkoutBlock,
     WorkoutDeliveryRecord,
@@ -299,6 +300,16 @@ class WorkoutAssignmentViewSet(
                         {"athlete_id": "Must be a positive integer."}
                     )
 
+            # Optional team_id filter: scopes to athletes in a specific team.
+            team_id = self.request.query_params.get("team_id")
+            if team_id:
+                try:
+                    qs = qs.filter(athlete__team_id=int(team_id))
+                except (ValueError, TypeError):
+                    raise DRFValidationError(
+                        {"team_id": "Must be a positive integer."}
+                    )
+
         # Date range filters apply to both roles.
         date_from = self.request.query_params.get("date_from")
         if date_from:
@@ -414,6 +425,84 @@ class WorkoutAssignmentViewSet(
         return Response(
             {"status": "queued", "assignment_id": assignment.pk},
             status=status.HTTP_202_ACCEPTED,
+        )
+
+    @action(detail=False, methods=["post"], url_path="bulk-assign-team")
+    def bulk_assign_team(self, request, *args, **kwargs):
+        """
+        POST /api/p1/orgs/<org_id>/assignments/bulk-assign-team/
+
+        Assigns a PlannedWorkout to every active Athlete in a Team on a given date.
+        Requires coach or owner role.
+
+        Request body:
+          {
+            "planned_workout_id": <int>,
+            "team_id": <int>,
+            "scheduled_date": "YYYY-MM-DD",
+            "coach_notes": "" (optional)
+          }
+
+        Returns:
+          { "created": <int>, "assignments": [...] }
+        """
+        from core.services_workout import bulk_assign_team_workout  # noqa: PLC0415
+
+        if self.membership.role not in _WRITE_ROLES:
+            raise PermissionDenied("Only coaches and owners can bulk-assign workouts.")
+
+        planned_workout_id = request.data.get("planned_workout_id")
+        team_id = request.data.get("team_id")
+        scheduled_date_raw = request.data.get("scheduled_date")
+        coach_notes = request.data.get("coach_notes", "")
+
+        errors = {}
+        if not planned_workout_id:
+            errors["planned_workout_id"] = "This field is required."
+        if not team_id:
+            errors["team_id"] = "This field is required."
+        if not scheduled_date_raw:
+            errors["scheduled_date"] = "This field is required."
+        if errors:
+            raise DRFValidationError(errors)
+
+        try:
+            scheduled_date = datetime.date.fromisoformat(str(scheduled_date_raw))
+        except ValueError:
+            raise DRFValidationError(
+                {"scheduled_date": "Invalid date format. Use YYYY-MM-DD."}
+            )
+
+        planned_workout = get_object_or_404(
+            PlannedWorkout,
+            pk=planned_workout_id,
+            organization=self.organization,
+        )
+        team = get_object_or_404(
+            Team,
+            pk=team_id,
+            organization=self.organization,
+        )
+
+        try:
+            assignments = bulk_assign_team_workout(
+                planned_workout=planned_workout,
+                team=team,
+                organization=self.organization,
+                scheduled_date=scheduled_date,
+                assigned_by=request.user,
+                coach_notes=coach_notes,
+            )
+        except DjangoValidationError as exc:
+            detail = exc.message_dict if hasattr(exc, "message_dict") else {"detail": str(exc)}
+            raise DRFValidationError(detail=detail)
+
+        serializer = WorkoutAssignmentSerializer(
+            assignments, many=True, context=self.get_serializer_context()
+        )
+        return Response(
+            {"created": len(assignments), "assignments": serializer.data},
+            status=status.HTTP_201_CREATED,
         )
 
 

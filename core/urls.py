@@ -202,6 +202,12 @@ urlpatterns = [
         WorkoutAssignmentViewSet.as_view({'post': 'push'}),
         name='p1-assignment-push',
     ),
+    # PR-145: Bulk team workout assignment
+    path(
+        'p1/orgs/<int:org_id>/assignments/bulk-assign-team/',
+        WorkoutAssignmentViewSet.as_view({'post': 'bulk_assign_team'}),
+        name='p1-assignment-bulk-assign-team',
+    ),
 
     # ==============================================================================
     # PR-119: P1 organization-first API — WorkoutReconciliation

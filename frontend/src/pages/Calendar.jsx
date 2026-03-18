@@ -21,6 +21,7 @@ import {
   Typography,
   Select,
   MenuItem,
+  ListSubheader,
   FormControl,
   InputLabel,
   CircularProgress,
@@ -37,8 +38,8 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FitnessCenterIcon from '@mui/icons-material/FitnessCenter';
 import Layout from '../components/Layout';
 import { useOrg } from '../context/OrgContext';
-import { listAthletes, listLibraries, listPlannedWorkouts } from '../api/p1';
-import { listAssignments, createAssignment } from '../api/assignments';
+import { listAthletes, listTeams, listLibraries, listPlannedWorkouts } from '../api/p1';
+import { listAssignments, createAssignment, bulkAssignTeam } from '../api/assignments';
 
 const DnDCalendar = withDragAndDrop(Calendar);
 
@@ -268,17 +269,35 @@ function toEvents(assignments) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+// ── Target selector helpers ──────────────────────────────────────────────────
+// selectedTarget is either '' (nothing selected) or a string like:
+//   'a:42'  → individual athlete with id=42
+//   't:7'   → team with id=7
+
+function parseTarget(value) {
+  if (!value) return null;
+  const [type, id] = value.split(':');
+  return { type, id: Number(id) };
+}
+
 export default function CalendarPage() {
   const { activeOrg } = useOrg();
   const orgId = activeOrg?.org_id ?? null;
 
-  // Athletes
+  // Athletes + Teams
   const [athleteState, athleteDispatch] = useReducer(fetchReducer, {
     data: [],
     loading: false,
     error: null,
   });
-  const [selectedAthleteId, setSelectedAthleteId] = useState('');
+  const [teamState, teamDispatch] = useReducer(fetchReducer, {
+    data: [],
+    loading: false,
+    error: null,
+  });
+
+  // Unified selection: '' | 'a:<id>' | 't:<id>'
+  const [selectedTarget, setSelectedTarget] = useState('');
 
   // Calendar events
   const [eventsState, eventsDispatch] = useReducer(fetchReducer, {
@@ -310,18 +329,37 @@ export default function CalendarPage() {
       );
   }, [orgId]);
 
+  // ── Load teams ────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!orgId) return;
+    teamDispatch({ type: 'FETCH_START' });
+    listTeams(orgId)
+      .then((res) =>
+        teamDispatch({ type: 'FETCH_SUCCESS', data: res.data?.results ?? res.data ?? [] })
+      )
+      .catch(() =>
+        teamDispatch({ type: 'FETCH_ERROR', error: 'No se pudieron cargar los grupos.' })
+      );
+  }, [orgId]);
+
   // ── Load assignments for current month ────────────────────────────────────
 
   const dateFrom = format(startOfMonth(currentDate), 'yyyy-MM-dd');
   const dateTo = format(endOfMonth(currentDate), 'yyyy-MM-dd');
 
   useEffect(() => {
-    if (!orgId || !selectedAthleteId) {
+    const target = parseTarget(selectedTarget);
+    if (!orgId || !target) {
       eventsDispatch({ type: 'CLEAR' });
       return;
     }
     eventsDispatch({ type: 'FETCH_START' });
-    listAssignments(orgId, { athleteId: selectedAthleteId, dateFrom, dateTo })
+    const params =
+      target.type === 't'
+        ? { teamId: target.id, dateFrom, dateTo }
+        : { athleteId: target.id, dateFrom, dateTo };
+    listAssignments(orgId, params)
       .then((res) => {
         const data = res.data?.results ?? res.data ?? [];
         eventsDispatch({ type: 'FETCH_SUCCESS', data: toEvents(data) });
@@ -329,7 +367,7 @@ export default function CalendarPage() {
       .catch(() =>
         eventsDispatch({ type: 'FETCH_ERROR', error: 'No se pudieron cargar los entrenamientos.' })
       );
-  }, [orgId, selectedAthleteId, dateFrom, dateTo]);
+  }, [orgId, selectedTarget, dateFrom, dateTo]);
 
   // ── Drag handlers ─────────────────────────────────────────────────────────
 
@@ -353,36 +391,66 @@ export default function CalendarPage() {
     ({ start }) => {
       const workout = draggingWorkoutRef.current;
       draggingWorkoutRef.current = null;
-      if (!workout || !selectedAthleteId || !orgId) return;
+      const target = parseTarget(selectedTarget);
+      if (!workout || !target || !orgId) return;
 
       const scheduledDate = format(start, 'yyyy-MM-dd');
       setSaving(true);
       setSaveError(null);
 
-      createAssignment(orgId, {
-        planned_workout_id: workout.id,
-        athlete_id: selectedAthleteId,
-        scheduled_date: scheduledDate,
-      })
-        .then((res) => {
-          const a = res.data;
-          const day = parseISO(a.effective_date ?? a.scheduled_date);
-          eventsDispatch({
-            type: 'ADD_EVENT',
-            event: {
-              id: a.id,
-              title: a.planned_workout_title ?? workout.name,
-              start: day,
-              end: day,
-              allDay: true,
-              resource: a,
-            },
-          });
+      if (target.type === 't') {
+        // Bulk team assignment
+        bulkAssignTeam(orgId, {
+          planned_workout_id: workout.id,
+          team_id: target.id,
+          scheduled_date: scheduledDate,
         })
-        .catch(() => setSaveError('Error al asignar el entrenamiento. Intenta de nuevo.'))
-        .finally(() => setSaving(false));
+          .then((res) => {
+            const assignments = res.data?.assignments ?? [];
+            assignments.forEach((a) => {
+              const day = parseISO(a.effective_date ?? a.scheduled_date);
+              eventsDispatch({
+                type: 'ADD_EVENT',
+                event: {
+                  id: a.id,
+                  title: a.planned_workout_title ?? workout.name,
+                  start: day,
+                  end: day,
+                  allDay: true,
+                  resource: a,
+                },
+              });
+            });
+          })
+          .catch(() => setSaveError('Error al asignar el entrenamiento al grupo. Intenta de nuevo.'))
+          .finally(() => setSaving(false));
+      } else {
+        // Individual athlete assignment
+        createAssignment(orgId, {
+          planned_workout_id: workout.id,
+          athlete_id: target.id,
+          scheduled_date: scheduledDate,
+        })
+          .then((res) => {
+            const a = res.data;
+            const day = parseISO(a.effective_date ?? a.scheduled_date);
+            eventsDispatch({
+              type: 'ADD_EVENT',
+              event: {
+                id: a.id,
+                title: a.planned_workout_title ?? workout.name,
+                start: day,
+                end: day,
+                allDay: true,
+                resource: a,
+              },
+            });
+          })
+          .catch(() => setSaveError('Error al asignar el entrenamiento. Intenta de nuevo.'))
+          .finally(() => setSaving(false));
+      }
     },
-    [orgId, selectedAthleteId]
+    [orgId, selectedTarget]
   );
 
   // ── Calendar styling ──────────────────────────────────────────────────────
@@ -433,15 +501,30 @@ export default function CalendarPage() {
           )}
 
           <FormControl size="small" sx={{ minWidth: 220 }}>
-            <InputLabel>Atleta</InputLabel>
+            <InputLabel>Atleta o Grupo</InputLabel>
             <Select
-              value={selectedAthleteId}
-              label="Atleta"
-              onChange={(e) => setSelectedAthleteId(e.target.value)}
-              disabled={athleteState.loading || !orgId}
+              value={selectedTarget}
+              label="Atleta o Grupo"
+              onChange={(e) => setSelectedTarget(e.target.value)}
+              disabled={(athleteState.loading || teamState.loading) || !orgId}
             >
+              {teamState.data.length > 0 && (
+                <ListSubheader sx={{ lineHeight: '28px', fontSize: '0.7rem', letterSpacing: '0.06em' }}>
+                  GRUPOS
+                </ListSubheader>
+              )}
+              {teamState.data.map((t) => (
+                <MenuItem key={`t:${t.id}`} value={`t:${t.id}`}>
+                  {t.name}
+                </MenuItem>
+              ))}
+              {athleteState.data.length > 0 && (
+                <ListSubheader sx={{ lineHeight: '28px', fontSize: '0.7rem', letterSpacing: '0.06em' }}>
+                  ATLETAS
+                </ListSubheader>
+              )}
               {athleteState.data.map((a) => (
-                <MenuItem key={a.id} value={a.id}>
+                <MenuItem key={`a:${a.id}`} value={`a:${a.id}`}>
                   {a.first_name} {a.last_name}
                 </MenuItem>
               ))}
@@ -552,7 +635,7 @@ export default function CalendarPage() {
               </Alert>
             )}
 
-            {!selectedAthleteId ? (
+            {!selectedTarget ? (
               <Paper
                 sx={{
                   height: '100%',
@@ -566,14 +649,14 @@ export default function CalendarPage() {
               >
                 <Box sx={{ textAlign: 'center' }}>
                   <Typography variant="h6" color="text.secondary" fontWeight={500}>
-                    Selecciona un atleta
+                    Selecciona un atleta o grupo
                   </Typography>
                   <Typography
                     variant="body2"
                     color="text.secondary"
                     sx={{ mt: 0.5 }}
                   >
-                    Elige un atleta en el desplegable para ver su calendario.
+                    Elige un atleta o grupo en el desplegable para ver el calendario.
                   </Typography>
                 </Box>
               </Paper>
