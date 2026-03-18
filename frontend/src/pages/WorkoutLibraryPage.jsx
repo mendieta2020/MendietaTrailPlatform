@@ -4,10 +4,14 @@ import {
   IconButton, Chip, CircularProgress, Alert, Divider, Collapse,
   TextField, Dialog, DialogTitle, DialogContent, DialogActions,
   List, ListItem, ListItemText, ListItemSecondaryAction, Tooltip, Snackbar,
+  Menu, MenuItem as MuiMenuItem,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Delete as DeleteIcon,
+  Edit as EditIcon,
+  ContentCopy as DuplicateIcon,
+  MoreVert as MoreVertIcon,
   FolderOpen as FolderOpenIcon,
   FitnessCenter as FitnessCenterIcon,
   DirectionsRun as RunIcon,
@@ -20,7 +24,8 @@ import WorkoutBuilder from '../components/WorkoutBuilder';
 import { useOrg } from '../context/OrgContext';
 import {
   listLibraries, createLibrary, deleteLibrary,
-  listPlannedWorkouts, deletePlannedWorkout,
+  listPlannedWorkouts, getPlannedWorkout, createPlannedWorkout,
+  createWorkoutBlock, createWorkoutInterval, deletePlannedWorkout,
 } from '../api/p1';
 
 const DIFFICULTY_CONFIG = {
@@ -69,6 +74,13 @@ export default function WorkoutLibraryPage() {
 
   // ── Workout builder ─────────────────────────────────────────────────────────
   const [builderOpen, setBuilderOpen] = useState(false);
+  const [editWorkout, setEditWorkout] = useState(null);   // full workout for edit mode
+
+  // ── Action menu per workout ──────────────────────────────────────────────────
+  const [menuAnchor, setMenuAnchor] = useState(null);
+  const [menuWorkoutId, setMenuWorkoutId] = useState(null);
+  const openMenu = (e, workoutId) => { e.stopPropagation(); setMenuAnchor(e.currentTarget); setMenuWorkoutId(workoutId); };
+  const closeMenu = () => { setMenuAnchor(null); setMenuWorkoutId(null); };
 
   // ── Snackbar ────────────────────────────────────────────────────────────────
   const [snackbar, setSnackbar] = useState({ open: false, msg: '', severity: 'success' });
@@ -158,6 +170,69 @@ export default function WorkoutLibraryPage() {
   const handleWorkoutSaved = (workout) => {
     setWorkouts((prev) => [workout, ...prev]);
     toast('Entrenamiento creado correctamente.');
+  };
+
+  const handleWorkoutUpdated = (workout) => {
+    setWorkouts((prev) => prev.map((w) => (w.id === workout.id ? workout : w)));
+    toast('Entrenamiento actualizado.');
+  };
+
+  const handleEditWorkout = async (workoutId) => {
+    closeMenu();
+    try {
+      const res = await getPlannedWorkout(orgId, selectedLibId, workoutId);
+      setEditWorkout(res.data);
+      setBuilderOpen(true);
+    } catch {
+      toast('No se pudo cargar el entrenamiento para editar.', 'error');
+    }
+  };
+
+  const handleDuplicateWorkout = async (workoutId) => {
+    closeMenu();
+    try {
+      const res = await getPlannedWorkout(orgId, selectedLibId, workoutId);
+      const src = res.data;
+
+      // Create duplicate workout with "(Copia)" suffix
+      const newWorkoutPayload = {
+        name: `${src.name} (Copia)`,
+        description: src.description ?? '',
+        discipline: src.discipline,
+        session_type: src.session_type,
+        ...(src.estimated_duration_seconds && { estimated_duration_seconds: src.estimated_duration_seconds }),
+        ...(src.estimated_distance_meters && { estimated_distance_meters: src.estimated_distance_meters }),
+      };
+      const newWorkoutRes = await createPlannedWorkout(orgId, selectedLibId, newWorkoutPayload);
+      const newWorkoutId = newWorkoutRes.data.id;
+
+      // Recreate blocks + intervals from source
+      for (const block of src.blocks ?? []) {
+        const blockRes = await createWorkoutBlock(orgId, selectedLibId, newWorkoutId, {
+          name: block.name,
+          block_type: block.block_type,
+          order_index: block.order_index,
+        });
+        const newBlockId = blockRes.data.id;
+        for (const iv of block.intervals ?? []) {
+          await createWorkoutInterval(orgId, selectedLibId, newWorkoutId, newBlockId, {
+            order_index: iv.order_index,
+            repetitions: iv.repetitions ?? 1,
+            metric_type: iv.metric_type,
+            description: iv.description ?? '',
+            ...(iv.duration_seconds != null && { duration_seconds: iv.duration_seconds }),
+            ...(iv.distance_meters != null && { distance_meters: iv.distance_meters }),
+            ...(iv.target_label && { target_label: iv.target_label }),
+            ...(iv.recovery_seconds != null && { recovery_seconds: iv.recovery_seconds }),
+          });
+        }
+      }
+
+      setWorkouts((prev) => [newWorkoutRes.data, ...prev]);
+      toast('Entrenamiento duplicado correctamente.');
+    } catch {
+      toast('Error al duplicar el entrenamiento.', 'error');
+    }
   };
 
   // ── Toggle library selection ────────────────────────────────────────────────
@@ -312,7 +387,7 @@ export default function WorkoutLibraryPage() {
               variant="contained"
               size="small"
               startIcon={<AddIcon />}
-              onClick={() => setBuilderOpen(true)}
+              onClick={() => { setEditWorkout(null); setBuilderOpen(true); }}
               sx={{ borderRadius: 2 }}
             >
               Nuevo entrenamiento
@@ -334,7 +409,7 @@ export default function WorkoutLibraryPage() {
                 variant="outlined"
                 startIcon={<AddIcon />}
                 size="small"
-                onClick={() => setBuilderOpen(true)}
+                onClick={() => { setEditWorkout(null); setBuilderOpen(true); }}
                 sx={{ mt: 2, borderRadius: 2 }}
               >
                 Crear el primero
@@ -377,9 +452,9 @@ export default function WorkoutLibraryPage() {
                       }
                     />
                     <ListItemSecondaryAction>
-                      <Tooltip title="Eliminar entrenamiento">
-                        <IconButton edge="end" size="small" onClick={() => handleDeleteWorkout(w.id)}>
-                          <DeleteIcon fontSize="small" sx={{ color: '#ef4444' }} />
+                      <Tooltip title="Acciones">
+                        <IconButton edge="end" size="small" onClick={(e) => openMenu(e, w.id)}>
+                          <MoreVertIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                     </ListItemSecondaryAction>
@@ -390,6 +465,31 @@ export default function WorkoutLibraryPage() {
           )}
         </Paper>
       </Collapse>
+
+      {/* ── Workout Action Menu ── */}
+      <Menu
+        anchorEl={menuAnchor}
+        open={!!menuAnchor}
+        onClose={closeMenu}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <MuiMenuItem onClick={() => handleEditWorkout(menuWorkoutId)}>
+          <EditIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />
+          Editar
+        </MuiMenuItem>
+        <MuiMenuItem onClick={() => handleDuplicateWorkout(menuWorkoutId)}>
+          <DuplicateIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />
+          Duplicar
+        </MuiMenuItem>
+        <MuiMenuItem
+          onClick={() => { closeMenu(); handleDeleteWorkout(menuWorkoutId); }}
+          sx={{ color: '#ef4444' }}
+        >
+          <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
+          Eliminar
+        </MuiMenuItem>
+      </Menu>
 
       {/* ── New Library Dialog ── */}
       <Dialog open={newLibOpen} onClose={() => setNewLibOpen(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
@@ -432,10 +532,12 @@ export default function WorkoutLibraryPage() {
       {/* ── Workout Builder Dialog ── */}
       <WorkoutBuilder
         open={builderOpen}
-        onClose={() => setBuilderOpen(false)}
+        onClose={() => { setBuilderOpen(false); setEditWorkout(null); }}
         orgId={orgId}
         libraryId={selectedLibId}
         onSaved={handleWorkoutSaved}
+        editWorkout={editWorkout}
+        onUpdated={handleWorkoutUpdated}
       />
 
       {/* ── Snackbar ── */}
