@@ -2010,6 +2010,13 @@ class WorkoutBlock(models.Model):
         max_length=200, blank=True, default="",
         help_text="Optional label for display. Defaults to block_type if blank.",
     )
+    repetitions = models.PositiveIntegerField(
+        default=1,
+        help_text=(
+            "Number of times this block is repeated as a set "
+            "(e.g., 3 for '3×[400m + 90s rest]'). Minimum 1."
+        ),
+    )
     description = models.TextField(blank=True, default="")
     video_url = models.URLField(
         blank=True, default="",
