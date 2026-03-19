@@ -17,10 +17,11 @@ from .integration_callback_views import IntegrationCallbackView
 from .identity_views import UserIdentityView
 from .connection_views import ProviderConnectionStatusView  # PR11
 from core.webhooks import StravaWebhookView, StravaDiagnosticsView  # PR-WebhookRoute
-from core.views_p1 import (  # PR-115/116/117/119/128/X4
+from core.views_p1 import (  # PR-115/116/117/119/128/X4/149
     AthleteAdherenceViewSet,
     AthleteGoalViewSet,
     AthleteProfileViewSet,
+    DashboardAnalyticsView,
     ExternalIdentityViewSet,
     PlannedWorkoutViewSet,
     RaceEventViewSet,
@@ -404,6 +405,17 @@ urlpatterns = [
         'p1/orgs/<int:org_id>/coach-assignments/<int:pk>/end/',
         AthleteCoachAssignmentViewSet.as_view({'post': 'end'}),
         name='p1-coach-assignment-end',
+    ),
+
+    # ==============================================================================
+    # PR-149: Dashboard Analytics
+    # URL: /api/p1/orgs/<org_id>/dashboard-analytics/
+    # Read-only. Owner/coach only.
+    # ==============================================================================
+    path(
+        'p1/orgs/<int:org_id>/dashboard-analytics/',
+        DashboardAnalyticsView.as_view(),
+        name='p1-dashboard-analytics',
     ),
 
     # PR-X4: ExternalIdentity Linking API
