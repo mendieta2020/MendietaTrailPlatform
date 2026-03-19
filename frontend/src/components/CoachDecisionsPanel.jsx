@@ -246,7 +246,7 @@ function SportTotalsGrid({ sports }) {
   return (
     <Grid container spacing={1.5}>
       {sports.map((sport) => (
-        <Grid item xs={12} sm={6} md={4} key={sport.code}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }} key={sport.code}>
           <Paper sx={{ p: 2, borderRadius: 2, border: '1px solid #E2E8F0' }}>
             <Stack spacing={0.75}>
               <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#0F172A' }}>
@@ -437,7 +437,7 @@ export default function CoachDecisionsPanel({ athleteId }) {
           <Grid container spacing={1.5} sx={{ mt: 1 }}>
             {METRICS.map((metric) => {
               return (
-                <Grid item xs={12} sm={6} md={3} key={metric.key}>
+                <Grid size={{ xs: 12, sm: 6, md: 3 }} key={metric.key}>
                   <MetricCard
                     label={metric.label}
                     value={metricValues[metric.key]}
@@ -480,7 +480,7 @@ export default function CoachDecisionsPanel({ athleteId }) {
           )}
 
           <Grid container spacing={2}>
-            <Grid item xs={12} md={5}>
+            <Grid size={{ xs: 12, md: 5 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#0F172A', mb: 1 }}>
                 Compliance (plan vs real)
               </Typography>
@@ -498,7 +498,7 @@ export default function CoachDecisionsPanel({ athleteId }) {
                 ))}
               </Stack>
             </Grid>
-            <Grid item xs={12} md={7}>
+            <Grid size={{ xs: 12, md: 7 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#0F172A', mb: 1 }}>
                 Alertas (top 5)
               </Typography>

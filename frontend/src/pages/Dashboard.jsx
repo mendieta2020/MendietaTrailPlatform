@@ -129,8 +129,8 @@ const Dashboard = () => {
 
       {/* KPI CARDS */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard 
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <StatCard
             title="Alumnos Activos" 
             value={kpiData.alumnos} 
             sub="+1 esta semana" 
@@ -139,8 +139,8 @@ const Dashboard = () => {
             loading={loading}
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard 
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <StatCard
             title="Ingresos (Total)" 
             value={`$${kpiData.ingresos.toLocaleString()}`} 
             sub="Objetivo: $1M" 
@@ -149,8 +149,8 @@ const Dashboard = () => {
             loading={loading}
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard 
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <StatCard
             title="Fitness Promedio" 
             value="68 CTL" 
             sub="Tendencia Positiva" 
@@ -158,8 +158,8 @@ const Dashboard = () => {
             icon={TrendingUp}
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard 
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <StatCard
             title="Riesgo Lesión" 
             value="0" 
             sub="Sin alertas críticas" 
@@ -171,7 +171,7 @@ const Dashboard = () => {
 
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {/* GRÁFICO PMC (SCIENTIFIC DATA) */}
-        <Grid item xs={12} md={8}>
+        <Grid size={{ xs: 12, md: 8 }}>
             <Paper sx={{ p: 3, borderRadius: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.03)', height: 400 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, justifyContent: 'space-between' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -215,7 +215,7 @@ const Dashboard = () => {
         </Grid>
 
         {/* WIDGET PAGOS */}
-        <Grid item xs={12} md={4}>
+        <Grid size={{ xs: 12, md: 4 }}>
             <PaymentsWidget pagos={pagosData} />
         </Grid>
       </Grid>

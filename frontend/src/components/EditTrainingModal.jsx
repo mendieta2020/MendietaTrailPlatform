@@ -306,21 +306,21 @@ const EditTrainingModal = ({ open, onClose, training, onUpdated }) => {
                       <Stack spacing={2}>
                           {block.steps?.map((step, index) => (
                               <Grid container spacing={1} key={step.id} alignItems="flex-start" sx={{ pb: 1, borderBottom: '1px dashed #F1F5F9' }}>
-                                  <Grid item xs={1}><Typography variant="caption" color="textSecondary" sx={{ mt: 1, display: 'block' }}>#{index+1}</Typography></Grid>
-                                  
-                                  <Grid item xs={5}>
+                                  <Grid size={1}><Typography variant="caption" color="textSecondary" sx={{ mt: 1, display: 'block' }}>#{index+1}</Typography></Grid>
+
+                                  <Grid size={5}>
                                       <TextField fullWidth size="small" placeholder="Ejercicio (ej: Burpees)" value={step.exercise} onChange={(e) => handleStepChange(block.id, step.id, 'exercise', e.target.value)} />
                                       <TextField fullWidth multiline rows={2} variant="filled" placeholder="Técnica..." value={step.notes} onChange={(e) => handleStepChange(block.id, step.id, 'notes', e.target.value)} InputProps={{ disableUnderline: true, sx: { fontSize: '0.75rem', bgcolor: '#F8FAFC', mt: 0.5, borderRadius: 1 } }} />
                                   </Grid>
                                   
-                                  <Grid item xs={2}>
+                                  <Grid size={2}>
                                       <TextField size="small" type="number" placeholder="0" value={step.duration_value} onChange={(e) => handleStepChange(block.id, step.id, 'duration_value', e.target.value)} />
                                   </Grid>
-                                  <Grid item xs={2}>
+                                  <Grid size={2}>
                                        <TextField select size="small" value={step.duration_unit} onChange={(e) => handleStepChange(block.id, step.id, 'duration_unit', e.target.value)} fullWidth><MenuItem value="reps">Reps</MenuItem><MenuItem value="min">Min</MenuItem><MenuItem value="sec">Seg</MenuItem></TextField>
                                   </Grid>
                                   
-                                  <Grid item xs={2} sx={{ textAlign: 'right', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1 }}>
+                                  <Grid size={2} sx={{ textAlign: 'right', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1 }}>
                                       <input type="file" accept="video/*" style={{ display: 'none' }} ref={el => fileInputRefs.current[`${block.id}-${step.id}`] = el} onChange={(e) => handleVideoUpload(block.id, step.id, e.target.files[0])} />
                                       
                                       {(step.video_preview || step.video_url) ? (

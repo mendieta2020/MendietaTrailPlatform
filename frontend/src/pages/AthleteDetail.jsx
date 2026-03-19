@@ -82,14 +82,14 @@ const AthleteDetail = () => {
       {/* TARJETA DE PERFIL (HEADER) */}
       <Paper sx={{ p: 4, borderRadius: 3, mb: 4, background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
         <Grid container spacing={3} alignItems="center">
-          <Grid item>
+          <Grid>
             <Avatar
               sx={{ width: 100, height: 100, bgcolor: '#F57C00', fontSize: 40, boxShadow: '0 4px 12px rgba(245, 124, 0, 0.3)' }}
             >
               {athlete.nombre ? athlete.nombre.charAt(0) : '?'}
             </Avatar>
           </Grid>
-          <Grid item xs>
+          <Grid size="grow">
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
               <Typography variant="h4" sx={{ fontWeight: 800, color: '#1E293B' }}>
                 {athlete.nombre} {athlete.apellido}
@@ -107,7 +107,7 @@ const AthleteDetail = () => {
               </Box>
             </Stack>
           </Grid>
-          <Grid item>
+          <Grid>
             <Button variant="outlined" startIcon={<Edit />} sx={{ borderRadius: 2, textTransform: 'none' }}>
               Editar Perfil
             </Button>

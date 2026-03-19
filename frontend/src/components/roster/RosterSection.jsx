@@ -108,7 +108,7 @@ export default function RosterSection({ orgId, onSelectAthlete }) {
       ) : (
         <Grid container spacing={2}>
           {items.map((item) => (
-            <Grid item xs={12} sm={6} md={4} key={item.id}>
+            <Grid size={{ xs: 12, sm: 6, md: 4 }} key={item.id}>
               <Box
                 onClick={prop === 'athlete' && onSelectAthlete ? () => onSelectAthlete(item.id) : undefined}
                 sx={prop === 'athlete' && onSelectAthlete ? { cursor: 'pointer' } : undefined}
