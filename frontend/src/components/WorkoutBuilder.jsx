@@ -476,7 +476,7 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
               Información General
             </p>
 
-            <div className="flex flex-col gap-3 mb-5">
+            <div className="flex flex-col gap-4 mb-5">
               <TextField
                 label="Nombre del entrenamiento *"
                 value={form.name}
@@ -817,7 +817,7 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
 
           {/* ── RIGHT: Chart + Totals ── */}
           <div className="flex-shrink-0 flex flex-col gap-4 p-5 bg-slate-50 border-l border-slate-200 overflow-y-auto"
-            style={{ width: 380 }}>
+            style={{ width: 380, minWidth: 350 }}>
 
             {/* Calculator */}
             <div>
@@ -864,7 +864,8 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                 </div>
               ) : (
                 <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
-                  <ResponsiveContainer width="100%" height={220}>
+                  <div style={{ width: '100%', height: 300, minHeight: 300 }}>
+                  <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                       data={chartData}
                       margin={{ top: 8, right: 8, left: -24, bottom: 40 }}
@@ -897,6 +898,7 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
+                  </div>
 
                   {/* Legend */}
                   <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 px-1">

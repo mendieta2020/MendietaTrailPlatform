@@ -164,19 +164,19 @@ const WeeklyCalendar = ({ trainings: initialTrainings, athleteId, onTrainingCrea
 
             {/* DASHBOARD DE MÉTRICAS */}
             <Grid container spacing={2} sx={{ mb: 4 }}>
-                <Grid item xs={12} sm={6} md={2.4}>
+                <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
                     <StatGauge title="Cumplimiento" value={overallCompliance} target={100} unit="%" icon={EmojiEvents} color="#8B5CF6" />
                 </Grid>
-                <Grid item xs={6} md={2.4}>
+                <Grid size={{ xs: 6, md: 2.4 }}>
                     <StatGauge title="Volumen (H)" value={stats.hours.actual / 60} target={stats.hours.planned / 60} unit="h" icon={AccessTime} color="#64748B" />
                 </Grid>
-                <Grid item xs={6} md={2.4}>
+                <Grid size={{ xs: 6, md: 2.4 }}>
                     <StatGauge title="Running" value={stats.distRun.actual} target={stats.distRun.planned} unit="km" icon={DirectionsRun} color="#F59E0B" />
                 </Grid>
-                <Grid item xs={6} md={2.4}>
+                <Grid size={{ xs: 6, md: 2.4 }}>
                     <StatGauge title="Ciclismo" value={stats.distBike.actual} target={stats.distBike.planned} unit="km" icon={PedalBike} color="#3B82F6" />
                 </Grid>
-                <Grid item xs={6} md={2.4}>
+                <Grid size={{ xs: 6, md: 2.4 }}>
                     <StatGauge title="Desnivel (+)" value={stats.elevation.actual} target={stats.elevation.planned} unit="m" icon={Terrain} color="#10B981" />
                 </Grid>
             </Grid>

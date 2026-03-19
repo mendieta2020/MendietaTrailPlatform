@@ -108,7 +108,7 @@ const Teams = () => {
       ) : (
         <Grid container spacing={3}>
           {safeTeams.map((team) => (
-            <Grid item xs={12} sm={6} md={4} key={team.id}>
+            <Grid size={{ xs: 12, sm: 6, md: 4 }} key={team.id}>
               <Paper 
                 onClick={() => goToTeamDetail(team.id)} // Toda la tarjeta es clickable
                 sx={{ 
