@@ -101,3 +101,9 @@ export function updateWorkoutInterval(orgId, libId, workoutId, blockId, interval
 export function deleteWorkoutInterval(orgId, libId, workoutId, blockId, intervalId) {
   return client.delete(`${p1Base(orgId)}/libraries/${libId}/workouts/${workoutId}/blocks/${blockId}/intervals/${intervalId}/`);
 }
+
+// ── Dashboard Analytics (PR-149) ──────────────────────────────────────────────
+
+export function getDashboardAnalytics(orgId) {
+  return client.get(`${p1Base(orgId)}/dashboard-analytics/`);
+}

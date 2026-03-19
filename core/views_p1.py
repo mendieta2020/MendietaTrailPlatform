@@ -25,7 +25,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
-from rest_framework import mixins, permissions, status, viewsets
+from rest_framework import mixins, permissions, status, views, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.exceptions import ValidationError as DRFValidationError
@@ -974,6 +974,46 @@ class AthleteAdherenceViewSet(OrgTenantMixin, viewsets.GenericViewSet):
             "avg_compliance_score": result.avg_compliance_score,
             "adherence_pct": round(result.adherence_pct, 1),
         })
+
+
+# ==============================================================================
+# PR-149: Dashboard Analytics View (P2)
+# URL: /api/p1/orgs/<org_id>/dashboard-analytics/
+# Read-only. Owner/coach only.
+# ==============================================================================
+
+
+class DashboardAnalyticsView(OrgTenantMixin, views.APIView):
+    """
+    Read-only analytics summary for the coach dashboard.
+
+    Returns:
+      - active_athletes_count: total Athlete rows in the org
+      - pmc_series: [{date, ctl, atl, tsb}, ...] — 90 trailing days
+        computed from WorkoutAssignment → planned_workout → planned_tss
+
+    Plan ≠ Real invariant: only planning-side TSS is used.
+    CompletedActivity execution data is never read here.
+
+    Role gate: owner/coach only. Athletes may not access org-level analytics.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if getattr(self, "swagger_fake_view", False):
+            return
+        self.resolve_membership(self.kwargs["org_id"])
+
+    def get(self, request, org_id: int):
+        if self.membership.role not in _WRITE_ROLES:
+            raise PermissionDenied("Analytics are only available to coaches and owners.")
+
+        from core import services_analytics
+
+        data = services_analytics.compute_org_pmc(organization=self.organization)
+        return Response(data)
 
 
 # ==============================================================================
