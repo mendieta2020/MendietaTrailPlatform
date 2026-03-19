@@ -598,10 +598,8 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                         onClick={(e) => e.stopPropagation()}
                       >
                         <span className="text-xs text-slate-500 font-medium">Repetir</span>
-                        <input
+                        <TextField
                           type="number"
-                          min="1"
-                          max="99"
                           value={block.repetitions}
                           onChange={(e) =>
                             setBlocks((prev) =>
@@ -610,7 +608,9 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                               )
                             )
                           }
-                          className="w-12 text-center text-sm font-semibold border border-slate-300 rounded-lg px-1 py-0.5 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                          size="small"
+                          inputProps={{ min: 1, max: 99, style: { textAlign: 'center', fontWeight: 600, padding: '4px 6px', width: 40 } }}
+                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', '&.Mui-focused fieldset': { borderColor: '#f59e0b' } } }}
                         />
                         <span className="text-xs text-slate-500">×</span>
                       </div>
