@@ -49,6 +49,16 @@ const theme = createTheme({
         },
       },
     },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        notchedOutline: {
+          // CssBaseline (and any external CSS reset) sets fieldset border: 0.
+          // Explicitly restoring border-width here ensures MUI OutlinedInput
+          // borders are always visible regardless of CSS injection order.
+          borderWidth: '1px',
+        },
+      },
+    },
   },
 });
 
