@@ -443,7 +443,7 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
       onClose={handleClose}
       maxWidth="xl"
       fullWidth
-      PaperProps={{ className: 'rounded-2xl shadow-xl', sx: { maxHeight: '92vh' } }}
+      PaperProps={{ className: 'rounded-2xl shadow-xl', sx: { maxHeight: '92vh', height: '92vh' } }}
     >
       {/* ── Header ── */}
       <DialogTitle sx={{ pb: 0 }}>
@@ -460,13 +460,13 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
         </div>
       </DialogTitle>
 
-      <DialogContent sx={{ p: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <DialogContent sx={{ p: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: '1 1 0', minHeight: 0 }}>
         <Collapse in={!!error}>
           <Alert severity="error" sx={{ mx: 3, mt: 2 }} onClose={() => setError('')}>{error}</Alert>
         </Collapse>
 
         {/* ── Two-column layout ── */}
-        <div className="flex gap-0 flex-1 min-h-0" style={{ height: '100%' }}>
+        <div className="flex flex-1 min-h-0 overflow-hidden">
 
           {/* ── LEFT: Editor ── */}
           <div className="flex-1 overflow-y-auto px-6 py-5" style={{ minWidth: 0 }}>
@@ -534,13 +534,22 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                 Bloques ({blocks.length})
               </p>
-              <button
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<AddIcon />}
                 onClick={addBlock}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-amber-600 border border-amber-400 rounded-lg hover:bg-amber-50 transition-colors"
+                sx={{
+                  borderColor: '#f59e0b',
+                  color: '#d97706',
+                  borderRadius: '8px',
+                  fontSize: '0.75rem',
+                  textTransform: 'none',
+                  '&:hover': { borderColor: '#d97706', bgcolor: '#fffbeb' },
+                }}
               >
-                <AddIcon sx={{ fontSize: 15 }} />
                 Agregar bloque
-              </button>
+              </Button>
             </div>
 
             {/* Blocks list */}
@@ -548,10 +557,15 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
               {blocks.map((block, bIdx) => {
                 const blockMeta = BLOCK_TYPES.find((t) => t.value === block.block_type) ?? BLOCK_TYPES[1];
                 return (
-                  <div
+                  <Paper
                     key={bIdx}
-                    className="rounded-xl border overflow-hidden"
-                    style={{ borderColor: block.open ? blockMeta.color + '60' : '#e2e8f0' }}
+                    elevation={2}
+                    sx={{
+                      borderRadius: '16px',
+                      mb: 1,
+                      overflow: 'hidden',
+                      border: `1px solid ${block.open ? blockMeta.color + '60' : '#e2e8f0'}`,
+                    }}
                   >
                     {/* Block header */}
                     <div
@@ -777,16 +791,25 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                           </div>
                         ))}
 
-                        <button
+                        <Button
+                          variant="text"
+                          size="small"
+                          startIcon={<AddIcon sx={{ fontSize: 14 }} />}
                           onClick={() => addInterval(bIdx)}
-                          className="self-start flex items-center gap-1 text-xs text-slate-500 hover:text-amber-600 transition-colors mt-1"
+                          sx={{
+                            alignSelf: 'flex-start',
+                            color: '#64748b',
+                            fontSize: '0.75rem',
+                            textTransform: 'none',
+                            mt: 1,
+                            '&:hover': { color: '#d97706', bgcolor: 'transparent' },
+                          }}
                         >
-                          <AddIcon sx={{ fontSize: 14 }} />
                           Agregar paso
-                        </button>
+                        </Button>
                       </div>
                     </Collapse>
-                  </div>
+                  </Paper>
                 );
               })}
             </div>
@@ -929,27 +952,38 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
       <Divider />
 
       <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
-        <button
+        <Button
+          variant="outlined"
           onClick={handleClose}
           disabled={saving}
-          className="px-4 py-2 text-sm font-medium text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
+          sx={{
+            borderColor: '#cbd5e1',
+            color: '#475569',
+            borderRadius: '8px',
+            textTransform: 'none',
+            '&:hover': { borderColor: '#94a3b8', bgcolor: '#f8fafc' },
+          }}
         >
           Cancelar
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="contained"
           onClick={handleSubmit}
           disabled={saving}
-          className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors disabled:opacity-60 min-w-44"
+          startIcon={saving ? <CircularProgress size={15} sx={{ color: 'white' }} /> : null}
+          sx={{
+            bgcolor: '#f59e0b',
+            '&:hover': { bgcolor: '#d97706' },
+            '&.Mui-disabled': { bgcolor: '#fcd34d', color: 'white' },
+            borderRadius: '8px',
+            minWidth: 176,
+            textTransform: 'none',
+            fontWeight: 500,
+            boxShadow: 'none',
+          }}
         >
-          {saving ? (
-            <>
-              <CircularProgress size={15} sx={{ color: 'white' }} />
-              <span>Guardando…</span>
-            </>
-          ) : (
-            <span>{isEditMode ? 'Actualizar entrenamiento' : 'Guardar entrenamiento'}</span>
-          )}
-        </button>
+          {saving ? 'Guardando…' : (isEditMode ? 'Actualizar entrenamiento' : 'Guardar entrenamiento')}
+        </Button>
       </DialogActions>
     </Dialog>
   );
