@@ -841,7 +841,7 @@ class CompletedActivity(models.Model):
     ------------
     - **Plan ≠ Real**: this model represents the *real* side only; planned
       workouts live in Entrenamiento.  Never couple these two directly here.
-    - **Multi-tenant / fail-closed**: `organization` (coach user) is required
+    - **Multi-tenant / fail-closed**: `organization` (Organization FK) is required
       (non-nullable) — a row without an owner must never exist.
     - **Idempotency**: the unique constraint on (organization, provider,
       provider_activity_id) prevents duplicate ingestion.
@@ -863,11 +863,11 @@ class CompletedActivity(models.Model):
     # Tenant anchor (fail-closed: non-nullable)
     # ------------------------------------------------------------------
     organization = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
+        "Organization",
         on_delete=models.CASCADE,
         related_name="completed_activities",
         db_index=True,
-        help_text="Coach / organisation that owns this activity record.",
+        help_text="Organization that owns this activity record.",
     )
 
     # ------------------------------------------------------------------

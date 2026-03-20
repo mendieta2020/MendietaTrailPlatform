@@ -42,10 +42,13 @@ def _make_fitparse_mock(session_fields: list[tuple[str, object]]):
 
 
 def _make_coach_and_alumno(suffix=""):
-    from core.models import Alumno
+    from core.models import Alumno, Membership, Organization
     coach = User.objects.create_user(
         username=f"coach_suunto{suffix}", password="x"
     )
+    slug = f"suunto-org{suffix}".lower()[:100]
+    org = Organization.objects.create(name=f"SuuntoOrg{suffix}", slug=slug)
+    Membership.objects.create(user=coach, organization=org, role="coach", is_active=True)
     alumno = Alumno.objects.create(
         entrenador=coach, nombre="Athlete", apellido=f"Suunto{suffix}"
     )

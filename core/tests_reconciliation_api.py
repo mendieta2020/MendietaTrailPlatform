@@ -105,15 +105,15 @@ _activity_counter = 0  # module-level counter for unique provider_activity_id
 def _make_activity(coach_user, alumno, athlete, org, sport="RUN", duration_s=3600,
                    distance_m=10000.0, start_time=None):
     """
-    Create a CompletedActivity linked to both the legacy User FK and the new Athlete FK.
-    organization=coach_user is the legacy D2 debt pattern (User FK on CompletedActivity).
+    Create a CompletedActivity linked to both the legacy alumno FK and the new Athlete FK.
+    organization=org is the Organization (D2 debt resolved: no longer a User FK).
     """
     global _activity_counter
     _activity_counter += 1
     if start_time is None:
         start_time = timezone.make_aware(datetime.datetime(2026, 4, 1, 8, 0, 0))
     return CompletedActivity.objects.create(
-        organization=coach_user,
+        organization=org,
         alumno=alumno,
         athlete=athlete,
         sport=sport,

@@ -16,7 +16,7 @@ from django.contrib.auth import get_user_model
 from django.db import IntegrityError
 from django.test import TestCase
 
-from core.models import Alumno, Actividad, CompletedActivity, ActivityStream, Organization, Athlete
+from core.models import Alumno, Actividad, CompletedActivity, ActivityStream, Organization, Athlete, Membership
 
 User = get_user_model()
 
@@ -24,15 +24,21 @@ _T0 = datetime.datetime(2026, 3, 1, 8, 0, 0, tzinfo=datetime.timezone.utc)
 
 
 def _make_org(username):
-    return User.objects.create_user(username=username, password="x")
+    """Create a coach User + Organization + Membership. Returns the Organization."""
+    user = User.objects.create_user(username=username, password="x")
+    org = Organization.objects.create(name=username, slug=username)
+    Membership.objects.create(user=user, organization=org, role="coach", is_active=True)
+    return org
 
 
 def _make_alumno(org, n=1):
+    """Create an Alumno whose entrenador is the coach User linked to org."""
+    coach_user = org.memberships.filter(is_active=True).first().user
     return Alumno.objects.create(
-        entrenador=org,
+        entrenador=coach_user,
         nombre=f"Atleta{n}",
         apellido="Test",
-        email=f"atleta{n}_{org.username}@test.com",
+        email=f"atleta{n}_{org.slug}@test.com",
     )
 
 

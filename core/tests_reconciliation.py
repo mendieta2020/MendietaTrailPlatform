@@ -135,7 +135,7 @@ def _make_assignment(org, athlete, planned_workout, scheduled_date=None, **kwarg
 _activity_counter = 0  # module-level counter for unique provider_activity_id generation
 
 
-def _make_activity(coach_user, alumno, athlete, sport="RUN", duration_s=3600,
+def _make_activity(org, alumno, athlete, sport="RUN", duration_s=3600,
                    distance_m=10000.0, elevation_gain_m=None,
                    start_time=None, **kwargs):
     global _activity_counter
@@ -145,7 +145,7 @@ def _make_activity(coach_user, alumno, athlete, sport="RUN", duration_s=3600,
             datetime.datetime(2026, 4, 1, 8, 0, 0)
         )
     return CompletedActivity.objects.create(
-        organization=coach_user,   # legacy User FK (D2 debt)
+        organization=org,
         alumno=alumno,
         athlete=athlete,
         sport=sport,
@@ -185,7 +185,7 @@ class PlanNotRealInvariantTests(TestCase):
         self.library  = _make_library(self.org)
         self.workout  = _make_planned_workout(self.org, self.library)
         self.assignment = _make_assignment(self.org, self.athlete, self.workout)
-        self.activity   = _make_activity(self.coach_user, self.alumno, self.athlete)
+        self.activity   = _make_activity(self.org, self.alumno, self.athlete)
 
     def test_reconcile_does_not_modify_planned_workout(self):
         original_name     = self.workout.name
@@ -243,7 +243,7 @@ class ScoreEngineTests(TestCase):
     def _activity(self, duration_s=3600, distance_m=10000.0, sport="RUN",
                   start_time=None):
         return _make_activity(
-            self.coach_user, self.alumno, self.athlete,
+            self.org, self.alumno, self.athlete,
             sport=sport, duration_s=duration_s,
             distance_m=distance_m, start_time=start_time,
         )
@@ -421,7 +421,7 @@ class MatchingTests(TestCase):
     def _activity_on(self, date, sport="RUN", suffix=""):
         start = timezone.make_aware(datetime.datetime(date.year, date.month, date.day, 8, 0))
         return _make_activity(
-            self.coach_user, self.alumno, self.athlete,
+            self.org, self.alumno, self.athlete,
             sport=sport, duration_s=3600, distance_m=10000.0,
             start_time=start,
         )
@@ -441,7 +441,7 @@ class MatchingTests(TestCase):
         # Second activity needs different provider_activity_id — use start_time variation
         start2 = timezone.make_aware(datetime.datetime(2026, 4, 1, 14, 0))
         _make_activity(
-            self.coach_user, self.alumno, self.athlete,
+            self.org, self.alumno, self.athlete,
             sport="RUN", duration_s=1800, distance_m=5000.0,
             start_time=start2,
         )
@@ -463,7 +463,7 @@ class MatchingTests(TestCase):
 
         # Activity belongs to athlete_b (different org) on the same date
         _make_activity(
-            coach_b, alumno_b, athlete_b,
+            org_b, alumno_b, athlete_b,
             sport="RUN", duration_s=3600, distance_m=10000.0,
             start_time=timezone.make_aware(datetime.datetime(2026, 4, 1, 8, 0)),
         )
@@ -548,7 +548,7 @@ class ReconciliationOperationTests(TestCase):
             scheduled_date=datetime.date(2026, 4, 1),
         )
         self.activity = _make_activity(
-            self.coach_user, self.alumno, self.athlete,
+            self.org, self.alumno, self.athlete,
             duration_s=3600, distance_m=10000.0,
         )
 
@@ -626,7 +626,7 @@ class ReconciliationOperationTests(TestCase):
         # Create a second activity on the same day/discipline
         start2 = timezone.make_aware(datetime.datetime(2026, 4, 1, 14, 0))
         _make_activity(
-            self.coach_user, self.alumno, self.athlete,
+            self.org, self.alumno, self.athlete,
             sport="RUN", duration_s=1800, distance_m=5000.0,
             start_time=start2,
         )
@@ -676,7 +676,7 @@ class WeeklyAdherenceTests(TestCase):
             datetime.datetime(2026, 4, 6, 8, 0)
         )
         self.activity1 = _make_activity(
-            self.coach_user, self.alumno, self.athlete,
+            self.org, self.alumno, self.athlete,
             duration_s=3600, distance_m=10000.0,
             start_time=start1,
         )
@@ -728,7 +728,7 @@ class WeeklyAdherenceTests(TestCase):
                 datetime.datetime(2026, 4, 6 + i, 8, 0)
             )
             activity = _make_activity(
-                self.coach_user, self.alumno, self.athlete,
+                self.org, self.alumno, self.athlete,
                 sport="RUN", duration_s=3600, distance_m=10000.0,
                 start_time=start,
             )
@@ -776,7 +776,7 @@ class WeeklyAdherenceTests(TestCase):
             scheduled_date=self.week_start,
         )
         activity_b = _make_activity(
-            coach_b, alumno_b, athlete_b,
+            org_b, alumno_b, athlete_b,
             start_time=timezone.make_aware(datetime.datetime(2026, 4, 6, 8, 0)),
         )
         reconcile(assignment=assignment_b, activity=activity_b)

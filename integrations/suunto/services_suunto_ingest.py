@@ -37,16 +37,29 @@ def ingest_suunto_workout(
         Alumno.DoesNotExist: if alumno_id is not found.
         ValueError: if fit_data is missing start_date or duration_s.
     """
-    from core.models import Alumno, CompletedActivity  # lazy — Law 4 boundary
+    from core.models import Alumno, CompletedActivity, Membership  # lazy — Law 4 boundary
 
     alumno = Alumno.objects.select_related("entrenador").get(pk=alumno_id)
-    organization = alumno.entrenador
 
-    if organization is None:
+    if alumno.entrenador is None:
         raise ValueError(
             f"ingest_suunto_workout: alumno {alumno_id} has no entrenador — "
             "cannot determine organization. Ingestion aborted."
         )
+
+    membership = (
+        Membership.objects
+        .filter(user=alumno.entrenador, role__in=["owner", "coach"], is_active=True)
+        .select_related("organization")
+        .first()
+    )
+    if membership is None:
+        raise ValueError(
+            f"ingest_suunto_workout: entrenador (user_id={alumno.entrenador_id}) "
+            "has no active coach/owner Membership — cannot determine organization. "
+            "Ingestion aborted."
+        )
+    organization = membership.organization
 
     start_date = fit_data.get("start_date")
     duration_s = fit_data.get("duration_s")
