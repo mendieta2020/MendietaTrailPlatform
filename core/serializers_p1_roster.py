@@ -88,12 +88,16 @@ class AthleteRosterSerializer(serializers.ModelSerializer):
     )
     first_name = serializers.SerializerMethodField()
     last_name = serializers.SerializerMethodField()
+    email = serializers.SerializerMethodField()
 
     def get_first_name(self, obj):
         return obj.user.first_name if obj.user_id else ""
 
     def get_last_name(self, obj):
         return obj.user.last_name if obj.user_id else ""
+
+    def get_email(self, obj):
+        return obj.user.email if obj.user_id else ""
 
     class Meta:
         model = Athlete
@@ -102,6 +106,7 @@ class AthleteRosterSerializer(serializers.ModelSerializer):
             "user_id",
             "first_name",
             "last_name",
+            "email",
             "coach_id",
             "team_id",
             "notes",

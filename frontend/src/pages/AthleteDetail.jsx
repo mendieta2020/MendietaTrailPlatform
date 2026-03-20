@@ -10,6 +10,8 @@ import {
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import client from '../api/client';
+import { getAthlete } from '../api/p1';
+import { useOrg } from '../context/OrgContext';
 import WeeklyCalendar from '../components/WeeklyCalendar';
 import StudentPerformanceChart from '../components/widgets/StudentPerformanceChart';
 import TemplateLibrary from '../components/TemplateLibrary';
@@ -20,9 +22,10 @@ import CoachDecisionsPanel from '../components/CoachDecisionsPanel';
 const AthleteDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { activeOrg, orgLoading } = useOrg();
   const [athlete, setAthlete] = useState(null);
   const [trainings, setTrainings] = useState([]);
-  const [injuryRisk, setInjuryRisk] = useState(null);
+  const [injuryRisk] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // Estado para la Librería Lateral
@@ -32,34 +35,26 @@ const AthleteDetail = () => {
   };
 
   useEffect(() => {
+    if (!activeOrg) return;
     const fetchData = async () => {
       try {
         setLoading(true);
-        // 1. Datos del Alumno
-        const resAthlete = await client.get(`/api/alumnos/${id}/`);
+        // 1. Datos del Athlete (P1 roster endpoint — organization-scoped)
+        const resAthlete = await getAthlete(activeOrg.org_id, id);
         setAthlete(resAthlete.data);
 
-        // 1.1 Riesgo de lesión (snapshot materializado)
-        const resRisk = await client.get(`/api/alumnos/${id}/injury-risk/`);
-        // Normalizamos al formato del componente
-        if (resRisk?.data?.data_available) {
-          setInjuryRisk({
-            risk_level: resRisk.data.risk_level,
-            risk_score: resRisk.data.risk_score,
-            risk_reasons: resRisk.data.risk_reasons,
-          });
-        } else {
-          setInjuryRisk(null);
+        // 2. Entrenamientos (legacy; silently ignored if not available)
+        try {
+          const resTrainings = await client.get(`/api/entrenamientos/?alumno=${id}`);
+          const trainingsData = Array.isArray(resTrainings.data)
+            ? resTrainings.data
+            : Array.isArray(resTrainings.data?.results)
+              ? resTrainings.data.results
+              : [];
+          setTrainings(trainingsData);
+        } catch {
+          setTrainings([]);
         }
-
-        // 2. Sus Entrenamientos
-        const resTrainings = await client.get(`/api/entrenamientos/?alumno=${id}`);
-        const trainingsData = Array.isArray(resTrainings.data)
-          ? resTrainings.data
-          : Array.isArray(resTrainings.data?.results)
-            ? resTrainings.data.results
-            : [];
-        setTrainings(trainingsData);
       } catch (err) {
         console.error("Error cargando perfil:", err);
       } finally {
@@ -67,9 +62,9 @@ const AthleteDetail = () => {
       }
     };
     fetchData();
-  }, [id]);
+  }, [id, activeOrg?.org_id]);
 
-  if (loading) return <Layout><Box sx={{ p: 5, textAlign: 'center' }}><CircularProgress /></Box></Layout>;
+  if (orgLoading || loading) return <Layout><Box sx={{ p: 5, textAlign: 'center' }}><CircularProgress /></Box></Layout>;
   if (!athlete) return <Layout><Typography>Atleta no encontrado</Typography></Layout>;
 
   return (
@@ -86,25 +81,24 @@ const AthleteDetail = () => {
             <Avatar
               sx={{ width: 100, height: 100, bgcolor: '#F57C00', fontSize: 40, boxShadow: '0 4px 12px rgba(245, 124, 0, 0.3)' }}
             >
-              {athlete.nombre ? athlete.nombre.charAt(0) : '?'}
+              {athlete.first_name ? athlete.first_name.charAt(0) : '?'}
             </Avatar>
           </Grid>
           <Grid size="grow">
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
               <Typography variant="h4" sx={{ fontWeight: 800, color: '#1E293B' }}>
-                {athlete.nombre} {athlete.apellido}
+                {athlete.first_name} {athlete.last_name}
               </Typography>
-              <Chip label={athlete.estado_actual || "Activo"} color="success" size="small" sx={{ fontWeight: 600 }} />
+              <Chip label={athlete.is_active !== false ? "Activo" : "Inactivo"} color={athlete.is_active !== false ? "success" : "default"} size="small" sx={{ fontWeight: 600 }} />
               <RiskBadge risk={injuryRisk} />
             </Box>
 
             <Stack direction="row" spacing={3} sx={{ color: '#64748B' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <Email fontSize="small" /> <Typography variant="body2">{athlete.email}</Typography>
-              </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <LocationOn fontSize="small" /> <Typography variant="body2">{athlete.ciudad || "Ciudad no especificada"}</Typography>
-              </Box>
+              {athlete.email && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Email fontSize="small" /> <Typography variant="body2">{athlete.email}</Typography>
+                </Box>
+              )}
             </Stack>
           </Grid>
           <Grid>
