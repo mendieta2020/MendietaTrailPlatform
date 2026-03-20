@@ -1,27 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom'; // <--- IMPORTANTE: Para navegar entre pantallas
-import { 
-  Box, Typography, Button, Grid, Paper, Avatar, Chip, 
-  IconButton, Dialog, DialogTitle, DialogContent, DialogActions, TextField, 
-  AvatarGroup, CircularProgress, Tooltip
+import {
+  Box, Typography, Button, Grid, Paper, Avatar, Chip,
+  IconButton, Dialog, DialogTitle, DialogContent, DialogActions, TextField,
+  AvatarGroup, CircularProgress, Tooltip, Alert
 } from '@mui/material';
 import { Add, Groups, MoreVert, CalendarMonth } from '@mui/icons-material';
 import Layout from '../components/Layout';
-import client from '../api/client';
+import { useOrg } from '../context/OrgContext';
+import { listTeams, createTeam } from '../api/p1';
 
 const Teams = () => {
-  const navigate = useNavigate(); // Hook de navegación
+  const navigate = useNavigate();
+  const { activeOrg, orgLoading } = useOrg();
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openModal, setOpenModal] = useState(false);
   const [newTeamName, setNewTeamName] = useState('');
   const [newTeamDesc, setNewTeamDesc] = useState('');
 
-  // 1. Cargar Equipos desde la API
+  // 1. Cargar Equipos desde la API P1
   const fetchTeams = async () => {
+    if (!activeOrg) return;
     try {
       setLoading(true);
-      const res = await client.get('/api/equipos/');
+      const res = await listTeams(activeOrg.org_id);
       const payload = res.data?.results ?? res.data ?? [];
       setTeams(Array.isArray(payload) ? payload : []);
     } catch (err) {
@@ -33,27 +36,22 @@ const Teams = () => {
 
   useEffect(() => {
     fetchTeams();
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeOrg?.org_id]);
 
-  // 2. Crear Nuevo Equipo
+  // 2. Crear Nuevo Equipo (P1)
   const handleCreateTeam = async () => {
+    if (!newTeamName.trim() || !activeOrg) return;
     try {
-      if (!newTeamName.trim()) return;
-      
       const payload = {
-        nombre: newTeamName,
-        descripcion: newTeamDesc,
-        color_identificador: '#F57C00' // Naranja Mendieta por defecto
+        name: newTeamName,
+        description: newTeamDesc,
       };
-
-      await client.post('/api/equipos/', payload);
-      
-      // Limpieza y recarga
+      await createTeam(activeOrg.org_id, payload);
       setOpenModal(false);
       setNewTeamName('');
       setNewTeamDesc('');
-      fetchTeams(); 
-      
+      fetchTeams();
     } catch (err) {
       console.error(err);
       alert("Error: No se pudo crear el grupo. Verifica si el nombre ya existe.");
@@ -66,6 +64,13 @@ const Teams = () => {
   };
 
   const safeTeams = Array.isArray(teams) ? teams : [];
+
+  if (orgLoading) return (
+    <Layout><Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}><CircularProgress /></Box></Layout>
+  );
+  if (!activeOrg) return (
+    <Layout><Alert severity="info" sx={{ m: 4 }}>Sin organización asignada.</Alert></Layout>
+  );
 
   return (
     <Layout>
@@ -126,10 +131,10 @@ const Teams = () => {
                 }}
               >
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                  <Chip 
-                    label={`${team.cantidad_alumnos} Atletas`} 
-                    size="small" 
-                    sx={{ bgcolor: '#FFF7ED', color: '#C2410C', fontWeight: 700, borderRadius: 1.5 }} 
+                  <Chip
+                    label={`${team.athlete_count ?? '–'} Atletas`}
+                    size="small"
+                    sx={{ bgcolor: '#FFF7ED', color: '#C2410C', fontWeight: 700, borderRadius: 1.5 }}
                   />
                   <IconButton 
                     size="small" 
@@ -140,11 +145,11 @@ const Teams = () => {
                 </Box>
                 
                 <Typography variant="h6" sx={{ fontWeight: 800, mb: 1, color: '#1E293B' }}>
-                  {team.nombre}
+                  {team.name}
                 </Typography>
-                
+
                 <Typography variant="body2" color="textSecondary" sx={{ mb: 3, height: 40, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                  {team.descripcion || "Sin descripción disponible para este grupo."}
+                  {team.description || "Sin descripción disponible para este grupo."}
                 </Typography>
 
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 'auto', pt: 2, borderTop: '1px solid #F1F5F9' }}>

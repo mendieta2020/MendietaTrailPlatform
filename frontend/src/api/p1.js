@@ -14,6 +14,10 @@ export function listTeams(orgId) {
   return client.get(`${p1Base(orgId)}/teams/`);
 }
 
+export function createTeam(orgId, data) {
+  return client.post(`${p1Base(orgId)}/teams/`, data);
+}
+
 export function getAthlete(orgId, id) {
   return client.get(`${p1Base(orgId)}/roster/athletes/${id}/`);
 }

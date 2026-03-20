@@ -8,8 +8,9 @@ import {
   TrendingUp, CalendarMonth
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
-import client from '../api/client';
 import PaymentsWidget from '../components/widgets/PaymentsWidget';
+import { useOrg } from '../context/OrgContext';
+import { listAthletes } from '../api/p1';
 import ComplianceChart from '../components/widgets/ComplianceChart';
 import AlertsWidget from '../components/widgets/AlertsWidget';
 import { format, subMonths, startOfYear, startOfMonth, parseISO } from 'date-fns';
@@ -35,46 +36,33 @@ const StatCard = ({ title, value, sub, color, icon: Icon, loading }) => (
 );
 
 const Dashboard = () => {
+  const { activeOrg, orgLoading } = useOrg();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  
+
   // Estado del Filtro de Tiempo
   const [periodo, setPeriodo] = useState('THIS_MONTH');
-  
+
   // Datos
   const [kpiData, setKpiData] = useState({ alumnos: 0, ingresos: 0 });
-  const [pmcData, setPmcData] = useState([]); // Datos reales del Backend
-  const [pagosData, setPagosData] = useState([]);
+  // TODO(P2-backend): pmcData y pagosData requieren endpoints P1 aún no creados:
+  //   GET /api/p1/orgs/{orgId}/analytics/pmc/
+  //   GET /api/p1/orgs/{orgId}/payments/
+  const [pmcData] = useState([]);
+  const [pagosData] = useState([]);
 
   // --- EFECTO DE CARGA DE DATOS ---
   useEffect(() => {
+    if (!activeOrg) return;
     const fetchData = async () => {
       try {
         setLoading(true);
-        
-        // 1. Cargar KPIs Básicos
-        const [resAlumnos, resPagos] = await Promise.all([
-          client.get('/api/alumnos/'),
-          client.get('/api/pagos/')
-        ]);
 
-        const alumnosPayload = resAlumnos.data?.results ?? resAlumnos.data ?? [];
-        const pagosPayload = resPagos.data?.results ?? resPagos.data ?? [];
-        const alumnosData = Array.isArray(alumnosPayload) ? alumnosPayload : [];
-        const pagosDataArray = Array.isArray(pagosPayload) ? pagosPayload : [];
-
-        const totalIngresos = pagosDataArray.reduce((acc, pago) => acc + parseFloat(pago.monto), 0);
-        setKpiData({ 
-            alumnos: alumnosData.length, 
-            ingresos: totalIngresos 
-        });
-        setPagosData(pagosDataArray);
-
-        // 2. Cargar Datos Científicos (PMC) - Opcional: Pasar fechas en query params
-        // Por ahora traemos todo y filtramos en frontend (para MVP es rápido)
-        // En producción, filtraremos en backend: `/api/analytics/pmc/?start=...&end=...`
-        const resPMC = await client.get('/api/analytics/pmc/');
-        setPmcData(resPMC.data);
+        // 1. Conteo de atletas via P1 (org-scoped)
+        const resAthletes = await listAthletes(activeOrg.org_id);
+        const athletesPayload = resAthletes.data?.results ?? resAthletes.data ?? [];
+        const athletesData = Array.isArray(athletesPayload) ? athletesPayload : [];
+        setKpiData({ alumnos: athletesData.length, ingresos: 0 });
 
       } catch (err) {
         console.error("Error Dashboard:", err);
@@ -85,7 +73,7 @@ const Dashboard = () => {
     };
 
     fetchData();
-  }, [periodo]); // Recargar si cambia el periodo (futuro: conectar filtro al backend)
+  }, [activeOrg?.org_id, periodo]);
 
   // --- FILTRADO DE DATOS PMC SEGÚN PERIODO ---
   const getFilteredPMC = () => {
@@ -100,6 +88,13 @@ const Dashboard = () => {
   };
 
   const filteredPMC = getFilteredPMC();
+
+  if (orgLoading) return (
+    <Layout><Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}><CircularProgress /></Box></Layout>
+  );
+  if (!activeOrg) return (
+    <Layout><Alert severity="info" sx={{ m: 4 }}>Sin organización asignada.</Alert></Layout>
+  );
 
   return (
     <Layout>
@@ -181,8 +176,9 @@ const Dashboard = () => {
                     <Typography variant="caption" sx={{ bgcolor: '#F1F5F9', px: 1, py: 0.5, borderRadius: 1 }}>Modelo Banister Híbrido</Typography>
                 </Box>
                 <Divider sx={{ mb: 2 }} />
-                
-                <ResponsiveContainer width="100%" height="85%">
+
+                <Box sx={{ height: 270, width: '100%', minWidth: 0 }}>
+                <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={filteredPMC}>
                         <defs>
                             <linearGradient id="colorFit" x1="0" y1="0" x2="0" y2="1">
@@ -211,6 +207,7 @@ const Dashboard = () => {
                         <Line type="monotone" dataKey="atl" stroke="#EC4899" strokeWidth={2} dot={false} name="Fatiga (ATL)" />
                     </AreaChart>
                 </ResponsiveContainer>
+                </Box>
             </Paper>
         </Grid>
 
@@ -223,7 +220,7 @@ const Dashboard = () => {
       {/* GRÁFICO COMPARATIVO PLAN VS REAL (NUEVO) */}
       <Paper sx={{ p: 3, borderRadius: 2, mb: 4 }}>
           <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>Volumen: Planificado vs Real</Typography>
-          <Box sx={{ height: 300 }}>
+          <Box sx={{ height: 300, width: '100%', minWidth: 0 }}>
               <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={filteredPMC}> {/* Usamos los mismos datos PMC que ya tienen carga */}
                       <CartesianGrid strokeDasharray="3 3" vertical={false} />
