@@ -1,58 +1,43 @@
 ---
-name: P1 Roadmap State
-description: Current state of P1 roadmap — P1 audit complete, one PR remains before closure, then P2 begins
+name: P2 Roadmap State
+description: Current state of P2 roadmap — PR-125 staged, controlled debt items tracked, next PR dictated
 type: project
 ---
 
-Last completed PR: PR-138 (Frontend CoachDashboard Suunto connection UI + fallback modal, merged 2026-03-18).
+Last completed PR: PR-124 (backfill legacy alumnos into athlete roster, merged 2026-03-18, commit 73c9f81).
 
-**Why:** Track roadmap progress to dictate next PR correctly.
-**How to apply:** Use this to determine the next logical PR when the developer asks.
+**Staged (uncommitted):** PR-125 — Athlete.clean() cross-field org validation + 7 tests. Ready to commit.
 
-## P1 STATUS: AUDIT COMPLETE — ONE PR TO CLOSURE (2026-03-18)
+## P1 STATUS: CLOSED (2026-03-18)
 
-P1 Closure Audit performed 2026-03-18. Full report: `Radiografia_CTO_Cierre_P1.txt` (repo root).
+D7 Celery bug (suunto_ingest queue) was fixed — confirmed Queue("suunto_ingest") present in backend/celery.py line 50.
 
-### Critical finding: D7 Celery Queue Bug
-- `CELERY_TASK_ROUTES` routes `suunto.*` to `suunto_ingest` queue
-- `app.conf.task_queues` in `celery.py` does NOT declare `Queue("suunto_ingest")`
-- Result: Suunto tasks are silently unprocessed in production
-- Fix: 1 line in `backend/celery.py`
+## CURRENT PHASE: P2 — Historical Data, Analytics & Billing
 
-### Blocking PR for P1 Closure:
-- **PR-139**: Celery queue fix (`Queue("suunto_ingest")`) + ExternalIdentity PATCH unlink test
-- Scope: ~30 LOC, risk LOW
-- After PR-139 merges, P1 is CLOSED
+### Controlled Debt carried from P1:
+- **D2**: `CompletedActivity.organization` FK points to `settings.AUTH_USER_MODEL` (User), NOT to Organization model. This is a critical tenancy debt — the "organization" field is actually a coach user, not a real Organization.
+- **D3**: Alumno vs Athlete coexistence — entire ingestion pipeline (Strava, Suunto) writes to `alumno` FK on CompletedActivity. The `athlete` FK exists but is nullable and not backfilled for ingested rows.
+- **FINDING-X4-A**: ExternalIdentityViewSet uses legacy coach scope (not Organization-scoped).
 
-### Controlled Debt carried into P2:
-- D2: `CompletedActivity.organization` FK points to User (not Organization)
-- D3: Alumno vs Athlete coexistence — entire ingestion pipeline uses Alumno
-- FINDING-X4-A: ExternalIdentityViewSet uses legacy coach scope
+### What exists in P2 so far:
+- `services_analytics.py`: compute_org_pmc() — planning-side only PMC (CTL/ATL/TSB) from WorkoutAssignment planned_tss
+- `services_reconciliation.py`: auto_match_and_reconcile(), compute_weekly_adherence()
+- `DashboardAnalyticsView`: planning-only PMC endpoint
+- `AthleteAdherenceViewSet`: weekly adherence per athlete
+- `ReconciliationViewSet`: manual + auto reconciliation actions
 
-### P2 Preview (do NOT start until PR-139 merged):
-1. Legacy Migration epic (D2+D3): migrate ingestion from Alumno to Athlete, change CompletedActivity.organization FK
-2. Athlete Portal: athlete-facing frontend
-3. Notification Pipeline: Alert delivery
-4. API Versioning: /api/v1/
-5. Third Provider: Garmin or Coros
+### What is missing for P2 North Star:
+1. **CompletedActivity.organization FK migration** (D2): must point to Organization, not User
+2. **Ingestion pipeline migration** (D3): Strava + Suunto ingest must write `athlete` FK (not just `alumno`)
+3. **Real-side analytics**: PMC from actual execution data (CompletedActivity), not just planned
+4. **Historical backfill pipeline**: bulk import of past activities for new athletes
+5. **Billing integration**: subscription tiers, usage gates
+6. **Multi-provider rollout**: Garmin, Coros, Polar, Wahoo activation
 
-## Completed P1 PRs (all merged to main)
+### PR sequence dictated:
+- PR-125: Athlete identity integrity (STAGED — commit and ship)
+- PR-126: CompletedActivity.organization FK migration (D2 fix)
+- PR-127: Ingestion pipeline Alumno→Athlete migration (D3 fix)
+- Then: Real-side analytics, historical backfill, billing
 
-Suunto Epic:
-- PR-134: Suunto OAuth Phase 1
-- PR-135: Suunto FIT Activity Ingestion
-- PR-136: Suunto Webhook Subscription
-- PR-137: SuuntoPlus Guides
-- PR-X3: Suunto Token Refresh
-- PR-X4: ExternalIdentity API
-- PR-138: Frontend Suunto Connection UI
-
-P1 Core:
-- PR-128a/b: WorkoutLibrary/PlannedWorkout/Block/Interval CRUD
-- PR-129: Roster API (Coach, Athlete, Team, Membership, Assignment)
-- PR-130: Tenancy isolation sweep
-- PR-131a: SessionStatusView with memberships
-- PR-131b: Frontend OrgContext + CoachDashboard
-- PR-132: WorkoutAssignment filters
-
-Test baseline: 935+ tests
+## Test baseline: 80+ test files, ~1000+ tests
