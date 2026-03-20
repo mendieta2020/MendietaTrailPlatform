@@ -1,23 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom'; // <--- IMPORTANTE: Faltaba esto
-import { 
-  Box, Paper, Typography, Table, TableBody, TableCell, TableContainer, 
-  TableHead, TableRow, Avatar, Chip, IconButton, Button, TextField, InputAdornment 
+import {
+  Box, Paper, Typography, Table, TableBody, TableCell, TableContainer,
+  TableHead, TableRow, Avatar, Chip, IconButton, Button, TextField, InputAdornment,
+  CircularProgress, Alert
 } from '@mui/material';
 import { Search, Edit, Add, NavigateNext } from '@mui/icons-material';
 import Layout from '../components/Layout';
-import client from '../api/client';
 import RiskBadge from '../components/RiskBadge';
+import { useOrg } from '../context/OrgContext';
+import { listAthletes } from '../api/p1';
 
 const Athletes = () => {
-  const navigate = useNavigate(); // <--- Hook de navegación
+  const navigate = useNavigate();
+  const { activeOrg, orgLoading } = useOrg();
   const [athletes, setAthletes] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
+    if (!activeOrg) return;
     const fetchAthletes = async () => {
       try {
-        const res = await client.get('/api/alumnos/?include_injury_risk=1');
+        const res = await listAthletes(activeOrg.org_id);
         const payload = res.data?.results ?? res.data ?? [];
         setAthletes(Array.isArray(payload) ? payload : []);
       } catch (err) {
@@ -25,13 +29,20 @@ const Athletes = () => {
       }
     };
     fetchAthletes();
-  }, []);
+  }, [activeOrg?.org_id]);
 
   // Filtro de búsqueda en tiempo real
   const safeAthletes = Array.isArray(athletes) ? athletes : [];
-  const filteredAthletes = safeAthletes.filter(athlete => 
-    (athlete.nombre ?? '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-    (athlete.apellido ?? '').toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredAthletes = safeAthletes.filter(athlete =>
+    (athlete.first_name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (athlete.last_name ?? '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  if (orgLoading) return (
+    <Layout><Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}><CircularProgress /></Box></Layout>
+  );
+  if (!activeOrg) return (
+    <Layout><Alert severity="info" sx={{ m: 4 }}>Sin organización asignada.</Alert></Layout>
   );
 
   return (
@@ -95,25 +106,24 @@ const Athletes = () => {
                 <TableCell>
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
                     <Avatar sx={{ bgcolor: '#0EA5E9', mr: 2, width: 32, height: 32, fontSize: '0.875rem' }}>
-                      {athlete.nombre ? athlete.nombre.charAt(0) : '?'}
-                      {athlete.apellido ? athlete.apellido.charAt(0) : ''}
+                      {athlete.first_name ? athlete.first_name.charAt(0) : '?'}
+                      {athlete.last_name ? athlete.last_name.charAt(0) : ''}
                     </Avatar>
                     <Box>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{athlete.nombre} {athlete.apellido}</Typography>
-                        <Typography variant="caption" sx={{ color: '#94A3B8' }}>{athlete.email}</Typography>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{athlete.first_name} {athlete.last_name}</Typography>
                     </Box>
                   </Box>
                 </TableCell>
                 <TableCell>
-                    <Chip 
-                        label={(athlete.estado_actual || 'ACTIVO') === 'ACTIVO' ? "Activo" : "Inactivo"} 
-                        size="small" 
-                        sx={{ 
-                            bgcolor: (athlete.estado_actual || 'ACTIVO') === 'ACTIVO' ? '#ECFDF5' : '#F1F5F9', 
-                            color: (athlete.estado_actual || 'ACTIVO') === 'ACTIVO' ? '#059669' : '#64748B',
+                    <Chip
+                        label={athlete.is_active !== false ? "Activo" : "Inactivo"}
+                        size="small"
+                        sx={{
+                            bgcolor: athlete.is_active !== false ? '#ECFDF5' : '#F1F5F9',
+                            color: athlete.is_active !== false ? '#059669' : '#64748B',
                             fontWeight: 600,
                             borderRadius: 1
-                        }} 
+                        }}
                     />
                 </TableCell>
                 <TableCell>

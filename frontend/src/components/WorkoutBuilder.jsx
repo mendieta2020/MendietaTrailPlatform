@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, MenuItem, Box, Typography, Divider,
@@ -57,28 +57,43 @@ const SESSION_TYPE_OPTIONS = [
 ];
 
 const BLOCK_TYPES = [
-  { value: 'warmup',   label: 'Calentamiento',    color: '#fb923c' },
-  { value: 'main',     label: 'Bloque Principal', color: '#3b82f6' },
-  { value: 'cooldown', label: 'Enfriamiento',     color: '#a3e635' },
-  { value: 'drill',    label: 'Técnica / Drills', color: '#94a3b8' },
-  { value: 'strength', label: 'Fuerza',           color: '#c084fc' },
-  { value: 'custom',   label: 'Personalizado',    color: '#f59e0b' },
+  { value: 'warmup', label: 'Calentamiento', color: '#fb923c' },
+  { value: 'main', label: 'Bloque Principal', color: '#3b82f6' },
+  { value: 'cooldown', label: 'Enfriamiento', color: '#a3e635' },
+  { value: 'drill', label: 'Técnica / Drills', color: '#94a3b8' },
+  { value: 'strength', label: 'Fuerza', color: '#c084fc' },
+  { value: 'custom', label: 'Personalizado', color: '#f59e0b' },
 ];
 
 const METRIC_TYPES = [
-  { value: 'rpe',     label: 'RPE (1–10)' },
+  { value: 'rpe', label: 'RPE (1–10)' },
   { value: 'hr_zone', label: 'Zona FC (Z1–Z5)' },
-  { value: 'pace',    label: 'Ritmo (min/km)' },
-  { value: 'power',   label: 'Vatios' },
-  { value: 'free',    label: 'Libre' },
+  { value: 'pace', label: 'Ritmo (min/km)' },
+  { value: 'power', label: 'Vatios' },
+  { value: 'elevation_gain', label: 'Desnivel D+ (m)' },
+  { value: 'free', label: 'Libre' },
 ];
 
 // "Fin de paso" — how the step ends
 const STEP_END_OPTIONS = [
-  { value: 'tiempo',    label: 'Tiempo',       icon: <TimerIcon fontSize="small" /> },
-  { value: 'distancia', label: 'Distancia',    icon: <StraightenIcon fontSize="small" /> },
-  { value: 'lap',       label: 'Lap Button',   icon: <TouchAppIcon fontSize="small" /> },
+  { value: 'tiempo', label: 'Tiempo', icon: <TimerIcon fontSize="small" /> },
+  { value: 'distancia', label: 'Distancia', icon: <StraightenIcon fontSize="small" /> },
+  { value: 'lap', label: 'Lap Button', icon: <TouchAppIcon fontSize="small" /> },
 ];
+
+// ── Target placeholder by metric ─────────────────────────────────────────────
+
+function getTargetPlaceholder(metricType) {
+  const map = {
+    rpe: 'Ej: 7',
+    hr_zone: 'Ej: Z3 / 145–155 bpm',
+    pace: 'Ej: 4:30 min/km',
+    power: 'Ej: 250W / 85% FTP',
+    elevation_gain: 'Ej: 500 m D+',
+    free: 'Objetivo libre…',
+  };
+  return map[metricType] ?? '';
+}
 
 // ── Defaults ─────────────────────────────────────────────────────────────────
 
@@ -262,6 +277,9 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const chartHostRef = useRef(null);
+  const [chartReady, setChartReady] = useState(false);
+
   React.useEffect(() => {
     if (open && editWorkout) {
       const { form: f, blocks: b } = workoutToFormState(editWorkout);
@@ -274,6 +292,58 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
       setError('');
     }
   }, [open, editWorkout]);
+
+  // ── Derived: totals + chart ─────────────────────────────────────────────────
+
+  const totals = useMemo(() => computeTotals(blocks), [blocks]);
+  const chartData = useMemo(() => buildChartData(blocks), [blocks]);
+
+  // hasRealChartData: true only when at least one step has a real value.
+  // Lap-button steps count (intentional visual bar). Empty/unfilled fields do NOT —
+  // this prevents the emptyBlock(1) fallback from triggering the ResizeObserver
+  // cycle before the user has entered any data.
+  const hasRealChartData = useMemo(
+    () =>
+      blocks.some((b) =>
+        b.intervals.some(
+          (iv) =>
+            iv.step_end_type === 'lap' ||
+            (iv.step_end_type === 'tiempo' && Number(iv.duration_seconds) > 0) ||
+            (iv.step_end_type === 'distancia' && Number(iv.distance_meters) > 0)
+        )
+      ),
+    [blocks]
+  );
+
+  // shouldRenderChart: only mount ResponsiveContainer when both the layout is
+  // stable (chartReady) and real data exists. This eliminates the Recharts
+  // -1×-1 warning in React 18 StrictMode caused by the emptyBlock fallback
+  // triggering a guard cycle (true→false→true) during Dialog enter animation.
+  const shouldRenderChart = open && hasRealChartData && chartReady;
+
+  useEffect(() => {
+    // Reset only when the dialog closes or real data disappears.
+    // Never reset while open — avoids StrictMode's double-invoke creating a
+    // chartReady true→false→true cycle that fires Recharts' premature measurement.
+    if (!open || !hasRealChartData) {
+      setChartReady(false);
+      return;
+    }
+
+    const el = chartHostRef.current;
+    if (!el) return;
+
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) setChartReady(true);
+      }
+    });
+
+    ro.observe(el);
+
+    return () => ro.disconnect();
+  }, [open, hasRealChartData]);
 
   const resetState = useCallback(() => {
     setForm(INITIAL_FORM);
@@ -339,11 +409,6 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
         i !== bIdx ? b : { ...b, intervals: b.intervals.filter((_, ii) => ii !== iIdx) }
       )
     );
-
-  // ── Derived: totals + chart ─────────────────────────────────────────────────
-
-  const totals = useMemo(() => computeTotals(blocks), [blocks]);
-  const chartData = useMemo(() => buildChartData(blocks), [blocks]);
 
   // ── Submit ──────────────────────────────────────────────────────────────────
 
@@ -460,13 +525,15 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
         </div>
       </DialogTitle>
 
-      <DialogContent sx={{ p: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: '1 1 0', minHeight: 0 }}>
+      <DialogContent sx={{ p: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: '1 1 0', minHeight: 0, height: '100%' }}>
+        <div className="flex flex-col h-full min-h-0">
         <Collapse in={!!error}>
           <Alert severity="error" sx={{ mx: 3, mt: 2 }} onClose={() => setError('')}>{error}</Alert>
         </Collapse>
 
         {/* ── Two-column layout ── */}
         <div className="flex flex-1 min-h-0 overflow-hidden">
+        <div className="flex flex-col lg:flex-row flex-1 min-h-0 overflow-hidden">
 
           {/* ── LEFT: Editor ── */}
           <div className="flex-1 overflow-y-auto px-6 py-5" style={{ minWidth: 0 }}>
@@ -606,28 +673,30 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                         {BLOCK_TYPES.map((t) => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
                       </TextField>
 
-                      {/* Block repetitions */}
-                      <div
-                        className="flex items-center gap-1 flex-shrink-0"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <span className="text-xs text-slate-500 font-medium">Repetir</span>
-                        <TextField
-                          type="number"
-                          value={block.repetitions}
-                          onChange={(e) =>
-                            setBlocks((prev) =>
-                              prev.map((b, i) =>
-                                i === bIdx ? { ...b, repetitions: e.target.value } : b
+                      {/* Block repetitions — prominent amber badge */}
+                      <Tooltip title="Repetir este bloque completo N veces (series)" arrow>
+                        <div
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 flex-shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <span className="text-xs font-bold text-amber-700 leading-none">SERIES</span>
+                          <TextField
+                            type="number"
+                            value={block.repetitions}
+                            onChange={(e) =>
+                              setBlocks((prev) =>
+                                prev.map((b, i) =>
+                                  i === bIdx ? { ...b, repetitions: e.target.value } : b
+                                )
                               )
-                            )
-                          }
-                          size="small"
-                          inputProps={{ min: 1, max: 99, style: { textAlign: 'center', fontWeight: 600, padding: '4px 6px', width: 40 } }}
-                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', '&.Mui-focused fieldset': { borderColor: '#f59e0b' } } }}
-                        />
-                        <span className="text-xs text-slate-500">×</span>
-                      </div>
+                            }
+                            size="small"
+                            inputProps={{ min: 1, max: 99, style: { textAlign: 'center', fontWeight: 700, padding: '2px 4px', width: 36, color: '#92400e' } }}
+                            sx={{ '& .MuiOutlinedInput-root': { borderRadius: '6px', bgcolor: 'white', '&.Mui-focused fieldset': { borderColor: '#f59e0b' } }, '& fieldset': { borderColor: '#fcd34d' } }}
+                          />
+                          <span className="text-xs font-semibold text-amber-700 leading-none">×</span>
+                        </div>
+                      </Tooltip>
 
                       <Tooltip title="Eliminar bloque">
                         <IconButton
@@ -647,147 +716,170 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                     <Collapse in={block.open}>
                       <div className="px-3 py-3 bg-white flex flex-col gap-2">
 
-                        {/* Interval column headers */}
-                        <div className="grid gap-2 px-1 pb-1"
-                          style={{ gridTemplateColumns: '2fr 60px 110px 1fr 1fr 1fr 36px' }}>
-                          {[
-                            'Descripción del paso',
-                            'Reps',
-                            'Fin de paso',
-                            'Métrica',
-                            'Objetivo',
-                            'Descanso (seg)',
-                            '',
-                          ].map((h) => (
-                            <p key={h} className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                              {h}
-                            </p>
-                          ))}
-                        </div>
-
                         {block.intervals.map((iv, iIdx) => (
                           <div
                             key={iIdx}
-                            className="grid gap-2 items-center"
-                            style={{ gridTemplateColumns: '2fr 60px 110px 1fr 1fr 1fr 36px' }}
+                            className="rounded-xl border border-slate-200 overflow-hidden"
+                            style={{ boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.04)' }}
                           >
-                            {/* Description */}
-                            <TextField
-                              value={iv.description}
-                              onChange={setIntervalField(bIdx, iIdx, 'description')}
-                              size="small"
-                              placeholder="Intervalo, técnica…"
-                              sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.8rem' } }}
-                            />
-
-                            {/* Repetitions */}
-                            <TextField
-                              value={iv.repetitions}
-                              onChange={setIntervalField(bIdx, iIdx, 'repetitions')}
-                              size="small"
-                              type="number"
-                              inputProps={{ min: 1 }}
-                              sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.8rem' } }}
-                            />
-
-                            {/* Fin de paso — compound: selector + conditional input */}
-                            <div className="flex flex-col gap-1">
-                              <TextField
-                                select
-                                value={iv.step_end_type}
-                                onChange={(e) => {
-                                  setIntervalValue(bIdx, iIdx, 'step_end_type', e.target.value);
-                                  // Clear the unused field
-                                  if (e.target.value !== 'tiempo') setIntervalValue(bIdx, iIdx, 'duration_seconds', '');
-                                  if (e.target.value !== 'distancia') setIntervalValue(bIdx, iIdx, 'distance_meters', '');
-                                }}
-                                size="small"
-                                sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.75rem' } }}
-                              >
-                                {STEP_END_OPTIONS.map((o) => (
-                                  <MenuItem key={o.value} value={o.value} sx={{ fontSize: '0.8rem' }}>
-                                    {o.label}
-                                  </MenuItem>
-                                ))}
-                              </TextField>
-
-                              {iv.step_end_type === 'tiempo' && (
-                                <TextField
-                                  value={iv.duration_seconds}
-                                  onChange={setIntervalField(bIdx, iIdx, 'duration_seconds')}
-                                  size="small"
-                                  type="number"
-                                  inputProps={{ min: 0 }}
-                                  placeholder="seg"
-                                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.75rem' } }}
-                                />
-                              )}
-                              {iv.step_end_type === 'distancia' && (
-                                <TextField
-                                  value={iv.distance_meters}
-                                  onChange={setIntervalField(bIdx, iIdx, 'distance_meters')}
-                                  size="small"
-                                  type="number"
-                                  inputProps={{ min: 0 }}
-                                  placeholder="metros"
-                                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.75rem' } }}
-                                />
-                              )}
-                              {iv.step_end_type === 'lap' && (
-                                <p className="text-xs text-slate-400 italic px-1">Hasta lap</p>
-                              )}
+                            {/* ── Step header: paso number + reps counter ── */}
+                            <div className="flex items-center justify-between px-3 py-1.5 bg-slate-50 border-b border-slate-100">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">
+                                  Paso {iIdx + 1}
+                                </span>
+                                <Tooltip title="Repetir este paso N veces dentro del bloque" arrow>
+                                  <div className="flex items-center gap-1">
+                                    <TextField
+                                      type="number"
+                                      value={iv.repetitions}
+                                      onChange={setIntervalField(bIdx, iIdx, 'repetitions')}
+                                      size="small"
+                                      inputProps={{ min: 1, max: 99, style: { textAlign: 'center', fontWeight: 700, padding: '1px 4px', width: 32, fontSize: '0.8rem' } }}
+                                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: '6px', '&.Mui-focused fieldset': { borderColor: '#f59e0b' } } }}
+                                    />
+                                    <span className="text-xs font-semibold text-slate-500">×</span>
+                                  </div>
+                                </Tooltip>
+                              </div>
+                              <Tooltip title="Eliminar paso">
+                                <span>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => removeInterval(bIdx, iIdx)}
+                                    disabled={block.intervals.length === 1}
+                                  >
+                                    <DeleteIcon
+                                      fontSize="small"
+                                      sx={{ color: block.intervals.length === 1 ? '#cbd5e1' : '#ef4444' }}
+                                    />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
                             </div>
 
-                            {/* Metric */}
-                            <TextField
-                              select
-                              value={iv.metric_type}
-                              onChange={setIntervalField(bIdx, iIdx, 'metric_type')}
-                              size="small"
-                              sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.8rem' } }}
-                            >
-                              {METRIC_TYPES.map((t) => (
-                                <MenuItem key={t.value} value={t.value} sx={{ fontSize: '0.8rem' }}>
-                                  {t.label}
-                                </MenuItem>
-                              ))}
-                            </TextField>
-
-                            {/* Target */}
-                            <TextField
-                              value={iv.target_label}
-                              onChange={setIntervalField(bIdx, iIdx, 'target_label')}
-                              size="small"
-                              placeholder="Z3 / 7 / 4:30"
-                              sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.8rem' } }}
-                            />
-
-                            {/* Recovery */}
-                            <TextField
-                              value={iv.recovery_seconds}
-                              onChange={setIntervalField(bIdx, iIdx, 'recovery_seconds')}
-                              size="small"
-                              type="number"
-                              inputProps={{ min: 0 }}
-                              placeholder="90"
-                              sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.8rem' } }}
-                            />
-
-                            {/* Delete */}
-                            <Tooltip title="Eliminar paso">
-                              <span>
-                                <IconButton
+                            {/* ── INTENSIVO section ── */}
+                            <div className="px-3 pt-2.5 pb-3 bg-white">
+                              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
+                                Intensivo
+                              </p>
+                              <div className="grid grid-cols-2 gap-2">
+                                {/* Row 1: description + step_end_type + value */}
+                                <TextField
+                                  value={iv.description}
+                                  onChange={setIntervalField(bIdx, iIdx, 'description')}
                                   size="small"
-                                  onClick={() => removeInterval(bIdx, iIdx)}
-                                  disabled={block.intervals.length === 1}
+                                  label="Descripción"
+                                  placeholder="Intervalo, técnica…"
+                                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.82rem' }, '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: '#f59e0b' } }}
+                                />
+                                <div className="flex gap-2">
+                                  <TextField
+                                    select
+                                    value={iv.step_end_type}
+                                    onChange={(e) => {
+                                      setIntervalValue(bIdx, iIdx, 'step_end_type', e.target.value);
+                                      if (e.target.value !== 'tiempo') setIntervalValue(bIdx, iIdx, 'duration_seconds', '');
+                                      if (e.target.value !== 'distancia') setIntervalValue(bIdx, iIdx, 'distance_meters', '');
+                                    }}
+                                    size="small"
+                                    label="Fin de paso"
+                                    sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.82rem' } }}
+                                  >
+                                    {STEP_END_OPTIONS.map((o) => (
+                                      <MenuItem key={o.value} value={o.value} sx={{ fontSize: '0.82rem' }}>
+                                        {o.label}
+                                      </MenuItem>
+                                    ))}
+                                  </TextField>
+                                  {iv.step_end_type === 'tiempo' && (
+                                    <TextField
+                                      value={iv.duration_seconds}
+                                      onChange={setIntervalField(bIdx, iIdx, 'duration_seconds')}
+                                      size="small"
+                                      type="number"
+                                      label="Seg"
+                                      inputProps={{ min: 0 }}
+                                      sx={{ width: 80, '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.82rem' }, '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: '#f59e0b' } }}
+                                    />
+                                  )}
+                                  {iv.step_end_type === 'distancia' && (
+                                    <TextField
+                                      value={iv.distance_meters}
+                                      onChange={setIntervalField(bIdx, iIdx, 'distance_meters')}
+                                      size="small"
+                                      type="number"
+                                      label="Metros"
+                                      inputProps={{ min: 0 }}
+                                      sx={{ width: 90, '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.82rem' }, '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: '#f59e0b' } }}
+                                    />
+                                  )}
+                                  {iv.step_end_type === 'lap' && (
+                                    <div className="flex items-center px-2">
+                                      <p className="text-xs text-slate-400 italic">Hasta lap</p>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Row 2: metric + target */}
+                                <TextField
+                                  select
+                                  value={iv.metric_type}
+                                  onChange={setIntervalField(bIdx, iIdx, 'metric_type')}
+                                  size="small"
+                                  label="Métrica"
+                                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.82rem' } }}
                                 >
-                                  <DeleteIcon
-                                    fontSize="small"
-                                    sx={{ color: block.intervals.length === 1 ? '#cbd5e1' : '#ef4444' }}
-                                  />
-                                </IconButton>
+                                  {METRIC_TYPES.map((t) => (
+                                    <MenuItem key={t.value} value={t.value} sx={{ fontSize: '0.82rem' }}>
+                                      {t.label}
+                                      {t.value === 'elevation_gain' && (
+                                        <Chip
+                                          label="Trail"
+                                          size="small"
+                                          sx={{ ml: 1, height: 16, fontSize: '0.6rem', bgcolor: '#dcfce7', color: '#166534' }}
+                                        />
+                                      )}
+                                    </MenuItem>
+                                  ))}
+                                </TextField>
+                                <TextField
+                                  value={iv.target_label}
+                                  onChange={setIntervalField(bIdx, iIdx, 'target_label')}
+                                  size="small"
+                                  label="Objetivo"
+                                  placeholder={getTargetPlaceholder(iv.metric_type)}
+                                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.82rem' }, '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: '#f59e0b' } }}
+                                />
+                              </div>
+                            </div>
+
+                            {/* ── RECUPERACIÓN section — visually chained ── */}
+                            <div className="flex items-center gap-3 px-3 py-2 bg-slate-50 border-t border-slate-100">
+                              <div className="w-0.5 h-5 rounded-full bg-slate-300 flex-shrink-0" />
+                              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide flex-shrink-0">
+                                Recuperación
                               </span>
-                            </Tooltip>
+                              <TextField
+                                value={iv.recovery_seconds}
+                                onChange={setIntervalField(bIdx, iIdx, 'recovery_seconds')}
+                                size="small"
+                                type="number"
+                                label="Segundos"
+                                inputProps={{ min: 0 }}
+                                sx={{ width: 110, '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.8rem' }, '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: '#f59e0b' } }}
+                              />
+                              {iv.recovery_seconds && Number(iv.recovery_seconds) > 0 && (
+                                <span className="text-xs text-slate-400">
+                                  {Math.floor(Number(iv.recovery_seconds) / 60) > 0
+                                    ? `${Math.floor(Number(iv.recovery_seconds) / 60)} min `
+                                    : ''}
+                                  {Number(iv.recovery_seconds) % 60 > 0
+                                    ? `${Number(iv.recovery_seconds) % 60} seg`
+                                    : ''}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         ))}
 
@@ -816,8 +908,10 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
           </div>
 
           {/* ── RIGHT: Chart + Totals ── */}
-          <div className="flex-shrink-0 flex flex-col gap-4 p-5 bg-slate-50 border-l border-slate-200 overflow-y-auto"
-            style={{ width: 380, minWidth: 350 }}>
+          <div
+            className="flex-none flex flex-col gap-4 p-5 bg-slate-50 border-t lg:border-t-0 lg:border-l border-slate-200 overflow-y-auto w-full lg:w-96"
+            style={{ minWidth: 0 }}
+          >
 
             {/* Calculator */}
             <div>
@@ -854,7 +948,7 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                 Perfil Visual del Entrenamiento
               </p>
 
-              {chartData.length === 0 ? (
+              {!hasRealChartData ? (
                 <div className="flex flex-col items-center justify-center py-12 bg-white rounded-xl border border-slate-200">
                   <FitnessCenterIcon sx={{ fontSize: 36, color: '#cbd5e1' }} />
                   <p className="text-sm font-semibold text-slate-600 mt-3">Sin pasos aún</p>
@@ -864,40 +958,46 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                 </div>
               ) : (
                 <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
-                  <div style={{ width: '100%', height: 300, minHeight: 300 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={chartData}
-                      margin={{ top: 8, right: 8, left: -24, bottom: 40 }}
-                      barCategoryGap="15%"
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                      <XAxis
-                        dataKey="name"
-                        tick={{ fontSize: 9, fill: '#94a3b8' }}
-                        angle={-45}
-                        textAnchor="end"
-                        interval={0}
-                        height={48}
-                      />
-                      <YAxis
-                        tick={{ fontSize: 9, fill: '#94a3b8' }}
-                        label={{
-                          value: 'min',
-                          angle: -90,
-                          position: 'insideLeft',
-                          offset: 10,
-                          style: { fontSize: 9, fill: '#94a3b8' },
-                        }}
-                      />
-                      <RechartsTooltip content={<ChartTooltip />} cursor={{ fill: '#f8fafc' }} />
-                      <Bar dataKey="duration" radius={[4, 4, 0, 0]}>
-                        {chartData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.fill} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <div ref={chartHostRef} style={{ width: '100%', height: 300, minHeight: 300, minWidth: 0 }}>
+                    {shouldRenderChart ? (
+                    <ResponsiveContainer width="100%" height={300} debounce={50}>
+                      <BarChart
+                        data={chartData}
+                        margin={{ top: 8, right: 8, left: -24, bottom: 40 }}
+                        barCategoryGap="15%"
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                        <XAxis
+                          dataKey="name"
+                          tick={{ fontSize: 9, fill: '#94a3b8' }}
+                          angle={-45}
+                          textAnchor="end"
+                          interval={0}
+                          height={48}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 9, fill: '#94a3b8' }}
+                          label={{
+                            value: 'min',
+                            angle: -90,
+                            position: 'insideLeft',
+                            offset: 10,
+                            style: { fontSize: 9, fill: '#94a3b8' },
+                          }}
+                        />
+                        <RechartsTooltip content={<ChartTooltip />} cursor={{ fill: '#f8fafc' }} />
+                        <Bar dataKey="duration" radius={[4, 4, 0, 0]}>
+                          {chartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-full">
+                        <p className="text-xs text-slate-400">Preparando gráfico…</p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Legend */}
@@ -948,6 +1048,8 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
               </div>
             )}
           </div>
+        </div>
+        </div>
         </div>
       </DialogContent>
 
