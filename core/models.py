@@ -1219,6 +1219,32 @@ class Athlete(models.Model):
     def __str__(self):
         return f"Athlete:{self.user_id} @ {self.organization_id}"
 
+    def clean(self):
+        """
+        PR-125: Cross-field organization integrity.
+
+        Ensures that coach and team, when assigned, belong to the same
+        organization as this Athlete. Provides model-level defense-in-depth
+        beyond the serializer-layer FK scoping already enforced at API time.
+        """
+        from django.core.exceptions import ValidationError
+
+        errors = {}
+        if self.coach_id is not None and self.coach.organization_id != self.organization_id:
+            errors["coach"] = (
+                "Coach must belong to the same organization as the Athlete. "
+                f"coach.organization_id={self.coach.organization_id} "
+                f"!= athlete.organization_id={self.organization_id}"
+            )
+        if self.team_id is not None and self.team.organization_id != self.organization_id:
+            errors["team"] = (
+                "Team must belong to the same organization as the Athlete. "
+                f"team.organization_id={self.team.organization_id} "
+                f"!= athlete.organization_id={self.organization_id}"
+            )
+        if errors:
+            raise ValidationError(errors)
+
 
 # ==============================================================================
 # PR-143: AthleteZone — physiological threshold anchors per athlete
