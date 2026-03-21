@@ -18,6 +18,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "celery", "-A", "backend", "worker", "--loglevel=info", "-Q", "celery,suunto_ingest"],
       "port": 6379
+    },
+    {
+      "name": "PMC Preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["-e", "require('http').createServer((req,res)=>{const fs=require('fs'),path=require('path');const f=path.join('.claude/pmc-preview','index.html');res.writeHead(200,{'Content-Type':'text/html'});res.end(fs.readFileSync(f));}).listen(4000)"],
+      "port": 4000
     }
   ]
 }

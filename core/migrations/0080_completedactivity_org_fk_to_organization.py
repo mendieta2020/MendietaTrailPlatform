@@ -105,6 +105,13 @@ def reverse_org_fk(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
+    # atomic=False required: PostgreSQL raises
+    # "cannot ALTER TABLE because it has pending deferred trigger events"
+    # when an AlterField (ALTER TABLE) runs inside a transaction that contains
+    # DEFERRABLE INITIALLY DEFERRED RI constraint triggers on this table.
+    # Running without wrapping transaction avoids this; each step is still
+    # idempotent (get_or_create / AlterField is re-runnable).
+    atomic = False
 
     dependencies = [
         ("core", "0079_workoutblock_add_repetitions"),
