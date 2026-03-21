@@ -2757,6 +2757,14 @@ class OrganizationSubscription(models.Model):
         null=True, blank=True,
         help_text="Max athlete seats. NULL = unlimited.",
     )
+    mp_preapproval_id = models.CharField(
+        max_length=100, null=True, blank=True,
+        help_text="ID del preapproval en MercadoPago. Usado para correlacionar webhooks.",
+    )
+    is_managed_plan = models.BooleanField(
+        default=False,
+        help_text="True = plan vendido directamente por el equipo Quantoryn (ej: Coach+IA). Omite checkout MP.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -2767,7 +2775,54 @@ class OrganizationSubscription(models.Model):
         return f"{self.organization} — {self.plan}"
 
     def has_plan(self, min_plan: str) -> bool:
+        from django.utils import timezone
+        if (
+            self.trial_ends_at
+            and timezone.now() < self.trial_ends_at
+            and self.PLAN_RANK.get(self.Plan.PRO, 2) >= self.PLAN_RANK.get(min_plan, 0)
+        ):
+            return True
         return (
             self.is_active
             and self.PLAN_RANK.get(self.plan, -1) >= self.PLAN_RANK.get(min_plan, 0)
         )
+
+    def is_in_trial(self) -> bool:
+        from django.utils import timezone
+        return bool(self.trial_ends_at and timezone.now() < self.trial_ends_at)
+
+
+class SubscriptionPlan(models.Model):
+    """
+    Plan de precios configurable desde Django admin.
+    Permite cambiar precios sin re-deployar.
+    """
+    name = models.CharField(max_length=50)
+    plan_tier = models.CharField(
+        max_length=20,
+        choices=OrganizationSubscription.Plan.choices,
+        help_text="Tier de acceso que otorga este plan.",
+    )
+    price_ars = models.DecimalField(max_digits=10, decimal_places=2)
+    seats_included = models.PositiveIntegerField(
+        help_text="Atletas incluidos en el precio base."
+    )
+    seats_extra_price_ars = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        help_text="Precio por atleta adicional sobre el límite incluido.",
+    )
+    trial_days = models.PositiveIntegerField(default=15)
+    mp_plan_id = models.CharField(
+        max_length=100, null=True, blank=True,
+        help_text="ID del preapproval_plan en MercadoPago.",
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Subscription Plan"
+        ordering = ["price_ars"]
+
+    def __str__(self):
+        return f"{self.name} — ARS {self.price_ars}/mes"

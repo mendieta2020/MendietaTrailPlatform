@@ -28,9 +28,14 @@ def make_org_with_subscription(plan="free", is_active=True, username_suffix=""):
     user = User.objects.create_user(username=f"user_{suffix}_{id(plan)}", password="x")
     org = Organization.objects.create(name=f"Org {suffix}", slug=f"org-{suffix}-{id(plan)}")
     Membership.objects.create(user=user, organization=org, role="owner", is_active=True)
-    sub = OrganizationSubscription.objects.create(
-        organization=org, plan=plan, is_active=is_active
+    # Signal auto-creates a subscription; use update_or_create to set desired plan.
+    # Clear trial_ends_at so tests exercise pure plan-level access (not trial path).
+    sub, _ = OrganizationSubscription.objects.update_or_create(
+        organization=org,
+        defaults={"plan": plan, "is_active": is_active, "trial_ends_at": None},
     )
+    # Refresh org to clear any cached reverse-accessor set during signal
+    org.refresh_from_db()
     return org, sub
 
 
@@ -38,12 +43,10 @@ def make_org_with_subscription(plan="free", is_active=True, username_suffix=""):
 # 1. Default plan
 # ---------------------------------------------------------------------------
 
-@pytest.mark.django_db
 def test_default_plan_is_free():
-    user = User.objects.create_user(username="default_plan_user", password="x")
-    org = Organization.objects.create(name="Default Org", slug="default-org-test")
-    Membership.objects.create(user=user, organization=org, role="owner", is_active=True)
-    sub = OrganizationSubscription.objects.create(organization=org)
+    # Check model-level field default without touching the DB
+    # (signal now auto-creates subscriptions with plan='pro' on org creation)
+    sub = OrganizationSubscription()
     assert sub.plan == OrganizationSubscription.Plan.FREE
 
 

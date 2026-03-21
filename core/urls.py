@@ -17,6 +17,7 @@ from .integration_callback_views import IntegrationCallbackView
 from .identity_views import UserIdentityView
 from .connection_views import ProviderConnectionStatusView  # PR11
 from core.webhooks import StravaWebhookView, StravaDiagnosticsView  # PR-WebhookRoute
+from core import views_billing  # PR-131
 from core.views_p1 import (  # PR-115/116/117/119/128/X4/149/PR-128-real-pmc/PR-129
     AthleteAdherenceViewSet,
     AthleteGoalViewSet,
@@ -78,6 +79,9 @@ from .views import AlumnoPlannedWorkoutViewSet
 urlpatterns = [
     # Canonical user identity endpoint
     path('me', UserIdentityView.as_view(), name='user_identity'),
+
+    # PR-131: MercadoPago subscription webhook
+    path('webhooks/mercadopago/', views_billing.mercadopago_webhook, name='mp-webhook'),
 
     # PR-WebhookRoute: Strava webhook at the URL Strava calls for push_subscriptions
     # GET  → hub.challenge echo (subscription verification, AllowAny, CSRF-exempt)
