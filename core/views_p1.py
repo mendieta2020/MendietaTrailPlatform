@@ -1017,6 +1017,77 @@ class DashboardAnalyticsView(OrgTenantMixin, views.APIView):
 
 
 # ==============================================================================
+# PR-128: Real-side PMC — CTL/ATL/TSB from CompletedActivity
+# ==============================================================================
+
+
+class AthleteRealPMCView(OrgTenantMixin, views.APIView):
+    """
+    Real-side PMC (CTL/ATL/TSB) for a single athlete, derived from CompletedActivity.
+
+    Plan ≠ Real invariant: only CompletedActivity execution data is read here.
+    PlannedWorkout and WorkoutAssignment are never accessed.
+
+    Role gate:
+    - owner / coach: may retrieve any athlete's PMC within their org.
+    - athlete: may only retrieve their own PMC (404 if accessing another athlete).
+
+    URL: GET /api/p1/orgs/<org_id>/athletes/<athlete_id>/pmc/real/
+    Query params:
+      - days (int, optional): trailing window in days, default 90, max 365.
+
+    Returns:
+      {
+        "athlete_id": int,
+        "organization_id": int,
+        "days": int,
+        "data": [{"date", "tss", "ctl", "atl", "tsb"}, ...]
+      }
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if getattr(self, "swagger_fake_view", False):
+            return
+        self.resolve_membership(self.kwargs["org_id"])
+
+    def get(self, request, org_id: int, athlete_id: int):
+        # Resolve athlete — 404 if not found or not in this org (fail-closed)
+        athlete = get_object_or_404(Athlete, pk=athlete_id, organization=self.organization)
+
+        # Role gate: athletes may only access their own PMC
+        if self.membership.role not in _WRITE_ROLES:
+            if athlete.user_id != request.user.pk:
+                raise NotFound()
+
+        # Validate days param
+        try:
+            days = int(request.query_params.get("days", 90))
+        except (TypeError, ValueError):
+            raise DRFValidationError({"days": "Must be a positive integer."})
+        if days < 1 or days > 365:
+            raise DRFValidationError({"days": "Must be between 1 and 365."})
+
+        from core import services_analytics
+
+        data = services_analytics.compute_athlete_pmc_real(
+            organization=self.organization,
+            athlete=athlete,
+            days=days,
+        )
+        return Response(
+            {
+                "athlete_id": athlete.pk,
+                "organization_id": self.organization.pk,
+                "days": days,
+                "data": data,
+            }
+        )
+
+
+# ==============================================================================
 # PR-X4: ExternalIdentity ViewSet
 # ==============================================================================
 
