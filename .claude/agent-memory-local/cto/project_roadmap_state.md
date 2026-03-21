@@ -1,10 +1,10 @@
 ---
 name: P2 Roadmap State
-description: Current state of P2 roadmap — PR-128 merged, PR-129 is next
+description: Current state of P2 roadmap — PR-129 merged, PR-130 is next
 type: project
 ---
 
-Last completed PR: PR-128 (Real-side PMC CTL/ATL/TSB from CompletedActivity, branch p2/pr128-real-pmc, 2026-03-21, 1248+ tests green).
+Last completed PR: PR-129 (Historical Strava backfill pipeline, branch p2/pr129-historical-backfill, 2026-03-21, 1205+ tests green).
 
 ## P1 STATUS: CLOSED (2026-03-18)
 
@@ -38,7 +38,8 @@ D7 Celery bug (suunto_ingest queue) was fixed — confirmed Queue("suunto_ingest
 - ~~PR-126~~: CompletedActivity.organization FK migration (D2 fix) ✅ MERGED 2026-03-20
 - ~~PR-127~~: Ingestion pipeline fills CompletedActivity.athlete FK (D3 fix) ✅ MERGED 2026-03-20
 - ~~PR-128~~: Real-side analytics — PMC from CompletedActivity ✅ MERGED 2026-03-21
-- **PR-129**: Historical backfill pipeline ← CURRENT
-- PR-130+: Billing integration, multi-provider rollout
+- ~~PR-129~~: Historical backfill pipeline ✅ MERGED 2026-03-21
+- **PR-130**: Billing integration ← CURRENT
+- PR-131+: Multi-provider rollout (Garmin, Coros, Polar, Wahoo)
 
-## Test baseline: 1248+ tests (as of PR-128, 2026-03-21)
+## Test baseline: 1205+ tests (as of PR-129, 2026-03-21)

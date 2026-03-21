@@ -17,7 +17,7 @@ from .integration_callback_views import IntegrationCallbackView
 from .identity_views import UserIdentityView
 from .connection_views import ProviderConnectionStatusView  # PR11
 from core.webhooks import StravaWebhookView, StravaDiagnosticsView  # PR-WebhookRoute
-from core.views_p1 import (  # PR-115/116/117/119/128/X4/149/PR-128-real-pmc
+from core.views_p1 import (  # PR-115/116/117/119/128/X4/149/PR-128-real-pmc/PR-129
     AthleteAdherenceViewSet,
     AthleteGoalViewSet,
     AthleteProfileViewSet,
@@ -27,6 +27,7 @@ from core.views_p1 import (  # PR-115/116/117/119/128/X4/149/PR-128-real-pmc
     PlannedWorkoutViewSet,
     RaceEventViewSet,
     ReconciliationViewSet,
+    StravaBackfillView,
     WorkoutAssignmentViewSet,
     WorkoutBlockViewSet,
     WorkoutIntervalViewSet,
@@ -324,6 +325,17 @@ urlpatterns = [
         'p1/orgs/<int:org_id>/athletes/<int:athlete_id>/pmc/real/',
         AthleteRealPMCView.as_view(),
         name='p1-athlete-pmc-real',
+    ),
+
+    # ==============================================================================
+    # PR-129: Strava historical backfill
+    # URL: POST /api/p1/orgs/<org_id>/athletes/<athlete_id>/backfill/strava/
+    # Returns 202 immediately; backfill runs async in a Celery worker.
+    # ==============================================================================
+    path(
+        'p1/orgs/<int:org_id>/athletes/<int:athlete_id>/backfill/strava/',
+        StravaBackfillView.as_view(),
+        name='p1-athlete-strava-backfill',
     ),
 
     # ==============================================================================
