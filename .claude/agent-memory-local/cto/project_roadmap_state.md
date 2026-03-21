@@ -1,10 +1,10 @@
 ---
 name: P2 Roadmap State
-description: Current state of P2 roadmap — PR-125 merged, PR-126 is next
+description: Current state of P2 roadmap — PR-128 merged, PR-129 is next
 type: project
 ---
 
-Last completed PR: PR-125 (Athlete.clean() cross-org validation + 7 tests, merged 2026-03-20, commit 216c40b).
+Last completed PR: PR-128 (Real-side PMC CTL/ATL/TSB from CompletedActivity, branch p2/pr128-real-pmc, 2026-03-21, 1248+ tests green).
 
 ## P1 STATUS: CLOSED (2026-03-18)
 
@@ -13,8 +13,8 @@ D7 Celery bug (suunto_ingest queue) was fixed — confirmed Queue("suunto_ingest
 ## CURRENT PHASE: P2 — Historical Data, Analytics & Billing
 
 ### Controlled Debt carried from P1:
-- **D2**: `CompletedActivity.organization` FK points to `settings.AUTH_USER_MODEL` (User), NOT to Organization model. This is a critical tenancy debt — the "organization" field is actually a coach user, not a real Organization. **→ PR-126 fixes this.**
-- **D3**: Alumno vs Athlete coexistence — entire ingestion pipeline (Strava, Suunto) writes to `alumno` FK on CompletedActivity. The `athlete` FK exists but is nullable and not backfilled for ingested rows. **→ PR-127 fixes this.**
+- ~~**D2**: CompletedActivity.organization FK~~ ✅ Fixed in PR-126 (merged 2026-03-20)
+- ~~**D3**: Alumno vs Athlete coexistence in ingestion~~ ✅ Fixed in PR-127 (in review 2026-03-20)
 - **FINDING-X4-A**: ExternalIdentityViewSet uses legacy coach scope (not Organization-scoped).
 
 ### What exists in P2 so far:
@@ -35,10 +35,10 @@ D7 Celery bug (suunto_ingest queue) was fixed — confirmed Queue("suunto_ingest
 
 ### PR sequence dictated:
 - ~~PR-125~~: Athlete identity integrity ✅ MERGED 2026-03-20
-- **PR-126**: CompletedActivity.organization FK migration (D2 fix) ← CURRENT
-- PR-127: Ingestion pipeline Alumno→Athlete migration (D3 fix)
-- PR-128: Real-side analytics — PMC from CompletedActivity
-- PR-129: Historical backfill pipeline
+- ~~PR-126~~: CompletedActivity.organization FK migration (D2 fix) ✅ MERGED 2026-03-20
+- ~~PR-127~~: Ingestion pipeline fills CompletedActivity.athlete FK (D3 fix) ✅ MERGED 2026-03-20
+- ~~PR-128~~: Real-side analytics — PMC from CompletedActivity ✅ MERGED 2026-03-21
+- **PR-129**: Historical backfill pipeline ← CURRENT
 - PR-130+: Billing integration, multi-provider rollout
 
-## Test baseline: 80+ test files, ~1000+ tests
+## Test baseline: 1248+ tests (as of PR-128, 2026-03-21)

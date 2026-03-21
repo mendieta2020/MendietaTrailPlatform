@@ -17,10 +17,11 @@ from .integration_callback_views import IntegrationCallbackView
 from .identity_views import UserIdentityView
 from .connection_views import ProviderConnectionStatusView  # PR11
 from core.webhooks import StravaWebhookView, StravaDiagnosticsView  # PR-WebhookRoute
-from core.views_p1 import (  # PR-115/116/117/119/128/X4/149
+from core.views_p1 import (  # PR-115/116/117/119/128/X4/149/PR-128-real-pmc
     AthleteAdherenceViewSet,
     AthleteGoalViewSet,
     AthleteProfileViewSet,
+    AthleteRealPMCView,
     DashboardAnalyticsView,
     ExternalIdentityViewSet,
     PlannedWorkoutViewSet,
@@ -312,6 +313,17 @@ urlpatterns = [
         'p1/orgs/<int:org_id>/athletes/<int:athlete_id>/adherence/',
         AthleteAdherenceViewSet.as_view({'get': 'retrieve'}),
         name='p1-athlete-adherence',
+    ),
+
+    # ==============================================================================
+    # PR-128: Real-side PMC (CTL/ATL/TSB) from CompletedActivity
+    # URL: /api/p1/orgs/<org_id>/athletes/<athlete_id>/pmc/real/
+    # Read-only. Owner/coach: any athlete. Athlete: own only (404 if other).
+    # ==============================================================================
+    path(
+        'p1/orgs/<int:org_id>/athletes/<int:athlete_id>/pmc/real/',
+        AthleteRealPMCView.as_view(),
+        name='p1-athlete-pmc-real',
     ),
 
     # ==============================================================================

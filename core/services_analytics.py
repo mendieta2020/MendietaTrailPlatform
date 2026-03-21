@@ -116,3 +116,90 @@ def compute_org_pmc(
         "active_athletes_count": active_athletes_count,
         "pmc_series": series,
     }
+
+
+def compute_athlete_pmc_real(
+    *,
+    organization,
+    athlete,
+    days: int = 90,
+) -> list[dict]:
+    """
+    Compute real-side PMC (CTL/ATL/TSB) from CompletedActivity execution data.
+
+    PLAN ≠ REAL: this function reads CompletedActivity only.
+    Never reads PlannedWorkout or WorkoutAssignment.
+
+    TSS estimate per activity: (duration_s / 3600) * 100  (simplified, no HR data)
+    CTL/ATL computed with Banister EWMA model over the requested window.
+
+    Args:
+        organization: Organization instance (already validated by the view's tenancy gate).
+        athlete: Athlete instance (must belong to organization — caller's responsibility).
+        days: Trailing window in days (default 90).
+
+    Returns:
+        List of dicts ordered by date ASC:
+        [{"date": "YYYY-MM-DD", "tss": float, "ctl": float, "atl": float, "tsb": float}, ...]
+    """
+    from django.db.models.functions import TruncDate
+
+    from core.models import CompletedActivity
+
+    today = date.today()
+    start_date = today - timedelta(days=days - 1)
+
+    rows = (
+        CompletedActivity.objects.filter(
+            organization=organization,
+            athlete=athlete,
+            start_time__date__gte=start_date,
+            start_time__date__lte=today,
+        )
+        .annotate(activity_date=TruncDate("start_time"))
+        .values_list("activity_date", "duration_s")
+    )
+
+    # Aggregate TSS per day in Python — one row per (date, activity)
+    tss_map: dict[date, float] = {}
+    activity_count = 0
+    for activity_date, duration_s in rows:
+        tss = (duration_s / 3600.0) * 100.0
+        tss_map[activity_date] = tss_map.get(activity_date, 0.0) + tss
+        activity_count += 1
+
+    # Walk day by day, computing CTL/ATL with Banister EWMA
+    ctl = 0.0
+    atl = 0.0
+    series: list[dict] = []
+    current = start_date
+    while current <= today:
+        tss = tss_map.get(current, 0.0)
+        tsb = round(ctl - atl, 2)  # TSB = CTL(day-1) - ATL(day-1), computed before today's load
+        ctl = ctl * _CTL_DECAY + tss * (1.0 - _CTL_DECAY)
+        atl = atl * _ATL_DECAY + tss * (1.0 - _ATL_DECAY)
+        series.append(
+            {
+                "date": current.isoformat(),
+                "tss": round(tss, 2),
+                "ctl": round(ctl, 2),
+                "atl": round(atl, 2),
+                "tsb": tsb,
+            }
+        )
+        current += timedelta(days=1)
+
+    logger.info(
+        "athlete_pmc_real.computed",
+        extra={
+            "event_name": "athlete_pmc_real.computed",
+            "organization_id": organization.pk,
+            "athlete_id": athlete.pk,
+            "days": days,
+            "activity_count": activity_count,
+            "series_length": len(series),
+            "outcome": "success",
+        },
+    )
+
+    return series
