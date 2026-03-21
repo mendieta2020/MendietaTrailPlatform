@@ -61,6 +61,15 @@ def ingest_suunto_workout(
         )
     organization = membership.organization
 
+    # Bridge to organization-first Athlete — None if alumno has no linked user
+    # or no Athlete row exists for this org. Never blocks ingestion (Law 5).
+    athlete = None
+    if alumno.usuario_id is not None:
+        from core.models import Athlete
+        athlete = Athlete.objects.filter(
+            organization=organization, user_id=alumno.usuario_id
+        ).first()
+
     start_date = fit_data.get("start_date")
     duration_s = fit_data.get("duration_s")
 
@@ -81,6 +90,7 @@ def ingest_suunto_workout(
         provider_activity_id=str(external_workout_id),
         defaults={
             "alumno": alumno,
+            "athlete": athlete,
             "sport": fit_data.get("sport") or "OTHER",
             "start_time": start_date,
             "duration_s": int(duration_s),
@@ -101,6 +111,7 @@ def ingest_suunto_workout(
             "event_name": "suunto.ingest.created" if created else "suunto.ingest.duplicate_noop",
             "organization_id": organization.pk,
             "alumno_id": alumno_id,
+            "athlete_id": athlete.pk if athlete else None,
             "provider_activity_id": external_workout_id,
             "outcome": "success" if created else "noop",
         },
