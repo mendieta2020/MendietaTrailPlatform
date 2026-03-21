@@ -1,3 +1,5 @@
+> ⚠️ ARCHIVADO — P1 cerrado y desplegado 2026-03-18. Documento histórico, no activo.
+
 ---
 name: P1 Phase Transition
 description: P0 deployed to production 2026-03-12, P1 officially started same day. Roadmap PR-127 through PR-131 defined.

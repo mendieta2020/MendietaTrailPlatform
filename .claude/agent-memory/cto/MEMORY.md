@@ -1,3 +1,7 @@
+> ⚠️ ARCHIVADO — P1 cerrado 2026-03-18.
+> Esta memoria está desactualizada. No usar como referencia.
+> Ver .claude/agent-memory-local/cto/project_roadmap_state.md para estado P2 actual.
+
 # CTO Agent Memory — Quantoryn Roadmap State
 
 ## Current Phase: P1 — Organization-First Coach Functionality
