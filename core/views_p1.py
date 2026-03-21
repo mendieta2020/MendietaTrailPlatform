@@ -1088,6 +1088,81 @@ class AthleteRealPMCView(OrgTenantMixin, views.APIView):
 
 
 # ==============================================================================
+# PR-129: Strava Historical Backfill — coach-triggered async import
+# URL: POST /api/p1/orgs/<org_id>/athletes/<athlete_id>/backfill/strava/
+# ==============================================================================
+
+
+class StravaBackfillView(OrgTenantMixin, views.APIView):
+    """
+    Enqueue a historical Strava backfill for a single athlete.
+
+    Returns 202 Accepted immediately; backfill runs in a Celery worker.
+
+    Role gate: owner/coach only — athletes may not trigger backfill.
+    Tenancy: athlete is validated to belong to self.organization (fail-closed 404).
+
+    Validations (400 Bad Request):
+    - Athlete has no linked legacy Alumno profile (ingest pipeline requires it).
+    - Athlete has no Strava credential (SocialToken or OAuthCredential).
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if getattr(self, "swagger_fake_view", False):
+            return
+        self.resolve_membership(self.kwargs["org_id"])
+
+    def post(self, request, org_id: int, athlete_id: int):
+        if self.membership.role not in _WRITE_ROLES:
+            raise PermissionDenied("Only coaches and owners can trigger backfill.")
+
+        # Fail-closed: 404 if athlete not in this org
+        athlete = get_object_or_404(Athlete, pk=athlete_id, organization=self.organization)
+
+        # Bridge Athlete → legacy Alumno (required by ingest_strava_activity)
+        alumno = getattr(athlete.user, "perfil_alumno", None)
+        if alumno is None:
+            return Response(
+                {"detail": "no_legacy_profile"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Check Strava connected — SocialToken (allauth primary) or OAuthCredential
+        from allauth.socialaccount.models import SocialToken  # noqa: PLC0415
+
+        has_strava = SocialToken.objects.filter(
+            account__user=athlete.user, account__provider="strava"
+        ).exists()
+        if not has_strava:
+            has_strava = OAuthCredential.objects.filter(
+                alumno=alumno, provider="strava"
+            ).exists()
+
+        if not has_strava:
+            return Response(
+                {"detail": "strava_not_connected"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Lazy import: Law 4 — integrations/ never imported at module level in core/
+        from integrations.strava.tasks_backfill import backfill_strava_athlete  # noqa: PLC0415
+
+        task = backfill_strava_athlete.delay(
+            organization_id=self.organization.pk,
+            athlete_id=athlete.pk,
+            alumno_id=alumno.pk,
+        )
+
+        return Response(
+            {"status": "queued", "athlete_id": athlete.pk, "task_id": task.id},
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+# ==============================================================================
 # PR-X4: ExternalIdentity ViewSet
 # ==============================================================================
 
