@@ -2730,3 +2730,44 @@ class WorkoutReconciliation(models.Model):
             f"Reconciliation: Assignment:{self.assignment_id} "
             f"[{self.state}] score={self.compliance_score}"
         )
+
+
+# ==============================================================================
+#  BILLING — OrganizationSubscription
+# ==============================================================================
+
+class OrganizationSubscription(models.Model):
+    class Plan(models.TextChoices):
+        FREE       = "free",       "Free"
+        STARTER    = "starter",    "Starter"
+        PRO        = "pro",        "Pro"
+        ENTERPRISE = "enterprise", "Enterprise"
+
+    PLAN_RANK = {Plan.FREE: 0, Plan.STARTER: 1, Plan.PRO: 2, Plan.ENTERPRISE: 3}
+
+    organization = models.OneToOneField(
+        "core.Organization",
+        on_delete=models.CASCADE,
+        related_name="subscription",
+    )
+    plan = models.CharField(max_length=20, choices=Plan.choices, default=Plan.FREE)
+    is_active = models.BooleanField(default=True)
+    trial_ends_at = models.DateTimeField(null=True, blank=True)
+    seats_limit = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Max athlete seats. NULL = unlimited.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Organization Subscription"
+
+    def __str__(self):
+        return f"{self.organization} — {self.plan}"
+
+    def has_plan(self, min_plan: str) -> bool:
+        return (
+            self.is_active
+            and self.PLAN_RANK.get(self.plan, -1) >= self.PLAN_RANK.get(min_plan, 0)
+        )
