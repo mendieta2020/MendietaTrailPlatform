@@ -611,3 +611,10 @@ LOGGING = {
 
 # Logueo hardening del callback (traceback completo + contexto sanitizado)
 SOCIALACCOUNT_ADAPTER = "core.allauth_adapters.LoggingSocialAccountAdapter"
+
+# ==============================================================================
+#  MERCADOPAGO (Argentina)
+# ==============================================================================
+MERCADOPAGO_ACCESS_TOKEN = os.environ.get("MERCADOPAGO_ACCESS_TOKEN", "")
+MERCADOPAGO_PUBLIC_KEY = os.environ.get("MERCADOPAGO_PUBLIC_KEY", "")
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")

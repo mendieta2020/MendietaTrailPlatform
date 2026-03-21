@@ -446,3 +446,30 @@ def link_strava_on_oauth(sender, request, sociallogin, **kwargs):
                 )
         except Exception:
             pass  # Best effort
+
+
+# ==============================================================================
+#  PR-131: Trial automático al crear Organization
+# ==============================================================================
+
+from datetime import timedelta
+from .models import Organization, OrganizationSubscription  # noqa: E402 — appended after module init
+
+
+@receiver(post_save, sender=Organization)
+def auto_create_subscription_with_trial(sender, instance, created, **kwargs):
+    """
+    Al crear una Organization nueva, genera automáticamente una
+    OrganizationSubscription con 15 días de trial en plan Pro.
+    Las orgs existentes no se ven afectadas (created=False).
+    """
+    if not created:
+        return
+    OrganizationSubscription.objects.get_or_create(
+        organization=instance,
+        defaults={
+            "plan": OrganizationSubscription.Plan.PRO,
+            "is_active": True,
+            "trial_ends_at": timezone.now() + timedelta(days=15),
+        },
+    )
