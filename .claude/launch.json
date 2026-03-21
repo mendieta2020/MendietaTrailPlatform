@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Django API",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["manage.py", "runserver", "8000"],
+      "port": 8000
+    },
+    {
+      "name": "Frontend (Vite)",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["frontend/node_modules/vite/bin/vite.js", "frontend"],
+      "port": 5173
+    },
+    {
+      "name": "Celery Worker",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "celery", "-A", "backend", "worker", "--loglevel=info", "-Q", "celery,suunto_ingest"],
+      "port": 6379
+    }
+  ]
+}
