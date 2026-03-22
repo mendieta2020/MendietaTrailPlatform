@@ -29,6 +29,49 @@ def create_subscription(mp_plan_id: str, payer_email: str, reason: str) -> dict:
     return result
 
 
+def create_coach_athlete_preapproval(
+    access_token: str,
+    mp_plan_id: str,
+    payer_email: str,
+    reason: str,
+    back_url: str = "",
+) -> dict:
+    """
+    Crea un preapproval en la cuenta MP del coach (usando su access_token).
+    Difiere de create_subscription() que usa el token de plataforma.
+    Law 6: access_token nunca se loggea.
+    """
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "preapproval_plan_id": mp_plan_id,
+        "reason": reason,
+        "payer_email": payer_email,
+        "back_url": back_url,
+        "status": "pending",
+    }
+    import requests as _requests
+    response = _requests.post(
+        f"{MP_API_BASE}/preapproval",
+        json=payload,
+        headers=headers,
+        timeout=10,
+    )
+    response.raise_for_status()
+    result = response.json()
+    logger.info(
+        "mp.coach_preapproval.created",
+        extra={
+            "mp_plan_id": mp_plan_id,
+            "preapproval_id": result.get("id"),
+            "outcome": "created",
+        },
+    )
+    return result
+
+
 def get_subscription(preapproval_id: str) -> dict:
     return mp_get(f"/preapproval/{preapproval_id}")
 

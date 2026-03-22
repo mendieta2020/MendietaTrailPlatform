@@ -2980,3 +2980,50 @@ class OrgOAuthCredential(models.Model):
     def __str__(self):
         # Safe: no token content exposed.
         return f"{self.provider}:org:{self.organization_id}"
+
+
+class AthleteInvitation(models.Model):
+    """
+    Token-based invitation a coach sends to an athlete.
+    On acceptance → creates MP preapproval → AthleteSubscription pending.
+    PR-135.
+    """
+
+    class Status(models.TextChoices):
+        PENDING  = "pending",  "Pendiente"
+        ACCEPTED = "accepted", "Aceptada"
+        REJECTED = "rejected", "Rechazada"
+        EXPIRED  = "expired",  "Expirada"
+
+    token        = models.UUIDField(default=uuid.uuid4, unique=True,
+                                    editable=False, db_index=True)
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="athlete_invitations",
+    )
+    coach_plan   = models.ForeignKey(
+        "CoachPricingPlan",
+        on_delete=models.PROTECT,
+        related_name="invitations",
+    )
+    email        = models.EmailField()
+    status       = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    mp_preapproval_id = models.CharField(max_length=100, null=True, blank=True)
+    created_at   = models.DateTimeField(auto_now_add=True)
+    expires_at   = models.DateTimeField()
+    accepted_at  = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def is_expired(self):
+        from django.utils import timezone
+        return timezone.now() > self.expires_at
+
+    def __str__(self):
+        return f"Invitation({self.email} → {self.coach_plan})"
