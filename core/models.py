@@ -2927,3 +2927,56 @@ class AthleteSubscription(models.Model):
 
     def __str__(self):
         return f"{self.athlete} → {self.coach_plan.name} ({self.status})"
+
+
+class OrgOAuthCredential(models.Model):
+    """
+    Organization-scoped OAuth credential store.
+
+    Designed for provider accounts held by coaches/organizations
+    (e.g., a coach's MercadoPago account connected to Quantoryn).
+
+    Multi-tenant discipline:
+        Every query MUST filter by organization. Never query globally.
+
+    Security (Law 6):
+        access_token and refresh_token are NEVER logged.
+        __str__ exposes only provider + org_id.
+
+    Idempotency:
+        UniqueConstraint(organization, provider) ensures get_or_create is safe.
+    """
+
+    organization = models.ForeignKey(
+        "core.Organization",
+        on_delete=models.CASCADE,
+        related_name="org_oauth_credentials",
+        db_index=True,
+    )
+    provider = models.CharField(max_length=40, db_index=True)
+    provider_user_id = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
+        help_text="Provider's account/user ID (e.g., MP user_id).",
+    )
+    access_token = models.TextField()
+    refresh_token = models.TextField(blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True, db_index=True)
+
+    class Meta:
+        verbose_name = "Org OAuth Credential"
+        verbose_name_plural = "Org OAuth Credentials"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "provider"],
+                name="uniq_org_oauth_cred_org_provider",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["organization", "provider"]),
+        ]
+
+    def __str__(self):
+        # Safe: no token content exposed.
+        return f"{self.provider}:org:{self.organization_id}"

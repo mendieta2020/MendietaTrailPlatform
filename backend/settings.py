@@ -618,3 +618,12 @@ SOCIALACCOUNT_ADAPTER = "core.allauth_adapters.LoggingSocialAccountAdapter"
 MERCADOPAGO_ACCESS_TOKEN = os.environ.get("MERCADOPAGO_ACCESS_TOKEN", "")
 MERCADOPAGO_PUBLIC_KEY = os.environ.get("MERCADOPAGO_PUBLIC_KEY", "")
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+
+# PR-134: MP OAuth (coach account connect)
+MERCADOPAGO_CLIENT_ID = get_env_variable("MERCADOPAGO_CLIENT_ID", default="", required=False)
+MERCADOPAGO_CLIENT_SECRET = get_env_variable("MERCADOPAGO_CLIENT_SECRET", default="", required=False)
+MERCADOPAGO_REDIRECT_URI = get_env_variable(
+    "MERCADOPAGO_REDIRECT_URI",
+    default="http://localhost:8000/api/billing/mp/callback/",
+    required=False,
+)
