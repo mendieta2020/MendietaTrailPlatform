@@ -17,8 +17,9 @@ from .integration_callback_views import IntegrationCallbackView
 from .identity_views import UserIdentityView
 from .connection_views import ProviderConnectionStatusView  # PR11
 from core.webhooks import StravaWebhookView, StravaDiagnosticsView  # PR-WebhookRoute
-from core.views_billing import (  # PR-131 / PR-132 / PR-134 / PR-135
+from core.views_billing import (  # PR-131 / PR-132 / PR-134 / PR-135 / PR-136
     mercadopago_webhook,
+    AthleteSubscriptionWebhookView,
     BillingStatusView,
     BillingSubscribeView,
     BillingCancelView,
@@ -93,8 +94,11 @@ urlpatterns = [
     # Canonical user identity endpoint
     path('me', UserIdentityView.as_view(), name='user_identity'),
 
-    # PR-131: MercadoPago subscription webhook
+    # PR-131: MercadoPago subscription webhook (B2B — Quantoryn org billing)
     path('webhooks/mercadopago/', mercadopago_webhook, name='mp-webhook'),
+
+    # PR-136: MercadoPago athlete subscription webhook (coach→athlete payment sync)
+    path('webhooks/mercadopago/athlete/', AthleteSubscriptionWebhookView.as_view(), name='mp-athlete-webhook'),
 
     # PR-132: Billing views — checkout flow + status
     path('billing/status/', BillingStatusView.as_view(), name='billing-status'),
