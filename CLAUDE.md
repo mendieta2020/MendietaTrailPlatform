@@ -25,9 +25,15 @@ PR queue:
 - PR-125 ✅ MERGED — Athlete.clean() cross-org validation
 - PR-126 ✅ MERGED — CompletedActivity.organization FK → Organization
 - PR-127 ✅ MERGED — Ingestion fills CompletedActivity.athlete FK
-- PR-128 ⏳ NEXT — Real-side PMC (CTL/ATL/TSB from CompletedActivity)
+- PR-128 ⏳ — Real-side PMC (CTL/ATL/TSB from CompletedActivity)
 - PR-129 ⏳ — Historical backfill pipeline
-- PR-130+ ⏳ — Billing + multi-provider rollout
+- PR-130 ✅ MERGED — OrganizationSubscription + billing gates (require_plan)
+- PR-131 ✅ MERGED — MercadoPago subscriptions + 15-day Pro trial
+- PR-132 ✅ MERGED — Billing views: status, subscribe, cancel
+- PR-133 ✅ MERGED — CoachPricingPlan + AthleteSubscription models
+- PR-134 ✅ MERGED — Coach connects MercadoPago account (MP OAuth via OrgOAuthCredential)
+- PR-135 ⏳ NEXT — Athlete invitation + MP preapproval creation flow
+- PR-136 ⏳ — AthleteSubscription webhook handler (payment status sync)
 
 ## After each PR
 Update .claude/agent-memory-local/cto/project_roadmap_state.md and commit it with the PR.

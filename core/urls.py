@@ -17,11 +17,14 @@ from .integration_callback_views import IntegrationCallbackView
 from .identity_views import UserIdentityView
 from .connection_views import ProviderConnectionStatusView  # PR11
 from core.webhooks import StravaWebhookView, StravaDiagnosticsView  # PR-WebhookRoute
-from core.views_billing import (  # PR-131 / PR-132
+from core.views_billing import (  # PR-131 / PR-132 / PR-134
     mercadopago_webhook,
     BillingStatusView,
     BillingSubscribeView,
     BillingCancelView,
+    MPConnectView,
+    MPCallbackView,
+    MPDisconnectView,
 )
 from core.views_p1 import (  # PR-115/116/117/119/128/X4/149/PR-128-real-pmc/PR-129
     AthleteAdherenceViewSet,
@@ -92,6 +95,11 @@ urlpatterns = [
     path('billing/status/', BillingStatusView.as_view(), name='billing-status'),
     path('billing/subscribe/', BillingSubscribeView.as_view(), name='billing-subscribe'),
     path('billing/cancel/', BillingCancelView.as_view(), name='billing-cancel'),
+
+    # PR-134: Coach MP OAuth connect / callback / disconnect
+    path('billing/mp/connect/', MPConnectView.as_view(), name='billing-mp-connect'),
+    path('billing/mp/callback/', MPCallbackView.as_view(), name='billing-mp-callback'),
+    path('billing/mp/disconnect/', MPDisconnectView.as_view(), name='billing-mp-disconnect'),
 
     # PR-WebhookRoute: Strava webhook at the URL Strava calls for push_subscriptions
     # GET  → hub.challenge echo (subscription verification, AllowAny, CSRF-exempt)
