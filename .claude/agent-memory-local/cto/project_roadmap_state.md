@@ -1,10 +1,10 @@
 ---
 name: P2 Roadmap State
-description: Current state of P2 roadmap — PR-131 completed, PR-132+ is next
+description: Current state of P2 roadmap — PR-132 completed, multi-provider rollout is next
 type: project
 ---
 
-Last completed PR: PR-131 (MercadoPago subscriptions foundation — SubscriptionPlan model, mp_preapproval_id, trial automático 15d, integrations/mercadopago/, webhook endpoint, migration 0082, 23/23 tests green, 2026-03-21).
+Last completed PR: PR-132 (Billing checkout flow + status views — BillingStatusView, BillingSubscribeView, BillingCancelView, serializers_billing.py, 10/10 tests green, 2026-03-21).
 
 ## P1 STATUS: CLOSED (2026-03-18)
 
@@ -40,7 +40,8 @@ D7 Celery bug (suunto_ingest queue) was fixed — confirmed Queue("suunto_ingest
 - ~~PR-128~~: Real-side analytics — PMC from CompletedActivity ✅ MERGED 2026-03-21
 - ~~PR-129~~: Historical backfill pipeline ✅ MERGED 2026-03-21
 - ~~PR-130~~: Billing integration — OrganizationSubscription + require_plan gate ✅ MERGED 2026-03-21
-- ~~PR-131~~: MercadoPago subscriptions foundation — SubscriptionPlan, trial auto, webhook ✅ COMPLETED (pending merge) 2026-03-21
-- **PR-132+**: Multi-provider rollout (Garmin, Coros, Polar, Wahoo) ← NEXT
+- ~~PR-131~~: MercadoPago subscriptions foundation — SubscriptionPlan, trial auto, webhook ✅ MERGED 2026-03-21
+- ~~PR-132~~: Billing checkout flow + status views — /billing/status/, /subscribe/, /cancel/ ✅ COMPLETED (pending merge) 2026-03-21
+- **PR-133+**: Multi-provider rollout (Garmin, Coros, Polar, Wahoo) ← NEXT
 
-## Test baseline: 1228+ tests (as of PR-131, 2026-03-21)
+## Test baseline: 1238+ tests (as of PR-132, 2026-03-21)
