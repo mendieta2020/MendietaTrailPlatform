@@ -2826,3 +2826,104 @@ class SubscriptionPlan(models.Model):
 
     def __str__(self):
         return f"{self.name} — ARS {self.price_ars}/mes"
+
+
+class CoachPricingPlan(models.Model):
+    """
+    Plan de precio que un coach ofrece a sus atletas.
+    Un coach puede tener múltiples planes (presencial, online, solo PMC, etc).
+    El dinero fluye atleta → coach directamente vía MercadoPago.
+    Quantoryn monitorea el estado vía webhooks.
+    Requiere plan Pro o superior en OrganizationSubscription.
+    """
+    organization = models.ForeignKey(
+        "core.Organization",
+        on_delete=models.CASCADE,
+        related_name="coach_pricing_plans",
+    )
+    name = models.CharField(
+        max_length=100,
+        help_text="Ej: 'Programa Presencial', 'Programa Online Elite'.",
+    )
+    description = models.TextField(blank=True)
+    price_ars = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        help_text="Precio mensual en ARS que el atleta paga al coach.",
+    )
+    mp_plan_id = models.CharField(
+        max_length=100, null=True, blank=True,
+        help_text="ID del preapproval_plan en MercadoPago del coach.",
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Coach Pricing Plan"
+        ordering = ["organization", "price_ars"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "name"],
+                name="unique_coach_plan_name_per_org",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.organization} — {self.name} (ARS {self.price_ars})"
+
+
+class AthleteSubscription(models.Model):
+    """
+    Suscripción de un atleta al plan de precio de su coach.
+    Registra estado de pago y datos de MercadoPago.
+    El coach ve este estado en su dashboard — no persigue pagos manualmente.
+    """
+    class Status(models.TextChoices):
+        PENDING   = "pending",   "Pendiente"
+        ACTIVE    = "active",    "Activo"
+        OVERDUE   = "overdue",   "Moroso"
+        CANCELLED = "cancelled", "Cancelado"
+        SUSPENDED = "suspended", "Suspendido"
+
+    athlete = models.ForeignKey(
+        "core.Athlete",
+        on_delete=models.CASCADE,
+        related_name="coach_subscriptions",
+    )
+    organization = models.ForeignKey(
+        "core.Organization",
+        on_delete=models.CASCADE,
+        related_name="athlete_subscriptions",
+    )
+    coach_plan = models.ForeignKey(
+        "core.CoachPricingPlan",
+        on_delete=models.PROTECT,
+        related_name="athlete_subscriptions",
+        help_text="PROTECT: no se puede borrar un plan con suscripciones activas.",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    mp_preapproval_id = models.CharField(
+        max_length=100, null=True, blank=True,
+        help_text="ID del preapproval en MercadoPago del atleta.",
+    )
+    last_payment_at = models.DateTimeField(null=True, blank=True)
+    next_payment_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Athlete Subscription"
+        ordering = ["organization", "status"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["athlete", "coach_plan"],
+                name="unique_athlete_per_coach_plan",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.athlete} → {self.coach_plan.name} ({self.status})"
