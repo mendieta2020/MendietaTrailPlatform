@@ -368,3 +368,332 @@ class MPDisconnectView(APIView):
             extra={"organization_id": org.pk, "outcome": "disconnected"},
         )
         return Response({"disconnected": True})
+
+
+# ==============================================================================
+# PR-135: AthleteInvitation views
+# ==============================================================================
+
+
+class InvitationCreateView(APIView):
+    """
+    POST /api/billing/invitations/
+    Coach creates an invitation link for an athlete.
+    Requires: authenticated, pro plan.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @require_plan("pro")
+    def post(self, request):
+        from core.models import AthleteInvitation
+        from core.serializers_billing import AthleteInvitationCreateSerializer
+        from django.utils import timezone
+        from datetime import timedelta
+        from django.conf import settings as django_settings
+
+        org = getattr(request, "auth_organization", None)
+        if org is None:
+            return Response(
+                {"detail": "No organization context."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        from core.models import Membership
+        try:
+            membership = Membership.objects.get(user=request.user, organization=org)
+        except Membership.DoesNotExist:
+            return Response(
+                {"detail": "No tienes membresía en esta organización."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if membership.role not in ("owner", "admin"):
+            return Response(
+                {"detail": "Solo owner o admin pueden enviar invitaciones."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = AthleteInvitationCreateSerializer(
+            data=request.data, context={"request": request}
+        )
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        coach_plan = serializer.validated_data["coach_plan"]
+        email = serializer.validated_data["email"]
+        now = timezone.now()
+        invitation = AthleteInvitation.objects.create(
+            organization=org,
+            coach_plan=coach_plan,
+            email=email,
+            expires_at=now + timedelta(days=30),
+        )
+
+        frontend_url = getattr(django_settings, "FRONTEND_URL", "http://localhost:3000")
+        invite_url = f"{frontend_url}/invite/{invitation.token}"
+
+        logger.info(
+            "invitation_created",
+            extra={
+                "organization_id": org.pk,
+                "email": email,
+                "coach_plan_id": coach_plan.pk,
+                "token": str(invitation.token),
+                "outcome": "created",
+            },
+        )
+
+        return Response(
+            {"token": str(invitation.token), "invite_url": invite_url},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class InvitationDetailView(APIView):
+    """
+    GET /api/billing/invitations/<token>/
+    Public — used by athlete to view invitation details before accepting.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request, token):
+        from core.models import AthleteInvitation
+        from core.serializers_billing import AthleteInvitationDetailSerializer
+
+        try:
+            invitation = AthleteInvitation.objects.select_related(
+                "coach_plan", "organization"
+            ).get(token=token)
+        except AthleteInvitation.DoesNotExist:
+            return Response({"detail": "Invitación no encontrada."}, status=status.HTTP_404_NOT_FOUND)
+
+        if invitation.status == AthleteInvitation.Status.PENDING and invitation.is_expired():
+            invitation.status = AthleteInvitation.Status.EXPIRED
+            invitation.save(update_fields=["status"])
+
+        if invitation.status == AthleteInvitation.Status.EXPIRED:
+            return Response({"detail": "Invitación expirada."}, status=status.HTTP_410_GONE)
+
+        serializer = AthleteInvitationDetailSerializer(invitation)
+        return Response(serializer.data)
+
+
+class InvitationAcceptView(APIView):
+    """
+    POST /api/billing/invitations/<token>/accept/
+    Athlete accepts → creates MP preapproval → AthleteSubscription pending.
+    AllowAny: athlete may not have an account yet.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request, token):
+        from core.models import AthleteInvitation, OrgOAuthCredential, AthleteSubscription
+        from core.serializers_billing import AthleteInvitationAcceptSerializer
+        from django.utils import timezone
+        from integrations.mercadopago.subscriptions import create_coach_athlete_preapproval  # lazy — Law 4
+        from django.conf import settings as django_settings
+
+        try:
+            invitation = AthleteInvitation.objects.select_related(
+                "coach_plan", "organization"
+            ).get(token=token)
+        except AthleteInvitation.DoesNotExist:
+            return Response({"detail": "Invitación no encontrada."}, status=status.HTTP_404_NOT_FOUND)
+
+        if invitation.status != AthleteInvitation.Status.PENDING:
+            return Response(
+                {"detail": "Invitación no disponible."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if invitation.is_expired():
+            invitation.status = AthleteInvitation.Status.EXPIRED
+            invitation.save(update_fields=["status"])
+            return Response({"detail": "Invitación expirada."}, status=status.HTTP_410_GONE)
+
+        try:
+            cred = OrgOAuthCredential.objects.get(
+                organization=invitation.coach_plan.organization,
+                provider="mercadopago",
+            )
+        except OrgOAuthCredential.DoesNotExist:
+            return Response(
+                {"detail": "El coach no tiene MercadoPago conectado."},
+                status=status.HTTP_402_PAYMENT_REQUIRED,
+            )
+
+        if not invitation.coach_plan.mp_plan_id:
+            return Response(
+                {"detail": "El plan del coach no está configurado en MercadoPago."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        frontend_url = getattr(django_settings, "FRONTEND_URL", "http://localhost:3000")
+
+        try:
+            mp_data = create_coach_athlete_preapproval(
+                access_token=cred.access_token,  # Law 6: never logged
+                mp_plan_id=invitation.coach_plan.mp_plan_id,
+                payer_email=invitation.email,
+                reason=f"Quantoryn {invitation.coach_plan.name} — {invitation.organization.name}",
+                back_url=f"{frontend_url}/invite/{invitation.token}/callback",
+            )
+        except Exception as exc:
+            logger.error(
+                "invitation_accept.mp_error",
+                extra={
+                    "organization_id": invitation.organization_id,
+                    "email": invitation.email,
+                    "error": str(exc),
+                    "outcome": "error",
+                },
+            )
+            return Response(
+                {"detail": "Error al crear el preapproval en MercadoPago."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        preapproval_id = mp_data.get("id")
+
+        # Store preapproval_id on the invitation for later claim
+        invitation.mp_preapproval_id = preapproval_id
+        invitation.status = AthleteInvitation.Status.ACCEPTED
+        invitation.accepted_at = timezone.now()
+        invitation.save(update_fields=["mp_preapproval_id", "status", "accepted_at"])
+
+        # Create AthleteSubscription if user is authenticated and has an Athlete profile
+        if request.user and request.user.is_authenticated:
+            from core.models import Athlete
+            athlete = Athlete.objects.filter(
+                user=request.user,
+                organization=invitation.organization,
+            ).first()
+            if athlete:
+                AthleteSubscription.objects.get_or_create(
+                    athlete=athlete,
+                    coach_plan=invitation.coach_plan,
+                    defaults={
+                        "organization": invitation.organization,
+                        "status": AthleteSubscription.Status.PENDING,
+                        "mp_preapproval_id": preapproval_id,
+                    },
+                )
+
+        logger.info(
+            "invitation_accepted",
+            extra={
+                "organization_id": invitation.organization_id,
+                "email": invitation.email,
+                "preapproval_id": preapproval_id,
+                "outcome": "accepted",
+            },
+        )
+
+        return Response(
+            {"status": "accepted", "mp_preapproval_id": preapproval_id},
+            status=status.HTTP_200_OK,
+        )
+
+
+class InvitationRejectView(APIView):
+    """
+    POST /api/billing/invitations/<token>/reject/
+    Athlete declines the invitation.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request, token):
+        from core.models import AthleteInvitation
+
+        try:
+            invitation = AthleteInvitation.objects.get(token=token)
+        except AthleteInvitation.DoesNotExist:
+            return Response({"detail": "Invitación no encontrada."}, status=status.HTTP_404_NOT_FOUND)
+
+        if invitation.status != AthleteInvitation.Status.PENDING:
+            return Response(
+                {"detail": "Invitación no disponible."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        invitation.status = AthleteInvitation.Status.REJECTED
+        invitation.save(update_fields=["status"])
+
+        logger.info(
+            "invitation_rejected",
+            extra={
+                "organization_id": invitation.organization_id,
+                "email": invitation.email,
+                "outcome": "rejected",
+            },
+        )
+
+        return Response({"status": "rejected"})
+
+
+class InvitationResendView(APIView):
+    """
+    POST /api/billing/invitations/<token>/resend/
+    Coach regenerates token and extends expiry.
+    Requires: authenticated, pro plan.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @require_plan("pro")
+    def post(self, request, token):
+        import uuid as _uuid
+        from core.models import AthleteInvitation
+        from django.utils import timezone
+        from datetime import timedelta
+        from django.conf import settings as django_settings
+
+        org = getattr(request, "auth_organization", None)
+        if org is None:
+            return Response(
+                {"detail": "No organization context."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        from core.models import Membership
+        try:
+            membership = Membership.objects.get(user=request.user, organization=org)
+        except Membership.DoesNotExist:
+            return Response(
+                {"detail": "No tienes membresía en esta organización."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if membership.role not in ("owner", "admin"):
+            return Response(
+                {"detail": "Solo owner o admin pueden reenviar invitaciones."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            invitation = AthleteInvitation.objects.get(token=token)
+        except AthleteInvitation.DoesNotExist:
+            return Response({"detail": "Invitación no encontrada."}, status=status.HTTP_404_NOT_FOUND)
+
+        if invitation.organization_id != org.pk:
+            return Response({"detail": "No tienes permiso para esta invitación."}, status=status.HTTP_403_FORBIDDEN)
+
+        now = timezone.now()
+        invitation.token = _uuid.uuid4()
+        invitation.expires_at = now + timedelta(days=30)
+        invitation.status = AthleteInvitation.Status.PENDING
+        invitation.save(update_fields=["token", "expires_at", "status"])
+
+        frontend_url = getattr(django_settings, "FRONTEND_URL", "http://localhost:3000")
+        invite_url = f"{frontend_url}/invite/{invitation.token}"
+
+        logger.info(
+            "invitation_resent",
+            extra={
+                "organization_id": org.pk,
+                "email": invitation.email,
+                "outcome": "resent",
+            },
+        )
+
+        return Response({"token": str(invitation.token), "invite_url": invite_url})

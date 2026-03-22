@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-03-22 · Session post PR-134 merge_
+_Last updated: 2026-03-22 · Session post PR-135 merge_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -16,16 +16,11 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 | PR-132 | — (main direct) | Billing views: status, subscribe, cancel + serializers | ✅ 2026-03-21 |
 | PR-133 | p2/pr133-coach-pricing-plan | CoachPricingPlan + AthleteSubscription models + migration | ✅ 2026-03-22 |
 | PR-134 | p2/pr134-coach-mp-oauth | Coach MP OAuth connect (OrgOAuthCredential + 3 views) | ✅ 2026-03-22 |
+| PR-135 | p2/pr135-athlete-invitation | AthleteInvitation backend (model + 5 views + 14 tests) | ✅ 2026-03-22 |
 
 ## Next PR Queue
 
-### PR-135 🔴 NEXT — Athlete invitation + MP preapproval creation
-- Coach creates CoachPricingPlan → generates MP preapproval link
-- Sends invite to athlete (email/link)
-- Creates AthleteSubscription(status=pending)
-- Risk: Medium-High
-
-### PR-136 — AthleteSubscription webhook handler
+### PR-136 🔴 NEXT — AthleteSubscription webhook handler
 - Processes MP webhook for payment events
 - Updates AthleteSubscription.status (active/overdue/cancelled)
 - Idempotent (Law 5)
@@ -53,16 +48,17 @@ Coach B2C:     Athlete pays Coach via MercadoPago (AthleteSubscription)
 - `CoachPricingPlan` — coach's pricing for athletes, price_ars
 - `AthleteSubscription` — athlete→coach plan, status lifecycle
 - `OrgOAuthCredential` — org-scoped OAuth credential (coach MP account)
+- `AthleteInvitation` — token-based invite (PR-135), 30-day expiry, owner/admin only
 
 ### Integrations built
 - `integrations/mercadopago/client.py` — mp_get/post/put
-- `integrations/mercadopago/subscriptions.py` — create/get/cancel
+- `integrations/mercadopago/subscriptions.py` — create/get/cancel + create_coach_athlete_preapproval (PR-135)
 - `integrations/mercadopago/webhook.py` — process_subscription_webhook (idempotent)
 - `integrations/mercadopago/oauth.py` — mp_get_authorization_url + mp_exchange_code
 
 ### What's missing to complete billing loop
 1. ~~Coach MP OAuth (PR-134)~~ ✅ DONE
-2. Athlete invite + preapproval (PR-135)
+2. ~~Athlete invite + preapproval (PR-135)~~ ✅ DONE
 3. AthleteSubscription webhook handler (PR-136)
 
 ## Technical Debt
@@ -78,4 +74,4 @@ Coach B2C:     Athlete pays Coach via MercadoPago (AthleteSubscription)
 - transaction=True on IntegrityError tests: PostgreSQL aborts tx on violations
 
 ## Test Baseline
-~1238+ tests | CI: backend ✅ frontend ✅
+~1252+ tests (14 added in PR-135) | CI: backend ✅ frontend ✅

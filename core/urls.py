@@ -17,7 +17,7 @@ from .integration_callback_views import IntegrationCallbackView
 from .identity_views import UserIdentityView
 from .connection_views import ProviderConnectionStatusView  # PR11
 from core.webhooks import StravaWebhookView, StravaDiagnosticsView  # PR-WebhookRoute
-from core.views_billing import (  # PR-131 / PR-132 / PR-134
+from core.views_billing import (  # PR-131 / PR-132 / PR-134 / PR-135
     mercadopago_webhook,
     BillingStatusView,
     BillingSubscribeView,
@@ -25,6 +25,11 @@ from core.views_billing import (  # PR-131 / PR-132 / PR-134
     MPConnectView,
     MPCallbackView,
     MPDisconnectView,
+    InvitationCreateView,
+    InvitationDetailView,
+    InvitationAcceptView,
+    InvitationRejectView,
+    InvitationResendView,
 )
 from core.views_p1 import (  # PR-115/116/117/119/128/X4/149/PR-128-real-pmc/PR-129
     AthleteAdherenceViewSet,
@@ -100,6 +105,13 @@ urlpatterns = [
     path('billing/mp/connect/', MPConnectView.as_view(), name='billing-mp-connect'),
     path('billing/mp/callback/', MPCallbackView.as_view(), name='billing-mp-callback'),
     path('billing/mp/disconnect/', MPDisconnectView.as_view(), name='billing-mp-disconnect'),
+
+    # PR-135: AthleteInvitation — create, detail, accept, reject, resend
+    path('billing/invitations/', InvitationCreateView.as_view(), name='billing-invitation-create'),
+    path('billing/invitations/<uuid:token>/', InvitationDetailView.as_view(), name='billing-invitation-detail'),
+    path('billing/invitations/<uuid:token>/accept/', InvitationAcceptView.as_view(), name='billing-invitation-accept'),
+    path('billing/invitations/<uuid:token>/reject/', InvitationRejectView.as_view(), name='billing-invitation-reject'),
+    path('billing/invitations/<uuid:token>/resend/', InvitationResendView.as_view(), name='billing-invitation-resend'),
 
     # PR-WebhookRoute: Strava webhook at the URL Strava calls for push_subscriptions
     # GET  → hub.challenge echo (subscription verification, AllowAny, CSRF-exempt)
