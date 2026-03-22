@@ -213,8 +213,11 @@ class TestBackfillAlumnosToAthletes:
         out = _run(self.org.pk, self.coach_user.pk)
 
         assert "SKIP_EMAIL_AMBIGUOUS" in out
-        # No athlete should have been created (coach_user has no alumno with usuario set)
-        assert not Athlete.objects.filter(organization=self.org).exists()
+        # No athlete should have been created for the ambiguous-email users
+        dup_users = User.objects.filter(email="dup@trail.org")
+        assert not Athlete.objects.filter(
+            user__in=dup_users, organization=self.org
+        ).exists()
 
     # ── 8. User resolution: name match ────────────────────────────────────────
 
@@ -238,11 +241,15 @@ class TestBackfillAlumnosToAthletes:
     # ── 9. User resolution: no identifier ────────────────────────────────────
 
     def test_skip_no_identifier(self):
-        _alumno(self.coach_user, nombre="Ghost", apellido="User", usuario=None, email=None)
+        ghost = _alumno(self.coach_user, nombre="Ghost", apellido="User", usuario=None, email=None)
         out = _run(self.org.pk, self.coach_user.pk)
 
         assert "SKIP_NO_IDENTIFIER" in out
-        assert not Athlete.objects.filter(organization=self.org).exists()
+        # Verify no Athlete was created for this specific skipped Alumno
+        # (backfill always sets notes="backfill:alumno:{pk}" on Athletes it creates)
+        assert not Athlete.objects.filter(
+            organization=self.org, notes=f"backfill:alumno:{ghost.pk}"
+        ).exists()
 
     def test_email_no_match_falls_through_to_name(self):
         """email present but no User with that email → falls through to name match."""
@@ -339,8 +346,9 @@ class TestBackfillAlumnosToAthletes:
         _alumno(self.coach_user, usuario=self.athlete_user)
         _run(self.org.pk, self.coach_user.pk)
 
-        assert Athlete.objects.filter(organization=self.org).count() == 1
-        assert Athlete.objects.filter(organization=org2).count() == 0
+        # Athlete for athlete_user must land in self.org only, never in org2
+        assert Athlete.objects.filter(user=self.athlete_user, organization=self.org).count() == 1
+        assert Athlete.objects.filter(user=self.athlete_user, organization=org2).count() == 0
 
     # ── 14. Summary output ────────────────────────────────────────────────────
 
