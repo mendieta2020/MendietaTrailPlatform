@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-03-23 · Session post PR-138 open_
+_Last updated: 2026-03-23 · Session post PR-139 open_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -20,6 +20,7 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 | PR-136 | p2/pr136-athlete-subscription-webhook | AthleteSubscription webhook handler (MP payment sync, 10 tests) | ✅ 2026-03-22 |
 | PR-137 | p2/pr137-billing-ui | Billing UI dashboard (Finanzas page + Athletes badges + sidebar gate) | ✅ 2026-03-22 |
 | PR-138 | p2/pr138-athlete-invite-flow | Public invite page + accept endpoint + MP redirect | 🔄 OPEN 2026-03-23 |
+| PR-139 | p2/pr139-athlete-dashboard | Athlete dashboard: home personalizado + clima + navegación separada por rol | 🔄 OPEN 2026-03-23 |
 
 ## Next PR Queue
 
@@ -86,5 +87,18 @@ Coach B2C:     Athlete pays Coach via MercadoPago (AthleteSubscription)
 - `InvitationDetailView`: no PII in public response; 200 for all states (expired/accepted/pending)
 - `InvitationAcceptView`: IsAuthenticated; creates Membership (get_or_create, role=athlete) before MP redirect
 
+### Frontend athlete surfaces (PR-139)
+- `AthleteLayout.jsx` — separate sidebar for athlete role (Hoy, Mi Entrenamiento, Mi Progreso, Conexiones, Perfil)
+- `AthleteDashboard.jsx` — personalized home: greeting + weather, today's workout card, onboarding checklist, subscription card
+- `AthleteMyTraining.jsx` + `AthleteProgress.jsx` — premium placeholders
+- `useWeather.js` — geolocation + OpenWeatherMap hook (silent fallback)
+- `Layout.jsx` — delegates to AthleteLayout for role=athlete
+- `App.jsx` — DashboardRouter + /athlete/training + /athlete/progress routes
+
+### PR-139 backend changes
+- `GET /api/athlete/today/` — IsAuthenticated + role=athlete guard via Membership; queries WorkoutAssignment (planned/moved, today's date); structured log athlete_today_fetched
+- `core/views_athlete.py` — new file for athlete-only views
+- `core/tests_pr139_athlete_today.py` — 11 tests: 401, 403 (coach/owner/no-membership), no-workout, canceled/skipped ignored, correct fields, cross-org isolation
+
 ## Test Baseline
-1300 tests (9 new PR-138 + 6 updated PR-135 tests + 3 net new) | CI: backend ✅ frontend ✅
+~1311 tests (11 new PR-139) | CI: backend ✅ frontend ✅
