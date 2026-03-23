@@ -17,7 +17,7 @@ from .integration_callback_views import IntegrationCallbackView
 from .identity_views import UserIdentityView
 from .connection_views import ProviderConnectionStatusView  # PR11
 from core.webhooks import StravaWebhookView, StravaDiagnosticsView  # PR-WebhookRoute
-from core.views_billing import (  # PR-131 / PR-132 / PR-134 / PR-135 / PR-136
+from core.views_billing import (  # PR-131 / PR-132 / PR-134 / PR-135 / PR-136 / PR-137
     mercadopago_webhook,
     AthleteSubscriptionWebhookView,
     BillingStatusView,
@@ -31,6 +31,9 @@ from core.views_billing import (  # PR-131 / PR-132 / PR-134 / PR-135 / PR-136
     InvitationAcceptView,
     InvitationRejectView,
     InvitationResendView,
+    CoachPricingPlanListCreateView,
+    AthleteSubscriptionListView,
+    AthleteSubscriptionActivateView,
 )
 from core.views_p1 import (  # PR-115/116/117/119/128/X4/149/PR-128-real-pmc/PR-129
     AthleteAdherenceViewSet,
@@ -110,7 +113,14 @@ urlpatterns = [
     path('billing/mp/callback/', MPCallbackView.as_view(), name='billing-mp-callback'),
     path('billing/mp/disconnect/', MPDisconnectView.as_view(), name='billing-mp-disconnect'),
 
-    # PR-135: AthleteInvitation — create, detail, accept, reject, resend
+    # PR-137: Coach pricing plans
+    path('billing/plans/', CoachPricingPlanListCreateView.as_view(), name='billing-plans'),
+
+    # PR-137: Athlete subscriptions list + manual activation
+    path('billing/athlete-subscriptions/', AthleteSubscriptionListView.as_view(), name='billing-athlete-subscriptions'),
+    path('billing/athlete-subscriptions/<int:pk>/activate/', AthleteSubscriptionActivateView.as_view(), name='billing-athlete-subscription-activate'),
+
+    # PR-135: AthleteInvitation — create/list, detail, accept, reject, resend
     path('billing/invitations/', InvitationCreateView.as_view(), name='billing-invitation-create'),
     path('billing/invitations/<uuid:token>/', InvitationDetailView.as_view(), name='billing-invitation-detail'),
     path('billing/invitations/<uuid:token>/accept/', InvitationAcceptView.as_view(), name='billing-invitation-accept'),

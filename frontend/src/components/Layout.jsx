@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box, Drawer, AppBar, Toolbar, List, Typography, Divider, IconButton,
-  ListItem, ListItemButton, ListItemIcon, ListItemText, Avatar
+  ListItem, ListItemButton, ListItemIcon, ListItemText, Avatar, Tooltip
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -45,6 +45,8 @@ const Layout = ({ children }) => {
     window.location.href = '/';
   };
 
+  const isAdminOrOwner = userRole === 'owner' || userRole === 'admin';
+
   // DEFINICIÓN DEL MENÚ LATERAL
   const menuItems = [
     { text: 'Inicio', icon: <Dashboard />, path: '/dashboard' },
@@ -53,7 +55,7 @@ const Layout = ({ children }) => {
     { text: 'Calendario', icon: <CalendarMonth />, path: '/calendar' },
     { text: 'Grupos', icon: <Groups />, path: '/teams' },
     { text: 'Alumnos', icon: <People />, path: '/athletes' },
-    { text: 'Finanzas', icon: <Payment />, path: '/finance' },
+    { text: 'Finanzas', icon: <Payment />, path: '/finance', adminOnly: true },
     { text: 'Conexiones', icon: <LinkIcon />, path: '/connections' }, // <--- NUEVA OPCIÓN
   ];
 
@@ -75,31 +77,44 @@ const Layout = ({ children }) => {
 
       {/* LISTA DE NAVEGACIÓN */}
       <List sx={{ flexGrow: 1, px: 1 }}>
-        {menuItems.map((item) => (
-          <ListItem key={item.text} disablePadding sx={{ mb: 1 }}>
-            <ListItemButton
-              onClick={() => navigate(item.path)}
-              selected={location.pathname === item.path}
-              sx={{
-                borderRadius: 2, // Bordes redondeados en los botones del menú (Moderno)
-                '&.Mui-selected': {
-                  bgcolor: 'rgba(245, 124, 0, 0.15)',
-                  borderLeft: '4px solid #F57C00', // Indicador visual a la izquierda
-                  color: '#F57C00'
-                },
-                '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' }
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 40, color: location.pathname === item.path ? '#F57C00' : '#94A3B8' }}>
-                {item.icon}
-              </ListItemIcon>
-              <ListItemText
-                primary={item.text}
-                primaryTypographyProps={{ fontSize: '0.9rem', fontWeight: location.pathname === item.path ? 600 : 400 }}
-              />
-            </ListItemButton>
-          </ListItem>
-        ))}
+        {menuItems.map((item) => {
+          const isLocked = item.adminOnly && !isAdminOrOwner;
+          return (
+            <ListItem key={item.text} disablePadding sx={{ mb: 1 }}>
+              <Tooltip
+                title={isLocked ? 'Solo para administradores de la organización' : ''}
+                placement="right"
+                arrow
+              >
+                <span style={{ width: '100%' }}>
+                  <ListItemButton
+                    onClick={() => !isLocked && navigate(item.path)}
+                    selected={!isLocked && location.pathname === item.path}
+                    disabled={isLocked}
+                    sx={{
+                      borderRadius: 2,
+                      '&.Mui-selected': {
+                        bgcolor: 'rgba(245, 124, 0, 0.15)',
+                        borderLeft: '4px solid #F57C00',
+                        color: '#F57C00'
+                      },
+                      '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
+                      '&.Mui-disabled': { opacity: 0.4 },
+                    }}
+                  >
+                    <ListItemIcon sx={{ minWidth: 40, color: (!isLocked && location.pathname === item.path) ? '#F57C00' : '#94A3B8' }}>
+                      {item.icon}
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={item.text}
+                      primaryTypographyProps={{ fontSize: '0.9rem', fontWeight: (!isLocked && location.pathname === item.path) ? 600 : 400 }}
+                    />
+                  </ListItemButton>
+                </span>
+              </Tooltip>
+            </ListItem>
+          );
+        })}
       </List>
 
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />

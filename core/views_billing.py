@@ -379,11 +379,43 @@ class MPDisconnectView(APIView):
 
 class InvitationCreateView(APIView):
     """
-    POST /api/billing/invitations/
-    Coach creates an invitation link for an athlete.
-    Requires: authenticated, pro plan.
+    GET  /api/billing/invitations/ — List invitations for the org (owner/admin).
+    POST /api/billing/invitations/ — Create invitation link (owner/admin + pro plan).
     """
     permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from core.models import AthleteInvitation, Membership
+        org = getattr(request, "auth_organization", None)
+        if org is None:
+            return Response({"detail": "No organization context."}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            membership = Membership.objects.get(user=request.user, organization=org)
+        except Membership.DoesNotExist:
+            return Response({"detail": "Sin acceso."}, status=status.HTTP_403_FORBIDDEN)
+        if membership.role not in ("owner", "admin"):
+            return Response({"detail": "Solo owner o admin."}, status=status.HTTP_403_FORBIDDEN)
+
+        invitations = (
+            AthleteInvitation.objects
+            .filter(organization=org)
+            .select_related("coach_plan")
+            .order_by("-created_at")
+        )
+        data = [
+            {
+                "id": inv.pk,
+                "token": str(inv.token),
+                "email": inv.email,
+                "status": inv.status,
+                "coach_plan_id": inv.coach_plan_id,
+                "coach_plan_name": inv.coach_plan.name,
+                "expires_at": inv.expires_at.isoformat() if inv.expires_at else None,
+                "created_at": inv.created_at.isoformat(),
+            }
+            for inv in invitations
+        ]
+        return Response(data)
 
     @require_plan("pro")
     def post(self, request):
@@ -727,3 +759,164 @@ class InvitationResendView(APIView):
         )
 
         return Response({"token": str(invitation.token), "invite_url": invite_url})
+
+
+# ==============================================================================
+# PR-137: Billing UI — Plans, AthleteSubscriptions
+# ==============================================================================
+
+
+class CoachPricingPlanListCreateView(APIView):
+    """
+    GET  /api/billing/plans/ — List CoachPricingPlans for the org.
+    POST /api/billing/plans/ — Create a new plan (owner/admin + pro).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from core.models import CoachPricingPlan
+        org = getattr(request, "auth_organization", None)
+        if org is None:
+            return Response({"detail": "No organization context."}, status=status.HTTP_403_FORBIDDEN)
+        plans = CoachPricingPlan.objects.filter(organization=org).order_by("price_ars")
+        data = [
+            {
+                "id": p.pk,
+                "name": p.name,
+                "description": p.description,
+                "price_ars": str(p.price_ars),
+                "is_active": p.is_active,
+                "mp_plan_id": p.mp_plan_id,
+                "created_at": p.created_at.isoformat(),
+            }
+            for p in plans
+        ]
+        return Response(data)
+
+    @require_plan("pro")
+    def post(self, request):
+        from core.models import CoachPricingPlan, Membership
+        org = getattr(request, "auth_organization", None)
+        if org is None:
+            return Response({"detail": "No organization context."}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            membership = Membership.objects.get(user=request.user, organization=org)
+        except Membership.DoesNotExist:
+            return Response({"detail": "No tienes membresía."}, status=status.HTTP_403_FORBIDDEN)
+        if membership.role not in ("owner", "admin"):
+            return Response({"detail": "Solo owner o admin pueden crear planes."}, status=status.HTTP_403_FORBIDDEN)
+
+        name = request.data.get("name", "").strip()
+        price_ars = request.data.get("price_ars")
+        description = request.data.get("description", "")
+        if not name:
+            return Response({"detail": "name es requerido."}, status=status.HTTP_400_BAD_REQUEST)
+        if price_ars is None:
+            return Response({"detail": "price_ars es requerido."}, status=status.HTTP_400_BAD_REQUEST)
+
+        plan = CoachPricingPlan.objects.create(
+            organization=org,
+            name=name,
+            price_ars=price_ars,
+            description=description,
+        )
+        logger.info(
+            "coach_pricing_plan.created",
+            extra={"organization_id": org.pk, "plan_id": plan.pk, "outcome": "created"},
+        )
+        return Response(
+            {
+                "id": plan.pk,
+                "name": plan.name,
+                "description": plan.description,
+                "price_ars": str(plan.price_ars),
+                "is_active": plan.is_active,
+                "mp_plan_id": plan.mp_plan_id,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AthleteSubscriptionListView(APIView):
+    """
+    GET /api/billing/athlete-subscriptions/
+    List AthleteSubscriptions for the org with athlete data.
+    Requires: authenticated. Owner/admin see all; coach sees own athletes only.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from core.models import AthleteSubscription, Membership
+        org = getattr(request, "auth_organization", None)
+        if org is None:
+            return Response({"detail": "No organization context."}, status=status.HTTP_403_FORBIDDEN)
+
+        subscriptions = (
+            AthleteSubscription.objects
+            .filter(organization=org)
+            .select_related("athlete__user", "coach_plan")
+            .order_by("status", "-created_at")
+        )
+        data = [
+            {
+                "id": sub.pk,
+                "athlete_id": sub.athlete_id,
+                "athlete_first_name": sub.athlete.user.first_name,
+                "athlete_last_name": sub.athlete.user.last_name,
+                "athlete_email": sub.athlete.user.email,
+                "coach_plan_id": sub.coach_plan_id,
+                "coach_plan_name": sub.coach_plan.name,
+                "price_ars": str(sub.coach_plan.price_ars),
+                "status": sub.status,
+                "mp_preapproval_id": sub.mp_preapproval_id,
+                "last_payment_at": sub.last_payment_at.isoformat() if sub.last_payment_at else None,
+                "next_payment_at": sub.next_payment_at.isoformat() if sub.next_payment_at else None,
+                "created_at": sub.created_at.isoformat(),
+            }
+            for sub in subscriptions
+        ]
+        return Response(data)
+
+
+class AthleteSubscriptionActivateView(APIView):
+    """
+    POST /api/billing/athlete-subscriptions/<pk>/activate/
+    Manual activation (cash/transfer, no MP). Owner/admin only + pro plan.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @require_plan("pro")
+    def post(self, request, pk):
+        from core.models import AthleteSubscription, Membership
+        org = getattr(request, "auth_organization", None)
+        if org is None:
+            return Response({"detail": "No organization context."}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            membership = Membership.objects.get(user=request.user, organization=org)
+        except Membership.DoesNotExist:
+            return Response({"detail": "Sin acceso."}, status=status.HTTP_403_FORBIDDEN)
+        if membership.role not in ("owner", "admin"):
+            return Response({"detail": "Solo owner o admin pueden activar manualmente."}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            sub = AthleteSubscription.objects.select_related("athlete__user").get(pk=pk, organization=org)
+        except AthleteSubscription.DoesNotExist:
+            return Response({"detail": "Suscripción no encontrada."}, status=status.HTTP_404_NOT_FOUND)
+
+        if sub.status == AthleteSubscription.Status.ACTIVE:
+            return Response({"detail": "La suscripción ya está activa."}, status=status.HTTP_400_BAD_REQUEST)
+
+        sub.status = AthleteSubscription.Status.ACTIVE
+        sub.save(update_fields=["status", "updated_at"])
+
+        logger.info(
+            "athlete_manual_activation",
+            extra={
+                "organization_id": org.pk,
+                "subscription_id": sub.pk,
+                "athlete_id": sub.athlete_id,
+                "activated_by": request.user.pk,
+                "outcome": "activated",
+            },
+        )
+        return Response({"id": sub.pk, "status": sub.status})

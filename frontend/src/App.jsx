@@ -18,6 +18,7 @@ import Alerts from './pages/Alerts';
 import Connections from './pages/Connections';
 import CoachDashboard from './pages/CoachDashboard';
 import WorkoutLibraryPage from './pages/WorkoutLibraryPage';
+import Finanzas from './pages/Finanzas';
 import { useAuth } from './context/AuthContext';
 
 // 3. Páginas públicas (sin autenticación requerida)
@@ -168,13 +169,12 @@ function App() {
             }
           />
 
-          {/* 9. Finanzas (Placeholder para el futuro inmediato) */}
+          {/* 9. Finanzas — owner/admin billing dashboard */}
           <Route
             path="/finance"
             element={
               <ProtectedRoute>
-                {/* Por ahora redirige al dashboard, pronto tendrá su propia pantalla */}
-                <Navigate to="/dashboard" replace />
+                <Finanzas />
               </ProtectedRoute>
             }
           />

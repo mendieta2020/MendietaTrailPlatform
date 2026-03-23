@@ -3,19 +3,49 @@ import { useNavigate } from 'react-router-dom'; // <--- IMPORTANTE: Faltaba esto
 import {
   Box, Paper, Typography, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Avatar, Chip, IconButton, Button, TextField, InputAdornment,
-  CircularProgress, Alert
+  CircularProgress, Alert, Tooltip
 } from '@mui/material';
 import { Search, Edit, Add, NavigateNext } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import RiskBadge from '../components/RiskBadge';
 import { useOrg } from '../context/OrgContext';
 import { listAthletes } from '../api/p1';
+import { getAthleteSubscriptions } from '../api/billing';
+
+const SUB_STATUS_CONFIG = {
+  active:    { label: 'Activo',    bg: '#ECFDF5', text: '#059669', dot: '#10B981' },
+  pending:   { label: 'Pendiente', bg: '#FFFBEB', text: '#D97706', dot: '#F59E0B' },
+  overdue:   { label: 'Atrasado',  bg: '#FEF2F2', text: '#DC2626', dot: '#EF4444' },
+  cancelled: { label: 'Cancelado', bg: '#F1F5F9', text: '#64748B', dot: '#94A3B8' },
+  suspended: { label: 'Suspendido',bg: '#F1F5F9', text: '#64748B', dot: '#94A3B8' },
+};
+
+function SubBadge({ status }) {
+  const cfg = SUB_STATUS_CONFIG[status];
+  if (!cfg) return null;
+  return (
+    <Chip
+      label={cfg.label}
+      size="small"
+      sx={{
+        bgcolor: cfg.bg,
+        color: cfg.text,
+        fontWeight: 600,
+        borderRadius: 1,
+        fontSize: '0.72rem',
+        '& .MuiChip-label': { px: 1 },
+      }}
+    />
+  );
+}
 
 const Athletes = () => {
   const navigate = useNavigate();
   const { activeOrg, orgLoading } = useOrg();
   const [athletes, setAthletes] = useState([]);
+  const [subscriptionMap, setSubscriptionMap] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
+  const [subFilter, setSubFilter] = useState('all');
 
   useEffect(() => {
     if (!activeOrg) return;
@@ -28,15 +58,29 @@ const Athletes = () => {
         console.error(err);
       }
     };
+    const fetchSubscriptions = async () => {
+      try {
+        const res = await getAthleteSubscriptions();
+        const map = {};
+        (res.data || []).forEach(sub => { map[sub.athlete_id] = sub.status; });
+        setSubscriptionMap(map);
+      } catch {
+        // Subscription data is supplementary — silent fail
+      }
+    };
     fetchAthletes();
+    fetchSubscriptions();
   }, [activeOrg?.org_id]);
 
-  // Filtro de búsqueda en tiempo real
+  // Filtro de búsqueda + estado de suscripción
   const safeAthletes = Array.isArray(athletes) ? athletes : [];
-  const filteredAthletes = safeAthletes.filter(athlete =>
+  const searchFiltered = safeAthletes.filter(athlete =>
     (athlete.first_name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (athlete.last_name ?? '').toLowerCase().includes(searchTerm.toLowerCase())
   );
+  const filteredAthletes = subFilter === 'all'
+    ? searchFiltered
+    : searchFiltered.filter(a => subscriptionMap[a.id] === subFilter);
 
   if (orgLoading) return (
     <Layout><Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}><CircularProgress /></Box></Layout>
@@ -62,24 +106,50 @@ const Athletes = () => {
         </Button>
       </Box>
 
-      {/* Barra de Búsqueda */}
+      {/* Barra de Búsqueda + Filtros */}
       <Paper sx={{ p: 2, mb: 3, borderRadius: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
-        <TextField 
-            fullWidth 
-            placeholder="Buscar por nombre..." 
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+          <TextField
+            sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            placeholder="Buscar por nombre..."
             variant="outlined"
             size="small"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             InputProps={{
-                startAdornment: (
-                    <InputAdornment position="start">
-                        <Search sx={{ color: '#94A3B8' }} />
-                    </InputAdornment>
-                ),
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search sx={{ color: '#94A3B8' }} />
+                </InputAdornment>
+              ),
             }}
-            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-        />
+          />
+          <Box sx={{ display: 'flex', gap: 0.5, bgcolor: '#F1F5F9', borderRadius: 1.5, p: 0.5 }}>
+            {[
+              { key: 'all', label: 'Todos' },
+              { key: 'active', label: 'Activos' },
+              { key: 'pending', label: 'Pendientes' },
+              { key: 'overdue', label: 'Atrasados' },
+            ].map(({ key, label }) => (
+              <Button
+                key={key}
+                onClick={() => setSubFilter(key)}
+                size="small"
+                sx={{
+                  px: 1.5, py: 0.5, minWidth: 0, borderRadius: 1,
+                  fontSize: '0.78rem', fontWeight: subFilter === key ? 600 : 400,
+                  textTransform: 'none',
+                  bgcolor: subFilter === key ? 'white' : 'transparent',
+                  color: subFilter === key ? '#0F172A' : '#64748B',
+                  boxShadow: subFilter === key ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                  '&:hover': { bgcolor: subFilter === key ? 'white' : 'rgba(255,255,255,0.6)' },
+                }}
+              >
+                {label}
+              </Button>
+            ))}
+          </Box>
+        </Box>
       </Paper>
 
       {/* Tabla de Alumnos */}
@@ -89,6 +159,7 @@ const Athletes = () => {
             <TableRow>
               <TableCell sx={{ fontWeight: 600, color: '#475569' }}>ATLETA</TableCell>
               <TableCell sx={{ fontWeight: 600, color: '#475569' }}>ESTADO</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: '#475569' }}>SUSCRIPCIÓN</TableCell>
               <TableCell sx={{ fontWeight: 600, color: '#475569' }}>PLAN</TableCell>
               <TableCell sx={{ fontWeight: 600, color: '#475569' }}>FITNESS</TableCell>
               <TableCell sx={{ fontWeight: 600, color: '#475569' }}>RIESGO</TableCell>
@@ -125,6 +196,9 @@ const Athletes = () => {
                             borderRadius: 1
                         }}
                     />
+                </TableCell>
+                <TableCell>
+                    <SubBadge status={subscriptionMap[athlete.id]} />
                 </TableCell>
                 <TableCell>
                     <Typography variant="body2" sx={{ color: '#475569' }}>
