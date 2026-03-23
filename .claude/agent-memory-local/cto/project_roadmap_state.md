@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-03-22 · Session post PR-136 merge_
+_Last updated: 2026-03-22 · Session post PR-137 merge_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -18,6 +18,7 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 | PR-134 | p2/pr134-coach-mp-oauth | Coach MP OAuth connect (OrgOAuthCredential + 3 views) | ✅ 2026-03-22 |
 | PR-135 | p2/pr135-athlete-invitation | AthleteInvitation backend (model + 5 views + 14 tests) | ✅ 2026-03-22 |
 | PR-136 | p2/pr136-athlete-subscription-webhook | AthleteSubscription webhook handler (MP payment sync, 10 tests) | ✅ 2026-03-22 |
+| PR-137 | p2/pr137-billing-ui | Billing UI dashboard (Finanzas page + Athletes badges + sidebar gate) | ✅ 2026-03-22 |
 
 ## Next PR Queue
 
@@ -68,6 +69,12 @@ Coach B2C:     Athlete pays Coach via MercadoPago (AthleteSubscription)
 - Lazy imports: Law 4 compliance for integrations/ imports in core/
 - PASO 0 mandatory: all future prompts must start with branch creation
 - transaction=True on IntegrityError tests: PostgreSQL aborts tx on violations
+
+### Frontend billing surfaces (PR-137)
+- `Finanzas.jsx` — owner/admin-only: KPIs, plans management, subscription table + manual activation, invitations + copy-link
+- `Athletes.jsx` — subscription status badge + filter tabs (no amounts for coaches)
+- `Layout.jsx` — Finanzas locked for coach/member role (tooltip: "Solo para administradores")
+- `billing.js` — 7 API service functions aligned to backend endpoints
 
 ## Test Baseline
 1282 tests (10 added in PR-136) | CI: backend ✅ frontend ✅
