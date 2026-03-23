@@ -684,7 +684,7 @@ class InvitationRejectView(APIView):
             "invitation_rejected",
             extra={
                 "organization_id": invitation.organization_id,
-                "email": invitation.email,
+                "invitation_id": invitation.pk,
                 "outcome": "rejected",
             },
         )
