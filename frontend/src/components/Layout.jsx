@@ -3,6 +3,7 @@ import {
   Box, Drawer, AppBar, Toolbar, List, Typography, Divider, IconButton,
   ListItem, ListItemButton, ListItemIcon, ListItemText, Avatar, Tooltip
 } from '@mui/material';
+import AthleteLayout from './AthleteLayout';
 import {
   Menu as MenuIcon,
   Dashboard,      // Icono para Inicio
@@ -25,13 +26,17 @@ const drawerWidth = 260;
 const Layout = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userRole, setUserRole] = useState('coach'); // Default to coach
+  const [userInfo, setUserInfo] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
 
   // Fetch user role on mount
   useEffect(() => {
     client.get('/api/me')
-      .then(res => setUserRole(res.data.role))
+      .then(res => {
+        setUserRole(res.data.role);
+        setUserInfo(res.data);
+      })
       .catch(err => {
         if (import.meta.env.DEV) {
           console.error('Failed to fetch user role:', err);
@@ -133,6 +138,11 @@ const Layout = ({ children }) => {
       </List>
     </div>
   );
+
+  // Delegate to athlete layout for athlete role
+  if (userRole === 'athlete') {
+    return <AthleteLayout user={userInfo}>{children}</AthleteLayout>;
+  }
 
   return (
     <Box sx={{ display: 'flex' }}>

@@ -28,7 +28,19 @@ import TermsPage from './pages/public/TermsPage';
 import SecurityPage from './pages/public/SecurityPage';
 import VendorPage from './pages/public/VendorPage';
 import InvitePage from './pages/InvitePage';
+import AthleteDashboard from './pages/AthleteDashboard';
+import AthleteMyTraining from './pages/AthleteMyTraining';
+import AthleteProgress from './pages/AthleteProgress';
 
+
+// --- DASHBOARD ROUTER: renders athlete or coach dashboard based on role ---
+const DashboardRouter = () => {
+  const { user } = useAuth();
+  if (user?.role === 'athlete') {
+    return <AthleteDashboard user={user} />;
+  }
+  return <Dashboard />;
+};
 
 // --- COMPONENTE DE SEGURIDAD (GUARDIÁN) ---
 // Verifica si existe un token válido. Si no, redirige al Login.
@@ -71,12 +83,30 @@ function App() {
 
           {/* --- RUTAS PRIVADAS (ÁREA SEGURA) --- */}
 
-          {/* 1. Panel Principal (Torre de Control) */}
+          {/* 1. Panel Principal — role-aware: athletes → AthleteDashboard, others → Dashboard */}
           <Route
             path="/dashboard"
             element={
               <ProtectedRoute>
-                <Dashboard />
+                <DashboardRouter />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Athlete-specific pages */}
+          <Route
+            path="/athlete/training"
+            element={
+              <ProtectedRoute>
+                <AthleteMyTraining />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/athlete/progress"
+            element={
+              <ProtectedRoute>
+                <AthleteProgress />
               </ProtectedRoute>
             }
           />
