@@ -23,12 +23,13 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 | PR-139 | p2/pr139-athlete-dashboard | Athlete dashboard: home personalizado + clima + navegación separada por rol | 🔄 OPEN 2026-03-23 |
 | PR-141 | pr-141-athlete-device-roster-notifications | Athlete device status in roster + smart notification flow | 🔄 OPEN 2026-03-23 |
 
+| PR-128a | pr-128a-pmc-backend-trimp-ctl-atl-tsb | PMC backend: TRIMP cascade + CTL/ATL/TSB engine + 4 API endpoints | 🔄 OPEN 2026-03-23 |
+
 ## Next PR Queue
 
-### PR-128 🔴 NEXT — Real-side PMC (CTL/ATL/TSB)
-- Computes CTL/ATL/TSB from CompletedActivity
-- Core scientific feature
-- Risk: Low-Medium
+### PR-128b — PMC Frontend chart (AthleteProgress page reads DailyLoad)
+- Reads /api/athlete/pmc/ + /api/coach/athletes/<m_id>/pmc/
+- Risk: Low
 
 ### PR-129 — Historical backfill pipeline
 - Celery task to pull historical Strava activities
@@ -101,5 +102,14 @@ Coach B2C:     Athlete pays Coach via MercadoPago (AthleteSubscription)
 - `core/views_athlete.py` — new file for athlete-only views
 - `core/tests_pr139_athlete_today.py` — 11 tests: 401, 403 (coach/owner/no-membership), no-workout, canceled/skipped ignored, correct fields, cross-org isolation
 
+## PMC Engine Architecture (PR-128a)
+- `CompletedActivity`: +7 normalized biometric fields (avg_hr, max_hr, avg_power_w, avg_pace_s_km, tss_override, canonical_load, canonical_method)
+- `AthleteHRProfile`: hr_max/hr_rest/threshold_pace_s_km per (org, user) — unique_together
+- `ActivityLoad`: OneToOne with CompletedActivity, stores TSS + method
+- `DailyLoad`: CTL/ATL/TSB/ARS per (org, user, date) — unique_together
+- `core/services_pmc.py`: TRIMP cascade engine (override → TRIMP → rTSS → duration)
+- Celery tasks: compute_pmc_for_activity (post-create), compute_pmc_full_for_athlete (HR profile update)
+- Endpoints: /api/athlete/pmc/, /api/athlete/hr-profile/, /api/coach/athletes/<m_id>/pmc/, /api/coach/team-readiness/
+
 ## Test Baseline
-~1311 tests (11 new PR-139) | CI: backend ✅ frontend ✅
+~1311 + 18 = ~1329 tests | CI: backend ✅ frontend ✅
