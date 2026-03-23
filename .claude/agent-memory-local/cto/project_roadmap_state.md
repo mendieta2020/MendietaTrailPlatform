@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-03-22 · Session post PR-137 merge_
+_Last updated: 2026-03-23 · Session post PR-138 open_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -19,6 +19,7 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 | PR-135 | p2/pr135-athlete-invitation | AthleteInvitation backend (model + 5 views + 14 tests) | ✅ 2026-03-22 |
 | PR-136 | p2/pr136-athlete-subscription-webhook | AthleteSubscription webhook handler (MP payment sync, 10 tests) | ✅ 2026-03-22 |
 | PR-137 | p2/pr137-billing-ui | Billing UI dashboard (Finanzas page + Athletes badges + sidebar gate) | ✅ 2026-03-22 |
+| PR-138 | p2/pr138-athlete-invite-flow | Public invite page + accept endpoint + MP redirect | 🔄 OPEN 2026-03-23 |
 
 ## Next PR Queue
 
@@ -76,5 +77,14 @@ Coach B2C:     Athlete pays Coach via MercadoPago (AthleteSubscription)
 - `Layout.jsx` — Finanzas locked for coach/member role (tooltip: "Solo para administradores")
 - `billing.js` — 7 API service functions aligned to backend endpoints
 
+### Frontend invite flow (PR-138)
+- `InvitePage.jsx` — public route `/invite/:token`; states: loading, invalid, expired, already_used, pending
+- `App.jsx` — public route `/invite/:token` (no ProtectedRoute)
+- `billing.js` — added `getInvitation(token)` + `acceptInvitation(token)`
+
+### PR-138 backend changes
+- `InvitationDetailView`: no PII in public response; 200 for all states (expired/accepted/pending)
+- `InvitationAcceptView`: IsAuthenticated; creates Membership (get_or_create, role=athlete) before MP redirect
+
 ## Test Baseline
-1282 tests (10 added in PR-136) | CI: backend ✅ frontend ✅
+1300 tests (9 new PR-138 + 6 updated PR-135 tests + 3 net new) | CI: backend ✅ frontend ✅
