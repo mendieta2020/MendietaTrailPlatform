@@ -27,6 +27,7 @@ import PrivacyPage from './pages/public/PrivacyPage';
 import TermsPage from './pages/public/TermsPage';
 import SecurityPage from './pages/public/SecurityPage';
 import VendorPage from './pages/public/VendorPage';
+import InvitePage from './pages/InvitePage';
 
 
 // --- COMPONENTE DE SEGURIDAD (GUARDIÁN) ---
@@ -66,6 +67,7 @@ function App() {
           <Route path="/security" element={<SecurityPage />} />
           <Route path="/vendor" element={<VendorPage />} />
           <Route path="/vendor/:doc" element={<VendorPage />} />
+          <Route path="/invite/:token" element={<InvitePage />} />
 
           {/* --- RUTAS PRIVADAS (ÁREA SEGURA) --- */}
 

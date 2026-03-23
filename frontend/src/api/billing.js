@@ -31,3 +31,12 @@ export function getAthleteSubscriptions() {
 export function activateAthleteManually(subscriptionId) {
   return client.post(`/api/billing/athlete-subscriptions/${subscriptionId}/activate/`);
 }
+
+// PR-138: public invite page
+export function getInvitation(token) {
+  return client.get(`/api/billing/invitations/${token}/`);
+}
+
+export function acceptInvitation(token) {
+  return client.post(`/api/billing/invitations/${token}/accept/`);
+}
