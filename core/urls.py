@@ -51,6 +51,7 @@ from core.views_p1 import (  # PR-115/116/117/119/128/X4/149/PR-128-real-pmc/PR-
     WorkoutIntervalViewSet,
     WorkoutLibraryViewSet,
 )
+from core.views_athlete import AthleteTodayView  # PR-139
 from core.views_p1_roster import (  # PR-129
     AthleteCoachAssignmentViewSet,
     AthleteRosterViewSet,
@@ -159,6 +160,9 @@ urlpatterns = [
 
     # PR11: Non-Strava provider connection status (derived from OAuthCredential)
     path('connections/', ProviderConnectionStatusView.as_view(), name='provider_connections'),
+
+    # PR-139: Athlete today's workout
+    path('athlete/today/', AthleteTodayView.as_view(), name='athlete-today'),
 
     # Coach-scoped integration status
     path('coach/athletes/<int:alumno_id>/integrations/status', CoachAthleteIntegrationStatusView.as_view(), name='coach_athlete_integration_status'),
