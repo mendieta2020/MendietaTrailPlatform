@@ -1,16 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom'; // <--- IMPORTANTE: Faltaba esto
 import {
   Box, Paper, Typography, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Avatar, Chip, IconButton, Button, TextField, InputAdornment,
-  CircularProgress, Alert, Tooltip
+  CircularProgress, Alert, Tooltip, Snackbar
 } from '@mui/material';
-import { Search, Edit, Add, NavigateNext } from '@mui/icons-material';
+import { Search, Edit, Add, NavigateNext, NotificationsActive, CheckCircle } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import RiskBadge from '../components/RiskBadge';
 import { useOrg } from '../context/OrgContext';
 import { listAthletes } from '../api/p1';
 import { getAthleteSubscriptions } from '../api/billing';
+import { notifyAthleteDevice } from '../api/roster';
 
 const SUB_STATUS_CONFIG = {
   active:    { label: 'Activo',    bg: '#ECFDF5', text: '#059669', dot: '#10B981' },
@@ -46,6 +47,9 @@ const Athletes = () => {
   const [subscriptionMap, setSubscriptionMap] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
   const [subFilter, setSubFilter] = useState('all');
+  // PR-141: track notify state per athlete (membership_id → 'idle'|'sent'|'duplicate')
+  const [notifyState, setNotifyState] = useState({});
+  const [toast, setToast] = useState({ open: false, message: '' });
 
   useEffect(() => {
     if (!activeOrg) return;
@@ -70,7 +74,25 @@ const Athletes = () => {
     };
     fetchAthletes();
     fetchSubscriptions();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOrg?.org_id]);
+
+  const handleNotify = useCallback(async (membershipId) => {
+    if (!membershipId || notifyState[membershipId]) return;
+    setNotifyState(prev => ({ ...prev, [membershipId]: 'loading' }));
+    try {
+      const res = await notifyAthleteDevice(membershipId);
+      const created = res.data?.created;
+      const state = created ? 'sent' : 'duplicate';
+      setNotifyState(prev => ({ ...prev, [membershipId]: state }));
+      setToast({
+        open: true,
+        message: created ? 'Notificación enviada' : 'Notificación ya enviada',
+      });
+    } catch {
+      setNotifyState(prev => ({ ...prev, [membershipId]: 'idle' }));
+    }
+  }, [notifyState]);
 
   // Filtro de búsqueda + estado de suscripción
   const safeAthletes = Array.isArray(athletes) ? athletes : [];
@@ -163,6 +185,7 @@ const Athletes = () => {
               <TableCell sx={{ fontWeight: 600, color: '#475569' }}>PLAN</TableCell>
               <TableCell sx={{ fontWeight: 600, color: '#475569' }}>FITNESS</TableCell>
               <TableCell sx={{ fontWeight: 600, color: '#475569' }}>RIESGO</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: '#475569' }}>DISPOSITIVO</TableCell>
               <TableCell align="right" sx={{ fontWeight: 600, color: '#475569' }}>ACCIONES</TableCell>
             </TableRow>
           </TableHead>
@@ -214,6 +237,48 @@ const Athletes = () => {
                 <TableCell>
                   <RiskBadge risk={athlete.injury_risk} />
                 </TableCell>
+                <TableCell onClick={e => e.stopPropagation()}>
+                  {Array.isArray(athlete.devices) && athlete.devices.length > 0 ? (
+                    <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                      {athlete.devices.slice(0, 2).map(d => (
+                        <Tooltip key={d.provider} title={d.provider}>
+                          <Chip
+                            label={d.provider}
+                            size="small"
+                            sx={{
+                              bgcolor: '#DCFCE7', color: '#166534',
+                              fontWeight: 600, fontSize: '0.7rem',
+                              textTransform: 'capitalize',
+                            }}
+                          />
+                        </Tooltip>
+                      ))}
+                    </Box>
+                  ) : (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Typography variant="caption" sx={{ color: '#94A3B8' }}>—</Typography>
+                      {athlete.membership_id && (
+                        <Tooltip title={
+                          notifyState[athlete.membership_id] === 'sent' ? 'Notificación enviada' :
+                          notifyState[athlete.membership_id] === 'duplicate' ? 'Ya notificado' : 'Notificar'
+                        }>
+                          <span>
+                            <IconButton
+                              size="small"
+                              disabled={!!notifyState[athlete.membership_id]}
+                              onClick={() => handleNotify(athlete.membership_id)}
+                              sx={{ color: notifyState[athlete.membership_id] ? '#10B981' : '#94A3B8' }}
+                            >
+                              {notifyState[athlete.membership_id] === 'sent' || notifyState[athlete.membership_id] === 'duplicate'
+                                ? <CheckCircle fontSize="small" />
+                                : <NotificationsActive fontSize="small" />}
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      )}
+                    </Box>
+                  )}
+                </TableCell>
                 <TableCell align="right">
                   <IconButton size="small" onClick={(e) => { e.stopPropagation(); /* Evita navegar al editar */ }}>
                     <Edit fontSize="small" />
@@ -227,6 +292,14 @@ const Athletes = () => {
           </TableBody>
         </Table>
       </TableContainer>
+
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={3000}
+        onClose={() => setToast(t => ({ ...t, open: false }))}
+        message={toast.message}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
     </Layout>
   );
 };

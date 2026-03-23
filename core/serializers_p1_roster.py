@@ -17,7 +17,7 @@ Design rules enforced here:
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from core.models import Athlete, AthleteCoachAssignment, Coach, Membership, Team
+from core.models import Athlete, AthleteCoachAssignment, Coach, Membership, OAuthIntegrationStatus, Team
 
 User = get_user_model()
 
@@ -89,6 +89,8 @@ class AthleteRosterSerializer(serializers.ModelSerializer):
     first_name = serializers.SerializerMethodField()
     last_name = serializers.SerializerMethodField()
     email = serializers.SerializerMethodField()
+    devices = serializers.SerializerMethodField()
+    membership_id = serializers.SerializerMethodField()
 
     def get_first_name(self, obj):
         return obj.user.first_name if obj.user_id else ""
@@ -98,6 +100,42 @@ class AthleteRosterSerializer(serializers.ModelSerializer):
 
     def get_email(self, obj):
         return obj.user.email if obj.user_id else ""
+
+    def get_devices(self, obj):
+        """Return up to 2 connected providers for this athlete (org-scoped via alumno)."""
+        if not obj.user_id:
+            return []
+        connected = (
+            OAuthIntegrationStatus.objects
+            .filter(alumno__usuario=obj.user, connected=True)
+            .values("provider", "connected", "created_at")
+            .order_by("provider")[:2]
+        )
+        return [
+            {
+                "provider": d["provider"],
+                "connected": True,
+                "connected_at": d["created_at"].isoformat() if d["created_at"] else None,
+            }
+            for d in connected
+        ]
+
+    def get_membership_id(self, obj):
+        """Return the active athlete Membership PK for this athlete in this org."""
+        if not obj.user_id:
+            return None
+        membership = (
+            Membership.objects
+            .filter(
+                user=obj.user,
+                organization=obj.organization,
+                role=Membership.Role.ATHLETE,
+                is_active=True,
+            )
+            .values_list("id", flat=True)
+            .first()
+        )
+        return membership
 
     class Meta:
         model = Athlete
@@ -111,6 +149,8 @@ class AthleteRosterSerializer(serializers.ModelSerializer):
             "team_id",
             "notes",
             "is_active",
+            "devices",
+            "membership_id",
             "created_at",
             "updated_at",
         ]

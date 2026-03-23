@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-03-23 · Session post PR-139 open_
+_Last updated: 2026-03-23 · Session post PR-141 open_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -21,6 +21,7 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 | PR-137 | p2/pr137-billing-ui | Billing UI dashboard (Finanzas page + Athletes badges + sidebar gate) | ✅ 2026-03-22 |
 | PR-138 | p2/pr138-athlete-invite-flow | Public invite page + accept endpoint + MP redirect | 🔄 OPEN 2026-03-23 |
 | PR-139 | p2/pr139-athlete-dashboard | Athlete dashboard: home personalizado + clima + navegación separada por rol | 🔄 OPEN 2026-03-23 |
+| PR-141 | pr-141-athlete-device-roster-notifications | Athlete device status in roster + smart notification flow | 🔄 OPEN 2026-03-23 |
 
 ## Next PR Queue
 

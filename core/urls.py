@@ -51,10 +51,18 @@ from core.views_p1 import (  # PR-115/116/117/119/128/X4/149/PR-128-real-pmc/PR-
     WorkoutIntervalViewSet,
     WorkoutLibraryViewSet,
 )
-from core.views_athlete import AthleteTodayView  # PR-139
-from core.views_p1_roster import (  # PR-129
+from core.views_athlete import (  # PR-139 / PR-141
+    AthleteTodayView,
+    AthleteDeviceStatusView,
+    AthleteDevicePreferenceDismissView,
+    AthleteDevicePreferenceReactivateView,
+    AthleteNotificationListView,
+    AthleteNotificationMarkReadView,
+)
+from core.views_p1_roster import (  # PR-129 / PR-141
     AthleteCoachAssignmentViewSet,
     AthleteRosterViewSet,
+    CoachNotifyAthleteDeviceView,
     CoachViewSet,
     MembershipViewSet,
     TeamViewSet,
@@ -163,6 +171,16 @@ urlpatterns = [
 
     # PR-139: Athlete today's workout
     path('athlete/today/', AthleteTodayView.as_view(), name='athlete-today'),
+
+    # PR-141: Athlete device status + preference + notifications
+    path('athlete/device-status/', AthleteDeviceStatusView.as_view(), name='athlete-device-status'),
+    path('athlete/device-preference/dismiss/', AthleteDevicePreferenceDismissView.as_view(), name='athlete-device-preference-dismiss'),
+    path('athlete/device-preference/reactivate/', AthleteDevicePreferenceReactivateView.as_view(), name='athlete-device-preference-reactivate'),
+    path('athlete/notifications/', AthleteNotificationListView.as_view(), name='athlete-notifications'),
+    path('athlete/notifications/<int:pk>/mark-read/', AthleteNotificationMarkReadView.as_view(), name='athlete-notification-mark-read'),
+
+    # PR-141: Coach notify athlete to connect device
+    path('coach/roster/<int:membership_id>/notify-device/', CoachNotifyAthleteDeviceView.as_view(), name='coach-notify-athlete-device'),
 
     # Coach-scoped integration status
     path('coach/athletes/<int:alumno_id>/integrations/status', CoachAthleteIntegrationStatusView.as_view(), name='coach_athlete_integration_status'),
