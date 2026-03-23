@@ -31,6 +31,7 @@ import InvitePage from './pages/InvitePage';
 import AthleteDashboard from './pages/AthleteDashboard';
 import AthleteMyTraining from './pages/AthleteMyTraining';
 import AthleteProgress from './pages/AthleteProgress';
+import AthleteProfile from './pages/AthleteProfile';
 
 
 // --- DASHBOARD ROUTER: renders athlete or coach dashboard based on role ---
@@ -107,6 +108,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <AthleteProgress />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/athlete/profile"
+            element={
+              <ProtectedRoute>
+                <AthleteProfile />
               </ProtectedRoute>
             }
           />

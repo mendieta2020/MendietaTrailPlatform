@@ -73,6 +73,7 @@ const Dashboard = () => {
     };
 
     fetchData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOrg?.org_id, periodo]);
 
   // --- FILTRADO DE DATOS PMC SEGÚN PERIODO ---

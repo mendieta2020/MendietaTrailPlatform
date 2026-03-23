@@ -5,12 +5,17 @@ import {
 } from '@mui/material';
 import {
   CheckCircle, RadioButtonUnchecked, DirectionsRun, WbSunny,
-  CreditCard, ArrowForward
+  CreditCard, ArrowForward, DevicesOther
 } from '@mui/icons-material';
 import AthleteLayout from '../components/AthleteLayout';
 import useWeather from '../hooks/useWeather';
 import client from '../api/client';
 import { getBillingStatus } from '../api/billing';
+import {
+  getDeviceStatus,
+  dismissDevicePreference,
+  markNotificationRead,
+} from '../api/athlete';
 import { useNavigate } from 'react-router-dom';
 
 // ─── Greeting based on time of day ────────────────────────────────────────────
@@ -200,6 +205,60 @@ const SubscriptionCard = ({ billing, loading }) => {
   );
 };
 
+// ─── Device connection banner ──────────────────────────────────────────────────
+const DeviceBanner = ({ deviceStatus, onDismiss }) => {
+  const navigate = useNavigate();
+  if (!deviceStatus) return null;
+
+  const { show_prompt, dismissed, unread_notifications } = deviceStatus;
+
+  // Never show if dismissed, regardless of unread notifications
+  if (dismissed) return null;
+  // Show only if there's a prompt or unread notification
+  if (!show_prompt && unread_notifications === 0) return null;
+
+  const message = unread_notifications > 0
+    ? 'Tu coach te invita a conectar tu dispositivo de entrenamiento'
+    : 'Conecta tu dispositivo para sincronizar tus entrenamientos automáticamente';
+
+  return (
+    <Paper
+      sx={{
+        p: 2.5, mb: 3, borderRadius: 2,
+        borderLeft: '4px solid #0EA5E9',
+        bgcolor: '#F0F9FF',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        flexWrap: 'wrap', gap: 2,
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1 }}>
+        <DevicesOther sx={{ color: '#0EA5E9', flexShrink: 0 }} />
+        <Typography variant="body2" sx={{ color: '#0C4A6E', fontWeight: 500 }}>
+          {message}
+        </Typography>
+      </Box>
+      <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
+        <Button
+          size="small"
+          variant="contained"
+          onClick={() => navigate('/connections')}
+          sx={{ bgcolor: '#0EA5E9', textTransform: 'none', fontWeight: 600, '&:hover': { bgcolor: '#0284C7' } }}
+        >
+          Conectar dispositivo
+        </Button>
+        <Button
+          size="small"
+          variant="text"
+          onClick={onDismiss}
+          sx={{ color: '#64748B', textTransform: 'none' }}
+        >
+          No tengo dispositivo
+        </Button>
+      </Box>
+    </Paper>
+  );
+};
+
 // ─── Main component ────────────────────────────────────────────────────────────
 const AthleteDashboard = ({ user }) => {
   const { temp, description: weatherDesc, city, loading: weatherLoading } = useWeather();
@@ -209,6 +268,8 @@ const AthleteDashboard = ({ user }) => {
   const [billing, setBilling] = useState(null);
   const [billingLoading, setBillingLoading] = useState(true);
   const [orgName, setOrgName] = useState('');
+  const [deviceStatus, setDeviceStatus] = useState(null);
+  const [pendingNotifications, setPendingNotifications] = useState([]);
 
   const greeting = getGreeting();
   const displayName = user?.first_name || user?.username || 'Atleta';
@@ -220,16 +281,30 @@ const AthleteDashboard = ({ user }) => {
       .catch(() => setTodayData({ has_workout: false }))
       .finally(() => setTodayLoading(false));
 
-    // Fetch device connection status
-    client.get('/api/connections/')
+    // Fetch device status (PR-141: replaces raw /api/connections/ for prompt logic)
+    getDeviceStatus()
       .then(res => {
-        const connections = res.data;
-        const connected = Array.isArray(connections)
-          ? connections.some(c => c.connected)
-          : false;
-        setHasDevice(connected);
+        setDeviceStatus(res.data);
+        setHasDevice(res.data.has_device);
+        if (res.data.unread_notifications > 0) {
+          // Also fetch notification IDs so we can mark them read on dismiss
+          client.get('/api/athlete/notifications/')
+            .then(nRes => setPendingNotifications(nRes.data || []))
+            .catch(() => {});
+        }
       })
-      .catch(() => setHasDevice(false));
+      .catch(() => {
+        // Fallback: check legacy connections endpoint for OnboardingChecklist
+        client.get('/api/connections/')
+          .then(res => {
+            const connections = res.data?.connections || res.data || [];
+            const connected = Array.isArray(connections)
+              ? connections.some(c => c.connected || c.status === 'connected')
+              : false;
+            setHasDevice(connected);
+          })
+          .catch(() => setHasDevice(false));
+      });
 
     // Fetch billing status
     getBillingStatus()
@@ -244,6 +319,18 @@ const AthleteDashboard = ({ user }) => {
       })
       .catch(() => {});
   }, []);
+
+  const handleDismissBanner = async () => {
+    try {
+      await dismissDevicePreference('no_device');
+      // Mark all pending notifications as read
+      await Promise.all(pendingNotifications.map(n => markNotificationRead(n.id)));
+      setDeviceStatus(prev => prev ? { ...prev, dismissed: true, show_prompt: false } : prev);
+    } catch {
+      // Best-effort: hide banner locally regardless
+      setDeviceStatus(prev => prev ? { ...prev, dismissed: true, show_prompt: false } : prev);
+    }
+  };
 
   const workout = todayData?.has_workout ? todayData.workout : null;
 
@@ -279,6 +366,9 @@ const AthleteDashboard = ({ user }) => {
           </Paper>
         )}
       </Box>
+
+      {/* ── Device connection banner (PR-141) ── */}
+      <DeviceBanner deviceStatus={deviceStatus} onDismiss={handleDismissBanner} />
 
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, md: 8 }}>

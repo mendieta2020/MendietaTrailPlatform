@@ -62,6 +62,7 @@ const AthleteDetail = () => {
       }
     };
     fetchData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, activeOrg?.org_id]);
 
   if (orgLoading || loading) return <Layout><Box sx={{ p: 5, textAlign: 'center' }}><CircularProgress /></Box></Layout>;

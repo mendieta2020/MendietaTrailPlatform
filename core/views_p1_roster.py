@@ -16,21 +16,28 @@ OrgTenantMixin contract:
 - Fail-closed: no active membership → PermissionDenied 403.
 """
 
+import logging
+
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from core import services_assignment
 from core.models import (
     Athlete,
     AthleteCoachAssignment,
+    AthleteNotification,
     Coach,
     Membership,
     Team,
 )
+from core.tenancy import get_active_membership
+
+logger = logging.getLogger(__name__)
 from core.serializers_p1_roster import (
     AthleteCoachAssignmentSerializer,
     AthleteRosterSerializer,
@@ -438,3 +445,86 @@ class AthleteCoachAssignmentViewSet(
                 updated, context=self.get_serializer_context()
             ).data
         )
+
+
+_NOTIFY_ALLOWED_ROLES = {"owner", "coach"}
+
+
+class CoachNotifyAthleteDeviceView(APIView):
+    """
+    POST /api/coach/roster/<int:membership_id>/notify-device/
+
+    Creates a 'device_connect' notification for the target athlete.
+
+    Security contract:
+    - Caller must be owner, coach, or admin in at least one active organization.
+    - membership_id must belong to that same organization and have role='athlete'.
+    - Duplicate guard: if an unread 'device_connect' notification already exists
+      for this recipient+org, no new record is created (returns created:false).
+
+    Response:
+        {"ok": true, "created": bool}
+
+    403: caller lacks an active owner/coach membership.
+    404: target membership not found or belongs to a different org.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, membership_id):
+        # --- Resolve caller's org (fail-closed) ---
+        coach_membership = (
+            Membership.objects.select_related("organization")
+            .filter(
+                user=request.user,
+                is_active=True,
+                role__in=list(_NOTIFY_ALLOWED_ROLES),
+            )
+            .first()
+        )
+        if coach_membership is None:
+            raise PermissionDenied("Only coaches and owners can send device notifications.")
+
+        org = coach_membership.organization
+
+        # --- Resolve target membership (fail-closed — re-verify org) ---
+        try:
+            target = Membership.objects.select_related("user").get(
+                pk=membership_id,
+                organization=org,
+                role=Membership.Role.ATHLETE,
+                is_active=True,
+            )
+        except Membership.DoesNotExist:
+            raise NotFound("Athlete membership not found in this organization.")
+
+        # --- Duplicate guard: no double-unread notification of same type ---
+        already_exists = AthleteNotification.objects.filter(
+            organization=org,
+            recipient=target.user,
+            notification_type="device_connect",
+            read=False,
+        ).exists()
+
+        created = False
+        if not already_exists:
+            AthleteNotification.objects.create(
+                organization=org,
+                recipient=target.user,
+                sender=request.user,
+                notification_type="device_connect",
+            )
+            created = True
+
+        logger.info(
+            "coach_athlete_device_notification_sent",
+            extra={
+                "event": "coach_athlete_device_notification_sent",
+                "organization_id": org.id,
+                "coach_user_id": request.user.id,
+                "athlete_membership_id": membership_id,
+                "created": created,
+                "outcome": "ok",
+            },
+        )
+        return Response({"ok": True, "created": created})
