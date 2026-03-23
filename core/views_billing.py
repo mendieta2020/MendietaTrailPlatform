@@ -2,7 +2,9 @@ import json
 import logging
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
+from django.views import View
+from django.utils.decorators import method_decorator
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -631,6 +633,34 @@ class InvitationRejectView(APIView):
         )
 
         return Response({"status": "rejected"})
+
+
+# ==============================================================================
+# PR-136: AthleteSubscription webhook handler (coach→athlete payment sync)
+# ==============================================================================
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class AthleteSubscriptionWebhookView(View):
+    """
+    POST /api/webhooks/mercadopago/athlete/
+    Webhook endpoint para eventos de pago de atletas (coach→atleta).
+    Separado del webhook B2B de Quantoryn (webhooks/mercadopago/).
+    """
+
+    def post(self, request):
+        try:
+            payload = json.loads(request.body)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            logger.warning("mp.athlete_webhook.invalid_json")
+            return JsonResponse({"error": "invalid json"}, status=400)
+
+        from integrations.mercadopago.athlete_webhook import (  # lazy — Law 4
+            process_athlete_subscription_webhook,
+        )
+
+        result = process_athlete_subscription_webhook(payload)
+        return JsonResponse(result, status=200)
 
 
 class InvitationResendView(APIView):

@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-03-22 · Session post PR-135 merge_
+_Last updated: 2026-03-22 · Session post PR-136 merge_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -17,16 +17,11 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 | PR-133 | p2/pr133-coach-pricing-plan | CoachPricingPlan + AthleteSubscription models + migration | ✅ 2026-03-22 |
 | PR-134 | p2/pr134-coach-mp-oauth | Coach MP OAuth connect (OrgOAuthCredential + 3 views) | ✅ 2026-03-22 |
 | PR-135 | p2/pr135-athlete-invitation | AthleteInvitation backend (model + 5 views + 14 tests) | ✅ 2026-03-22 |
+| PR-136 | p2/pr136-athlete-subscription-webhook | AthleteSubscription webhook handler (MP payment sync, 10 tests) | ✅ 2026-03-22 |
 
 ## Next PR Queue
 
-### PR-136 🔴 NEXT — AthleteSubscription webhook handler
-- Processes MP webhook for payment events
-- Updates AthleteSubscription.status (active/overdue/cancelled)
-- Idempotent (Law 5)
-- Risk: Medium
-
-### PR-128 — Real-side PMC (CTL/ATL/TSB)
+### PR-128 🔴 NEXT — Real-side PMC (CTL/ATL/TSB)
 - Computes CTL/ATL/TSB from CompletedActivity
 - Core scientific feature
 - Risk: Low-Medium
@@ -53,13 +48,14 @@ Coach B2C:     Athlete pays Coach via MercadoPago (AthleteSubscription)
 ### Integrations built
 - `integrations/mercadopago/client.py` — mp_get/post/put
 - `integrations/mercadopago/subscriptions.py` — create/get/cancel + create_coach_athlete_preapproval (PR-135)
-- `integrations/mercadopago/webhook.py` — process_subscription_webhook (idempotent)
+- `integrations/mercadopago/webhook.py` — process_subscription_webhook (idempotent, B2B)
+- `integrations/mercadopago/athlete_webhook.py` — process_athlete_subscription_webhook (idempotent, coach→athlete, PR-136)
 - `integrations/mercadopago/oauth.py` — mp_get_authorization_url + mp_exchange_code
 
 ### What's missing to complete billing loop
 1. ~~Coach MP OAuth (PR-134)~~ ✅ DONE
 2. ~~Athlete invite + preapproval (PR-135)~~ ✅ DONE
-3. AthleteSubscription webhook handler (PR-136)
+3. ~~AthleteSubscription webhook handler (PR-136)~~ ✅ DONE
 
 ## Technical Debt
 - FINDING-X4-A: ExternalIdentityViewSet legacy scope (low priority)
@@ -74,4 +70,4 @@ Coach B2C:     Athlete pays Coach via MercadoPago (AthleteSubscription)
 - transaction=True on IntegrityError tests: PostgreSQL aborts tx on violations
 
 ## Test Baseline
-~1252+ tests (14 added in PR-135) | CI: backend ✅ frontend ✅
+1282 tests (10 added in PR-136) | CI: backend ✅ frontend ✅
