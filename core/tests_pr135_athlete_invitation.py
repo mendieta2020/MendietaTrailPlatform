@@ -209,7 +209,8 @@ def test_coach_member_cannot_create_invitation():
 
 @pytest.mark.django_db
 def test_invitation_detail_public():
-    """Unauthenticated GET returns invitation details."""
+    """Unauthenticated GET returns safe invitation details (no email/token/preapproval).
+    Updated PR-138: response format changed; email removed from public response."""
     from core.views_billing import InvitationDetailView
 
     org = _org("org-det-1")
@@ -222,13 +223,20 @@ def test_invitation_detail_public():
     response = view(req, token=inv.token)
 
     assert response.status_code == status.HTTP_200_OK
-    assert response.data["email"] == "detail@test.com"
-    assert response.data["status"] == AthleteInvitation.Status.PENDING
+    assert response.data["status"] == "pending"
+    assert response.data["organization_name"] == org.name
+    assert response.data["plan_name"] == plan.name
+    assert response.data["currency"] == "ARS"
+    # No sensitive fields
+    assert "email" not in response.data
+    assert "token" not in response.data
+    assert "mp_preapproval_id" not in response.data
 
 
 @pytest.mark.django_db
 def test_invitation_detail_expired():
-    """Expired invitation → marks EXPIRED + returns 410."""
+    """Expired invitation → marks EXPIRED + returns 200 with status 'expired'.
+    Updated PR-138: was 410; now 200 with status field."""
     from core.views_billing import InvitationDetailView
 
     org = _org("org-det-2")
@@ -240,7 +248,8 @@ def test_invitation_detail_expired():
     view = InvitationDetailView.as_view()
     response = view(req, token=inv.token)
 
-    assert response.status_code == status.HTTP_410_GONE
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["status"] == "expired"
     inv.refresh_from_db()
     assert inv.status == AthleteInvitation.Status.EXPIRED
 
@@ -253,13 +262,12 @@ def test_invitation_detail_expired():
 @pytest.mark.django_db
 def test_accept_happy_path():
     """
-    Authenticated athlete accepts → creates AthleteSubscription pending.
-    MP call is mocked. Uses APIClient with force_authenticate so DRF
-    correctly resolves request.user even with authentication_classes = [].
+    Authenticated athlete accepts → creates Membership + AthleteSubscription pending
+    + returns redirect_url (MP init_point). MP call is mocked.
+    Updated PR-138: returns redirect_url instead of status/mp_preapproval_id.
     """
     org = _org("org-acc-1")
     athlete_user = _user("athlete_acc1", email="acc1@test.com")
-    _membership(athlete_user, org, role="athlete")
     athlete = _athlete(athlete_user, org)
     plan = _plan(org)
     _mp_credential(org)
@@ -274,11 +282,13 @@ def test_accept_happy_path():
         resp = client.post(f"/api/billing/invitations/{inv.token}/accept/")
 
     assert resp.status_code == status.HTTP_200_OK
-    assert resp.data["status"] == "accepted"
-    assert resp.data["mp_preapproval_id"] == "preapproval_abc123"
+    assert resp.data["redirect_url"] == "https://mp.link"
     inv.refresh_from_db()
     assert inv.status == AthleteInvitation.Status.ACCEPTED
     assert inv.mp_preapproval_id == "preapproval_abc123"
+    assert Membership.objects.filter(
+        user=athlete_user, organization=org, role="athlete"
+    ).exists()
     assert AthleteSubscription.objects.filter(
         athlete=athlete, coach_plan=plan
     ).exists()
@@ -286,60 +296,60 @@ def test_accept_happy_path():
 
 @pytest.mark.django_db
 def test_accept_already_accepted():
-    """Trying to accept a non-pending invitation → 400."""
-    from core.views_billing import InvitationAcceptView
-
+    """Accepted invitation + user already has membership → 200 already_member.
+    Updated PR-138: requires auth; idempotent response instead of 400."""
     org = _org("org-acc-2")
+    athlete_user = _user("athlete_acc2b", email="acc2b@test.com")
+    _membership(athlete_user, org, role="athlete")
     plan = _plan(org)
     _mp_credential(org)
     inv = _invitation(org, plan)
     inv.status = AthleteInvitation.Status.ACCEPTED
     inv.save()
 
-    factory = APIRequestFactory()
-    req = factory.post("/fake/", {}, format="json")
-    view = InvitationAcceptView.as_view()
-    response = view(req, token=inv.token)
+    client = APIClient()
+    client.force_authenticate(user=athlete_user)
+    resp = client.post(f"/api/billing/invitations/{inv.token}/accept/")
 
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.data["already_member"] is True
+    assert resp.data["redirect_url"] == "/dashboard"
 
 
 @pytest.mark.django_db
 def test_accept_expired():
-    """Expired invitation → 410."""
-    from core.views_billing import InvitationAcceptView
-
+    """Expired invitation → 400 with error 'invitation_expired'.
+    Updated PR-138: requires auth; was 410, now 400."""
     org = _org("org-acc-3")
+    athlete_user = _user("athlete_acc3", email="acc3@test.com")
     plan = _plan(org)
     _mp_credential(org)
     inv = _invitation(org, plan, days=-1)
 
-    factory = APIRequestFactory()
-    req = factory.post("/fake/", {}, format="json")
-    view = InvitationAcceptView.as_view()
-    response = view(req, token=inv.token)
+    client = APIClient()
+    client.force_authenticate(user=athlete_user)
+    resp = client.post(f"/api/billing/invitations/{inv.token}/accept/")
 
-    assert response.status_code == status.HTTP_410_GONE
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert resp.data["error"] == "invitation_expired"
     inv.refresh_from_db()
     assert inv.status == AthleteInvitation.Status.EXPIRED
 
 
 @pytest.mark.django_db
 def test_accept_no_coach_mp_credential():
-    """Coach has no MP credential → 402."""
-    from core.views_billing import InvitationAcceptView
-
+    """Coach has no MP credential → 402. Requires authentication (PR-138)."""
     org = _org("org-acc-4")
+    athlete_user = _user("athlete_acc4", email="acc4@test.com")
     plan = _plan(org)
     # NO _mp_credential(org) call
     inv = _invitation(org, plan)
 
-    factory = APIRequestFactory()
-    req = factory.post("/fake/", {}, format="json")
-    view = InvitationAcceptView.as_view()
-    response = view(req, token=inv.token)
+    client = APIClient()
+    client.force_authenticate(user=athlete_user)
+    resp = client.post(f"/api/billing/invitations/{inv.token}/accept/")
 
-    assert response.status_code == status.HTTP_402_PAYMENT_REQUIRED
+    assert resp.status_code == status.HTTP_402_PAYMENT_REQUIRED
 
 
 # ---------------------------------------------------------------------------

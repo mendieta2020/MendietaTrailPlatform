@@ -485,13 +485,14 @@ class InvitationDetailView(APIView):
     """
     GET /api/billing/invitations/<token>/
     Public — used by athlete to view invitation details before accepting.
+    Returns no sensitive data (no token, email, preapproval_id).
+    PR-138: revised response format.
     """
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def get(self, request, token):
         from core.models import AthleteInvitation
-        from core.serializers_billing import AthleteInvitationDetailSerializer
 
         try:
             invitation = AthleteInvitation.objects.select_related(
@@ -504,25 +505,32 @@ class InvitationDetailView(APIView):
             invitation.status = AthleteInvitation.Status.EXPIRED
             invitation.save(update_fields=["status"])
 
-        if invitation.status == AthleteInvitation.Status.EXPIRED:
-            return Response({"detail": "Invitación expirada."}, status=status.HTTP_410_GONE)
+        if invitation.status == AthleteInvitation.Status.ACCEPTED:
+            return Response({"status": "already_accepted"})
 
-        serializer = AthleteInvitationDetailSerializer(invitation)
-        return Response(serializer.data)
+        if invitation.status == AthleteInvitation.Status.EXPIRED:
+            return Response({"status": "expired"})
+
+        return Response({
+            "status": "pending",
+            "organization_name": invitation.organization.name,
+            "plan_name": invitation.coach_plan.name,
+            "price": str(invitation.coach_plan.price_ars),
+            "currency": "ARS",
+            "expires_at": invitation.expires_at.isoformat(),
+        })
 
 
 class InvitationAcceptView(APIView):
     """
     POST /api/billing/invitations/<token>/accept/
-    Athlete accepts → creates MP preapproval → AthleteSubscription pending.
-    AllowAny: athlete may not have an account yet.
+    Authenticated athlete accepts → creates Membership + MP preapproval.
+    PR-138: requires authentication; creates Membership; returns redirect_url.
     """
-    permission_classes = [AllowAny]
-    authentication_classes = []
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, token):
-        from core.models import AthleteInvitation, OrgOAuthCredential, AthleteSubscription
-        from core.serializers_billing import AthleteInvitationAcceptSerializer
+        from core.models import AthleteInvitation, OrgOAuthCredential, AthleteSubscription, Membership
         from django.utils import timezone
         from integrations.mercadopago.subscriptions import create_coach_athlete_preapproval  # lazy — Law 4
         from django.conf import settings as django_settings
@@ -534,17 +542,31 @@ class InvitationAcceptView(APIView):
         except AthleteInvitation.DoesNotExist:
             return Response({"detail": "Invitación no encontrada."}, status=status.HTTP_404_NOT_FOUND)
 
-        if invitation.status != AthleteInvitation.Status.PENDING:
-            return Response(
-                {"detail": "Invitación no disponible."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if invitation.is_expired():
+        # Check expiry first (regardless of status)
+        if invitation.status == AthleteInvitation.Status.PENDING and invitation.is_expired():
             invitation.status = AthleteInvitation.Status.EXPIRED
             invitation.save(update_fields=["status"])
-            return Response({"detail": "Invitación expirada."}, status=status.HTTP_410_GONE)
 
+        if invitation.status == AthleteInvitation.Status.EXPIRED:
+            return Response({"error": "invitation_expired"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Idempotent: if already accepted, check if this user is already a member
+        if invitation.status == AthleteInvitation.Status.ACCEPTED:
+            already_member = Membership.objects.filter(
+                user=request.user,
+                organization=invitation.organization,
+                role="athlete",
+            ).exists()
+            if already_member:
+                return Response({"redirect_url": "/dashboard", "already_member": True})
+
+        if invitation.status not in (
+            AthleteInvitation.Status.PENDING,
+            AthleteInvitation.Status.ACCEPTED,
+        ):
+            return Response({"detail": "Invitación no disponible."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Ensure MP credential exists before creating membership
         try:
             cred = OrgOAuthCredential.objects.get(
                 organization=invitation.coach_plan.organization,
@@ -577,7 +599,7 @@ class InvitationAcceptView(APIView):
                 "invitation_accept.mp_error",
                 extra={
                     "organization_id": invitation.organization_id,
-                    "email": invitation.email,
+                    "invitation_id": invitation.pk,
                     "error": str(exc),
                     "outcome": "error",
                 },
@@ -588,45 +610,49 @@ class InvitationAcceptView(APIView):
             )
 
         preapproval_id = mp_data.get("id")
+        init_point = mp_data.get("init_point")
 
-        # Store preapproval_id on the invitation for later claim
+        # Create Membership idempotently (Law 5)
+        Membership.objects.get_or_create(
+            user=request.user,
+            organization=invitation.organization,
+            defaults={"role": "athlete"},
+        )
+
+        # Mark invitation accepted
         invitation.mp_preapproval_id = preapproval_id
         invitation.status = AthleteInvitation.Status.ACCEPTED
         invitation.accepted_at = timezone.now()
         invitation.save(update_fields=["mp_preapproval_id", "status", "accepted_at"])
 
-        # Create AthleteSubscription if user is authenticated and has an Athlete profile
-        if request.user and request.user.is_authenticated:
-            from core.models import Athlete
-            athlete = Athlete.objects.filter(
-                user=request.user,
-                organization=invitation.organization,
-            ).first()
-            if athlete:
-                AthleteSubscription.objects.get_or_create(
-                    athlete=athlete,
-                    coach_plan=invitation.coach_plan,
-                    defaults={
-                        "organization": invitation.organization,
-                        "status": AthleteSubscription.Status.PENDING,
-                        "mp_preapproval_id": preapproval_id,
-                    },
-                )
+        # Create AthleteSubscription if the user has an Athlete profile
+        from core.models import Athlete
+        athlete = Athlete.objects.filter(
+            user=request.user,
+            organization=invitation.organization,
+        ).first()
+        if athlete:
+            AthleteSubscription.objects.get_or_create(
+                athlete=athlete,
+                coach_plan=invitation.coach_plan,
+                defaults={
+                    "organization": invitation.organization,
+                    "status": AthleteSubscription.Status.PENDING,
+                    "mp_preapproval_id": preapproval_id,
+                },
+            )
 
         logger.info(
             "invitation_accepted",
             extra={
                 "organization_id": invitation.organization_id,
-                "email": invitation.email,
-                "preapproval_id": preapproval_id,
-                "outcome": "accepted",
+                "invitation_id": invitation.pk,
+                "user_id": request.user.pk,
+                "outcome": "success",
             },
         )
 
-        return Response(
-            {"status": "accepted", "mp_preapproval_id": preapproval_id},
-            status=status.HTTP_200_OK,
-        )
+        return Response({"redirect_url": init_point}, status=status.HTTP_200_OK)
 
 
 class InvitationRejectView(APIView):
@@ -658,7 +684,7 @@ class InvitationRejectView(APIView):
             "invitation_rejected",
             extra={
                 "organization_id": invitation.organization_id,
-                "email": invitation.email,
+                "invitation_id": invitation.pk,
                 "outcome": "rejected",
             },
         )
