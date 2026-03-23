@@ -53,7 +53,7 @@ def process_athlete_subscription_webhook(payload: dict) -> dict:
     sub.status = new_status
     if new_status == "active":
         sub.last_payment_at = timezone.now()
-    sub.save(update_fields=["status", "last_payment_at"])
+    sub.save(update_fields=["status", "last_payment_at", "updated_at"])
 
     logger.info(
         "athlete_subscription_updated",
