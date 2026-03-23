@@ -457,7 +457,7 @@ class CoachNotifyAthleteDeviceView(APIView):
     Creates a 'device_connect' notification for the target athlete.
 
     Security contract:
-    - Caller must be owner, coach, or admin in at least one active organization.
+    - Caller must be owner or coach in at least one active organization.
     - membership_id must belong to that same organization and have role='athlete'.
     - Duplicate guard: if an unread 'device_connect' notification already exists
       for this recipient+org, no new record is created (returns created:false).

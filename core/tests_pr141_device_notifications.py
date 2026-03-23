@@ -240,6 +240,77 @@ class DismissCoachForbiddenTest(TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Test: device-status org filter — stale pref row from a different org is ignored
+# ---------------------------------------------------------------------------
+
+class DeviceStatusOrgScopeTest(TestCase):
+    """AthleteDevicePreference.organization filter must be enforced.
+
+    If a dismissed preference row exists for this user but with a DIFFERENT
+    organization FK (simulating a cross-org data leak or historical bad data),
+    the device-status endpoint must NOT treat it as dismissed for the athlete's
+    actual org.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.org_a = _make_org("OrgA")
+        self.org_b = _make_org("OrgB")
+        self.user = _make_user()
+        # User is an athlete only in org-A
+        _make_membership(self.user, self.org_a)
+        # Stale / cross-org dismissed pref row pointing at org-B
+        AthleteDevicePreference.objects.create(
+            organization=self.org_b,
+            athlete=self.user,
+            dismissed=True,
+            dismissed_reason="no_device",
+        )
+
+    def test_cross_org_pref_does_not_suppress_prompt(self):
+        """Org-B dismissed pref must not suppress the prompt for athlete in org-A."""
+        self.client.force_authenticate(user=self.user)
+        res = self.client.get(DEVICE_STATUS_URL)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertFalse(res.data["dismissed"])
+        self.assertTrue(res.data["show_prompt"])
+
+
+# ---------------------------------------------------------------------------
+# Test: notification list org filter — stale notification from a different org is ignored
+# ---------------------------------------------------------------------------
+
+class NotificationListOrgScopeTest(TestCase):
+    """AthleteNotification.organization filter must be enforced.
+
+    If a notification row exists for this user but with a DIFFERENT organization FK
+    (simulating a cross-org data leak or direct DB manipulation), the notifications
+    list endpoint must NOT return it.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.org_a = _make_org("OrgA2")
+        self.org_b = _make_org("OrgB2")
+        self.user = _make_user()
+        # User is an athlete only in org-A
+        _make_membership(self.user, self.org_a)
+        # Stale / cross-org notification pointing at org-B
+        AthleteNotification.objects.create(
+            organization=self.org_b,
+            recipient=self.user,
+            notification_type="device_connect",
+        )
+
+    def test_cross_org_notification_not_returned(self):
+        """Org-B notification must not appear in athlete's org-A notification list."""
+        self.client.force_authenticate(user=self.user)
+        res = self.client.get(NOTIFICATIONS_URL)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res.data), 0)
+
+
+# ---------------------------------------------------------------------------
 # Test 7: GET notifications — returns only this athlete's unread notifications
 # ---------------------------------------------------------------------------
 

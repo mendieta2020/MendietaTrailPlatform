@@ -169,12 +169,12 @@ class AthleteDeviceStatusView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        _resolve_athlete_membership(request.user)  # role guard (fail-closed)
+        membership, org = _resolve_athlete_membership(request.user)
 
         has_device = _athlete_has_device(request.user)
 
         pref = AthleteDevicePreference.objects.filter(
-            athlete=request.user
+            athlete=request.user, organization=org
         ).first()
 
         dismissed = pref.dismissed if pref else False
@@ -182,10 +182,8 @@ class AthleteDeviceStatusView(APIView):
 
         show_prompt = (not has_device) and (not dismissed)
 
-        # Count unread notifications scoped to this user (any org)
         unread_count = AthleteNotification.objects.filter(
-            recipient=request.user,
-            read=False,
+            recipient=request.user, organization=org, read=False,
         ).count()
 
         return Response({
@@ -307,11 +305,10 @@ class AthleteNotificationListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        _resolve_athlete_membership(request.user)
+        membership, org = _resolve_athlete_membership(request.user)
 
         notifications = AthleteNotification.objects.filter(
-            recipient=request.user,
-            read=False,
+            recipient=request.user, organization=org, read=False,
         ).select_related("sender").order_by("-created_at")
 
         data = []
