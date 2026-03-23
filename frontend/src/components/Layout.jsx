@@ -139,8 +139,8 @@ const Layout = ({ children }) => {
     </div>
   );
 
-  // Delegate to athlete layout for athlete role
-  if (userRole === 'athlete') {
+  // Delegate to athlete layout ONLY for role=athlete (case-insensitive safety)
+  if (userRole?.toLowerCase() === 'athlete') {
     return <AthleteLayout user={userInfo}>{children}</AthleteLayout>;
   }
 
