@@ -1815,3 +1815,57 @@ def trigger_strava_backfill(result, provider: str, athlete_id: str):
             error_message=_truncate_error(str(e))
         )
         return "FAIL: exception"
+
+
+# ==============================================================================
+#  PMC ENGINE TASKS — PR-128a
+#  Triggered after each CompletedActivity is created.
+# ==============================================================================
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60, name="core.pmc.compute_for_activity")
+def compute_pmc_for_activity(self, completed_activity_id: int):
+    """
+    Compute TRIMP/TSS and update CTL/ATL/TSB for a single CompletedActivity.
+
+    Idempotent: safe to rerun for the same activity.
+    Skips silently if the activity has no Athlete FK (legacy rows).
+    Retries up to 3 times with 60-second delay on transient failures.
+    """
+    try:
+        from core.services_pmc import process_activity_load
+        process_activity_load(completed_activity_id)
+    except Exception as exc:
+        logger.error(
+            "pmc_task_failed",
+            extra={
+                "event_name": "pmc_task_failed",
+                "completed_activity_id": completed_activity_id,
+                "error": str(exc),
+            },
+        )
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=120, name="core.pmc.full_recompute_for_athlete")
+def compute_pmc_full_for_athlete(self, user_id: int, organization_id: int):
+    """
+    Recompute the full PMC history for an athlete.
+
+    Triggered when the athlete updates their HR profile (hr_max, hr_rest,
+    threshold_pace_s_km). Idempotent: safe to rerun.
+    """
+    try:
+        from core.services_pmc import compute_pmc_for_athlete_full
+        compute_pmc_for_athlete_full(user_id=user_id, organization_id=organization_id)
+    except Exception as exc:
+        logger.error(
+            "pmc_full_recompute_task_failed",
+            extra={
+                "event_name": "pmc_full_recompute_task_failed",
+                "user_id": user_id,
+                "organization_id": organization_id,
+                "error": str(exc),
+            },
+        )
+        raise self.retry(exc=exc)
+

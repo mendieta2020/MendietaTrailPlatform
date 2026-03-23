@@ -916,6 +916,45 @@ class CompletedActivity(models.Model):
     )
 
     # ------------------------------------------------------------------
+    # Normalized biometric fields (populated by provider ingestion layer)
+    # These fields are provider-agnostic — the PMC service reads only these.
+    # ------------------------------------------------------------------
+    avg_hr = models.IntegerField(
+        null=True, blank=True,
+        help_text="Average heart rate in bpm. Populated by ingestion layer.",
+    )
+    max_hr = models.IntegerField(
+        null=True, blank=True,
+        help_text="Max heart rate in bpm. Populated by ingestion layer.",
+    )
+    avg_power_w = models.IntegerField(
+        null=True, blank=True,
+        help_text="Average power in watts (cycling). Populated by ingestion layer.",
+    )
+    avg_pace_s_km = models.FloatField(
+        null=True, blank=True,
+        help_text="Average pace in seconds/km (running). Populated by ingestion layer.",
+    )
+    tss_override = models.FloatField(
+        null=True, blank=True,
+        help_text=(
+            "Provider-supplied training load (Garmin Training Load, Polar TSS, etc.). "
+            "If present, PMC uses this directly instead of TRIMP calculation."
+        ),
+    )
+    canonical_load = models.FloatField(
+        null=True, blank=True,
+        help_text="Final TSS used for PMC. Computed by services_pmc.py.",
+    )
+    canonical_method = models.CharField(
+        max_length=30, blank=True, default="",
+        help_text=(
+            "Method used to compute canonical_load: "
+            "override / trimp / rtss_pace / estimated_duration"
+        ),
+    )
+
+    # ------------------------------------------------------------------
     # Provider provenance
     # ------------------------------------------------------------------
     provider = models.CharField(
@@ -3129,3 +3168,130 @@ class AthleteNotification(models.Model):
 
     def __str__(self):
         return f"Notification({self.notification_type}) → user={self.recipient_id} org={self.organization_id} read={self.read}"
+
+
+# ==============================================================================
+#  PMC ENGINE MODELS — PR-128a
+#  Provider-agnostic training load storage.
+#  Law 4 (provider boundary): services_pmc.py reads these fields, never raw_payload.
+# ==============================================================================
+
+class AthleteHRProfile(models.Model):
+    """
+    HR limits and threshold pace for a single athlete within an organization.
+
+    Used by services_pmc.py to compute TRIMP with personalized HR reserve.
+    Defaults (hr_max=190, hr_rest=55) are used when no profile exists.
+    """
+
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="athlete_hr_profiles",
+    )
+    athlete = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="hr_profiles",
+    )
+    hr_max = models.IntegerField(
+        default=190,
+        help_text="Max heart rate in bpm. Default: 190.",
+    )
+    hr_rest = models.IntegerField(
+        default=55,
+        help_text="Resting heart rate in bpm. Default: 55.",
+    )
+    threshold_pace_s_km = models.FloatField(
+        null=True, blank=True,
+        help_text="Anaerobic threshold pace in s/km (for rTSS fallback).",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [("organization", "athlete")]
+        verbose_name = "Athlete HR Profile"
+        verbose_name_plural = "Athlete HR Profiles"
+
+    def __str__(self):
+        return f"HRProfile(org={self.organization_id}, athlete={self.athlete_id}, hrmax={self.hr_max})"
+
+
+class ActivityLoad(models.Model):
+    """
+    TSS computed for a single CompletedActivity.
+
+    One row per CompletedActivity. Populated by services_pmc.process_activity_load().
+    Idempotent: update_or_create on completed_activity OneToOne.
+    """
+
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="activity_loads",
+    )
+    athlete = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="activity_loads",
+    )
+    completed_activity = models.OneToOneField(
+        "CompletedActivity",
+        on_delete=models.CASCADE,
+        related_name="activity_load",
+    )
+    date = models.DateField(db_index=True)
+    tss = models.FloatField(help_text="Training Stress Score for this activity.")
+    method = models.CharField(
+        max_length=30,
+        help_text="override / trimp / rtss_pace / estimated_duration",
+    )
+    calculated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["organization", "athlete", "date"]),
+        ]
+        verbose_name = "Activity Load"
+        verbose_name_plural = "Activity Loads"
+
+    def __str__(self):
+        return f"ActivityLoad(ca={self.completed_activity_id}, tss={self.tss}, method={self.method})"
+
+
+class DailyLoad(models.Model):
+    """
+    Daily PMC metrics (CTL/ATL/TSB) for a single athlete.
+
+    Populated by services_pmc.compute_pmc_from_date(). One row per (org, athlete, date).
+    Bulk-upserted on every new activity. The frontend reads this table — never computes on the fly.
+    """
+
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="daily_loads",
+    )
+    athlete = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="daily_loads",
+    )
+    date = models.DateField(db_index=True)
+    tss = models.FloatField(default=0.0, help_text="Total TSS for the day (sum of all activities).")
+    ctl = models.FloatField(default=0.0, help_text="Chronic Training Load (42-day EWA). Fitness.")
+    atl = models.FloatField(default=0.0, help_text="Acute Training Load (7-day EWA). Fatigue.")
+    tsb = models.FloatField(default=0.0, help_text="Training Stress Balance (CTL - ATL). Form/Freshness.")
+    ars = models.IntegerField(default=50, help_text="Athlete Readiness Score 0-100 derived from TSB zone.")
+    computed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [("organization", "athlete", "date")]
+        indexes = [
+            models.Index(fields=["organization", "athlete", "-date"]),
+        ]
+        verbose_name = "Daily Load"
+        verbose_name_plural = "Daily Loads"
+
+    def __str__(self):
+        return f"DailyLoad(org={self.organization_id}, athlete={self.athlete_id}, date={self.date}, tsb={self.tsb})"

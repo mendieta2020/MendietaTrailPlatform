@@ -216,6 +216,18 @@ def ingest_strava_activity(
             "is missing 'elapsed_time_s'."
         )
 
+    # --- Extract normalized biometric fields from provider payload ---
+    # These go into dedicated columns so the PMC engine (services_pmc.py)
+    # never needs to read raw_payload (Law 4 — provider boundary isolation).
+    raw = activity_data.get("raw") or {}
+    _avg_hr_raw = activity_data.get("avg_hr") or raw.get("average_heartrate")
+    _max_hr_raw = raw.get("max_heartrate")
+    _avg_watts_raw = raw.get("average_watts")
+    _avg_speed_ms = raw.get("average_speed")  # m/s from Strava
+    _avg_pace_s_km: float | None = (
+        (1000.0 / _avg_speed_ms) if _avg_speed_ms and _avg_speed_ms > 0 else None
+    )
+
     activity, created = CompletedActivity.objects.get_or_create(
         organization=organization,
         provider=CompletedActivity.Provider.STRAVA,
@@ -228,15 +240,38 @@ def ingest_strava_activity(
             "duration_s": int(elapsed_time_s),
             "distance_m": float(activity_data.get("distance_m") or 0.0),
             "elevation_gain_m": activity_data.get("elevation_m"),
+            # Normalized biometric fields (provider-agnostic)
+            "avg_hr": int(_avg_hr_raw) if _avg_hr_raw is not None else None,
+            "max_hr": int(_max_hr_raw) if _max_hr_raw is not None else None,
+            "avg_power_w": int(_avg_watts_raw) if _avg_watts_raw is not None else None,
+            "avg_pace_s_km": _avg_pace_s_km,
             "raw_payload": {
                 "provider": "strava",
                 "strava_activity_id": str(external_activity_id),
                 "calories_kcal": activity_data.get("calories_kcal"),
                 "avg_hr": activity_data.get("avg_hr"),
-                "raw": activity_data.get("raw") or {},
+                "raw": raw,
             },
         },
     )
+
+    # Dispatch PMC computation task after a new activity is persisted.
+    # Idempotent: the task itself is safe to rerun (uses update_or_create).
+    # Do NOT dispatch for duplicates — noop would just add queue noise.
+    if created:
+        try:
+            from core.tasks import compute_pmc_for_activity
+            compute_pmc_for_activity.delay(activity.pk)
+        except Exception:
+            # PMC computation is non-blocking — never fail ingestion for it.
+            logger.warning(
+                "strava.ingest.pmc_dispatch_failed",
+                extra={
+                    "event_name": "strava.ingest.pmc_dispatch_failed",
+                    "organization_id": organization.pk,
+                    "provider_activity_id": str(external_activity_id),
+                },
+            )
 
     logger.info(
         "strava.ingest.created" if created else "strava.ingest.duplicate_noop",
