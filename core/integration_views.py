@@ -99,16 +99,17 @@ class IntegrationStartView(APIView):
 
         # Resolve Alumno profile — create a minimal one on demand so that
         # coaches, owners, and admins can also connect their personal devices.
-        try:
-            alumno = Alumno.objects.get(usuario=request.user)
-        except Alumno.DoesNotExist:
-            alumno = Alumno.objects.create(
-                usuario=request.user,
-                nombre=request.user.first_name or request.user.username,
-                apellido=request.user.last_name or "",
-                email=request.user.email or None,
-                entrenador=request.user,
-            )
+        # get_or_create is race-condition-safe (handles concurrent requests).
+        alumno, created = Alumno.objects.get_or_create(
+            usuario=request.user,
+            defaults={
+                "nombre": request.user.first_name or request.user.username,
+                "apellido": request.user.last_name or "",
+                "email": request.user.email or None,
+                "entrenador": None,
+            },
+        )
+        if created:
             logger.info(
                 "oauth.start.alumno_auto_created",
                 extra={
@@ -222,6 +223,14 @@ class IntegrationStatusView(APIView):
         try:
             alumno = Alumno.objects.get(usuario=request.user)
         except Alumno.DoesNotExist:
+            logger.info(
+                "integration_status_no_alumno_profile",
+                extra={
+                    "event_name": "integration_status_no_alumno_profile",
+                    "user_id": request.user.id,
+                    "outcome": "no_alumno_profile",
+                },
+            )
             integrations = [
                 {
                     "provider": p["id"],
