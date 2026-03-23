@@ -5,7 +5,7 @@ Verifies:
 - Authenticated athletes can initiate OAuth flow
 - Unauthenticated users are rejected (401/403)
 - Invalid providers are rejected (400)
-- Coaches without Alumno profile are rejected (404)
+- Coaches/owners without Alumno profile get one auto-created and proceed normally
 - Response includes both authorization_url and oauth_url (backward compat)
 """
 import pytest
@@ -107,20 +107,22 @@ class TestIntegrationStartView:
         assert "error" in response.data
         assert response.data["error"] == "unknown_provider"
     
-    def test_start_coach_without_alumno_returns_404(self, api_client, coach_user):
+    def test_start_coach_without_alumno_auto_creates_profile(self, api_client, coach_user):
         """
         GIVEN: Authenticated coach user without Alumno profile
         WHEN: POST /api/integrations/strava/start
-        THEN: Returns 404 (athlete profile not found)
+        THEN: Alumno is auto-created and OAuth flow proceeds normally (200)
         """
         api_client.force_authenticate(user=coach_user)
-        
+        assert not Alumno.objects.filter(usuario=coach_user).exists()
+
         url = reverse('integration_start', kwargs={'provider': 'strava'})
-        response = api_client.post(url)
-        
-        assert response.status_code == status.HTTP_404_NOT_FOUND
-        assert "error" in response.data
-        assert response.data["error"] == "athlete_not_found"
+        with patch('core.integration_views.IntegrationStartView._validate_provider_config', return_value=True):
+            response = api_client.post(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert "authorization_url" in response.data
+        assert Alumno.objects.filter(usuario=coach_user).exists()
     
     def test_start_creates_valid_oauth_state(self, api_client, athlete_user):
         """

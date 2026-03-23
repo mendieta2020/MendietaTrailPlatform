@@ -214,26 +214,32 @@ class TestIntegrationStartView:
         STRAVA_CLIENT_ID="test_id",
         STRAVA_REDIRECT_URI="https://valid.example.com/callback/",
     )
-    def test_start_requires_alumno_profile(self, client):
+    def test_start_user_without_alumno_auto_creates_profile(self, client):
         """
-        GIVEN: Authenticated user WITHOUT Alumno profile
+        GIVEN: Authenticated user WITHOUT Alumno profile (coach/owner/admin)
         WHEN: POST /api/integrations/strava/start
-        THEN: Returns 404 athlete_not_found
+        THEN: Alumno is auto-created and OAuth flow proceeds (no 404)
         """
-        # Create user WITHOUT Alumno profile
+        from unittest.mock import patch
+        from core.models import Alumno
+
         user = User.objects.create_user(username="no_profile_user", password="test")
-        
+        assert not Alumno.objects.filter(usuario=user).exists()
+
         refresh = RefreshToken.for_user(user)
         access_token = str(refresh.access_token)
-        
-        response = client.post(
-            "/api/integrations/strava/start",
-            HTTP_AUTHORIZATION=f"Bearer {access_token}",
-        )
-        
-        assert response.status_code == 404
-        data = response.json()
-        assert data["error"] == "athlete_not_found"
+
+        with patch(
+            "core.integration_views.IntegrationStartView._validate_provider_config",
+            return_value=True,
+        ):
+            response = client.post(
+                "/api/integrations/strava/start",
+                HTTP_AUTHORIZATION=f"Bearer {access_token}",
+            )
+
+        assert response.status_code == 200
+        assert Alumno.objects.filter(usuario=user).exists()
 
 
 @pytest.mark.django_db
