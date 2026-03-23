@@ -469,9 +469,8 @@ class InvitationCreateView(APIView):
             "invitation_created",
             extra={
                 "organization_id": org.pk,
-                "email": email,
+                "invitation_id": invitation.pk,
                 "coach_plan_id": coach_plan.pk,
-                "token": str(invitation.token),
                 "outcome": "created",
             },
         )
@@ -774,10 +773,16 @@ class CoachPricingPlanListCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        from core.models import CoachPricingPlan
+        from core.models import CoachPricingPlan, Membership
         org = getattr(request, "auth_organization", None)
         if org is None:
             return Response({"detail": "No organization context."}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            membership = Membership.objects.get(user=request.user, organization=org)
+        except Membership.DoesNotExist:
+            return Response({"detail": "Sin acceso."}, status=status.HTTP_403_FORBIDDEN)
+        if membership.role not in ("owner", "admin"):
+            return Response({"detail": "Solo owner o admin."}, status=status.HTTP_403_FORBIDDEN)
         plans = CoachPricingPlan.objects.filter(organization=org).order_by("price_ars")
         data = [
             {
@@ -850,6 +855,12 @@ class AthleteSubscriptionListView(APIView):
         org = getattr(request, "auth_organization", None)
         if org is None:
             return Response({"detail": "No organization context."}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            membership = Membership.objects.get(user=request.user, organization=org)
+        except Membership.DoesNotExist:
+            return Response({"detail": "Sin acceso."}, status=status.HTTP_403_FORBIDDEN)
+        if membership.role not in ("owner", "admin"):
+            return Response({"detail": "Solo owner o admin."}, status=status.HTTP_403_FORBIDDEN)
 
         subscriptions = (
             AthleteSubscription.objects
