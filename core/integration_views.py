@@ -97,13 +97,25 @@ class IntegrationStartView(APIView):
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
 
-        # Validate user has Alumno profile
+        # Resolve Alumno profile — create a minimal one on demand so that
+        # coaches, owners, and admins can also connect their personal devices.
         try:
             alumno = Alumno.objects.get(usuario=request.user)
         except Alumno.DoesNotExist:
-            return Response(
-                {"error": "athlete_not_found", "message": "No athlete profile found for this user"},
-                status=status.HTTP_404_NOT_FOUND,
+            alumno = Alumno.objects.create(
+                usuario=request.user,
+                nombre=request.user.first_name or request.user.username,
+                apellido=request.user.last_name or "",
+                email=request.user.email or None,
+                entrenador=request.user,
+            )
+            logger.info(
+                "oauth.start.alumno_auto_created",
+                extra={
+                    "event_name": "oauth.start.alumno_auto_created",
+                    "user_id": request.user.id,
+                    "alumno_id": alumno.id,
+                },
             )
         
         # Build callback URI (provider-specific pattern)
@@ -204,14 +216,28 @@ class IntegrationStatusView(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        # Get athlete profile for authenticated user
+        # Get athlete profile for authenticated user.
+        # Non-athlete users (coach, owner, admin) have no Alumno yet — return all
+        # providers as unlinked so the UI shows available devices for everyone.
         try:
             alumno = Alumno.objects.get(usuario=request.user)
         except Alumno.DoesNotExist:
-            return Response(
-                {"error": "athlete_not_found", "message": "No athlete profile found for this user"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            integrations = [
+                {
+                    "provider": p["id"],
+                    "name": p["name"],
+                    "enabled": p["enabled"],
+                    "status": "unlinked",
+                    "connected": False,
+                    "athlete_id": None,
+                    "expires_at": None,
+                    "last_sync_at": None,
+                    "error_reason": None,
+                    "last_error": None,
+                }
+                for p in get_available_providers()
+            ]
+            return Response({"integrations": integrations, "athlete_id": None})
         
         # Fetch all integration statuses for this athlete
         statuses = OAuthIntegrationStatus.objects.filter(alumno=alumno)
