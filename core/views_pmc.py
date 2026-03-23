@@ -41,34 +41,40 @@ _TSB_ZONE_LABELS = {
 def _get_athlete_membership(request):
     """
     Resolve the requesting user's active athlete Membership.
+    Uses filter().first() to avoid MultipleObjectsReturned when a user
+    belongs to multiple organizations.
     Returns the Membership instance or raises 403.
     """
-    try:
-        membership = Membership.objects.select_related("organization").get(
-            user=request.user,
-            is_active=True,
-        )
-    except Membership.DoesNotExist:
-        raise PermissionDenied("No active membership found.")
-    if membership.role != Membership.Role.ATHLETE:
-        raise PermissionDenied("Only athletes can access this endpoint.")
+    membership = (
+        Membership.objects
+        .select_related("organization")
+        .filter(user=request.user, role=Membership.Role.ATHLETE, is_active=True)
+        .first()
+    )
+    if not membership:
+        raise PermissionDenied("No active athlete membership found.")
     return membership
 
 
 def _get_coach_membership(request):
     """
-    Resolve the requesting user's active coach/owner Membership.
+    Resolve the requesting user's active coach/owner/admin Membership.
+    Uses filter().first() to avoid MultipleObjectsReturned when a user
+    belongs to multiple organizations.
     Returns the Membership instance or raises 403.
     """
-    try:
-        membership = Membership.objects.select_related("organization").get(
+    membership = (
+        Membership.objects
+        .select_related("organization")
+        .filter(
             user=request.user,
+            role__in=[Membership.Role.OWNER, Membership.Role.COACH],
             is_active=True,
         )
-    except Membership.DoesNotExist:
-        raise PermissionDenied("No active membership found.")
-    if membership.role not in _COACH_ROLES:
-        raise PermissionDenied("Only coaches and owners can access this endpoint.")
+        .first()
+    )
+    if not membership:
+        raise PermissionDenied("No active coach or owner membership found.")
     return membership
 
 
@@ -90,8 +96,6 @@ def _build_pmc_payload(daily_loads_qs, days: int) -> dict:
     Build the PMC response dict from a DailyLoad queryset ordered by date.
     Computes a 'current' summary block from the most recent record.
     """
-    from core.services_pmc import compute_ars
-
     rows = list(daily_loads_qs.order_by("date").values(
         "date", "tss", "ctl", "atl", "tsb", "ars"
     ))

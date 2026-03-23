@@ -346,13 +346,15 @@ class PMCAPITenancyTests(TestCase):
         """GET /api/coach/team-readiness/ returns only athletes in coach's org."""
         # Create a second org with an unrelated athlete
         other_org, _ = _make_org("other-org2")
-        _make_athlete_user(other_org, "other_athlete2")
+        _, _, other_membership = _make_athlete_user(other_org, "other_athlete2")
 
         resp = self.coach_client.get("/api/coach/team-readiness/")
         self.assertEqual(resp.status_code, 200)
         membership_ids = [a["membership_id"] for a in resp.data["athletes"]]
-        # Only the athlete from this org should appear
+        # Own org athlete is present, cross-org athlete is absent
         self.assertIn(self.athlete_membership.pk, membership_ids)
+        self.assertEqual(len(resp.data["athletes"]), 1)
+        self.assertNotIn(other_membership.pk, membership_ids)
 
     def test_15_athlete_can_update_hr_profile(self):
         """PUT /api/athlete/hr-profile/ updates hr_max and hr_rest for the athlete."""
