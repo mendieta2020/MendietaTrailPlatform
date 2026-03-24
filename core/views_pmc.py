@@ -312,6 +312,9 @@ class CoachAthletePMCView(APIView):
             date__lte=today,
         )
         payload = _build_pmc_payload(qs, days)
+        payload["athlete_name"] = (
+            athlete_user.get_full_name() or athlete_user.username
+        )
 
         logger.info(
             "coach_athlete_pmc_view.served",
@@ -393,6 +396,7 @@ class TeamReadinessView(APIView):
 
             athletes_data.append({
                 "membership_id": membership.pk,
+                "name": membership.user.get_full_name() or membership.user.username,
                 "ctl": ctl,
                 "atl": atl,
                 "tsb": tsb,

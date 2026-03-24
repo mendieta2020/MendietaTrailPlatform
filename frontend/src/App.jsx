@@ -32,6 +32,8 @@ import AthleteDashboard from './pages/AthleteDashboard';
 import AthleteMyTraining from './pages/AthleteMyTraining';
 import AthleteProgress from './pages/AthleteProgress';
 import AthleteProfile from './pages/AthleteProfile';
+import CoachAnalytics from './pages/CoachAnalytics';
+import CoachAthletePMC from './pages/CoachAthletePMC';
 
 
 // --- DASHBOARD ROUTER: renders athlete or coach dashboard based on role ---
@@ -216,6 +218,24 @@ function App() {
             element={
               <ProtectedRoute>
                 <Finanzas />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* 10. Coach Analytics (PMC team view) */}
+          <Route
+            path="/coach/analytics"
+            element={
+              <ProtectedRoute>
+                <CoachAnalytics />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/coach/athletes/:membershipId/pmc"
+            element={
+              <ProtectedRoute>
+                <CoachAthletePMC />
               </ProtectedRoute>
             }
           />

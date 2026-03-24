@@ -17,6 +17,7 @@ import {
   Business,       // Icono para Mi Organización
   LibraryBooks as LibraryBooksIcon  // Icono para Librería
 } from '@mui/icons-material';
+import { BarChart2 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { logoutSession } from '../api/authClient';
 import client from '../api/client';
@@ -60,6 +61,7 @@ const Layout = ({ children }) => {
     { text: 'Calendario', icon: <CalendarMonth />, path: '/calendar' },
     { text: 'Grupos', icon: <Groups />, path: '/teams' },
     { text: 'Alumnos', icon: <People />, path: '/athletes' },
+    { text: 'Analytics', icon: <BarChart2 size={20} />, path: '/coach/analytics' },
     { text: 'Finanzas', icon: <Payment />, path: '/finance', adminOnly: true },
     { text: 'Conexiones', icon: <LinkIcon />, path: '/connections' }, // <--- NUEVA OPCIÓN
   ];
