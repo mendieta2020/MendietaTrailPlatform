@@ -51,10 +51,11 @@ from core.views_p1 import (  # PR-115/116/117/119/128/X4/149/PR-128-real-pmc/PR-
     WorkoutIntervalViewSet,
     WorkoutLibraryViewSet,
 )
-from core.views_pmc import (  # PR-128a
+from core.views_pmc import (  # PR-128a / PR-145a
     AthletePMCView,
     AthleteHRProfileView,
     CoachAthletePMCView,
+    PaceZonesView,
     TeamReadinessView,
 )
 from core.views_athlete import (  # PR-139 / PR-141
@@ -181,6 +182,7 @@ urlpatterns = [
     # PR-128a: PMC endpoints (athlete self-service + coach views)
     path('athlete/pmc/', AthletePMCView.as_view(), name='athlete-pmc'),
     path('athlete/hr-profile/', AthleteHRProfileView.as_view(), name='athlete-hr-profile'),
+    path('athlete/pace-zones/', PaceZonesView.as_view(), name='athlete-pace-zones'),
     path('coach/athletes/<int:membership_id>/pmc/', CoachAthletePMCView.as_view(), name='coach-athlete-pmc'),
     path('coach/team-readiness/', TeamReadinessView.as_view(), name='coach-team-readiness'),
 
