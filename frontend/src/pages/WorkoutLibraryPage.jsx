@@ -546,32 +546,6 @@ export default function WorkoutLibraryPage() {
                   ))}
                 </Box>
 
-                {/* Difficulty filter pills */}
-                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'nowrap', overflow: 'auto' }}>
-                  {[
-                    { value: 'ALL', label: 'Todas' },
-                    { value: 'easy', label: '🟢 Fácil' },
-                    { value: 'moderate', label: '🟡 Moderado' },
-                    { value: 'hard', label: '🟠 Difícil' },
-                    { value: 'very_hard', label: '🔴 Muy difícil' },
-                  ].map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => setDifficultyFilter(opt.value)}
-                      style={{
-                        padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
-                        cursor: 'pointer', border: '1px solid',
-                        whiteSpace: 'nowrap',
-                        background: difficultyFilter === opt.value ? '#f0fdf4' : 'white',
-                        borderColor: difficultyFilter === opt.value ? '#22c55e' : '#e2e8f0',
-                        color: difficultyFilter === opt.value ? '#16a34a' : '#64748b',
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </Box>
-
                 {/* Sort */}
                 <select
                   value={sortBy}
@@ -613,6 +587,9 @@ export default function WorkoutLibraryPage() {
                   </Typography>
                   <Typography variant="caption" sx={{ width: 108, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, color: 'text.disabled' }}>
                     Zonas
+                  </Typography>
+                  <Typography variant="caption" sx={{ width: 90, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, color: 'text.disabled' }}>
+                    Dificultad
                   </Typography>
                   <Typography variant="caption" sx={{ width: 80, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, color: 'text.disabled', textAlign: 'right' }}>
                     Duración
@@ -689,10 +666,7 @@ export default function WorkoutLibraryPage() {
 
                             {/* Name + meta */}
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>{w.name}</span>
-                                {w.difficulty && <DifficultyChip value={w.difficulty} />}
-                              </div>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>{w.name}</span>
                               <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
                                 {[
                                   SPORT_CONFIG[sportKey]?.label,
@@ -704,9 +678,14 @@ export default function WorkoutLibraryPage() {
                               </div>
                             </div>
 
-                            {/* Zone preview bar — real zone distribution from blocks */}
+                            {/* Zone preview bar */}
                             <div style={{ width: 108, flexShrink: 0 }}>
                               <ZonePreviewBar workout={w} />
+                            </div>
+
+                            {/* Difficulty column */}
+                            <div style={{ width: 90, flexShrink: 0 }}>
+                              {w.difficulty ? <DifficultyChip value={w.difficulty} /> : <span style={{ fontSize: 11, color: '#cbd5e1' }}>—</span>}
                             </div>
 
                             {/* Duration */}

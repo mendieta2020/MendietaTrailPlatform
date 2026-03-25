@@ -881,7 +881,8 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
         const stepMeta = STEP_TYPE_MAP[block.block_type] ?? STEP_TYPES[1];
         const blockPayload = {
           name: block.name.trim() || stepMeta.label,
-          block_type: block.block_type,
+          block_type: ['warmup', 'main', 'cooldown', 'drill', 'strength', 'custom'].includes(block.block_type)
+            ? block.block_type : 'custom',
           order_index: block.order_index,
           repetitions: Number(block.repetitions) || 1,
         };

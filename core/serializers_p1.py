@@ -307,6 +307,10 @@ class WorkoutLibrarySerializer(serializers.ModelSerializer):
         source="created_by",
         read_only=True,
     )
+    workout_count = serializers.SerializerMethodField()
+
+    def get_workout_count(self, obj):
+        return obj.planned_workouts.count()
 
     class Meta:
         model = WorkoutLibrary
@@ -316,10 +320,11 @@ class WorkoutLibrarySerializer(serializers.ModelSerializer):
             "description",
             "is_public",
             "created_by_id",
+            "workout_count",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_by_id", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_by_id", "workout_count", "created_at", "updated_at"]
 
 
 class PlannedWorkoutWriteSerializer(serializers.ModelSerializer):
