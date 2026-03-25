@@ -80,6 +80,7 @@ const emptyInterval = () => ({
   description: '',
   step_type: 'main',
   measure: 'tiempo',
+  obj_unit: 'seg',        // UI unit: 'seg'|'min'|'m'|'km'|'rep'
   duration_seconds: '',
   distance_meters: '',
   zone: '',
@@ -130,18 +131,22 @@ function workoutToFormState(workout) {
     session_type: workout.session_type ?? 'other',
   };
   const blocks = (workout.blocks ?? []).map((b, bIdx) => {
-    const intervals = (b.intervals ?? []).map((iv) => ({
-      description: iv.description ?? '',
-      step_type: 'main',
-      measure: inferMeasure(iv),
-      duration_seconds: iv.duration_seconds != null ? String(iv.duration_seconds) : '',
-      distance_meters: iv.distance_meters != null ? String(iv.distance_meters) : '',
-      zone: inferZone(iv),
-      metric_type: iv.metric_type ?? 'free',
-      target_label: iv.target_label ?? '',
-      recovery_seconds: iv.recovery_seconds != null ? String(iv.recovery_seconds) : '',
-      repetitions: iv.repetitions ?? 1,
-    }));
+    const intervals = (b.intervals ?? []).map((iv) => {
+      const m = inferMeasure(iv);
+      return {
+        description: iv.description ?? '',
+        step_type: 'main',
+        measure: m,
+        obj_unit: m === 'distancia' ? 'm' : 'seg',
+        duration_seconds: iv.duration_seconds != null ? String(iv.duration_seconds) : '',
+        distance_meters: iv.distance_meters != null ? String(iv.distance_meters) : '',
+        zone: inferZone(iv),
+        metric_type: iv.metric_type ?? 'free',
+        target_label: iv.target_label ?? '',
+        recovery_seconds: iv.recovery_seconds != null ? String(iv.recovery_seconds) : '',
+        repetitions: iv.repetitions ?? 1,
+      };
+    });
     const reps = b.repetitions ?? 1;
     return {
       id: b.id,
@@ -283,10 +288,10 @@ function IntensityHistogram({ blocks, paceZones }) {
           return (
             <div key={z.value} className="flex items-center gap-2">
               {/* Zone label */}
-              <div className="flex items-center gap-1 flex-shrink-0" style={{ width: 108 }}>
+              <div className="flex items-center gap-1 flex-shrink-0" style={{ width: 126 }}>
                 <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: z.color }} />
                 <span className="text-xs font-bold flex-shrink-0" style={{ color: z.color }}>{z.label}</span>
-                <span className="text-xs text-slate-500 truncate">{z.name}</span>
+                <span className="text-xs text-slate-500">{z.name}</span>
               </div>
               {/* Bar track */}
               <div className="flex-1 bg-slate-100 rounded-full overflow-hidden" style={{ height: 14 }}>
@@ -410,8 +415,8 @@ function ZonePills({ selected, onChange, paceZones }) {
               onClick={() => onChange(isActive ? '' : z.value)}
               className="rounded text-xs font-bold transition-all flex-shrink-0"
               style={{
-                width: 26,
-                height: 22,
+                width: 34,
+                height: 32,
                 ...(isActive
                   ? { backgroundColor: z.color, color: 'white', boxShadow: `0 0 0 2px ${z.color}30` }
                   : { backgroundColor: '#f1f5f9', color: '#94a3b8' }),
@@ -428,54 +433,113 @@ function ZonePills({ selected, onChange, paceZones }) {
 
 // ── MeasureInput ──────────────────────────────────────────────────────────────
 
+const UNIT_OPTS = [
+  { u: 'seg', label: 's' },
+  { u: 'min', label: 'm' },
+  { u: 'm',   label: 'm' },
+  { u: 'km',  label: 'km' },
+  { u: 'rep', label: 'r' },
+];
+
 function MeasureInput({ iv, set }) {
+  const unit = iv.obj_unit || (iv.measure === 'distancia' ? 'm' : 'seg');
+
+  // Compute display value in the chosen unit
+  let displayVal = '';
+  if (unit === 'seg') displayVal = iv.duration_seconds || '';
+  else if (unit === 'min') {
+    const s = Number(iv.duration_seconds);
+    displayVal = s > 0 ? String(Math.round((s / 60) * 10) / 10) : '';
+  } else if (unit === 'm') displayVal = iv.distance_meters || '';
+  else if (unit === 'km') {
+    const m = Number(iv.distance_meters);
+    displayVal = m > 0 ? String(m / 1000) : '';
+  } else if (unit === 'rep') displayVal = iv.repetitions > 1 ? String(iv.repetitions) : '';
+
+  const handleChange = (val) => {
+    if (unit === 'seg') set('duration_seconds', val);
+    else if (unit === 'min') set('duration_seconds', String(Math.round(Number(val) * 60)));
+    else if (unit === 'm') set('distance_meters', val);
+    else if (unit === 'km') set('distance_meters', String(Math.round(Number(val) * 1000)));
+    else if (unit === 'rep') set('repetitions', Number(val) || 1);
+  };
+
+  const handleUnitChange = (u) => {
+    set('obj_unit', u);
+    if (u === 'seg' || u === 'min') {
+      set('measure', 'tiempo');
+      set('distance_meters', '');
+    } else if (u === 'm' || u === 'km') {
+      set('measure', 'distancia');
+      set('duration_seconds', '');
+    } else if (u === 'rep') {
+      set('measure', 'rep');
+      set('duration_seconds', '');
+      set('distance_meters', '');
+    }
+  };
+
+  // Unit groups: time | distance | rep — show group dividers
+  const timeUnits = ['seg', 'min'];
+  const distUnits = ['m', 'km'];
+
   return (
-    <div className="flex items-center gap-1.5 flex-shrink-0">
-      {/* ⏱ / 📏 toggle */}
-      <div className="flex rounded-md overflow-hidden border border-slate-200 flex-shrink-0">
+    <div className="flex items-center gap-1 flex-shrink-0">
+      {/* Number input */}
+      <input
+        type="number" min={0}
+        value={displayVal}
+        onChange={(e) => handleChange(e.target.value)}
+        placeholder="—"
+        className="text-center text-xs font-semibold border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:border-amber-400"
+        style={{ width: 52, height: 28 }}
+      />
+      {/* Unit pills grouped */}
+      <div className="flex items-center rounded border border-slate-200 overflow-hidden flex-shrink-0">
+        {timeUnits.map((u, i) => (
+          <button
+            key={u}
+            onClick={() => handleUnitChange(u)}
+            title={u === 'seg' ? 'Segundos' : 'Minutos'}
+            className={`text-xs font-medium transition-colors${i > 0 ? ' border-l border-slate-200' : ''}`}
+            style={{
+              height: 28, minWidth: 22, paddingLeft: 4, paddingRight: 4,
+              ...(unit === u
+                ? { background: '#f59e0b', color: 'white' }
+                : { background: 'white', color: '#94a3b8' }),
+            }}
+          >{u}</button>
+        ))}
+        {/* divider between time and distance groups */}
+        <div style={{ width: 1, height: 28, background: '#cbd5e1', flexShrink: 0 }} />
+        {distUnits.map((u) => (
+          <button
+            key={u}
+            onClick={() => handleUnitChange(u)}
+            title={u === 'm' ? 'Metros' : 'Kilómetros'}
+            className="text-xs font-medium transition-colors border-l border-slate-200"
+            style={{
+              height: 28, minWidth: u === 'km' ? 26 : 22, paddingLeft: 3, paddingRight: 3,
+              ...(unit === u
+                ? { background: '#f59e0b', color: 'white' }
+                : { background: 'white', color: '#94a3b8' }),
+            }}
+          >{u}</button>
+        ))}
+        {/* divider before rep */}
+        <div style={{ width: 1, height: 28, background: '#cbd5e1', flexShrink: 0 }} />
         <button
-          className="px-1.5 py-1 text-xs transition-colors"
-          style={iv.measure === 'tiempo'
-            ? { background: '#f59e0b', color: 'white' }
-            : { background: 'white', color: '#94a3b8' }}
-          onClick={() => { set('measure', 'tiempo'); set('distance_meters', ''); }}
-          title="Por tiempo"
-        >⏱</button>
-        <button
-          className="px-1.5 py-1 text-xs border-l border-slate-200 transition-colors"
-          style={iv.measure === 'distancia'
-            ? { background: '#f59e0b', color: 'white' }
-            : { background: 'white', color: '#94a3b8' }}
-          onClick={() => { set('measure', 'distancia'); set('duration_seconds', ''); }}
-          title="Por distancia"
-        >📏</button>
+          onClick={() => handleUnitChange('rep')}
+          title="Repeticiones"
+          className="text-xs font-medium transition-colors border-l border-slate-200"
+          style={{
+            height: 28, minWidth: 24, paddingLeft: 4, paddingRight: 4,
+            ...(unit === 'rep'
+              ? { background: '#f59e0b', color: 'white' }
+              : { background: 'white', color: '#94a3b8' }),
+          }}
+        >rep</button>
       </div>
-      {/* Value */}
-      {iv.measure === 'tiempo' ? (
-        <div className="flex items-center gap-0.5">
-          <input
-            type="number" min={0}
-            value={iv.duration_seconds}
-            onChange={(e) => set('duration_seconds', e.target.value)}
-            placeholder="—"
-            className="text-center text-xs font-semibold border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:border-amber-400"
-            style={{ width: 52, height: 26 }}
-          />
-          <span className="text-xs text-slate-400">s</span>
-        </div>
-      ) : (
-        <div className="flex items-center gap-0.5">
-          <input
-            type="number" min={0}
-            value={iv.distance_meters}
-            onChange={(e) => set('distance_meters', e.target.value)}
-            placeholder="—"
-            className="text-center text-xs font-semibold border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:border-amber-400"
-            style={{ width: 60, height: 26 }}
-          />
-          <span className="text-xs text-slate-400">m</span>
-        </div>
-      )}
     </div>
   );
 }
@@ -484,9 +548,15 @@ function MeasureInput({ iv, set }) {
 
 function RecoveryInput({ value, onChange }) {
   const num = Number(value);
-  const fmt = value && num > 0
-    ? (num >= 60 ? `${Math.floor(num / 60)}m${num % 60 > 0 ? `${num % 60}s` : ''}` : `${num}s`)
-    : null;
+  // Auto-format: show "45 seg" for <60s, "1.5 min" for ≥60s
+  let fmt = null;
+  if (value && num > 0) {
+    if (num < 60) fmt = `${num} seg`;
+    else {
+      const mins = num / 60;
+      fmt = Number.isInteger(mins) ? `${mins} min` : `${Math.round(mins * 10) / 10} min`;
+    }
+  }
   return (
     <div className="flex items-center gap-1 flex-shrink-0" title="Recuperación (segundos)">
       <input
@@ -497,7 +567,7 @@ function RecoveryInput({ value, onChange }) {
         className="text-center text-xs font-semibold border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:border-amber-400"
         style={{ width: 44, height: 26 }}
       />
-      <span className="text-xs text-slate-400" style={{ minWidth: 28 }}>
+      <span className="text-xs text-slate-400" style={{ minWidth: 40, whiteSpace: 'nowrap' }}>
         {fmt ?? 'rec'}
       </span>
     </div>
@@ -617,13 +687,13 @@ function SubStepRow({ iv, iIdx, bIdx, isOnly, paceZones, onSetValue, onRemove })
 
   return (
     <div
-      className="group flex items-center gap-2 pr-3 py-1.5 hover:bg-purple-50 transition-colors border-b border-purple-100"
+      className="group flex items-center gap-2 pr-3 py-1.5 hover:bg-amber-50 transition-colors border-b border-amber-100"
       style={{
-        paddingLeft: 36,
-        borderLeft: `3px solid ${zoneColor ?? '#e9d5ff'}`,
+        paddingLeft: 48,
+        borderLeft: `3px solid ${zoneColor ?? '#fed7aa'}`,
       }}
     >
-      <span className="text-xs font-bold text-purple-400 flex-shrink-0 text-center" style={{ width: 18 }}>
+      <span className="text-xs font-bold text-amber-500 flex-shrink-0 text-center" style={{ width: 18 }}>
         {letters[iIdx] ?? iIdx + 1}
       </span>
 
@@ -672,22 +742,22 @@ function RepeatedBlockHeader({ block, bIdx, isFirst, isLast, onSetBlock, onMove,
   const setBlock = (key, val) => onSetBlock(bIdx, key, val);
   return (
     <div
-      className="group flex items-center gap-2 px-3 py-2 border-b border-purple-200 transition-colors"
-      style={{ background: '#faf5ff', borderLeft: '3px solid #8b5cf6' }}
+      className="group flex items-center gap-2 px-3 py-2 border-b border-amber-200 transition-colors"
+      style={{ background: '#fffbeb', borderLeft: '3px solid #f59e0b' }}
     >
-      <DragHandleIcon sx={{ color: '#a78bfa', fontSize: 16, cursor: 'grab', flexShrink: 0 }} />
+      <DragHandleIcon sx={{ color: '#fbbf24', fontSize: 16, cursor: 'grab', flexShrink: 0 }} />
 
-      <RepeatIcon sx={{ color: '#7c3aed', fontSize: 16, flexShrink: 0 }} />
+      <RepeatIcon sx={{ color: '#d97706', fontSize: 16, flexShrink: 0 }} />
 
       <div className="flex items-center gap-1 flex-shrink-0">
         <input
           type="number" min={2} max={50}
           value={block.repetitions}
           onChange={(e) => setBlock('repetitions', e.target.value)}
-          className="text-center text-xs font-bold border border-purple-300 rounded-md bg-white text-purple-700 focus:outline-none focus:ring-1 focus:border-purple-500"
+          className="text-center text-xs font-bold border border-amber-300 rounded-md bg-white text-amber-700 focus:outline-none focus:ring-1 focus:border-amber-500"
           style={{ width: 38, height: 26 }}
         />
-        <span className="text-xs font-bold text-purple-700">×</span>
+        <span className="text-xs font-bold text-amber-700">×</span>
       </div>
 
       <input
@@ -695,15 +765,15 @@ function RepeatedBlockHeader({ block, bIdx, isFirst, isLast, onSetBlock, onMove,
         value={block.name}
         onChange={(e) => setBlock('name', e.target.value)}
         placeholder="Nombre del bloque (ej: Intervalos 4×1km)…"
-        className="flex-1 min-w-0 px-2 text-sm font-semibold text-purple-800 placeholder-purple-300 bg-transparent border border-transparent rounded-md focus:outline-none focus:border-purple-300 focus:bg-white transition-colors"
+        className="flex-1 min-w-0 px-2 text-sm font-semibold text-amber-800 placeholder-amber-300 bg-transparent border border-transparent rounded-md focus:outline-none focus:border-amber-300 focus:bg-white transition-colors"
         style={{ height: 28 }}
       />
 
       <Tooltip title="Agregar sub-paso">
         <button
           onClick={() => onAddInterval(bIdx)}
-          className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-purple-600 hover:bg-purple-200 transition-colors flex-shrink-0"
-          style={{ background: '#ede9fe' }}
+          className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-amber-700 hover:bg-amber-200 transition-colors flex-shrink-0"
+          style={{ background: '#fef3c7' }}
         >
           <AddIcon sx={{ fontSize: 13 }} />
           paso
