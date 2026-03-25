@@ -6,3 +6,19 @@
  * sin sobreescribir los estilos base de Material UI.
  */
 @import "tailwindcss/utilities";
+
+/*
+ * MUI fieldset/legend protection
+ * Tailwind utilities can override fieldset padding and legend display,
+ * which breaks the MUI outlined TextField "notch" (the gap behind the floating label).
+ * These rules restore the correct behavior.
+ */
+fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+legend {
+  padding: 0;
+}

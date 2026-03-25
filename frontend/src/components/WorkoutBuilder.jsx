@@ -401,32 +401,31 @@ function StepTypeButton({ value, onChange }) {
 // ── ZonePills ─────────────────────────────────────────────────────────────────
 
 function ZonePills({ selected, onChange, paceZones }) {
+  const activeZone = ZONES.find((z) => z.value === selected);
+  const zData = selected && paceZones?.zones?.[selected];
   return (
-    <div className="flex items-center gap-0.5 flex-shrink-0">
-      {ZONES.map((z) => {
-        const isActive = selected === z.value;
-        const zData = z.value ? paceZones?.zones?.[z.value] : null;
-        const tip = z.value
-          ? `${z.label} · ${z.name}${zData ? ` · ${zData.pace_min}–${zData.pace_max}` : ''}`
-          : 'Sin zona';
-        return (
-          <Tooltip key={z.value || 'free'} title={tip} arrow placement="top">
-            <button
-              onClick={() => onChange(isActive ? '' : z.value)}
-              className="rounded text-xs font-bold transition-all flex-shrink-0"
-              style={{
-                width: 34,
-                height: 32,
-                ...(isActive
-                  ? { backgroundColor: z.color, color: 'white', boxShadow: `0 0 0 2px ${z.color}30` }
-                  : { backgroundColor: '#f1f5f9', color: '#94a3b8' }),
-              }}
-            >
-              {z.value || '—'}
-            </button>
-          </Tooltip>
-        );
-      })}
+    <div className="flex items-center gap-1 flex-shrink-0" style={{ minWidth: 130 }}>
+      <select
+        value={selected || ''}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          height: 28, borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+          border: `1px solid ${activeZone ? activeZone.color + '80' : '#e2e8f0'}`,
+          background: activeZone ? activeZone.color + '18' : 'white',
+          color: activeZone ? activeZone.color : '#94a3b8',
+          paddingLeft: 6, paddingRight: 4, outline: 'none', flex: 1,
+        }}
+      >
+        <option value="">Sin zona</option>
+        {ZONES.filter((z) => z.value).map((z) => (
+          <option key={z.value} value={z.value}>{z.label} {z.name}</option>
+        ))}
+      </select>
+      {zData && (
+        <span style={{ fontSize: 10, color: '#64748b', whiteSpace: 'nowrap' }}>
+          {zData.pace_min}–{zData.pace_max}
+        </span>
+      )}
     </div>
   );
 }
@@ -434,17 +433,16 @@ function ZonePills({ selected, onChange, paceZones }) {
 // ── MeasureInput ──────────────────────────────────────────────────────────────
 
 const UNIT_OPTS = [
-  { u: 'seg', label: 's' },
-  { u: 'min', label: 'm' },
+  { u: 'seg', label: 'seg' },
+  { u: 'min', label: 'min' },
   { u: 'm',   label: 'm' },
   { u: 'km',  label: 'km' },
-  { u: 'rep', label: 'r' },
+  { u: 'rep', label: 'rep' },
 ];
 
 function MeasureInput({ iv, set }) {
   const unit = iv.obj_unit || (iv.measure === 'distancia' ? 'm' : 'seg');
 
-  // Compute display value in the chosen unit
   let displayVal = '';
   if (unit === 'seg') displayVal = iv.duration_seconds || '';
   else if (unit === 'min') {
@@ -479,67 +477,29 @@ function MeasureInput({ iv, set }) {
     }
   };
 
-  // Unit groups: time | distance | rep — show group dividers
-  const timeUnits = ['seg', 'min'];
-  const distUnits = ['m', 'km'];
-
   return (
     <div className="flex items-center gap-1 flex-shrink-0">
-      {/* Number input */}
       <input
         type="number" min={0}
         value={displayVal}
         onChange={(e) => handleChange(e.target.value)}
         placeholder="—"
         className="text-center text-xs font-semibold border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:border-amber-400"
-        style={{ width: 52, height: 28 }}
+        style={{ width: 54, height: 28 }}
       />
-      {/* Unit pills grouped */}
-      <div className="flex items-center rounded border border-slate-200 overflow-hidden flex-shrink-0">
-        {timeUnits.map((u, i) => (
-          <button
-            key={u}
-            onClick={() => handleUnitChange(u)}
-            title={u === 'seg' ? 'Segundos' : 'Minutos'}
-            className={`text-xs font-medium transition-colors${i > 0 ? ' border-l border-slate-200' : ''}`}
-            style={{
-              height: 28, minWidth: 22, paddingLeft: 4, paddingRight: 4,
-              ...(unit === u
-                ? { background: '#f59e0b', color: 'white' }
-                : { background: 'white', color: '#94a3b8' }),
-            }}
-          >{u}</button>
+      <select
+        value={unit}
+        onChange={(e) => handleUnitChange(e.target.value)}
+        style={{
+          height: 28, borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+          border: '1px solid #e2e8f0', background: '#f8fafc', color: '#475569',
+          paddingLeft: 4, paddingRight: 2, outline: 'none', width: 52,
+        }}
+      >
+        {UNIT_OPTS.map(({ u, label }) => (
+          <option key={u} value={u}>{label}</option>
         ))}
-        {/* divider between time and distance groups */}
-        <div style={{ width: 1, height: 28, background: '#cbd5e1', flexShrink: 0 }} />
-        {distUnits.map((u) => (
-          <button
-            key={u}
-            onClick={() => handleUnitChange(u)}
-            title={u === 'm' ? 'Metros' : 'Kilómetros'}
-            className="text-xs font-medium transition-colors border-l border-slate-200"
-            style={{
-              height: 28, minWidth: u === 'km' ? 26 : 22, paddingLeft: 3, paddingRight: 3,
-              ...(unit === u
-                ? { background: '#f59e0b', color: 'white' }
-                : { background: 'white', color: '#94a3b8' }),
-            }}
-          >{u}</button>
-        ))}
-        {/* divider before rep */}
-        <div style={{ width: 1, height: 28, background: '#cbd5e1', flexShrink: 0 }} />
-        <button
-          onClick={() => handleUnitChange('rep')}
-          title="Repeticiones"
-          className="text-xs font-medium transition-colors border-l border-slate-200"
-          style={{
-            height: 28, minWidth: 24, paddingLeft: 4, paddingRight: 4,
-            ...(unit === 'rep'
-              ? { background: '#f59e0b', color: 'white' }
-              : { background: 'white', color: '#94a3b8' }),
-          }}
-        >rep</button>
-      </div>
+      </select>
     </div>
   );
 }
@@ -1011,11 +971,12 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                 <TextField
                   label="Notas para el atleta"
                   value={form.description} onChange={setField('description')}
-                  fullWidth size="small" multiline rows={2}
-                  placeholder="Objetivo del entrenamiento, instrucciones adicionales…"
+                  fullWidth size="small" multiline minRows={3} maxRows={10}
+                  placeholder="Objetivo del entrenamiento, instrucciones adicionales para el atleta…"
                   sx={{
                     '& .MuiOutlinedInput-root': { borderRadius: '8px', bgcolor: 'white' },
                     '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: '#f59e0b' },
+                    '& textarea': { resize: 'vertical', minHeight: 60 },
                   }}
                 />
                 {/* Totals */}

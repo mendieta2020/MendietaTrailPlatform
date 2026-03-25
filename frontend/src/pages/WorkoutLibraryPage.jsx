@@ -311,7 +311,7 @@ export default function WorkoutLibraryPage() {
       list = list.filter((w) => w.name?.toLowerCase().includes(q) || w.description?.toLowerCase().includes(q));
     }
     if (sportFilter !== 'ALL') {
-      list = list.filter((w) => w.sport_type === sportFilter || w.discipline === sportFilter);
+      list = list.filter((w) => (w.discipline ?? w.sport_type ?? '').toUpperCase() === sportFilter);
     }
     if (sortBy === 'az') list.sort((a, b) => a.name.localeCompare(b.name));
     else if (sortBy === 'duration') list.sort((a, b) => (b.estimated_duration_minutes ?? 0) - (a.estimated_duration_minutes ?? 0));
@@ -621,10 +621,11 @@ export default function WorkoutLibraryPage() {
               ) : (
                 <List disablePadding>
                   {filteredWorkouts.map((w, idx) => {
-                    const sportKey = w.sport_type ?? w.discipline;
-                    const dur = fmtDuration(w.estimated_duration_minutes);
-                    const dist = w.estimated_distance_km ? `${w.estimated_distance_km} km` : null;
-                    const sessionKey = w.session_type ?? '';
+                    const sportKey = (w.discipline ?? w.sport_type ?? '').toUpperCase();
+                    const dur = fmtDuration(w.estimated_duration_seconds ? Math.round(w.estimated_duration_seconds / 60) : null);
+                    const distKm = w.estimated_distance_meters ? +(w.estimated_distance_meters / 1000).toFixed(2) : null;
+                    const dist = distKm ? `${distKm} km` : null;
+                    const sessionKey = (w.session_type ?? '').toUpperCase();
                     return (
                       <React.Fragment key={w.id}>
                         {idx > 0 && <Divider component="li" />}
