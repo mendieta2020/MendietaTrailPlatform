@@ -2067,12 +2067,14 @@ class WorkoutBlock(models.Model):
     """
 
     class BlockType(models.TextChoices):
-        WARMUP = "warmup", "Warm-Up"
-        MAIN = "main", "Main Set"
-        COOLDOWN = "cooldown", "Cool-Down"
-        DRILL = "drill", "Drill"
-        STRENGTH = "strength", "Strength"
-        CUSTOM = "custom", "Custom"
+        WARMUP        = "warmup",        "Warm-Up"
+        MAIN          = "main",          "Main Set"
+        COOLDOWN      = "cooldown",      "Cool-Down"
+        DRILL         = "drill",         "Drill"
+        STRENGTH      = "strength",      "Strength"
+        CUSTOM        = "custom",        "Custom"
+        RECOVERY_STEP = "recovery_step", "Recuperación"
+        FREE          = "free",          "Libre"
 
     planned_workout = models.ForeignKey(
         "PlannedWorkout",

@@ -128,6 +128,12 @@ const SPORT_FILTER_OPTS = [
   { value: 'STRENGTH', label: '💪 Fuerza' },
 ];
 
+const SESSION_TYPE_LABEL = {
+  base: 'Fondo', threshold: 'Tempo', interval: 'Intervalos',
+  recovery: 'Recuperación', long: 'Largo', strength: 'Fuerza',
+  race_simulation: 'Test', other: 'Libre', free: 'Libre',
+};
+
 export default function WorkoutLibraryPage() {
   const { activeOrg, orgLoading } = useOrg();
   const orgId = activeOrg?.org_id;
@@ -239,6 +245,7 @@ export default function WorkoutLibraryPage() {
     try {
       await deletePlannedWorkout(orgId, selectedLibId, workoutId);
       setWorkouts((prev) => prev.filter((w) => w.id !== workoutId));
+      fetchLibraries(); // refresh sidebar counts
       toast('Entrenamiento eliminado.');
     } catch {
       toast('Error al eliminar el entrenamiento.', 'error');
@@ -247,6 +254,7 @@ export default function WorkoutLibraryPage() {
 
   const handleWorkoutSaved = (workout) => {
     setWorkouts((prev) => [workout, ...prev]);
+    fetchLibraries(); // refresh sidebar counts
     toast('Entrenamiento creado correctamente.');
   };
 
@@ -305,6 +313,7 @@ export default function WorkoutLibraryPage() {
       }
 
       setWorkouts((prev) => [newWorkoutRes.data, ...prev]);
+      fetchLibraries(); // refresh sidebar counts
       toast('Entrenamiento duplicado correctamente.');
     } catch {
       toast('Error al duplicar el entrenamiento.', 'error');
@@ -609,22 +618,70 @@ export default function WorkoutLibraryPage() {
               ) : workouts.length === 0 ? (
                 /* Empty state — no workouts in folder */
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, py: 10, textAlign: 'center', px: 4 }}>
-                  <Dumbbell className="w-12 h-12 mb-4" style={{ color: '#cbd5e1' }} />
-                  <Typography variant="h6" fontWeight={600} color="text.secondary" gutterBottom>
-                    Carpeta vacía
+                  {/* Icon cluster */}
+                  <Box sx={{ position: 'relative', mb: 3 }}>
+                    <Box sx={{
+                      width: 72, height: 72, borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #fff7ed 0%, #fef3c7 100%)',
+                      border: '2px solid #fed7aa',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 32,
+                    }}>
+                      🏋️
+                    </Box>
+                    <Box sx={{
+                      position: 'absolute', bottom: -4, right: -4,
+                      width: 28, height: 28, borderRadius: '50%',
+                      background: '#f59e0b',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 14, border: '2px solid white',
+                    }}>
+                      ✚
+                    </Box>
+                  </Box>
+
+                  <Typography variant="h6" fontWeight={700} color="text.primary" gutterBottom>
+                    Esta carpeta está vacía
                   </Typography>
-                  <Typography variant="body2" color="text.disabled" sx={{ mb: 3 }}>
-                    Agrega el primer entrenamiento a esta librería.
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, maxWidth: 300 }}>
+                    Diseñá tu primer entrenamiento estructurado. Cuanto más específico, mejor los resultados del atleta.
                   </Typography>
-                  <button
+                  <Typography variant="caption" color="text.disabled" sx={{ mb: 3.5 }}>
+                    Zonas · Bloques · TSS · Perfil de intensidad
+                  </Typography>
+
+                  <Button
+                    variant="contained"
+                    size="medium"
+                    startIcon={<AddIcon />}
                     onClick={() => { setEditWorkout(null); setBuilderOpen(true); }}
-                    className="px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors"
-                    style={{ background: '#f59e0b' }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = '#d97706')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = '#f59e0b')}
+                    sx={{
+                      bgcolor: '#f59e0b', '&:hover': { bgcolor: '#d97706' },
+                      textTransform: 'none', fontWeight: 700, borderRadius: 2,
+                      px: 3, boxShadow: '0 4px 14px rgba(245,158,11,0.35)',
+                    }}
                   >
                     Crear primer entrenamiento
-                  </button>
+                  </Button>
+
+                  {/* Tips row */}
+                  <Box sx={{ display: 'flex', gap: 2, mt: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
+                    {[
+                      { emoji: '🏔', label: 'Trail Running' },
+                      { emoji: '🚴', label: 'Ciclismo' },
+                      { emoji: '💪', label: 'Fuerza' },
+                      { emoji: '🏃', label: 'Running' },
+                    ].map((t) => (
+                      <Box key={t.label} sx={{
+                        display: 'flex', alignItems: 'center', gap: 0.75,
+                        px: 1.5, py: 0.75, borderRadius: 20,
+                        background: '#f8fafc', border: '1px solid #e2e8f0',
+                        fontSize: 12, color: '#64748b', fontWeight: 500,
+                      }}>
+                        <span>{t.emoji}</span> {t.label}
+                      </Box>
+                    ))}
+                  </Box>
                 </Box>
               ) : filteredWorkouts.length === 0 ? (
                 /* Empty state — search/filter no results */
@@ -670,7 +727,7 @@ export default function WorkoutLibraryPage() {
                               <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
                                 {[
                                   SPORT_CONFIG[sportKey]?.label,
-                                  w.session_type,
+                                  SESSION_TYPE_LABEL[w.session_type] ?? w.session_type,
                                   (w.elevation_gain_min_m || w.elevation_gain_max_m)
                                     ? `D+ ${w.elevation_gain_min_m ?? '?'}–${w.elevation_gain_max_m ?? '?'}m`
                                     : null,

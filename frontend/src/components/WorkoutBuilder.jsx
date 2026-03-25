@@ -354,6 +354,122 @@ function IntensityHistogram({ blocks, paceZones }) {
   );
 }
 
+// ── WorkoutProfileChart ────────────────────────────────────────────────────────
+// Sequential step-chart: X=time, Y=zone intensity level, colored by zone.
+// Shows the "shape" of the workout — when to push hard, when to recover.
+
+const ZONE_HEIGHT_PCT = { Z1: 14, Z2: 30, Z3: 52, Z4: 74, Z5: 95 };
+const ZONE_COLORS_MAP = { Z1: '#3b82f6', Z2: '#22c55e', Z3: '#f59e0b', Z4: '#f97316', Z5: '#ef4444' };
+
+function WorkoutProfileChart({ blocks, paceZones, discipline }) {
+  // Flatten all intervals respecting block repetitions
+  const steps = [];
+  let totalS = 0;
+
+  for (const block of blocks) {
+    const isRepeat = block.block_type === 'repeat';
+    const reps = isRepeat ? Math.max(1, Number(block.repetitions) || 1) : 1;
+    for (let r = 0; r < reps; r++) {
+      for (const iv of block.intervals ?? []) {
+        const ivReps = Math.max(1, Number(iv.repetitions) || 1);
+        for (let ir = 0; ir < ivReps; ir++) {
+          const durS = estimateDurationS(iv, paceZones);
+          if (durS > 0) {
+            steps.push({ zone: iv.zone || null, durS });
+            totalS += durS;
+          }
+          if (iv.recovery_seconds && Number(iv.recovery_seconds) > 0) {
+            steps.push({ zone: 'Z1', durS: Number(iv.recovery_seconds), isRec: true });
+            totalS += Number(iv.recovery_seconds);
+          }
+        }
+      }
+    }
+  }
+
+  if (totalS === 0 || steps.length === 0) return null;
+
+  const isStrength = discipline === 'strength' || discipline === 'mobility';
+  const STRENGTH_HEIGHT = { Z1: 14, Z2: 35, Z3: 60, Z4: 85 };
+
+  const getHeight = (zone) => {
+    if (!zone) return 8;
+    if (isStrength) return STRENGTH_HEIGHT[zone] ?? 40;
+    return ZONE_HEIGHT_PCT[zone] ?? 8;
+  };
+
+  const getColor = (zone, isRec) => {
+    if (isRec) return '#94a3b8';
+    return ZONE_COLORS_MAP[zone] ?? '#e2e8f0';
+  };
+
+  // Format seconds as "1h 30m" or "45m"
+  const fmtS = (s) => {
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60);
+    const rm = m % 60;
+    return rm > 0 ? `${h}h ${rm}m` : `${h}h`;
+  };
+
+  // Generate time axis ticks (every 15m or every 30m depending on total)
+  const tickInterval = totalS <= 3600 ? 15 * 60 : 30 * 60;
+  const ticks = [];
+  for (let t = 0; t <= totalS; t += tickInterval) ticks.push(t);
+  if (ticks[ticks.length - 1] !== totalS) ticks.push(totalS);
+
+  return (
+    <div>
+      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
+        Perfil del Entrenamiento
+      </p>
+      {/* Chart area */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          height: 72,
+          gap: 1,
+          background: '#f1f5f9',
+          borderRadius: 8,
+          padding: '4px 4px 0',
+          overflow: 'hidden',
+        }}
+      >
+        {steps.map((step, i) => {
+          const widthPct = (step.durS / totalS) * 100;
+          const heightPct = getHeight(step.zone);
+          const color = getColor(step.zone, step.isRec);
+          const zoneName = step.isRec ? 'Recuperación' : (ZONES.find(z => z.value === step.zone)?.name ?? step.zone ?? '');
+          return (
+            <div
+              key={i}
+              title={`${step.zone ?? '—'} · ${zoneName} · ${fmtS(step.durS)}`}
+              style={{
+                width: `${widthPct}%`,
+                height: `${heightPct}%`,
+                backgroundColor: color,
+                borderRadius: '3px 3px 0 0',
+                opacity: step.isRec ? 0.5 : 0.82,
+                minWidth: 2,
+                transition: 'opacity 0.15s',
+                cursor: 'default',
+                flexShrink: 0,
+              }}
+            />
+          );
+        })}
+      </div>
+      {/* Time axis */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3, paddingLeft: 4, paddingRight: 4 }}>
+        {ticks.map((t, i) => (
+          <span key={i} style={{ fontSize: 9, color: '#94a3b8' }}>{fmtS(t)}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── PaceRangeBadge ────────────────────────────────────────────────────────────
 
 function PaceRangeBadge({ zone, paceZones }) {
@@ -427,10 +543,10 @@ function StepTypeButton({ value, onChange }) {
 
 // ── ZonePills ─────────────────────────────────────────────────────────────────
 
+// eslint-disable-next-line no-unused-vars
 function ZonePills({ selected, onChange, paceZones, discipline }) {
   const zones = getZones(discipline);
   const activeZone = zones.find((z) => z.value === selected);
-  const zData = selected && paceZones?.zones?.[selected];
   return (
     <div className="flex items-center gap-1 flex-shrink-0" style={{ minWidth: 130 }}>
       <select
@@ -449,11 +565,6 @@ function ZonePills({ selected, onChange, paceZones, discipline }) {
           <option key={z.value} value={z.value}>{z.label} {z.name}</option>
         ))}
       </select>
-      {zData && (
-        <span style={{ fontSize: 10, color: '#64748b', whiteSpace: 'nowrap' }}>
-          {zData.pace_min}–{zData.pace_max}
-        </span>
-      )}
     </div>
   );
 }
@@ -644,7 +755,9 @@ function SimpleStepRow({ block, bIdx, iv, isFirst, isLast, paceZones, discipline
 
       <ZonePills selected={iv.zone} onChange={handleZone} paceZones={paceZones} discipline={discipline} />
 
-      <PaceRangeBadge zone={iv.zone} paceZones={paceZones} />
+      {discipline !== 'strength' && discipline !== 'mobility' && (
+        <PaceRangeBadge zone={iv.zone} paceZones={paceZones} />
+      )}
 
       <RecoveryInput value={iv.recovery_seconds} onChange={(v) => setIv('recovery_seconds', v)} />
 
@@ -702,7 +815,9 @@ function SubStepRow({ iv, iIdx, bIdx, isOnly, paceZones, discipline, onSetValue,
 
       <ZonePills selected={iv.zone} onChange={handleZone} paceZones={paceZones} discipline={discipline} />
 
-      <PaceRangeBadge zone={iv.zone} paceZones={paceZones} />
+      {discipline !== 'strength' && discipline !== 'mobility' && (
+        <PaceRangeBadge zone={iv.zone} paceZones={paceZones} />
+      )}
 
       <RecoveryInput value={iv.recovery_seconds} onChange={(v) => set('recovery_seconds', v)} />
 
@@ -1181,42 +1296,12 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
               </div>
             )}
 
-            {/* Intensity histogram */}
+            {/* Workout profile chart + intensity histogram */}
             {blocks.length > 0 && (
-              <div className="mx-5 my-4 px-4 py-3 bg-slate-50 rounded-xl border border-slate-200">
+              <div className="mx-5 my-4 px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-col gap-5">
+                <WorkoutProfileChart blocks={blocks} paceZones={paceZones} discipline={form.discipline} />
                 <IntensityHistogram blocks={blocks} paceZones={paceZones} />
               </div>
-            )}
-          </div>
-
-          {/* ── RIGHT: Zone reference panel ── */}
-          <div
-            className="flex-shrink-0 overflow-y-auto border-l border-slate-100 px-4 py-4 bg-slate-50"
-            style={{ width: 210 }}
-          >
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
-              Zonas de Ritmo
-            </p>
-            {ZONES.filter((z) => z.value).map((z) => {
-              const zData = paceZones?.zones?.[z.value];
-              return (
-                <div key={z.value} className="mb-3.5">
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: z.color }} />
-                    <span className="text-xs font-bold" style={{ color: z.color }}>{z.label}</span>
-                    <span className="text-xs font-semibold text-slate-600">{z.name}</span>
-                  </div>
-                  <p className="text-xs text-slate-500 pl-4">
-                    {zData ? `${zData.pace_min} – ${zData.pace_max}` : '—'}
-                  </p>
-                  {zData && <p className="text-xs text-slate-400 pl-4">{zData.description}</p>}
-                </div>
-              );
-            })}
-            {paceZones && !paceZones.has_threshold && (
-              <Alert severity="info" sx={{ mt: 2, fontSize: '0.7rem', p: '4px 8px' }}>
-                Configura tu ritmo umbral en el perfil para personalizar las zonas.
-              </Alert>
             )}
           </div>
         </div>
