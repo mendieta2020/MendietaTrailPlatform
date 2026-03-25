@@ -46,27 +46,44 @@ const SPORT_CONFIG = {
   OTHER:    { emoji: '⚡', bg: '#f1f5f9', label: 'Otro' },
 };
 
-// Zone distribution proxy by session_type — used for preview bar (no real interval data in list)
-const ZONE_DIST_BY_SESSION = {
-  FONDO:        [0.10, 0.70, 0.15, 0.05, 0.00],
-  RECUPERACION: [0.85, 0.15, 0.00, 0.00, 0.00],
-  SERIES:       [0.10, 0.20, 0.15, 0.35, 0.20],
-  UMBRAL:       [0.10, 0.20, 0.20, 0.40, 0.10],
-  COMPETENCIA:  [0.05, 0.10, 0.20, 0.35, 0.30],
-  FUERZA:       [0.20, 0.40, 0.30, 0.10, 0.00],
-};
-const ZONE_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#f97316', '#ef4444'];
-const ZONE_DIST_DEFAULT = [0.15, 0.50, 0.25, 0.10, 0.00];
+const ZONE_COLORS = { Z1: '#3b82f6', Z2: '#22c55e', Z3: '#f59e0b', Z4: '#f97316', Z5: '#ef4444' };
+const ZONE_KEYS = ['Z1', 'Z2', 'Z3', 'Z4', 'Z5'];
 
-function ZonePreviewBar({ sessionType }) {
-  const dist = ZONE_DIST_BY_SESSION[sessionType] ?? ZONE_DIST_DEFAULT;
+// Compute real zone distribution from nested blocks/intervals returned by API
+function computeZoneDist(workout) {
+  const secs = { Z1: 0, Z2: 0, Z3: 0, Z4: 0, Z5: 0 };
+  let total = 0;
+  for (const block of workout.blocks ?? []) {
+    const reps = block.block_type === 'REPEAT'
+      ? Math.max(1, block.intervals?.[0]?.repetitions ?? 1)
+      : 1;
+    for (const iv of block.intervals ?? []) {
+      const dur = Number(iv.duration_seconds ?? 0);
+      const zone = (iv.target_label ?? '').toUpperCase();
+      if (ZONE_KEYS.includes(zone)) secs[zone] += dur * reps;
+      total += dur * reps;
+    }
+  }
+  if (total === 0) return null;
+  return ZONE_KEYS.map((z) => ({ z, pct: secs[z] / total })).filter((x) => x.pct > 0.01);
+}
+
+function ZonePreviewBar({ workout }) {
+  const dist = computeZoneDist(workout);
+  if (!dist) {
+    // No zone data — show neutral bar
+    return (
+      <div style={{ display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden', width: 100 }}>
+        <div style={{ flex: 1, background: '#e2e8f0', borderRadius: 2 }} />
+      </div>
+    );
+  }
   return (
     <div style={{ display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden', width: 100, gap: 1 }}>
-      {dist.map((pct, i) =>
-        pct > 0 ? (
-          <div key={i} style={{ flex: pct, background: ZONE_COLORS[i], borderRadius: 2 }} />
-        ) : null
-      )}
+      {dist.map(({ z, pct }) => (
+        <div key={z} title={`${z}: ${Math.round(pct * 100)}%`}
+          style={{ flex: pct, background: ZONE_COLORS[z], borderRadius: 2 }} />
+      ))}
     </div>
   );
 }
@@ -625,7 +642,6 @@ export default function WorkoutLibraryPage() {
                     const dur = fmtDuration(w.estimated_duration_seconds ? Math.round(w.estimated_duration_seconds / 60) : null);
                     const distKm = w.estimated_distance_meters ? +(w.estimated_distance_meters / 1000).toFixed(2) : null;
                     const dist = distKm ? `${distKm} km` : null;
-                    const sessionKey = (w.session_type ?? '').toUpperCase();
                     return (
                       <React.Fragment key={w.id}>
                         {idx > 0 && <Divider component="li" />}
@@ -654,9 +670,9 @@ export default function WorkoutLibraryPage() {
                               </div>
                             </div>
 
-                            {/* Zone preview bar */}
+                            {/* Zone preview bar — real zone distribution from blocks */}
                             <div style={{ width: 108, flexShrink: 0 }}>
-                              <ZonePreviewBar sessionType={sessionKey} />
+                              <ZonePreviewBar workout={w} />
                             </div>
 
                             {/* Duration */}
