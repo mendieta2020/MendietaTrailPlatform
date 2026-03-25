@@ -70,6 +70,10 @@ const ZONES = [
 
 const ZONE_MAP = Object.fromEntries(ZONES.filter((z) => z.value).map((z) => [z.value, z]));
 
+// IF (Intensity Factor) por zona — base para cálculo de rTSS estimado
+const IF_ZONE = { Z1: 0.63, Z2: 0.75, Z3: 0.85, Z4: 0.975, Z5: 1.10 };
+const IF_DEFAULT = 0.70; // sin zona → aeróbico moderado
+
 // ── Defaults ─────────────────────────────────────────────────────────────────
 
 const emptyInterval = () => ({
@@ -200,15 +204,23 @@ function computeTotals(blocks, paceZones) {
       : `${totalMeters} m`;
 
   const zoneSeconds = { Z1: 0, Z2: 0, Z3: 0, Z4: 0, Z5: 0 };
+  let tssSum = 0;
+  let weightedIF2 = 0;
+
   for (const block of blocks) {
     const br = Math.max(1, Number(block.repetitions) || 1);
     for (const iv of block.intervals) {
+      const mult = br * Math.max(1, Number(iv.repetitions) || 1);
+      const dur = estimateDurationS(iv, paceZones) * mult;
+      const ifVal = IF_ZONE[iv.zone] ?? IF_DEFAULT;
       if (iv.zone && zoneSeconds[iv.zone] !== undefined) {
-        const dur = estimateDurationS(iv, paceZones) * br * Math.max(1, Number(iv.repetitions) || 1);
         zoneSeconds[iv.zone] += dur;
       }
+      tssSum += (dur / 3600) * ifVal * ifVal * 100;
+      weightedIF2 += dur * ifVal * ifVal;
     }
   }
+
   const domZone = Object.entries(zoneSeconds).sort((a, b) => b[1] - a[1])[0];
   const loadLabel = totalSeconds === 0 ? '—'
     : domZone?.[0] === 'Z5' ? 'Máxima'
@@ -216,63 +228,119 @@ function computeTotals(blocks, paceZones) {
     : domZone?.[0] === 'Z3' ? 'Moderada'
     : 'Recuperación / Base';
 
-  return { totalSeconds, totalMeters, durationLabel, distanceLabel, loadLabel };
+  // TSS estimado y IF ponderado
+  const tssLabel = totalSeconds > 60 ? String(Math.round(tssSum)) : '—';
+  const ifLabel = totalSeconds > 60 && weightedIF2 > 0
+    ? Math.sqrt(weightedIF2 / totalSeconds).toFixed(2)
+    : '—';
+
+  return { totalSeconds, totalMeters, durationLabel, distanceLabel, loadLabel, tssLabel, ifLabel };
 }
 
-// ── Intensity Bar ─────────────────────────────────────────────────────────────
+// ── Intensity Histogram ────────────────────────────────────────────────────────
 
-function IntensityBar({ blocks, paceZones }) {
-  const segments = [];
-  let totalDur = 0;
+function fmtSeconds(s) {
+  if (!s || s === 0) return null;
+  const m = Math.floor(s / 60);
+  if (m === 0) return `${Math.round(s)}s`;
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return rm > 0 ? `${h}h ${rm}m` : `${h}h`;
+}
+
+function IntensityHistogram({ blocks, paceZones }) {
+  const zoneSecondsMap = { Z1: 0, Z2: 0, Z3: 0, Z4: 0, Z5: 0 };
+  let total = 0;
 
   for (const block of blocks) {
     const br = Math.max(1, Number(block.repetitions) || 1);
-    for (let r = 0; r < br; r++) {
-      for (const iv of block.intervals) {
-        const dur = Math.max(estimateDurationS(iv, paceZones), 60);
-        totalDur += dur;
-        const zone = ZONE_MAP[iv.zone];
-        const color = zone?.color ?? '#e2e8f0';
-        const label = iv.description || (zone ? `${zone.label} ${zone.name}` : 'Paso');
-        segments.push({ dur, color, label, zoneName: zone?.name ?? 'Libre' });
+    for (const iv of block.intervals) {
+      const mult = br * Math.max(1, Number(iv.repetitions) || 1);
+      const dur = estimateDurationS(iv, paceZones) * mult;
+      if (iv.zone && zoneSecondsMap[iv.zone] !== undefined) {
+        zoneSecondsMap[iv.zone] += dur;
       }
+      total += dur;
     }
   }
 
-  if (segments.length === 0 || totalDur === 0) return null;
+  if (total === 0) return null;
+
+  const maxVal = Math.max(...Object.values(zoneSecondsMap), 1);
 
   return (
     <div>
-      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
-        Perfil de Intensidad
+      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
+        Distribución de Intensidad
       </p>
-      <div className="flex h-7 rounded-lg overflow-hidden gap-px">
-        {segments.map((seg, i) => (
-          <Tooltip key={i} title={`${seg.label} · ${seg.zoneName}`} arrow placement="top">
-            <div
-              style={{
-                flex: seg.dur / totalDur,
-                backgroundColor: seg.color,
-                minWidth: 4,
-                opacity: 0.85,
-                transition: 'opacity 0.15s',
-                cursor: 'default',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.85'; }}
-            />
-          </Tooltip>
-        ))}
-      </div>
-      <div className="flex flex-wrap gap-3 mt-2">
-        {ZONES.filter((z) => z.value).map((z) => (
-          <div key={z.value} className="flex items-center gap-1">
-            <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: z.color }} />
-            <span className="text-xs text-slate-500">{z.label} {z.name}</span>
-          </div>
-        ))}
+      <div className="flex flex-col gap-2">
+        {ZONES.filter((z) => z.value).map((z) => {
+          const secs = zoneSecondsMap[z.value] ?? 0;
+          const pct = total > 0 ? Math.round((secs / total) * 100) : 0;
+          const barW = maxVal > 0 ? (secs / maxVal) * 100 : 0;
+          const timeLabel = fmtSeconds(secs);
+          return (
+            <div key={z.value} className="flex items-center gap-2">
+              {/* Zone label */}
+              <div className="flex items-center gap-1 flex-shrink-0" style={{ width: 108 }}>
+                <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: z.color }} />
+                <span className="text-xs font-bold flex-shrink-0" style={{ color: z.color }}>{z.label}</span>
+                <span className="text-xs text-slate-500 truncate">{z.name}</span>
+              </div>
+              {/* Bar track */}
+              <div className="flex-1 bg-slate-100 rounded-full overflow-hidden" style={{ height: 14 }}>
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${barW}%`,
+                    background: z.color,
+                    opacity: secs > 0 ? 0.82 : 0,
+                    minWidth: secs > 0 ? 4 : 0,
+                  }}
+                />
+              </div>
+              {/* Time */}
+              <span
+                className="text-xs font-semibold flex-shrink-0"
+                style={{ width: 36, textAlign: 'right', color: secs > 0 ? '#475569' : '#cbd5e1' }}
+              >
+                {timeLabel ?? '—'}
+              </span>
+              {/* % */}
+              <span
+                className="text-xs flex-shrink-0"
+                style={{ width: 28, color: secs > 0 ? '#94a3b8' : '#e2e8f0' }}
+              >
+                {secs > 0 ? `${pct}%` : ''}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
+  );
+}
+
+// ── PaceRangeBadge ────────────────────────────────────────────────────────────
+
+function PaceRangeBadge({ zone, paceZones }) {
+  if (!zone) return null;
+  const zDef = ZONE_MAP[zone];
+  const zData = paceZones?.zones?.[zone];
+  if (!zDef) return null;
+  return (
+    <span
+      className="text-xs font-semibold flex-shrink-0 px-1.5 py-0.5 rounded"
+      style={{
+        color: zDef.color,
+        background: `${zDef.color}15`,
+        border: `1px solid ${zDef.color}25`,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {zData ? `${zData.pace_min}–${zData.pace_max}` : `${zDef.label} ${zDef.name}`}
+    </span>
   );
 }
 
@@ -478,7 +546,7 @@ function RowActions({ onUp, onDown, onDelete, disableUp, disableDown }) {
 
 // ── SimpleStepRow ─────────────────────────────────────────────────────────────
 
-function SimpleStepRow({ block, bIdx, iv, isFirst, isLast, onSetBlock, onSetInterval, onMove, onRemove }) {
+function SimpleStepRow({ block, bIdx, iv, isFirst, isLast, paceZones, onSetBlock, onSetInterval, onMove, onRemove }) {
   const setBlock = (key, val) => onSetBlock(bIdx, key, val);
   const setIv = (key, val) => onSetInterval(bIdx, 0, key, val);
 
@@ -516,7 +584,9 @@ function SimpleStepRow({ block, bIdx, iv, isFirst, isLast, onSetBlock, onSetInte
 
       <MeasureInput iv={iv} set={setIv} />
 
-      <ZonePills selected={iv.zone} onChange={handleZone} paceZones={null} />
+      <ZonePills selected={iv.zone} onChange={handleZone} paceZones={paceZones} />
+
+      <PaceRangeBadge zone={iv.zone} paceZones={paceZones} />
 
       <RecoveryInput value={iv.recovery_seconds} onChange={(v) => setIv('recovery_seconds', v)} />
 
@@ -573,6 +643,8 @@ function SubStepRow({ iv, iIdx, bIdx, isOnly, paceZones, onSetValue, onRemove })
       <MeasureInput iv={iv} set={set} />
 
       <ZonePills selected={iv.zone} onChange={handleZone} paceZones={paceZones} />
+
+      <PaceRangeBadge zone={iv.zone} paceZones={paceZones} />
 
       <RecoveryInput value={iv.recovery_seconds} onChange={(v) => set('recovery_seconds', v)} />
 
@@ -877,7 +949,7 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                   }}
                 />
                 {/* Totals */}
-                <div className="flex gap-4 px-3 py-2 bg-white rounded-lg border border-slate-200">
+                <div className="flex gap-4 px-3 py-2 bg-white rounded-lg border border-slate-200 flex-wrap">
                   <div>
                     <p className="text-xs text-slate-400 uppercase tracking-wide">Duración est.</p>
                     <p className="text-sm font-bold text-slate-700">{totals.durationLabel}</p>
@@ -892,6 +964,20 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                     <p className="text-xs text-slate-400 uppercase tracking-wide">Carga</p>
                     <p className="text-sm font-bold text-slate-700">{totals.loadLabel}</p>
                   </div>
+                  <div className="w-px bg-slate-200" />
+                  <Tooltip title="Training Stress Score estimado (rTSS basado en zonas de ritmo)" arrow>
+                    <div style={{ cursor: 'default' }}>
+                      <p className="text-xs text-slate-400 uppercase tracking-wide">TSS ~</p>
+                      <p className="text-sm font-bold text-blue-700">{totals.tssLabel}</p>
+                    </div>
+                  </Tooltip>
+                  <div className="w-px bg-slate-200" />
+                  <Tooltip title="Intensity Factor — ratio de intensidad promedio ponderado por zona (IF = √(NP²×t / t_total))" arrow>
+                    <div style={{ cursor: 'default' }}>
+                      <p className="text-xs text-slate-400 uppercase tracking-wide">IF</p>
+                      <p className="text-sm font-bold text-indigo-700">{totals.ifLabel}</p>
+                    </div>
+                  </Tooltip>
                 </div>
               </div>
             </div>
@@ -955,6 +1041,7 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                         iv={iv}
                         isFirst={bIdx === 0}
                         isLast={bIdx === blocks.length - 1}
+                        paceZones={paceZones}
                         onSetBlock={setBlockField}
                         onSetInterval={setIntervalValue}
                         onMove={moveBlock}
@@ -992,10 +1079,10 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
               </div>
             )}
 
-            {/* Intensity bar */}
+            {/* Intensity histogram */}
             {blocks.length > 0 && (
               <div className="mx-5 my-4 px-4 py-3 bg-slate-50 rounded-xl border border-slate-200">
-                <IntensityBar blocks={blocks} paceZones={paceZones} />
+                <IntensityHistogram blocks={blocks} paceZones={paceZones} />
               </div>
             )}
           </div>
