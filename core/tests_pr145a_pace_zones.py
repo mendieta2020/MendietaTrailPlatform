@@ -11,6 +11,7 @@ Coverage:
   5. Z4 umbral: threshold * 0.98 to * 1.05 — verify ranges
   6. Distance estimate for 1000m at Z4 with 5:00/km threshold →
      estimated time between 4:09 and 4:29
+  7. Unauthenticated request → 401 Unauthorized
 """
 import pytest
 from django.urls import reverse
@@ -209,3 +210,12 @@ class TestPaceZonesView:
         # Confirm both are within the expected "hard but sustainable" range
         assert est_min_s < 330  # faster than 5:30
         assert est_max_s > 240  # slower than 4:00
+
+    def test_7_unauthenticated_returns_401(self):
+        """
+        Unauthenticated request to GET /api/athlete/pace-zones/ must return 401.
+        Law 7: authentication gates must never be bypassed.
+        """
+        anon = APIClient()  # no force_authenticate
+        resp = anon.get(PACE_ZONES_URL)
+        assert resp.status_code == status.HTTP_401_UNAUTHORIZED
