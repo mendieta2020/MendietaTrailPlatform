@@ -19,10 +19,9 @@ if (_sentryDsn) {
   });
 }
 
-// NOTA DE ARQUITECTURA:
-// Hemos eliminado import './index.css' deliberadamente.
-// Ahora todo el diseño visual es controlado por Material UI (theme.js),
-// lo que garantiza consistencia total en toda la plataforma.
+// Tailwind CSS v4 utilities (sin preflight para no interferir con MUI).
+// Ver src/index.css — activa flex, grid, gap, text, bg, etc.
+import './index.css'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
