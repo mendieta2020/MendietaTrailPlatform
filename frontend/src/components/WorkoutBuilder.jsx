@@ -59,16 +59,37 @@ const STEP_TYPES = [
 
 const STEP_TYPE_MAP = Object.fromEntries(STEP_TYPES.map((s) => [s.value, s]));
 
-const ZONES = [
+// Zone definitions per discipline mode
+const ZONES_RUN = [
   { value: 'Z1', label: 'Z1', name: 'Recuperación', color: '#94a3b8' },
   { value: 'Z2', label: 'Z2', name: 'Aeróbico',     color: '#22c55e' },
   { value: 'Z3', label: 'Z3', name: 'Tempo',         color: '#eab308' },
   { value: 'Z4', label: 'Z4', name: 'Umbral',        color: '#f97316' },
   { value: 'Z5', label: 'Z5', name: 'VO2max',        color: '#ef4444' },
-  { value: '',   label: '—',  name: 'Sin zona',      color: '#cbd5e1' },
+];
+const ZONES_BIKE = [
+  { value: 'Z1', label: 'Z1', name: 'Rec. <70% FC',    color: '#94a3b8' },
+  { value: 'Z2', label: 'Z2', name: 'Base 70-80% FC',  color: '#22c55e' },
+  { value: 'Z3', label: 'Z3', name: 'Aeróbico 80-87%', color: '#eab308' },
+  { value: 'Z4', label: 'Z4', name: 'Umbral 87-93%',   color: '#f97316' },
+  { value: 'Z5', label: 'Z5', name: 'VO2 >93% FC',     color: '#ef4444' },
+];
+const ZONES_STRENGTH = [
+  { value: 'Z1', label: 'Bajo',    name: 'Bajo / Técnico',   color: '#94a3b8' },
+  { value: 'Z2', label: 'Medio',   name: 'Moderado',          color: '#22c55e' },
+  { value: 'Z3', label: 'Alto',    name: 'Alta intensidad',   color: '#eab308' },
+  { value: 'Z4', label: 'Máx',     name: 'Máxima carga',      color: '#f97316' },
 ];
 
-const ZONE_MAP = Object.fromEntries(ZONES.filter((z) => z.value).map((z) => [z.value, z]));
+function getZones(discipline) {
+  if (discipline === 'bike') return ZONES_BIKE;
+  if (discipline === 'strength' || discipline === 'mobility') return ZONES_STRENGTH;
+  return ZONES_RUN; // trail, run, swim, other
+}
+
+// Keep ZONES as alias for backward compat
+const ZONES = [...ZONES_RUN, { value: '', label: '—', name: 'Sin zona', color: '#cbd5e1' }];
+const ZONE_MAP = Object.fromEntries(ZONES_RUN.map((z) => [z.value, z]));
 
 // IF (Intensity Factor) por zona — base para cálculo de rTSS estimado
 const IF_ZONE = { Z1: 0.63, Z2: 0.75, Z3: 0.85, Z4: 0.975, Z5: 1.10 };
@@ -105,6 +126,9 @@ const INITIAL_FORM = {
   description: '',
   discipline: 'trail',
   session_type: 'other',
+  difficulty: '',
+  elevation_gain_min_m: '',
+  elevation_gain_max_m: '',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -129,6 +153,9 @@ function workoutToFormState(workout) {
     description: workout.description ?? '',
     discipline: workout.discipline ?? 'trail',
     session_type: workout.session_type ?? 'other',
+    difficulty: workout.difficulty ?? '',
+    elevation_gain_min_m: workout.elevation_gain_min_m ?? '',
+    elevation_gain_max_m: workout.elevation_gain_max_m ?? '',
   };
   const blocks = (workout.blocks ?? []).map((b, bIdx) => {
     const intervals = (b.intervals ?? []).map((iv) => {
@@ -327,6 +354,122 @@ function IntensityHistogram({ blocks, paceZones }) {
   );
 }
 
+// ── WorkoutProfileChart ────────────────────────────────────────────────────────
+// Sequential step-chart: X=time, Y=zone intensity level, colored by zone.
+// Shows the "shape" of the workout — when to push hard, when to recover.
+
+const ZONE_HEIGHT_PCT = { Z1: 14, Z2: 30, Z3: 52, Z4: 74, Z5: 95 };
+const ZONE_COLORS_MAP = { Z1: '#3b82f6', Z2: '#22c55e', Z3: '#f59e0b', Z4: '#f97316', Z5: '#ef4444' };
+
+function WorkoutProfileChart({ blocks, paceZones, discipline }) {
+  // Flatten all intervals respecting block repetitions
+  const steps = [];
+  let totalS = 0;
+
+  for (const block of blocks) {
+    const isRepeat = block.block_type === 'repeat';
+    const reps = isRepeat ? Math.max(1, Number(block.repetitions) || 1) : 1;
+    for (let r = 0; r < reps; r++) {
+      for (const iv of block.intervals ?? []) {
+        const ivReps = Math.max(1, Number(iv.repetitions) || 1);
+        for (let ir = 0; ir < ivReps; ir++) {
+          const durS = estimateDurationS(iv, paceZones);
+          if (durS > 0) {
+            steps.push({ zone: iv.zone || null, durS });
+            totalS += durS;
+          }
+          if (iv.recovery_seconds && Number(iv.recovery_seconds) > 0) {
+            steps.push({ zone: 'Z1', durS: Number(iv.recovery_seconds), isRec: true });
+            totalS += Number(iv.recovery_seconds);
+          }
+        }
+      }
+    }
+  }
+
+  if (totalS === 0 || steps.length === 0) return null;
+
+  const isStrength = discipline === 'strength' || discipline === 'mobility';
+  const STRENGTH_HEIGHT = { Z1: 14, Z2: 35, Z3: 60, Z4: 85 };
+
+  const getHeight = (zone) => {
+    if (!zone) return 8;
+    if (isStrength) return STRENGTH_HEIGHT[zone] ?? 40;
+    return ZONE_HEIGHT_PCT[zone] ?? 8;
+  };
+
+  const getColor = (zone, isRec) => {
+    if (isRec) return '#94a3b8';
+    return ZONE_COLORS_MAP[zone] ?? '#e2e8f0';
+  };
+
+  // Format seconds as "1h 30m" or "45m"
+  const fmtS = (s) => {
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60);
+    const rm = m % 60;
+    return rm > 0 ? `${h}h ${rm}m` : `${h}h`;
+  };
+
+  // Generate time axis ticks (every 15m or every 30m depending on total)
+  const tickInterval = totalS <= 3600 ? 15 * 60 : 30 * 60;
+  const ticks = [];
+  for (let t = 0; t <= totalS; t += tickInterval) ticks.push(t);
+  if (ticks[ticks.length - 1] !== totalS) ticks.push(totalS);
+
+  return (
+    <div>
+      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
+        Perfil del Entrenamiento
+      </p>
+      {/* Chart area */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          height: 72,
+          gap: 1,
+          background: '#f1f5f9',
+          borderRadius: 8,
+          padding: '4px 4px 0',
+          overflow: 'hidden',
+        }}
+      >
+        {steps.map((step, i) => {
+          const widthPct = (step.durS / totalS) * 100;
+          const heightPct = getHeight(step.zone);
+          const color = getColor(step.zone, step.isRec);
+          const zoneName = step.isRec ? 'Recuperación' : (ZONES.find(z => z.value === step.zone)?.name ?? step.zone ?? '');
+          return (
+            <div
+              key={i}
+              title={`${step.zone ?? '—'} · ${zoneName} · ${fmtS(step.durS)}`}
+              style={{
+                width: `${widthPct}%`,
+                height: `${heightPct}%`,
+                backgroundColor: color,
+                borderRadius: '3px 3px 0 0',
+                opacity: step.isRec ? 0.5 : 0.82,
+                minWidth: 2,
+                transition: 'opacity 0.15s',
+                cursor: 'default',
+                flexShrink: 0,
+              }}
+            />
+          );
+        })}
+      </div>
+      {/* Time axis */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3, paddingLeft: 4, paddingRight: 4 }}>
+        {ticks.map((t, i) => (
+          <span key={i} style={{ fontSize: 9, color: '#94a3b8' }}>{fmtS(t)}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── PaceRangeBadge ────────────────────────────────────────────────────────────
 
 function PaceRangeBadge({ zone, paceZones }) {
@@ -400,33 +543,28 @@ function StepTypeButton({ value, onChange }) {
 
 // ── ZonePills ─────────────────────────────────────────────────────────────────
 
-function ZonePills({ selected, onChange, paceZones }) {
+// eslint-disable-next-line no-unused-vars
+function ZonePills({ selected, onChange, paceZones, discipline }) {
+  const zones = getZones(discipline);
+  const activeZone = zones.find((z) => z.value === selected);
   return (
-    <div className="flex items-center gap-0.5 flex-shrink-0">
-      {ZONES.map((z) => {
-        const isActive = selected === z.value;
-        const zData = z.value ? paceZones?.zones?.[z.value] : null;
-        const tip = z.value
-          ? `${z.label} · ${z.name}${zData ? ` · ${zData.pace_min}–${zData.pace_max}` : ''}`
-          : 'Sin zona';
-        return (
-          <Tooltip key={z.value || 'free'} title={tip} arrow placement="top">
-            <button
-              onClick={() => onChange(isActive ? '' : z.value)}
-              className="rounded text-xs font-bold transition-all flex-shrink-0"
-              style={{
-                width: 34,
-                height: 32,
-                ...(isActive
-                  ? { backgroundColor: z.color, color: 'white', boxShadow: `0 0 0 2px ${z.color}30` }
-                  : { backgroundColor: '#f1f5f9', color: '#94a3b8' }),
-              }}
-            >
-              {z.value || '—'}
-            </button>
-          </Tooltip>
-        );
-      })}
+    <div className="flex items-center gap-1 flex-shrink-0" style={{ minWidth: 130 }}>
+      <select
+        value={selected || ''}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          height: 28, borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+          border: `1px solid ${activeZone ? activeZone.color + '80' : '#e2e8f0'}`,
+          background: activeZone ? activeZone.color + '18' : 'white',
+          color: activeZone ? activeZone.color : '#94a3b8',
+          paddingLeft: 6, paddingRight: 4, outline: 'none', flex: 1,
+        }}
+      >
+        <option value="">Sin zona</option>
+        {zones.filter((z) => z.value).map((z) => (
+          <option key={z.value} value={z.value}>{z.label} {z.name}</option>
+        ))}
+      </select>
     </div>
   );
 }
@@ -434,17 +572,16 @@ function ZonePills({ selected, onChange, paceZones }) {
 // ── MeasureInput ──────────────────────────────────────────────────────────────
 
 const UNIT_OPTS = [
-  { u: 'seg', label: 's' },
-  { u: 'min', label: 'm' },
+  { u: 'seg', label: 'seg' },
+  { u: 'min', label: 'min' },
   { u: 'm',   label: 'm' },
   { u: 'km',  label: 'km' },
-  { u: 'rep', label: 'r' },
+  { u: 'rep', label: 'rep' },
 ];
 
 function MeasureInput({ iv, set }) {
   const unit = iv.obj_unit || (iv.measure === 'distancia' ? 'm' : 'seg');
 
-  // Compute display value in the chosen unit
   let displayVal = '';
   if (unit === 'seg') displayVal = iv.duration_seconds || '';
   else if (unit === 'min') {
@@ -479,67 +616,29 @@ function MeasureInput({ iv, set }) {
     }
   };
 
-  // Unit groups: time | distance | rep — show group dividers
-  const timeUnits = ['seg', 'min'];
-  const distUnits = ['m', 'km'];
-
   return (
     <div className="flex items-center gap-1 flex-shrink-0">
-      {/* Number input */}
       <input
         type="number" min={0}
         value={displayVal}
         onChange={(e) => handleChange(e.target.value)}
         placeholder="—"
         className="text-center text-xs font-semibold border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:border-amber-400"
-        style={{ width: 52, height: 28 }}
+        style={{ width: 54, height: 28 }}
       />
-      {/* Unit pills grouped */}
-      <div className="flex items-center rounded border border-slate-200 overflow-hidden flex-shrink-0">
-        {timeUnits.map((u, i) => (
-          <button
-            key={u}
-            onClick={() => handleUnitChange(u)}
-            title={u === 'seg' ? 'Segundos' : 'Minutos'}
-            className={`text-xs font-medium transition-colors${i > 0 ? ' border-l border-slate-200' : ''}`}
-            style={{
-              height: 28, minWidth: 22, paddingLeft: 4, paddingRight: 4,
-              ...(unit === u
-                ? { background: '#f59e0b', color: 'white' }
-                : { background: 'white', color: '#94a3b8' }),
-            }}
-          >{u}</button>
+      <select
+        value={unit}
+        onChange={(e) => handleUnitChange(e.target.value)}
+        style={{
+          height: 28, borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+          border: '1px solid #e2e8f0', background: '#f8fafc', color: '#475569',
+          paddingLeft: 4, paddingRight: 2, outline: 'none', width: 52,
+        }}
+      >
+        {UNIT_OPTS.map(({ u, label }) => (
+          <option key={u} value={u}>{label}</option>
         ))}
-        {/* divider between time and distance groups */}
-        <div style={{ width: 1, height: 28, background: '#cbd5e1', flexShrink: 0 }} />
-        {distUnits.map((u) => (
-          <button
-            key={u}
-            onClick={() => handleUnitChange(u)}
-            title={u === 'm' ? 'Metros' : 'Kilómetros'}
-            className="text-xs font-medium transition-colors border-l border-slate-200"
-            style={{
-              height: 28, minWidth: u === 'km' ? 26 : 22, paddingLeft: 3, paddingRight: 3,
-              ...(unit === u
-                ? { background: '#f59e0b', color: 'white' }
-                : { background: 'white', color: '#94a3b8' }),
-            }}
-          >{u}</button>
-        ))}
-        {/* divider before rep */}
-        <div style={{ width: 1, height: 28, background: '#cbd5e1', flexShrink: 0 }} />
-        <button
-          onClick={() => handleUnitChange('rep')}
-          title="Repeticiones"
-          className="text-xs font-medium transition-colors border-l border-slate-200"
-          style={{
-            height: 28, minWidth: 24, paddingLeft: 4, paddingRight: 4,
-            ...(unit === 'rep'
-              ? { background: '#f59e0b', color: 'white' }
-              : { background: 'white', color: '#94a3b8' }),
-          }}
-        >rep</button>
-      </div>
+      </select>
     </div>
   );
 }
@@ -616,7 +715,7 @@ function RowActions({ onUp, onDown, onDelete, disableUp, disableDown }) {
 
 // ── SimpleStepRow ─────────────────────────────────────────────────────────────
 
-function SimpleStepRow({ block, bIdx, iv, isFirst, isLast, paceZones, onSetBlock, onSetInterval, onMove, onRemove }) {
+function SimpleStepRow({ block, bIdx, iv, isFirst, isLast, paceZones, discipline, onSetBlock, onSetInterval, onMove, onRemove }) {
   const setBlock = (key, val) => onSetBlock(bIdx, key, val);
   const setIv = (key, val) => onSetInterval(bIdx, 0, key, val);
 
@@ -654,9 +753,11 @@ function SimpleStepRow({ block, bIdx, iv, isFirst, isLast, paceZones, onSetBlock
 
       <MeasureInput iv={iv} set={setIv} />
 
-      <ZonePills selected={iv.zone} onChange={handleZone} paceZones={paceZones} />
+      <ZonePills selected={iv.zone} onChange={handleZone} paceZones={paceZones} discipline={discipline} />
 
-      <PaceRangeBadge zone={iv.zone} paceZones={paceZones} />
+      {discipline !== 'strength' && discipline !== 'mobility' && (
+        <PaceRangeBadge zone={iv.zone} paceZones={paceZones} />
+      )}
 
       <RecoveryInput value={iv.recovery_seconds} onChange={(v) => setIv('recovery_seconds', v)} />
 
@@ -673,7 +774,7 @@ function SimpleStepRow({ block, bIdx, iv, isFirst, isLast, paceZones, onSetBlock
 
 // ── SubStepRow ────────────────────────────────────────────────────────────────
 
-function SubStepRow({ iv, iIdx, bIdx, isOnly, paceZones, onSetValue, onRemove }) {
+function SubStepRow({ iv, iIdx, bIdx, isOnly, paceZones, discipline, onSetValue, onRemove }) {
   const set = (key, val) => onSetValue(bIdx, iIdx, key, val);
   const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -712,9 +813,11 @@ function SubStepRow({ iv, iIdx, bIdx, isOnly, paceZones, onSetValue, onRemove })
 
       <MeasureInput iv={iv} set={set} />
 
-      <ZonePills selected={iv.zone} onChange={handleZone} paceZones={paceZones} />
+      <ZonePills selected={iv.zone} onChange={handleZone} paceZones={paceZones} discipline={discipline} />
 
-      <PaceRangeBadge zone={iv.zone} paceZones={paceZones} />
+      {discipline !== 'strength' && discipline !== 'mobility' && (
+        <PaceRangeBadge zone={iv.zone} paceZones={paceZones} />
+      )}
 
       <RecoveryInput value={iv.recovery_seconds} onChange={(v) => set('recovery_seconds', v)} />
 
@@ -868,6 +971,9 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
         description: form.description.trim(),
         discipline: form.discipline,
         session_type: form.session_type,
+        ...(form.difficulty && { difficulty: form.difficulty }),
+        ...(form.elevation_gain_min_m && { elevation_gain_min_m: Number(form.elevation_gain_min_m) }),
+        ...(form.elevation_gain_max_m && { elevation_gain_max_m: Number(form.elevation_gain_max_m) }),
         ...(totals.totalSeconds > 0 && { estimated_duration_seconds: Math.round(totals.totalSeconds) }),
         ...(totals.totalMeters > 0 && { estimated_distance_meters: Math.round(totals.totalMeters) }),
       };
@@ -890,7 +996,8 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
         const stepMeta = STEP_TYPE_MAP[block.block_type] ?? STEP_TYPES[1];
         const blockPayload = {
           name: block.name.trim() || stepMeta.label,
-          block_type: block.block_type,
+          block_type: ['warmup', 'main', 'cooldown', 'drill', 'strength', 'custom'].includes(block.block_type)
+            ? block.block_type : 'custom',
           order_index: block.order_index,
           repetitions: Number(block.repetitions) || 1,
         };
@@ -1008,14 +1115,50 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                     {SESSION_TYPE_OPTIONS.map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
                   </TextField>
                 </div>
+                {/* Difficulty + D+ row */}
+                <div className="grid grid-cols-2 gap-3">
+                  <TextField
+                    select label="Dificultad" value={form.difficulty} onChange={setField('difficulty')} size="small"
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', bgcolor: 'white' } }}
+                  >
+                    <MenuItem value="">Sin definir</MenuItem>
+                    <MenuItem value="easy">🟢 Fácil</MenuItem>
+                    <MenuItem value="moderate">🟡 Moderado</MenuItem>
+                    <MenuItem value="hard">🟠 Difícil</MenuItem>
+                    <MenuItem value="very_hard">🔴 Muy difícil</MenuItem>
+                  </TextField>
+                  {/* D+ only for trail/run */}
+                  {(form.discipline === 'trail' || form.discipline === 'run') ? (
+                    <div className="flex gap-1 items-center">
+                      <TextField
+                        label="D+ mín (m)" type="number" size="small"
+                        value={form.elevation_gain_min_m}
+                        onChange={setField('elevation_gain_min_m')}
+                        inputProps={{ min: 0, step: 50 }}
+                        sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: '8px', bgcolor: 'white' } }}
+                      />
+                      <span className="text-slate-400 text-sm flex-shrink-0">–</span>
+                      <TextField
+                        label="D+ máx (m)" type="number" size="small"
+                        value={form.elevation_gain_max_m}
+                        onChange={setField('elevation_gain_max_m')}
+                        inputProps={{ min: 0, step: 50 }}
+                        sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: '8px', bgcolor: 'white' } }}
+                      />
+                    </div>
+                  ) : (
+                    <div /> /* empty cell to keep grid */
+                  )}
+                </div>
                 <TextField
                   label="Notas para el atleta"
                   value={form.description} onChange={setField('description')}
-                  fullWidth size="small" multiline rows={2}
-                  placeholder="Objetivo del entrenamiento, instrucciones adicionales…"
+                  fullWidth size="small" multiline minRows={3} maxRows={10}
+                  placeholder="Objetivo del entrenamiento, instrucciones adicionales para el atleta…"
                   sx={{
                     '& .MuiOutlinedInput-root': { borderRadius: '8px', bgcolor: 'white' },
                     '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: '#f59e0b' },
+                    '& textarea': { resize: 'vertical', minHeight: 60 },
                   }}
                 />
                 {/* Totals */}
@@ -1086,7 +1229,9 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                 className="text-xs font-semibold text-slate-400 uppercase tracking-wide">TIPO</div>
               <div className="flex-1 text-xs font-semibold text-slate-400 uppercase tracking-wide">DESCRIPCIÓN</div>
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide" style={{ width: 118 }}>OBJETIVO</div>
-              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide" style={{ width: 168 }}>ZONA</div>
+              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide" style={{ width: 168 }}>
+                {form.discipline === 'bike' ? 'ZONA FC' : form.discipline === 'strength' || form.discipline === 'mobility' ? 'CARGA' : 'ZONA RITMO'}
+              </div>
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide" style={{ width: 80 }}>RECUP.</div>
               <div style={{ width: 72 }} />
             </div>
@@ -1112,6 +1257,7 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                         isFirst={bIdx === 0}
                         isLast={bIdx === blocks.length - 1}
                         paceZones={paceZones}
+                        discipline={form.discipline}
                         onSetBlock={setBlockField}
                         onSetInterval={setIntervalValue}
                         onMove={moveBlock}
@@ -1139,6 +1285,7 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                           bIdx={bIdx}
                           isOnly={block.intervals.length === 1}
                           paceZones={paceZones}
+                          discipline={form.discipline}
                           onSetValue={setIntervalValue}
                           onRemove={removeInterval}
                         />
@@ -1149,42 +1296,12 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
               </div>
             )}
 
-            {/* Intensity histogram */}
+            {/* Workout profile chart + intensity histogram */}
             {blocks.length > 0 && (
-              <div className="mx-5 my-4 px-4 py-3 bg-slate-50 rounded-xl border border-slate-200">
+              <div className="mx-5 my-4 px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-col gap-5">
+                <WorkoutProfileChart blocks={blocks} paceZones={paceZones} discipline={form.discipline} />
                 <IntensityHistogram blocks={blocks} paceZones={paceZones} />
               </div>
-            )}
-          </div>
-
-          {/* ── RIGHT: Zone reference panel ── */}
-          <div
-            className="flex-shrink-0 overflow-y-auto border-l border-slate-100 px-4 py-4 bg-slate-50"
-            style={{ width: 210 }}
-          >
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
-              Zonas de Ritmo
-            </p>
-            {ZONES.filter((z) => z.value).map((z) => {
-              const zData = paceZones?.zones?.[z.value];
-              return (
-                <div key={z.value} className="mb-3.5">
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: z.color }} />
-                    <span className="text-xs font-bold" style={{ color: z.color }}>{z.label}</span>
-                    <span className="text-xs font-semibold text-slate-600">{z.name}</span>
-                  </div>
-                  <p className="text-xs text-slate-500 pl-4">
-                    {zData ? `${zData.pace_min} – ${zData.pace_max}` : '—'}
-                  </p>
-                  {zData && <p className="text-xs text-slate-400 pl-4">{zData.description}</p>}
-                </div>
-              );
-            })}
-            {paceZones && !paceZones.has_threshold && (
-              <Alert severity="info" sx={{ mt: 2, fontSize: '0.7rem', p: '4px 8px' }}>
-                Configura tu ritmo umbral en el perfil para personalizar las zonas.
-              </Alert>
             )}
           </div>
         </div>
