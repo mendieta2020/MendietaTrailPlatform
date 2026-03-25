@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box, Paper, Typography, Button, IconButton, Chip, CircularProgress, Alert, Divider, Collapse,
   TextField, Dialog, DialogTitle, DialogContent, DialogActions,
   List, ListItem, ListItemText, ListItemSecondaryAction, ListItemButton,
-  Tooltip, Snackbar, Skeleton,
-  Menu, MenuItem as MuiMenuItem,
+  Tooltip, Snackbar, Skeleton, Select, MenuItem as MuiMenuItem, FormControl,
+  Menu,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -15,6 +15,10 @@ import {
   FolderOpen as FolderOpenIcon,
   FitnessCenter as FitnessCenterIcon,
   LibraryBooks as LibraryBooksIcon,
+  Search as SearchIcon,
+  ViewList as ViewListIcon,
+  GridView as GridViewIcon,
+  CalendarMonth as CalendarIcon,
 } from '@mui/icons-material';
 import { FolderOpen, Dumbbell } from 'lucide-react';
 import Layout from '../components/Layout';
@@ -33,10 +37,52 @@ const DIFFICULTY_CONFIG = {
   VERY_HARD: { label: 'Muy Difícil', color: '#7c3aed' },
 };
 
-const SPORT_LABELS = {
-  TRAIL: 'Trail', RUN: 'Running', BIKE: 'Ciclismo',
-  WALK: 'Caminata', STRENGTH: 'Fuerza', OTHER: 'Otro',
+const SPORT_CONFIG = {
+  TRAIL:    { emoji: '🏔', bg: '#dcfce7', label: 'Trail' },
+  RUN:      { emoji: '🏃', bg: '#dbeafe', label: 'Running' },
+  BIKE:     { emoji: '🚴', bg: '#ede9fe', label: 'Ciclismo' },
+  WALK:     { emoji: '🚶', bg: '#fef9c3', label: 'Caminata' },
+  STRENGTH: { emoji: '💪', bg: '#fef3c7', label: 'Fuerza' },
+  OTHER:    { emoji: '⚡', bg: '#f1f5f9', label: 'Otro' },
 };
+
+// Zone distribution proxy by session_type — used for preview bar (no real interval data in list)
+const ZONE_DIST_BY_SESSION = {
+  FONDO:        [0.10, 0.70, 0.15, 0.05, 0.00],
+  RECUPERACION: [0.85, 0.15, 0.00, 0.00, 0.00],
+  SERIES:       [0.10, 0.20, 0.15, 0.35, 0.20],
+  UMBRAL:       [0.10, 0.20, 0.20, 0.40, 0.10],
+  COMPETENCIA:  [0.05, 0.10, 0.20, 0.35, 0.30],
+  FUERZA:       [0.20, 0.40, 0.30, 0.10, 0.00],
+};
+const ZONE_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#f97316', '#ef4444'];
+const ZONE_DIST_DEFAULT = [0.15, 0.50, 0.25, 0.10, 0.00];
+
+function ZonePreviewBar({ sessionType }) {
+  const dist = ZONE_DIST_BY_SESSION[sessionType] ?? ZONE_DIST_DEFAULT;
+  return (
+    <div style={{ display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden', width: 100, gap: 1 }}>
+      {dist.map((pct, i) =>
+        pct > 0 ? (
+          <div key={i} style={{ flex: pct, background: ZONE_COLORS[i], borderRadius: 2 }} />
+        ) : null
+      )}
+    </div>
+  );
+}
+
+function SportIconBadge({ sportType }) {
+  const cfg = SPORT_CONFIG[sportType] ?? SPORT_CONFIG.OTHER;
+  return (
+    <div style={{
+      width: 36, height: 36, borderRadius: 8, background: cfg.bg,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: 18, flexShrink: 0,
+    }}>
+      {cfg.emoji}
+    </div>
+  );
+}
 
 function DifficultyChip({ value }) {
   const cfg = DIFFICULTY_CONFIG[value] ?? { label: value, color: '#94a3b8' };
@@ -48,6 +94,22 @@ function DifficultyChip({ value }) {
     />
   );
 }
+
+function fmtDuration(minutes) {
+  if (!minutes) return null;
+  if (minutes < 60) return `${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+const SPORT_FILTER_OPTS = [
+  { value: 'ALL', label: 'Todos' },
+  { value: 'TRAIL', label: '🏔 Trail' },
+  { value: 'RUN', label: '🏃 Run' },
+  { value: 'BIKE', label: '🚴 Bici' },
+  { value: 'STRENGTH', label: '💪 Fuerza' },
+];
 
 export default function WorkoutLibraryPage() {
   const { activeOrg, orgLoading } = useOrg();
@@ -74,11 +136,11 @@ export default function WorkoutLibraryPage() {
   const [builderOpen, setBuilderOpen] = useState(false);
   const [editWorkout, setEditWorkout] = useState(null);   // full workout for edit mode
 
-  // ── Action menu per workout ──────────────────────────────────────────────────
-  const [menuAnchor, setMenuAnchor] = useState(null);
-  const [menuWorkoutId, setMenuWorkoutId] = useState(null);
-  const openMenu = (e, workoutId) => { e.stopPropagation(); setMenuAnchor(e.currentTarget); setMenuWorkoutId(workoutId); };
-  const closeMenu = () => { setMenuAnchor(null); setMenuWorkoutId(null); };
+
+  // ── Search / filter / sort ───────────────────────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sportFilter, setSportFilter] = useState('ALL');
+  const [sortBy, setSortBy] = useState('recent');
 
   // ── Snackbar ────────────────────────────────────────────────────────────────
   const [snackbar, setSnackbar] = useState({ open: false, msg: '', severity: 'success' });
@@ -176,7 +238,6 @@ export default function WorkoutLibraryPage() {
   };
 
   const handleEditWorkout = async (workoutId) => {
-    closeMenu();
     try {
       const res = await getPlannedWorkout(orgId, selectedLibId, workoutId);
       setEditWorkout(res.data);
@@ -187,7 +248,6 @@ export default function WorkoutLibraryPage() {
   };
 
   const handleDuplicateWorkout = async (workoutId) => {
-    closeMenu();
     try {
       const res = await getPlannedWorkout(orgId, selectedLibId, workoutId);
       const src = res.data;
@@ -236,10 +296,29 @@ export default function WorkoutLibraryPage() {
   // ── Toggle library selection ────────────────────────────────────────────────
   const handleToggleLibrary = (libId) => {
     setSelectedLibId((prev) => (prev === libId ? null : libId));
+    setSearchQuery('');
+    setSportFilter('ALL');
   };
 
   // ── Selected library object ─────────────────────────────────────────────────
   const selectedLib = libraries.find((l) => l.id === selectedLibId);
+
+  // ── Filtered + sorted workouts ───────────────────────────────────────────────
+  const filteredWorkouts = useMemo(() => {
+    let list = [...workouts];
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter((w) => w.name?.toLowerCase().includes(q) || w.description?.toLowerCase().includes(q));
+    }
+    if (sportFilter !== 'ALL') {
+      list = list.filter((w) => w.sport_type === sportFilter || w.discipline === sportFilter);
+    }
+    if (sortBy === 'az') list.sort((a, b) => a.name.localeCompare(b.name));
+    else if (sortBy === 'duration') list.sort((a, b) => (b.estimated_duration_minutes ?? 0) - (a.estimated_duration_minutes ?? 0));
+    else if (sortBy === 'distance') list.sort((a, b) => (b.estimated_distance_km ?? 0) - (a.estimated_distance_km ?? 0));
+    // default 'recent' = API order (already newest first)
+    return list;
+  }, [workouts, searchQuery, sportFilter, sortBy]);
 
   // ── Loading guard ────────────────────────────────────────────────────────────
   if (orgLoading) {
@@ -397,69 +476,120 @@ export default function WorkoutLibraryPage() {
             </Box>
           ) : (
             <>
-              {/* Panel header */}
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 3, py: 1.5, borderBottom: '1px solid', borderColor: 'grey.100' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
-                  <FolderOpenIcon sx={{ color: '#f59e0b', fontSize: 18, flexShrink: 0 }} />
-                  <Typography variant="body2" fontWeight={700} noWrap color="text.primary">
+              {/* ── Toolbar: breadcrumb + search + filters + sort + CTA ── */}
+              <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'grey.100', display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                {/* Breadcrumb */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mr: 0.5, flexShrink: 0 }}>
+                  <FolderOpenIcon sx={{ color: '#f59e0b', fontSize: 16 }} />
+                  <Typography variant="body2" fontWeight={700} color="text.primary" noWrap sx={{ maxWidth: 120 }}>
                     {selectedLib?.name}
                   </Typography>
-                  <Typography variant="caption" color="text.disabled" sx={{ flexShrink: 0 }}>
-                    · {workouts.length} entrenamiento{workouts.length !== 1 ? 's' : ''}
+                  <Typography variant="caption" color="text.disabled">
+                    · {workouts.length}
                   </Typography>
                 </Box>
+
+                {/* Search */}
+                <Box sx={{
+                  display: 'flex', alignItems: 'center', gap: 0.75,
+                  background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 2,
+                  px: 1.25, py: 0.5, flex: 1, minWidth: 140, maxWidth: 240,
+                }}>
+                  <SearchIcon sx={{ fontSize: 14, color: '#94a3b8', flexShrink: 0 }} />
+                  <input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Buscar…"
+                    style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: 12, color: '#1e293b', width: '100%' }}
+                  />
+                </Box>
+
+                {/* Sport filter pills */}
+                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'nowrap', overflow: 'auto' }}>
+                  {SPORT_FILTER_OPTS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setSportFilter(opt.value)}
+                      style={{
+                        padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                        cursor: 'pointer', border: '1px solid',
+                        whiteSpace: 'nowrap',
+                        background: sportFilter === opt.value ? '#fff7ed' : 'white',
+                        borderColor: sportFilter === opt.value ? '#f59e0b' : '#e2e8f0',
+                        color: sportFilter === opt.value ? '#f59e0b' : '#64748b',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </Box>
+
+                {/* Sort */}
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  style={{
+                    background: 'white', border: '1px solid #e2e8f0', borderRadius: 8,
+                    padding: '4px 8px', fontSize: 11, color: '#64748b', cursor: 'pointer',
+                    outline: 'none', flexShrink: 0,
+                  }}
+                >
+                  <option value="recent">Recientes</option>
+                  <option value="az">A–Z</option>
+                  <option value="duration">Duración</option>
+                  <option value="distance">Distancia</option>
+                </select>
+
+                {/* New workout CTA */}
                 <Button
                   variant="contained"
                   size="small"
-                  startIcon={<AddIcon />}
+                  startIcon={<AddIcon sx={{ fontSize: 14 }} />}
                   onClick={() => { setEditWorkout(null); setBuilderOpen(true); }}
                   sx={{
-                    borderRadius: 1.5,
-                    bgcolor: '#f59e0b',
-                    '&:hover': { bgcolor: '#d97706' },
-                    textTransform: 'none',
-                    fontWeight: 600,
-                    fontSize: '0.8rem',
-                    flexShrink: 0,
-                    ml: 2,
-                    boxShadow: 'none',
+                    ml: 'auto', flexShrink: 0, borderRadius: 1.5,
+                    bgcolor: '#f59e0b', '&:hover': { bgcolor: '#d97706' },
+                    textTransform: 'none', fontWeight: 600, fontSize: '0.75rem',
+                    boxShadow: 'none', whiteSpace: 'nowrap',
                   }}
                 >
                   Nuevo entrenamiento
                 </Button>
               </Box>
 
-              {/* Column headers */}
-              {!workoutsLoading && workouts.length > 0 && (
-                <Box sx={{ display: 'flex', alignItems: 'center', px: 3, py: 1, borderBottom: '1px solid', borderColor: 'grey.100', bgcolor: 'grey.50' }}>
-                  <Typography variant="caption" sx={{ flex: 1, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, color: 'text.disabled' }}>
+              {/* ── Column headers ── */}
+              {!workoutsLoading && filteredWorkouts.length > 0 && (
+                <Box sx={{ display: 'flex', alignItems: 'center', px: 2, py: 0.75, borderBottom: '1px solid', borderColor: 'grey.100', bgcolor: '#f8fafc' }}>
+                  <Typography variant="caption" sx={{ flex: 1, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, color: 'text.disabled' }}>
                     Entrenamiento
                   </Typography>
-                  <Typography variant="caption" sx={{ width: 96, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, color: 'text.disabled', textAlign: 'right' }}>
+                  <Typography variant="caption" sx={{ width: 108, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, color: 'text.disabled' }}>
+                    Zonas
+                  </Typography>
+                  <Typography variant="caption" sx={{ width: 80, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, color: 'text.disabled', textAlign: 'right' }}>
                     Duración
                   </Typography>
-                  <Typography variant="caption" sx={{ width: 96, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, color: 'text.disabled', textAlign: 'right' }}>
-                    Distancia
+                  <Typography variant="caption" sx={{ width: 72, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, color: 'text.disabled', textAlign: 'right' }}>
+                    Dist.
                   </Typography>
-                  <Box sx={{ width: 32 }} />
+                  <Box sx={{ width: 100 }} />
                 </Box>
               )}
 
-              {/* Workout rows */}
+              {/* ── Workout rows ── */}
               {workoutsLoading ? (
-                <Box sx={{ px: 3, py: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                  {[1, 2, 3, 4].map((i) => (
-                    <Skeleton key={i} variant="rounded" height={52} />
-                  ))}
+                <Box sx={{ px: 2, py: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                  {[1, 2, 3, 4].map((i) => <Skeleton key={i} variant="rounded" height={56} />)}
                 </Box>
               ) : workouts.length === 0 ? (
+                /* Empty state — no workouts in folder */
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, py: 10, textAlign: 'center', px: 4 }}>
                   <Dumbbell className="w-12 h-12 mb-4" style={{ color: '#cbd5e1' }} />
                   <Typography variant="h6" fontWeight={600} color="text.secondary" gutterBottom>
                     Carpeta vacía
                   </Typography>
                   <Typography variant="body2" color="text.disabled" sx={{ mb: 3 }}>
-                    Agrega el primer entrenamiento a esta librería para empezar a asignarlo en el calendario.
+                    Agrega el primer entrenamiento a esta librería.
                   </Typography>
                   <button
                     onClick={() => { setEditWorkout(null); setBuilderOpen(true); }}
@@ -471,55 +601,100 @@ export default function WorkoutLibraryPage() {
                     Crear primer entrenamiento
                   </button>
                 </Box>
+              ) : filteredWorkouts.length === 0 ? (
+                /* Empty state — search/filter no results */
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, py: 10, textAlign: 'center', px: 4 }}>
+                  <SearchIcon sx={{ fontSize: 40, color: '#cbd5e1', mb: 1.5 }} />
+                  <Typography variant="body1" fontWeight={600} color="text.secondary">
+                    Sin resultados para &ldquo;{searchQuery || SPORT_FILTER_OPTS.find(o => o.value === sportFilter)?.label}&rdquo;
+                  </Typography>
+                  <Typography variant="body2" color="text.disabled" sx={{ mt: 0.5, mb: 2 }}>
+                    Probá con otro nombre o limpiá los filtros.
+                  </Typography>
+                  <button
+                    onClick={() => { setSearchQuery(''); setSportFilter('ALL'); }}
+                    style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: 8, padding: '5px 14px', fontSize: 12, cursor: 'pointer', color: '#64748b' }}
+                  >
+                    Limpiar filtros
+                  </button>
+                </Box>
               ) : (
                 <List disablePadding>
-                  {workouts.map((w, idx) => (
-                    <React.Fragment key={w.id}>
-                      {idx > 0 && <Divider component="li" />}
-                      <ListItem
-                        sx={{ px: 3, py: 1.25, '&:hover': { bgcolor: 'grey.50' } }}
-                        secondaryAction={
-                          <Tooltip title="Acciones">
-                            <IconButton edge="end" size="small" onClick={(e) => openMenu(e, w.id)}>
-                              <MoreVertIcon fontSize="small" sx={{ color: 'text.disabled' }} />
-                            </IconButton>
-                          </Tooltip>
-                        }
-                      >
-                        <div className="flex items-center gap-3 flex-1 min-w-0 pr-4">
-                          {/* Name + badges */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-semibold text-slate-900 truncate">
-                                {w.name}
-                              </span>
-                              {w.sport_type && (
-                                <span className="px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 rounded border border-slate-200 flex-shrink-0">
-                                  {SPORT_LABELS[w.sport_type] ?? w.sport_type}
-                                </span>
-                              )}
-                              {w.difficulty && <DifficultyChip value={w.difficulty} />}
+                  {filteredWorkouts.map((w, idx) => {
+                    const sportKey = w.sport_type ?? w.discipline;
+                    const dur = fmtDuration(w.estimated_duration_minutes);
+                    const dist = w.estimated_distance_km ? `${w.estimated_distance_km} km` : null;
+                    const sessionKey = w.session_type ?? '';
+                    return (
+                      <React.Fragment key={w.id}>
+                        {idx > 0 && <Divider component="li" />}
+                        <ListItem
+                          className="group"
+                          sx={{ px: 2, py: 1, '&:hover': { bgcolor: '#fafafa' }, alignItems: 'center' }}
+                          disablePadding={false}
+                          secondaryAction={null}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+
+                            {/* Sport icon badge */}
+                            <SportIconBadge sportType={sportKey} />
+
+                            {/* Name + meta */}
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>{w.name}</span>
+                                {w.difficulty && <DifficultyChip value={w.difficulty} />}
+                              </div>
+                              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                                {[
+                                  SPORT_CONFIG[sportKey]?.label,
+                                  w.session_type,
+                                ].filter(Boolean).join(' · ')}
+                              </div>
                             </div>
-                            {w.description && (
-                              <p className="text-xs text-slate-400 mt-0.5 truncate max-w-md">
-                                {w.description}
-                              </p>
-                            )}
+
+                            {/* Zone preview bar */}
+                            <div style={{ width: 108, flexShrink: 0 }}>
+                              <ZonePreviewBar sessionType={sessionKey} />
+                            </div>
+
+                            {/* Duration */}
+                            <div style={{ width: 80, textAlign: 'right', flexShrink: 0 }}>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{dur ?? '—'}</span>
+                            </div>
+
+                            {/* Distance */}
+                            <div style={{ width: 72, textAlign: 'right', flexShrink: 0 }}>
+                              <span style={{ fontSize: 12, color: '#64748b' }}>{dist ?? '—'}</span>
+                            </div>
+
+                            {/* Hover actions */}
+                            <div style={{ width: 100, display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end', flexShrink: 0 }}>
+                              <Tooltip title="Editar">
+                                <IconButton size="small" onClick={() => handleEditWorkout(w.id)}
+                                  sx={{ opacity: 0, '.MuiListItem-root:hover &': { opacity: 1 }, width: 28, height: 28, bgcolor: '#f1f5f9', '&:hover': { bgcolor: '#e2e8f0' } }}>
+                                  <EditIcon sx={{ fontSize: 14 }} />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Duplicar">
+                                <IconButton size="small" onClick={() => handleDuplicateWorkout(w.id)}
+                                  sx={{ opacity: 0, '.MuiListItem-root:hover &': { opacity: 1 }, width: 28, height: 28, bgcolor: '#f1f5f9', '&:hover': { bgcolor: '#e2e8f0' } }}>
+                                  <DuplicateIcon sx={{ fontSize: 14 }} />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Eliminar">
+                                <IconButton size="small" onClick={() => handleDeleteWorkout(w.id)}
+                                  sx={{ opacity: 0, '.MuiListItem-root:hover &': { opacity: 1 }, width: 28, height: 28, bgcolor: '#f1f5f9', '&:hover': { bgcolor: '#fee2e2', color: '#ef4444' } }}>
+                                  <DeleteIcon sx={{ fontSize: 14 }} />
+                                </IconButton>
+                              </Tooltip>
+                            </div>
+
                           </div>
-
-                          {/* Duration */}
-                          <span className="w-24 text-xs text-slate-500 text-right flex-shrink-0">
-                            {w.estimated_duration_minutes ? `${w.estimated_duration_minutes} min` : '—'}
-                          </span>
-
-                          {/* Distance */}
-                          <span className="w-24 text-xs text-slate-500 text-right flex-shrink-0">
-                            {w.estimated_distance_km ? `${w.estimated_distance_km} km` : '—'}
-                          </span>
-                        </div>
-                      </ListItem>
-                    </React.Fragment>
-                  ))}
+                        </ListItem>
+                      </React.Fragment>
+                    );
+                  })}
                 </List>
               )}
             </>
@@ -527,32 +702,6 @@ export default function WorkoutLibraryPage() {
         </Paper>
 
       </Box>
-
-      {/* ── Workout Action Menu ── */}
-      <Menu
-        anchorEl={menuAnchor}
-        open={!!menuAnchor}
-        onClose={closeMenu}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-        PaperProps={{ sx: { borderRadius: 2, minWidth: 160 } }}
-      >
-        <MuiMenuItem onClick={() => handleEditWorkout(menuWorkoutId)}>
-          <EditIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />
-          Editar
-        </MuiMenuItem>
-        <MuiMenuItem onClick={() => handleDuplicateWorkout(menuWorkoutId)}>
-          <DuplicateIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />
-          Duplicar
-        </MuiMenuItem>
-        <MuiMenuItem
-          onClick={() => { closeMenu(); handleDeleteWorkout(menuWorkoutId); }}
-          sx={{ color: '#ef4444' }}
-        >
-          <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
-          Eliminar
-        </MuiMenuItem>
-      </Menu>
 
       {/* ── New Library Dialog ── */}
       <Dialog
