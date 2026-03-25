@@ -1971,6 +1971,30 @@ class PlannedWorkout(models.Model):
         ),
     )
 
+    # PR-145b: Difficulty + elevation planning fields
+    class Difficulty(models.TextChoices):
+        EASY      = "easy",      "Fácil"
+        MODERATE  = "moderate",  "Moderado"
+        HARD      = "hard",      "Difícil"
+        VERY_HARD = "very_hard", "Muy Difícil"
+
+    difficulty = models.CharField(
+        max_length=10,
+        choices=Difficulty.choices,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Perceived difficulty of the workout prescription.",
+    )
+    elevation_gain_min_m = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Minimum planned elevation gain in meters (trail/MTB planning).",
+    )
+    elevation_gain_max_m = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Maximum planned elevation gain in meters (trail/MTB planning).",
+    )
+
     # PR-143: Advanced metrics — training load intent anchors
     planned_tss = models.FloatField(
         null=True, blank=True,

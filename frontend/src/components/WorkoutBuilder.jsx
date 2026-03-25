@@ -59,16 +59,37 @@ const STEP_TYPES = [
 
 const STEP_TYPE_MAP = Object.fromEntries(STEP_TYPES.map((s) => [s.value, s]));
 
-const ZONES = [
+// Zone definitions per discipline mode
+const ZONES_RUN = [
   { value: 'Z1', label: 'Z1', name: 'Recuperación', color: '#94a3b8' },
   { value: 'Z2', label: 'Z2', name: 'Aeróbico',     color: '#22c55e' },
   { value: 'Z3', label: 'Z3', name: 'Tempo',         color: '#eab308' },
   { value: 'Z4', label: 'Z4', name: 'Umbral',        color: '#f97316' },
   { value: 'Z5', label: 'Z5', name: 'VO2max',        color: '#ef4444' },
-  { value: '',   label: '—',  name: 'Sin zona',      color: '#cbd5e1' },
+];
+const ZONES_BIKE = [
+  { value: 'Z1', label: 'Z1', name: 'Rec. <70% FC',    color: '#94a3b8' },
+  { value: 'Z2', label: 'Z2', name: 'Base 70-80% FC',  color: '#22c55e' },
+  { value: 'Z3', label: 'Z3', name: 'Aeróbico 80-87%', color: '#eab308' },
+  { value: 'Z4', label: 'Z4', name: 'Umbral 87-93%',   color: '#f97316' },
+  { value: 'Z5', label: 'Z5', name: 'VO2 >93% FC',     color: '#ef4444' },
+];
+const ZONES_STRENGTH = [
+  { value: 'Z1', label: 'Bajo',    name: 'Bajo / Técnico',   color: '#94a3b8' },
+  { value: 'Z2', label: 'Medio',   name: 'Moderado',          color: '#22c55e' },
+  { value: 'Z3', label: 'Alto',    name: 'Alta intensidad',   color: '#eab308' },
+  { value: 'Z4', label: 'Máx',     name: 'Máxima carga',      color: '#f97316' },
 ];
 
-const ZONE_MAP = Object.fromEntries(ZONES.filter((z) => z.value).map((z) => [z.value, z]));
+function getZones(discipline) {
+  if (discipline === 'bike') return ZONES_BIKE;
+  if (discipline === 'strength' || discipline === 'mobility') return ZONES_STRENGTH;
+  return ZONES_RUN; // trail, run, swim, other
+}
+
+// Keep ZONES as alias for backward compat
+const ZONES = [...ZONES_RUN, { value: '', label: '—', name: 'Sin zona', color: '#cbd5e1' }];
+const ZONE_MAP = Object.fromEntries(ZONES_RUN.map((z) => [z.value, z]));
 
 // IF (Intensity Factor) por zona — base para cálculo de rTSS estimado
 const IF_ZONE = { Z1: 0.63, Z2: 0.75, Z3: 0.85, Z4: 0.975, Z5: 1.10 };
@@ -105,6 +126,9 @@ const INITIAL_FORM = {
   description: '',
   discipline: 'trail',
   session_type: 'other',
+  difficulty: '',
+  elevation_gain_min_m: '',
+  elevation_gain_max_m: '',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -129,6 +153,9 @@ function workoutToFormState(workout) {
     description: workout.description ?? '',
     discipline: workout.discipline ?? 'trail',
     session_type: workout.session_type ?? 'other',
+    difficulty: workout.difficulty ?? '',
+    elevation_gain_min_m: workout.elevation_gain_min_m ?? '',
+    elevation_gain_max_m: workout.elevation_gain_max_m ?? '',
   };
   const blocks = (workout.blocks ?? []).map((b, bIdx) => {
     const intervals = (b.intervals ?? []).map((iv) => {
@@ -400,8 +427,9 @@ function StepTypeButton({ value, onChange }) {
 
 // ── ZonePills ─────────────────────────────────────────────────────────────────
 
-function ZonePills({ selected, onChange, paceZones }) {
-  const activeZone = ZONES.find((z) => z.value === selected);
+function ZonePills({ selected, onChange, paceZones, discipline }) {
+  const zones = getZones(discipline);
+  const activeZone = zones.find((z) => z.value === selected);
   const zData = selected && paceZones?.zones?.[selected];
   return (
     <div className="flex items-center gap-1 flex-shrink-0" style={{ minWidth: 130 }}>
@@ -417,7 +445,7 @@ function ZonePills({ selected, onChange, paceZones }) {
         }}
       >
         <option value="">Sin zona</option>
-        {ZONES.filter((z) => z.value).map((z) => (
+        {zones.filter((z) => z.value).map((z) => (
           <option key={z.value} value={z.value}>{z.label} {z.name}</option>
         ))}
       </select>
@@ -576,7 +604,7 @@ function RowActions({ onUp, onDown, onDelete, disableUp, disableDown }) {
 
 // ── SimpleStepRow ─────────────────────────────────────────────────────────────
 
-function SimpleStepRow({ block, bIdx, iv, isFirst, isLast, paceZones, onSetBlock, onSetInterval, onMove, onRemove }) {
+function SimpleStepRow({ block, bIdx, iv, isFirst, isLast, paceZones, discipline, onSetBlock, onSetInterval, onMove, onRemove }) {
   const setBlock = (key, val) => onSetBlock(bIdx, key, val);
   const setIv = (key, val) => onSetInterval(bIdx, 0, key, val);
 
@@ -614,7 +642,7 @@ function SimpleStepRow({ block, bIdx, iv, isFirst, isLast, paceZones, onSetBlock
 
       <MeasureInput iv={iv} set={setIv} />
 
-      <ZonePills selected={iv.zone} onChange={handleZone} paceZones={paceZones} />
+      <ZonePills selected={iv.zone} onChange={handleZone} paceZones={paceZones} discipline={discipline} />
 
       <PaceRangeBadge zone={iv.zone} paceZones={paceZones} />
 
@@ -633,7 +661,7 @@ function SimpleStepRow({ block, bIdx, iv, isFirst, isLast, paceZones, onSetBlock
 
 // ── SubStepRow ────────────────────────────────────────────────────────────────
 
-function SubStepRow({ iv, iIdx, bIdx, isOnly, paceZones, onSetValue, onRemove }) {
+function SubStepRow({ iv, iIdx, bIdx, isOnly, paceZones, discipline, onSetValue, onRemove }) {
   const set = (key, val) => onSetValue(bIdx, iIdx, key, val);
   const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -672,7 +700,7 @@ function SubStepRow({ iv, iIdx, bIdx, isOnly, paceZones, onSetValue, onRemove })
 
       <MeasureInput iv={iv} set={set} />
 
-      <ZonePills selected={iv.zone} onChange={handleZone} paceZones={paceZones} />
+      <ZonePills selected={iv.zone} onChange={handleZone} paceZones={paceZones} discipline={discipline} />
 
       <PaceRangeBadge zone={iv.zone} paceZones={paceZones} />
 
@@ -828,6 +856,9 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
         description: form.description.trim(),
         discipline: form.discipline,
         session_type: form.session_type,
+        ...(form.difficulty && { difficulty: form.difficulty }),
+        ...(form.elevation_gain_min_m && { elevation_gain_min_m: Number(form.elevation_gain_min_m) }),
+        ...(form.elevation_gain_max_m && { elevation_gain_max_m: Number(form.elevation_gain_max_m) }),
         ...(totals.totalSeconds > 0 && { estimated_duration_seconds: Math.round(totals.totalSeconds) }),
         ...(totals.totalMeters > 0 && { estimated_distance_meters: Math.round(totals.totalMeters) }),
       };
@@ -968,6 +999,41 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                     {SESSION_TYPE_OPTIONS.map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
                   </TextField>
                 </div>
+                {/* Difficulty + D+ row */}
+                <div className="grid grid-cols-2 gap-3">
+                  <TextField
+                    select label="Dificultad" value={form.difficulty} onChange={setField('difficulty')} size="small"
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', bgcolor: 'white' } }}
+                  >
+                    <MenuItem value="">Sin definir</MenuItem>
+                    <MenuItem value="easy">🟢 Fácil</MenuItem>
+                    <MenuItem value="moderate">🟡 Moderado</MenuItem>
+                    <MenuItem value="hard">🟠 Difícil</MenuItem>
+                    <MenuItem value="very_hard">🔴 Muy difícil</MenuItem>
+                  </TextField>
+                  {/* D+ only for trail/run */}
+                  {(form.discipline === 'trail' || form.discipline === 'run') ? (
+                    <div className="flex gap-1 items-center">
+                      <TextField
+                        label="D+ mín (m)" type="number" size="small"
+                        value={form.elevation_gain_min_m}
+                        onChange={setField('elevation_gain_min_m')}
+                        inputProps={{ min: 0, step: 50 }}
+                        sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: '8px', bgcolor: 'white' } }}
+                      />
+                      <span className="text-slate-400 text-sm flex-shrink-0">–</span>
+                      <TextField
+                        label="D+ máx (m)" type="number" size="small"
+                        value={form.elevation_gain_max_m}
+                        onChange={setField('elevation_gain_max_m')}
+                        inputProps={{ min: 0, step: 50 }}
+                        sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: '8px', bgcolor: 'white' } }}
+                      />
+                    </div>
+                  ) : (
+                    <div /> /* empty cell to keep grid */
+                  )}
+                </div>
                 <TextField
                   label="Notas para el atleta"
                   value={form.description} onChange={setField('description')}
@@ -1047,7 +1113,9 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                 className="text-xs font-semibold text-slate-400 uppercase tracking-wide">TIPO</div>
               <div className="flex-1 text-xs font-semibold text-slate-400 uppercase tracking-wide">DESCRIPCIÓN</div>
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide" style={{ width: 118 }}>OBJETIVO</div>
-              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide" style={{ width: 168 }}>ZONA</div>
+              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide" style={{ width: 168 }}>
+                {form.discipline === 'bike' ? 'ZONA FC' : form.discipline === 'strength' || form.discipline === 'mobility' ? 'CARGA' : 'ZONA RITMO'}
+              </div>
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide" style={{ width: 80 }}>RECUP.</div>
               <div style={{ width: 72 }} />
             </div>
@@ -1073,6 +1141,7 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                         isFirst={bIdx === 0}
                         isLast={bIdx === blocks.length - 1}
                         paceZones={paceZones}
+                        discipline={form.discipline}
                         onSetBlock={setBlockField}
                         onSetInterval={setIntervalValue}
                         onMove={moveBlock}
@@ -1100,6 +1169,7 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                           bIdx={bIdx}
                           isOnly={block.intervals.length === 1}
                           paceZones={paceZones}
+                          discipline={form.discipline}
                           onSetValue={setIntervalValue}
                           onRemove={removeInterval}
                         />

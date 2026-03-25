@@ -157,6 +157,7 @@ export default function WorkoutLibraryPage() {
   // ── Search / filter / sort ───────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
   const [sportFilter, setSportFilter] = useState('ALL');
+  const [difficultyFilter, setDifficultyFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState('recent');
 
   // ── Snackbar ────────────────────────────────────────────────────────────────
@@ -315,6 +316,7 @@ export default function WorkoutLibraryPage() {
     setSelectedLibId((prev) => (prev === libId ? null : libId));
     setSearchQuery('');
     setSportFilter('ALL');
+    setDifficultyFilter('ALL');
   };
 
   // ── Selected library object ─────────────────────────────────────────────────
@@ -330,12 +332,15 @@ export default function WorkoutLibraryPage() {
     if (sportFilter !== 'ALL') {
       list = list.filter((w) => (w.discipline ?? w.sport_type ?? '').toUpperCase() === sportFilter);
     }
+    if (difficultyFilter !== 'ALL') {
+      list = list.filter((w) => (w.difficulty ?? '') === difficultyFilter);
+    }
     if (sortBy === 'az') list.sort((a, b) => a.name.localeCompare(b.name));
     else if (sortBy === 'duration') list.sort((a, b) => (b.estimated_duration_minutes ?? 0) - (a.estimated_duration_minutes ?? 0));
     else if (sortBy === 'distance') list.sort((a, b) => (b.estimated_distance_km ?? 0) - (a.estimated_distance_km ?? 0));
     // default 'recent' = API order (already newest first)
     return list;
-  }, [workouts, searchQuery, sportFilter, sortBy]);
+  }, [workouts, searchQuery, sportFilter, difficultyFilter, sortBy]);
 
   // ── Loading guard ────────────────────────────────────────────────────────────
   if (orgLoading) {
@@ -541,6 +546,32 @@ export default function WorkoutLibraryPage() {
                   ))}
                 </Box>
 
+                {/* Difficulty filter pills */}
+                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'nowrap', overflow: 'auto' }}>
+                  {[
+                    { value: 'ALL', label: 'Todas' },
+                    { value: 'easy', label: '🟢 Fácil' },
+                    { value: 'moderate', label: '🟡 Moderado' },
+                    { value: 'hard', label: '🟠 Difícil' },
+                    { value: 'very_hard', label: '🔴 Muy difícil' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setDifficultyFilter(opt.value)}
+                      style={{
+                        padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                        cursor: 'pointer', border: '1px solid',
+                        whiteSpace: 'nowrap',
+                        background: difficultyFilter === opt.value ? '#f0fdf4' : 'white',
+                        borderColor: difficultyFilter === opt.value ? '#22c55e' : '#e2e8f0',
+                        color: difficultyFilter === opt.value ? '#16a34a' : '#64748b',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </Box>
+
                 {/* Sort */}
                 <select
                   value={sortBy}
@@ -629,7 +660,7 @@ export default function WorkoutLibraryPage() {
                     Probá con otro nombre o limpiá los filtros.
                   </Typography>
                   <button
-                    onClick={() => { setSearchQuery(''); setSportFilter('ALL'); }}
+                    onClick={() => { setSearchQuery(''); setSportFilter('ALL'); setDifficultyFilter('ALL'); }}
                     style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: 8, padding: '5px 14px', fontSize: 12, cursor: 'pointer', color: '#64748b' }}
                   >
                     Limpiar filtros
@@ -666,6 +697,9 @@ export default function WorkoutLibraryPage() {
                                 {[
                                   SPORT_CONFIG[sportKey]?.label,
                                   w.session_type,
+                                  (w.elevation_gain_min_m || w.elevation_gain_max_m)
+                                    ? `D+ ${w.elevation_gain_min_m ?? '?'}–${w.elevation_gain_max_m ?? '?'}m`
+                                    : null,
                                 ].filter(Boolean).join(' · ')}
                               </div>
                             </div>
