@@ -109,6 +109,9 @@ const emptyInterval = () => ({
   target_label: '',
   recovery_seconds: '',
   repetitions: 1,
+  // Strength/mobility fields
+  target_value_low: '',   // reps per set
+  target_value_high: '',  // weight kg
 });
 
 const emptyBlock = (order_index) => ({
@@ -172,6 +175,8 @@ function workoutToFormState(workout) {
         target_label: iv.target_label ?? '',
         recovery_seconds: iv.recovery_seconds != null ? String(iv.recovery_seconds) : '',
         repetitions: iv.repetitions ?? 1,
+        target_value_low: iv.target_value_low != null ? String(iv.target_value_low) : '',
+        target_value_high: iv.target_value_high != null ? String(iv.target_value_high) : '',
       };
     });
     const reps = b.repetitions ?? 1;
@@ -673,6 +678,42 @@ function RecoveryInput({ value, onChange }) {
   );
 }
 
+// ── StrengthVolumeSummary ─────────────────────────────────────────────────────
+
+function StrengthVolumeSummary({ blocks }) {
+  let totalSets = 0;
+  let totalReps = 0;
+  let totalKg = 0;
+  let hasWeight = false;
+
+  for (const block of blocks) {
+    const blockReps = Math.max(1, Number(block.repetitions) || 1);
+    for (const iv of block.intervals) {
+      const sets = Math.max(1, Number(iv.repetitions) || 1);
+      const reps = Number(iv.target_value_low) || 0;
+      const kg = Number(iv.target_value_high) || 0;
+      totalSets += sets * blockReps;
+      totalReps += sets * reps * blockReps;
+      if (kg > 0) { totalKg += sets * reps * kg * blockReps; hasWeight = true; }
+    }
+  }
+
+  const parts = [`${totalSets} series`];
+  if (totalReps > 0) parts.push(`${totalReps} reps`);
+  if (hasWeight && totalKg > 0) parts.push(`${Math.round(totalKg)} kg est.`);
+
+  return (
+    <div>
+      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
+        Volumen total
+      </p>
+      <p className="text-sm font-bold text-slate-600">
+        {parts.join(' · ')}
+      </p>
+    </div>
+  );
+}
+
 // ── RowActions ────────────────────────────────────────────────────────────────
 
 function RowActions({ onUp, onDown, onDelete, disableUp, disableDown }) {
@@ -725,12 +766,13 @@ function SimpleStepRow({ block, bIdx, iv, isFirst, isLast, paceZones, discipline
     setIv('target_label', zone || '');
   };
 
+  const isStrength = discipline === 'strength' || discipline === 'mobility';
   const zoneColor = iv.zone ? ZONE_MAP[iv.zone]?.color : null;
 
   return (
     <div
       className="group flex items-center gap-2 px-3 py-2 hover:bg-amber-50 transition-colors border-b border-slate-100"
-      style={{ borderLeft: `3px solid ${zoneColor ?? 'transparent'}` }}
+      style={{ borderLeft: `3px solid ${isStrength ? '#a855f7' : (zoneColor ?? 'transparent')}` }}
     >
       <DragHandleIcon sx={{ color: '#cbd5e1', fontSize: 16, cursor: 'grab', flexShrink: 0 }} />
 
@@ -742,21 +784,58 @@ function SimpleStepRow({ block, bIdx, iv, isFirst, isLast, paceZones, discipline
         <StepTypeButton value={block.block_type} onChange={(v) => setBlock('block_type', v)} />
       </div>
 
+      {/* Exercise name (description for strength, block name otherwise) */}
       <input
         type="text"
-        value={block.name}
-        onChange={(e) => setBlock('name', e.target.value)}
-        placeholder="Descripción del paso…"
+        value={isStrength ? iv.description : block.name}
+        onChange={(e) => isStrength ? setIv('description', e.target.value) : setBlock('name', e.target.value)}
+        placeholder={isStrength ? 'Nombre del ejercicio…' : 'Descripción del paso…'}
         className="flex-1 min-w-0 px-2 text-sm text-slate-700 placeholder-slate-300 bg-transparent border border-transparent rounded-md focus:outline-none focus:border-slate-300 focus:bg-white transition-colors"
         style={{ height: 30 }}
       />
 
-      <MeasureInput iv={iv} set={setIv} />
-
-      <ZonePills selected={iv.zone} onChange={handleZone} paceZones={paceZones} discipline={discipline} />
-
-      {discipline !== 'strength' && discipline !== 'mobility' && (
-        <PaceRangeBadge zone={iv.zone} paceZones={paceZones} />
+      {isStrength ? (
+        // Strength inputs: SERIES · REPS · PESO
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <input
+            type="number" min={1}
+            value={iv.repetitions || ''}
+            onChange={(e) => setIv('repetitions', Number(e.target.value) || 1)}
+            placeholder="—"
+            title="Series"
+            className="text-center text-xs font-semibold border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:border-violet-400"
+            style={{ width: 42, height: 28 }}
+          />
+          <span className="text-xs text-slate-400 flex-shrink-0">×</span>
+          <input
+            type="number" min={0}
+            value={iv.target_value_low || ''}
+            onChange={(e) => setIv('target_value_low', e.target.value)}
+            placeholder="reps"
+            title="Reps por serie"
+            className="text-center text-xs font-semibold border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:border-violet-400"
+            style={{ width: 48, height: 28 }}
+          />
+          <span className="text-xs text-slate-400 flex-shrink-0">@</span>
+          <input
+            type="number" min={0} step="0.5"
+            value={iv.target_value_high || ''}
+            onChange={(e) => setIv('target_value_high', e.target.value)}
+            placeholder="kg"
+            title="Peso (kg)"
+            className="text-center text-xs font-semibold border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:border-violet-400"
+            style={{ width: 52, height: 28 }}
+          />
+          <span className="text-xs text-slate-400 flex-shrink-0">kg</span>
+        </div>
+      ) : (
+        <>
+          <MeasureInput iv={iv} set={setIv} />
+          <ZonePills selected={iv.zone} onChange={handleZone} paceZones={paceZones} discipline={discipline} />
+          {discipline !== 'strength' && discipline !== 'mobility' && (
+            <PaceRangeBadge zone={iv.zone} paceZones={paceZones} />
+          )}
+        </>
       )}
 
       <RecoveryInput value={iv.recovery_seconds} onChange={(v) => setIv('recovery_seconds', v)} />
@@ -777,6 +856,7 @@ function SimpleStepRow({ block, bIdx, iv, isFirst, isLast, paceZones, discipline
 function SubStepRow({ iv, iIdx, bIdx, isOnly, paceZones, discipline, onSetValue, onRemove }) {
   const set = (key, val) => onSetValue(bIdx, iIdx, key, val);
   const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const isStrength = discipline === 'strength' || discipline === 'mobility';
 
   const handleZone = (zone) => {
     set('zone', zone);
@@ -791,7 +871,7 @@ function SubStepRow({ iv, iIdx, bIdx, isOnly, paceZones, discipline, onSetValue,
       className="group flex items-center gap-2 pr-3 py-1.5 hover:bg-amber-50 transition-colors border-b border-amber-100"
       style={{
         paddingLeft: 48,
-        borderLeft: `3px solid ${zoneColor ?? '#fed7aa'}`,
+        borderLeft: `3px solid ${isStrength ? '#a855f750' : (zoneColor ?? '#fed7aa')}`,
       }}
     >
       <span className="text-xs font-bold text-amber-500 flex-shrink-0 text-center" style={{ width: 18 }}>
@@ -806,17 +886,52 @@ function SubStepRow({ iv, iIdx, bIdx, isOnly, paceZones, discipline, onSetValue,
         type="text"
         value={iv.description}
         onChange={(e) => set('description', e.target.value)}
-        placeholder="Descripción del sub-paso…"
+        placeholder={isStrength ? 'Nombre del ejercicio…' : 'Descripción del sub-paso…'}
         className="flex-1 min-w-0 px-2 text-sm text-slate-700 placeholder-slate-300 bg-transparent border border-transparent rounded-md focus:outline-none focus:border-slate-300 focus:bg-white transition-colors"
         style={{ height: 28 }}
       />
 
-      <MeasureInput iv={iv} set={set} />
-
-      <ZonePills selected={iv.zone} onChange={handleZone} paceZones={paceZones} discipline={discipline} />
-
-      {discipline !== 'strength' && discipline !== 'mobility' && (
-        <PaceRangeBadge zone={iv.zone} paceZones={paceZones} />
+      {isStrength ? (
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <input
+            type="number" min={1}
+            value={iv.repetitions || ''}
+            onChange={(e) => set('repetitions', Number(e.target.value) || 1)}
+            placeholder="—"
+            title="Series"
+            className="text-center text-xs font-semibold border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:border-violet-400"
+            style={{ width: 42, height: 26 }}
+          />
+          <span className="text-xs text-slate-400 flex-shrink-0">×</span>
+          <input
+            type="number" min={0}
+            value={iv.target_value_low || ''}
+            onChange={(e) => set('target_value_low', e.target.value)}
+            placeholder="reps"
+            title="Reps por serie"
+            className="text-center text-xs font-semibold border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:border-violet-400"
+            style={{ width: 48, height: 26 }}
+          />
+          <span className="text-xs text-slate-400 flex-shrink-0">@</span>
+          <input
+            type="number" min={0} step="0.5"
+            value={iv.target_value_high || ''}
+            onChange={(e) => set('target_value_high', e.target.value)}
+            placeholder="kg"
+            title="Peso (kg)"
+            className="text-center text-xs font-semibold border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:border-violet-400"
+            style={{ width: 52, height: 26 }}
+          />
+          <span className="text-xs text-slate-400 flex-shrink-0">kg</span>
+        </div>
+      ) : (
+        <>
+          <MeasureInput iv={iv} set={set} />
+          <ZonePills selected={iv.zone} onChange={handleZone} paceZones={paceZones} discipline={discipline} />
+          {discipline !== 'strength' && discipline !== 'mobility' && (
+            <PaceRangeBadge zone={iv.zone} paceZones={paceZones} />
+          )}
+        </>
       )}
 
       <RecoveryInput value={iv.recovery_seconds} onChange={(v) => set('recovery_seconds', v)} />
@@ -1007,16 +1122,37 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
         for (let idx = 0; idx < block.intervals.length; idx++) {
           const iv = block.intervals[idx];
           const hasZone = !!iv.zone;
-          const ivPayload = {
-            order_index: idx + 1,
-            repetitions: Number(iv.repetitions) || 1,
-            metric_type: hasZone ? 'hr_zone' : (iv.metric_type || 'free'),
-            ...(iv.description.trim() && { description: iv.description.trim() }),
-            ...(iv.measure === 'tiempo' && iv.duration_seconds && { duration_seconds: Number(iv.duration_seconds) }),
-            ...(iv.measure === 'distancia' && iv.distance_meters && { distance_meters: Number(iv.distance_meters) }),
-            target_label: hasZone ? iv.zone : (iv.target_label || ''),
-            ...(iv.recovery_seconds && { recovery_seconds: Number(iv.recovery_seconds) }),
-          };
+          const isStrengthDiscipline = form.discipline === 'strength' || form.discipline === 'mobility';
+          let ivPayload;
+          if (isStrengthDiscipline) {
+            const reps = Number(iv.target_value_low) || null;
+            const kg = Number(iv.target_value_high) || null;
+            const sets = Number(iv.repetitions) || 1;
+            const label = `${sets}×${reps ?? '?'}${kg ? ` @ ${kg}kg` : ''}`;
+            ivPayload = {
+              order_index: idx + 1,
+              repetitions: sets,
+              metric_type: 'rpe',
+              ...(iv.description.trim() && { description: iv.description.trim() }),
+              target_label: label,
+              ...(reps != null && { target_value_low: reps }),
+              ...(kg != null && { target_value_high: kg }),
+              ...(iv.recovery_seconds && { recovery_seconds: Number(iv.recovery_seconds) }),
+              duration_seconds: null,
+              distance_meters: null,
+            };
+          } else {
+            ivPayload = {
+              order_index: idx + 1,
+              repetitions: Number(iv.repetitions) || 1,
+              metric_type: hasZone ? 'hr_zone' : (iv.metric_type || 'free'),
+              ...(iv.description.trim() && { description: iv.description.trim() }),
+              ...(iv.measure === 'tiempo' && iv.duration_seconds && { duration_seconds: Number(iv.duration_seconds) }),
+              ...(iv.measure === 'distancia' && iv.distance_meters && { distance_meters: Number(iv.distance_meters) }),
+              target_label: hasZone ? iv.zone : (iv.target_label || ''),
+              ...(iv.recovery_seconds && { recovery_seconds: Number(iv.recovery_seconds) }),
+            };
+          }
           await createWorkoutInterval(orgId, libraryId, workoutId, blockId, ivPayload);
         }
       }
@@ -1209,32 +1345,47 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                   className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-amber-700 border border-amber-300 rounded-lg hover:bg-amber-50 transition-colors"
                 >
                   <AddIcon sx={{ fontSize: 14 }} />
-                  Agregar paso
+                  {(form.discipline === 'strength' || form.discipline === 'mobility') ? 'Agregar ejercicio' : 'Agregar paso'}
                 </button>
-                <button
-                  onClick={addRepeatedBlock}
-                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-purple-700 border border-purple-300 rounded-lg hover:bg-purple-50 transition-colors"
-                >
-                  <RepeatIcon sx={{ fontSize: 14 }} />
-                  Bloque repetido
-                </button>
+                {form.discipline !== 'strength' && form.discipline !== 'mobility' && (
+                  <button
+                    onClick={addRepeatedBlock}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-purple-700 border border-purple-300 rounded-lg hover:bg-purple-50 transition-colors"
+                  >
+                    <RepeatIcon sx={{ fontSize: 14 }} />
+                    Bloque repetido
+                  </button>
+                )}
               </div>
             </div>
 
             {/* Column headers */}
-            <div className="flex items-center gap-2 px-3 py-1.5 border-y border-slate-100 bg-slate-50">
-              <div style={{ width: 16 }} />
-              <div style={{ width: 18 }} />
-              <div style={{ minWidth: 140, flex: '0 0 140px' }}
-                className="text-xs font-semibold text-slate-400 uppercase tracking-wide">TIPO</div>
-              <div className="flex-1 text-xs font-semibold text-slate-400 uppercase tracking-wide">DESCRIPCIÓN</div>
-              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide" style={{ width: 118 }}>OBJETIVO</div>
-              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide" style={{ width: 168 }}>
-                {form.discipline === 'bike' ? 'ZONA FC' : form.discipline === 'strength' || form.discipline === 'mobility' ? 'CARGA' : 'ZONA RITMO'}
+            {(form.discipline === 'strength' || form.discipline === 'mobility') ? (
+              <div className="flex items-center gap-2 px-3 py-1.5 border-y border-slate-100 bg-slate-50">
+                <div style={{ width: 16 }} />
+                <div style={{ width: 18 }} />
+                <div style={{ minWidth: 140, flex: '0 0 140px' }}
+                  className="text-xs font-semibold text-slate-400 uppercase tracking-wide">TIPO</div>
+                <div className="flex-1 text-xs font-semibold text-slate-400 uppercase tracking-wide">EJERCICIO</div>
+                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide" style={{ width: 180 }}>SERIES × REPS @ PESO</div>
+                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide" style={{ width: 80 }}>DESCANSO</div>
+                <div style={{ width: 72 }} />
               </div>
-              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide" style={{ width: 80 }}>RECUP.</div>
-              <div style={{ width: 72 }} />
-            </div>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-1.5 border-y border-slate-100 bg-slate-50">
+                <div style={{ width: 16 }} />
+                <div style={{ width: 18 }} />
+                <div style={{ minWidth: 140, flex: '0 0 140px' }}
+                  className="text-xs font-semibold text-slate-400 uppercase tracking-wide">TIPO</div>
+                <div className="flex-1 text-xs font-semibold text-slate-400 uppercase tracking-wide">DESCRIPCIÓN</div>
+                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide" style={{ width: 118 }}>OBJETIVO</div>
+                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide" style={{ width: 168 }}>
+                  {form.discipline === 'bike' ? 'ZONA FC' : 'ZONA RITMO'}
+                </div>
+                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide" style={{ width: 80 }}>RECUP.</div>
+                <div style={{ width: 72 }} />
+              </div>
+            )}
 
             {/* Steps list */}
             {blocks.length === 0 ? (
@@ -1296,11 +1447,17 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
               </div>
             )}
 
-            {/* Workout profile chart + intensity histogram */}
+            {/* Workout profile chart + intensity histogram / strength summary */}
             {blocks.length > 0 && (
               <div className="mx-5 my-4 px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-col gap-5">
-                <WorkoutProfileChart blocks={blocks} paceZones={paceZones} discipline={form.discipline} />
-                <IntensityHistogram blocks={blocks} paceZones={paceZones} />
+                {(form.discipline !== 'strength' && form.discipline !== 'mobility') ? (
+                  <>
+                    <WorkoutProfileChart blocks={blocks} paceZones={paceZones} discipline={form.discipline} />
+                    <IntensityHistogram blocks={blocks} paceZones={paceZones} />
+                  </>
+                ) : (
+                  <StrengthVolumeSummary blocks={blocks} />
+                )}
               </div>
             )}
           </div>

@@ -1,44 +1,435 @@
-import React from 'react';
-import { Box, Paper, Typography } from '@mui/material';
-import { CalendarMonth } from '@mui/icons-material';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Box, Typography, Paper, IconButton, Chip, CircularProgress, Alert,
+} from '@mui/material';
+import { ChevronLeft, ChevronRight } from '@mui/icons-material';
+import {
+  startOfMonth, endOfMonth, startOfWeek, endOfWeek,
+  addMonths, subMonths, eachDayOfInterval, isSameMonth, isSameDay, format,
+} from 'date-fns';
+import { es } from 'date-fns/locale';
 import AthleteLayout from '../components/AthleteLayout';
+import WorkoutDetailDrawer from '../components/WorkoutDetailDrawer';
 import { useAuth } from '../context/AuthContext';
+import { listAssignments, updateAssignment } from '../api/assignments';
+import client from '../api/client';
+
+// ── Sport colors ──────────────────────────────────────────────────────────────
+
+const SPORT_COLOR = {
+  trail:    '#f97316',
+  run:      '#22c55e',
+  bike:     '#3b82f6',
+  cycling:  '#3b82f6',
+  strength: '#a855f7',
+  mobility: '#06b6d4',
+  other:    '#94a3b8',
+};
+
+const SPORT_LABEL = {
+  trail:    'Trail',
+  run:      'Running',
+  bike:     'Ciclismo',
+  cycling:  'Ciclismo',
+  strength: 'Fuerza',
+  mobility: 'Movilidad',
+  swim:     'Natación',
+  other:    'Otro',
+};
+
+function sportColor(discipline) {
+  return SPORT_COLOR[discipline] ?? '#94a3b8';
+}
+
+function sportLabel(discipline) {
+  return SPORT_LABEL[discipline] ?? discipline ?? 'Otro';
+}
+
+// ── Duration formatting ───────────────────────────────────────────────────────
+
+function fmtDuration(seconds) {
+  if (!seconds) return null;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `${h}h${m > 0 ? ` ${m}min` : ''}`;
+  return `${m}min`;
+}
+
+function fmtDistance(meters) {
+  if (!meters) return null;
+  if (meters >= 1000) return `${(meters / 1000).toFixed(1)}km`;
+  return `${meters}m`;
+}
+
+// ── Status badge ──────────────────────────────────────────────────────────────
+
+const STATUS_CONFIG = {
+  planned:   { label: 'Planificado', color: '#64748b', bg: '#f1f5f9' },
+  completed: { label: 'Completado',  color: '#16a34a', bg: '#f0fdf4' },
+  skipped:   { label: 'Saltado',     color: '#d97706', bg: '#fffbeb' },
+  canceled:  { label: 'Cancelado',   color: '#dc2626', bg: '#fef2f2' },
+  moved:     { label: 'Movido',      color: '#7c3aed', bg: '#f5f3ff' },
+};
+
+// ── WorkoutDayCard ─────────────────────────────────────────────────────────────
+
+function WorkoutDayCard({ assignment, onClick }) {
+  const pw = assignment.planned_workout;
+  const discipline = pw?.discipline ?? 'other';
+  const color = sportColor(discipline);
+  const statusCfg = STATUS_CONFIG[assignment.status] ?? STATUS_CONFIG.planned;
+  const isCompleted = assignment.status === 'completed';
+
+  const duration = fmtDuration(pw?.estimated_duration_seconds);
+  const distance = fmtDistance(pw?.estimated_distance_meters);
+  const dplus = pw?.elevation_gain_min_m;
+
+  return (
+    <Paper
+      onClick={() => onClick(assignment)}
+      sx={{
+        borderRadius: 2,
+        borderLeft: `3px solid ${color}`,
+        boxShadow: 'none',
+        border: `1px solid #e2e8f0`,
+        borderLeftColor: color,
+        cursor: 'pointer',
+        opacity: isCompleted ? 0.85 : 1,
+        bgcolor: isCompleted ? '#f0fdf4' : 'white',
+        transition: 'box-shadow 0.15s',
+        '&:hover': { boxShadow: '0 2px 8px rgba(0,0,0,0.08)' },
+        mb: 0.5,
+        p: 1,
+        minWidth: 0,
+      }}
+    >
+      {/* Sport + status */}
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.25 }}>
+        <Typography
+          variant="caption"
+          sx={{ fontWeight: 700, color, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: 0.3 }}
+        >
+          {sportLabel(discipline)}
+        </Typography>
+        {isCompleted && (
+          <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 700 }}>✓</span>
+        )}
+      </Box>
+
+      {/* Name */}
+      <Typography
+        variant="body2"
+        sx={{ fontWeight: 600, color: '#1e293b', fontSize: '0.75rem', lineHeight: 1.3, mb: 0.5 }}
+        noWrap
+      >
+        {pw?.name ?? 'Entrenamiento'}
+      </Typography>
+
+      {/* Metrics */}
+      <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.65rem', display: 'block' }}>
+        {[duration, distance, dplus ? `${dplus}m D+` : null].filter(Boolean).join(' · ') || '—'}
+      </Typography>
+
+      {/* Status chip */}
+      <Box
+        sx={{
+          mt: 0.5,
+          display: 'inline-block',
+          px: 0.75, py: 0.15,
+          borderRadius: 1,
+          bgcolor: statusCfg.bg,
+          color: statusCfg.color,
+          fontSize: '0.6rem',
+          fontWeight: 600,
+        }}
+      >
+        {statusCfg.label}
+      </Box>
+    </Paper>
+  );
+}
+
+// ── WeekSummaryRow ────────────────────────────────────────────────────────────
+
+function WeekSummaryRow({ weekAssignments, pmcData }) {
+  if (weekAssignments.length === 0) return null;
+
+  const done = weekAssignments.filter((a) => a.status === 'completed').length;
+  const total = weekAssignments.length;
+  const totalKm = weekAssignments.reduce((s, a) => {
+    return s + ((a.planned_workout?.estimated_distance_meters ?? 0) / 1000);
+  }, 0);
+  const totalDPlus = weekAssignments.reduce((s, a) => {
+    return s + (a.planned_workout?.elevation_gain_min_m ?? 0);
+  }, 0);
+  const totalTSS = weekAssignments.reduce((s, a) => s + (a.planned_workout?.planned_tss ?? 0), 0);
+
+  const parts = [`${done} de ${total} entrenamientos`];
+  if (totalKm > 0.1) parts.push(`${totalKm.toFixed(1)}km`);
+  if (totalDPlus > 0) parts.push(`${Math.round(totalDPlus)}m D+`);
+  if (totalTSS > 0) parts.push(`TSS: ${Math.round(totalTSS)}`);
+
+  const tsbVal = pmcData?.tsb;
+  const tsbColor = tsbVal == null ? '#94a3b8'
+    : tsbVal > 0 ? '#16a34a'
+    : tsbVal < -20 ? '#dc2626'
+    : '#d97706';
+
+  return (
+    <Box
+      sx={{
+        gridColumn: '1 / -1',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        px: 2, py: 0.75,
+        bgcolor: '#f8fafc',
+        borderTop: '1px solid #e2e8f0',
+        borderBottom: '1px solid #e2e8f0',
+        flexWrap: 'wrap',
+        gap: 1,
+      }}
+    >
+      <Typography variant="caption" sx={{ color: '#475569', fontSize: '0.7rem', fontWeight: 500 }}>
+        {parts.join(' · ')}
+      </Typography>
+      {pmcData && (
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Chip
+            label={`CTL ${pmcData.ctl?.toFixed(0) ?? '—'}`}
+            size="small"
+            sx={{ height: 18, fontSize: '0.6rem', bgcolor: '#dbeafe', color: '#1d4ed8', fontWeight: 600, '& .MuiChip-label': { px: 0.75 } }}
+          />
+          <Chip
+            label={`ATL ${pmcData.atl?.toFixed(0) ?? '—'}`}
+            size="small"
+            sx={{ height: 18, fontSize: '0.6rem', bgcolor: '#fce7f3', color: '#9d174d', fontWeight: 600, '& .MuiChip-label': { px: 0.75 } }}
+          />
+          <Chip
+            label={`Forma ${tsbVal != null ? tsbVal.toFixed(0) : '—'}`}
+            size="small"
+            sx={{ height: 18, fontSize: '0.6rem', bgcolor: '#f1f5f9', color: tsbColor, fontWeight: 700, '& .MuiChip-label': { px: 0.75 } }}
+          />
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function buildCalendarWeeks(currentDate) {
+  const monthStart = startOfMonth(currentDate);
+  const monthEnd = endOfMonth(currentDate);
+  const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
+  const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+  const days = eachDayOfInterval({ start: calStart, end: calEnd });
+
+  const weeks = [];
+  for (let i = 0; i < days.length; i += 7) {
+    weeks.push(days.slice(i, i + 7));
+  }
+  return weeks;
+}
+
+const DAY_HEADERS = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'];
+
+// ── Main Component ─────────────────────────────────────────────────────────────
 
 const AthleteMyTraining = () => {
   const { user } = useAuth();
+  const orgId = user?.memberships?.[0]?.org_id;
+
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [assignments, setAssignments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [pmcData, setPmcData] = useState(null);
+  const [selectedAssignment, setSelectedAssignment] = useState(null);
+
+  const fetchData = useCallback(async () => {
+    if (!orgId) return;
+    setLoading(true);
+    setError('');
+    try {
+      const dateFrom = format(startOfMonth(currentDate), 'yyyy-MM-dd');
+      const dateTo = format(endOfMonth(currentDate), 'yyyy-MM-dd');
+      const res = await listAssignments(orgId, { dateFrom, dateTo });
+      const data = res.data?.results ?? res.data ?? [];
+      setAssignments(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setError('Error cargando el calendario. Intenta de nuevo.');
+      console.error('[AthleteMyTraining] fetch assignments error:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [orgId, currentDate]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    client.get('/api/athlete/pmc/')
+      .then((res) => setPmcData(res.data))
+      .catch(() => setPmcData(null));
+  }, []);
+
+  const handlePrevMonth = () => setCurrentDate((d) => subMonths(d, 1));
+  const handleNextMonth = () => setCurrentDate((d) => addMonths(d, 1));
+
+  const handleMarkComplete = async (assignment) => {
+    if (!orgId) return;
+    try {
+      const res = await updateAssignment(orgId, assignment.id, { status: 'completed' });
+      setAssignments((prev) => prev.map((a) => a.id === assignment.id ? res.data : a));
+      if (selectedAssignment?.id === assignment.id) {
+        setSelectedAssignment(res.data);
+      }
+    } catch (err) {
+      console.error('[AthleteMyTraining] mark complete error:', err);
+    }
+  };
+
+  const weeks = buildCalendarWeeks(currentDate);
+
+  const assignmentsByDate = {};
+  for (const a of assignments) {
+    const key = a.scheduled_date;
+    if (!assignmentsByDate[key]) assignmentsByDate[key] = [];
+    assignmentsByDate[key].push(a);
+  }
 
   return (
     <AthleteLayout user={user}>
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h5" sx={{ fontWeight: 700, color: '#0F172A' }}>Mi Entrenamiento</Typography>
-        <Typography variant="body2" sx={{ color: '#64748B', mt: 0.5 }}>Calendario de sesiones asignadas</Typography>
+      {/* Header */}
+      <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 700, color: '#0F172A' }}>Mi Entrenamiento</Typography>
+          <Typography variant="body2" sx={{ color: '#64748B', mt: 0.5 }}>Calendario de sesiones asignadas</Typography>
+        </Box>
+
+        {/* Month navigation */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <IconButton size="small" onClick={handlePrevMonth} sx={{ bgcolor: '#f1f5f9', '&:hover': { bgcolor: '#e2e8f0' } }}>
+            <ChevronLeft fontSize="small" />
+          </IconButton>
+          <Typography
+            variant="subtitle1"
+            sx={{ fontWeight: 600, color: '#1e293b', minWidth: 140, textAlign: 'center', textTransform: 'capitalize' }}
+          >
+            {format(currentDate, 'MMMM yyyy', { locale: es })}
+          </Typography>
+          <IconButton size="small" onClick={handleNextMonth} sx={{ bgcolor: '#f1f5f9', '&:hover': { bgcolor: '#e2e8f0' } }}>
+            <ChevronRight fontSize="small" />
+          </IconButton>
+        </Box>
       </Box>
 
-      <Paper
-        sx={{
-          p: 6,
-          borderRadius: 3,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          textAlign: 'center',
-          border: '2px dashed #E2E8F0',
-          boxShadow: 'none',
-          minHeight: 320,
-        }}
-      >
-        <Box sx={{ bgcolor: '#F1F5F9', borderRadius: '50%', p: 2.5, mb: 3 }}>
-          <CalendarMonth sx={{ fontSize: 40, color: '#94A3B8' }} />
+      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}>
+          <CircularProgress sx={{ color: '#f97316' }} />
         </Box>
-        <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E293B', mb: 1 }}>
-          Tu calendario de entrenamientos
-        </Typography>
-        <Typography variant="body2" sx={{ color: '#64748B', maxWidth: 380 }}>
-          Tu calendario de entrenamientos estará disponible próximamente.
-          Aquí verás todas tus sesiones planificadas con detalle de series, intensidades y objetivos.
-        </Typography>
-      </Paper>
+      ) : (
+        <Paper sx={{ borderRadius: 3, overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: 'none' }}>
+          {/* Day-of-week headers */}
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(7, 1fr)',
+              bgcolor: '#f8fafc',
+              borderBottom: '1px solid #e2e8f0',
+            }}
+          >
+            {DAY_HEADERS.map((d) => (
+              <Box key={d} sx={{ py: 1, textAlign: 'center' }}>
+                <Typography variant="caption" sx={{ fontWeight: 700, color: '#94a3b8', fontSize: '0.65rem', letterSpacing: 0.5 }}>
+                  {d}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+
+          {/* Weeks */}
+          {weeks.map((week, wIdx) => {
+            const weekDateKeys = week.map((d) => format(d, 'yyyy-MM-dd'));
+            const weekAssignments = weekDateKeys.flatMap((k) => assignmentsByDate[k] ?? []);
+
+            return (
+              <React.Fragment key={wIdx}>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(7, 1fr)',
+                    borderBottom: weekAssignments.length > 0 ? 'none' : '1px solid #e2e8f0',
+                  }}
+                >
+                  {week.map((day, dIdx) => {
+                    const dateKey = format(day, 'yyyy-MM-dd');
+                    const dayAssignments = assignmentsByDate[dateKey] ?? [];
+                    const isToday = isSameDay(day, new Date());
+                    const inMonth = isSameMonth(day, currentDate);
+
+                    return (
+                      <Box
+                        key={dIdx}
+                        sx={{
+                          minHeight: 80,
+                          p: 0.75,
+                          borderRight: dIdx < 6 ? '1px solid #e2e8f0' : 'none',
+                          bgcolor: inMonth ? 'white' : '#f8fafc',
+                          position: 'relative',
+                        }}
+                      >
+                        {/* Day number */}
+                        <Box
+                          sx={{
+                            width: 22, height: 22,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            borderRadius: '50%',
+                            bgcolor: isToday ? '#f97316' : 'transparent',
+                            mb: 0.5,
+                          }}
+                        >
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              fontWeight: isToday ? 700 : 400,
+                              color: isToday ? 'white' : inMonth ? '#374151' : '#cbd5e1',
+                              fontSize: '0.7rem',
+                            }}
+                          >
+                            {format(day, 'd')}
+                          </Typography>
+                        </Box>
+
+                        {/* Assignment cards */}
+                        {dayAssignments.map((a) => (
+                          <WorkoutDayCard
+                            key={a.id}
+                            assignment={a}
+                            onClick={setSelectedAssignment}
+                          />
+                        ))}
+                      </Box>
+                    );
+                  })}
+                </Box>
+
+                {/* Week summary row */}
+                <WeekSummaryRow weekAssignments={weekAssignments} pmcData={pmcData} />
+              </React.Fragment>
+            );
+          })}
+        </Paper>
+      )}
+
+      {/* Workout detail drawer */}
+      <WorkoutDetailDrawer
+        assignment={selectedAssignment}
+        onClose={() => setSelectedAssignment(null)}
+        onMarkComplete={handleMarkComplete}
+      />
     </AthleteLayout>
   );
 };

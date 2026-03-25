@@ -39,7 +39,7 @@ import CoachAthletePMC from './pages/CoachAthletePMC';
 // --- DASHBOARD ROUTER: renders athlete or coach dashboard based on role ---
 const DashboardRouter = () => {
   const { user } = useAuth();
-  if (user?.role === 'athlete') {
+  if (user?.memberships?.[0]?.role === 'athlete') {
     return <AthleteDashboard user={user} />;
   }
   return <Dashboard />;
