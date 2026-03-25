@@ -415,3 +415,92 @@ class TeamReadinessView(APIView):
             },
         )
         return Response({"summary": summary, "athletes": athletes_data})
+
+
+# ==============================================================================
+# Pace Zones — PR-145a
+# ==============================================================================
+
+def _fmt_pace(s_km: float) -> str:
+    """Convert seconds/km to 'M:SS/km' display string."""
+    s_km = int(round(s_km))
+    return f"{s_km // 60}:{s_km % 60:02d}/km"
+
+
+class PaceZonesView(APIView):
+    """
+    GET /api/athlete/pace-zones/
+
+    Returns Z1-Z5 pace zones derived from the authenticated user's
+    threshold pace (AthleteHRProfile.threshold_pace_s_km).
+    Falls back to 300 s/km (5:00/km) when no profile exists.
+
+    Available to any user with an active Membership (athlete or coach),
+    because coaches also need pace zone reference when building workouts.
+    Tenancy: org is resolved from the user's active Membership — never
+    from request params.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    _ZONE_DEFS = [
+        # (key, name, min_mult, max_mult, color, description)
+        ("Z1", "Recuperación", 1.40, 1.60, "#94a3b8", "Muy fácil, conversación fluida"),
+        ("Z2", "Aeróbico",     1.20, 1.39, "#22c55e", "Cómodo, base aeróbica"),
+        ("Z3", "Tempo",        1.06, 1.19, "#eab308", "Moderado-fuerte, controlable"),
+        ("Z4", "Umbral",       0.98, 1.05, "#f97316", "Difícil, máximo sostenible"),
+        ("Z5", "VO2max",       0.85, 0.97, "#ef4444", "Muy intenso, series cortas"),
+    ]
+
+    def get(self, request):
+        membership = (
+            Membership.objects
+            .select_related("organization")
+            .filter(user=request.user, is_active=True)
+            .first()
+        )
+        if not membership:
+            raise PermissionDenied("No active membership found.")
+
+        org = membership.organization
+
+        hr_profile = AthleteHRProfile.objects.filter(
+            athlete=request.user,
+            organization=org,
+        ).first()
+
+        has_threshold = (
+            hr_profile is not None
+            and hr_profile.threshold_pace_s_km is not None
+        )
+        threshold_s = float(hr_profile.threshold_pace_s_km) if has_threshold else 300.0
+
+        zones = {}
+        for key, name, min_mult, max_mult, color, desc in self._ZONE_DEFS:
+            zones[key] = {
+                "name": name,
+                "pace_min": _fmt_pace(threshold_s * min_mult),
+                "pace_max": _fmt_pace(threshold_s * max_mult),
+                "pace_min_s": round(threshold_s * min_mult, 1),
+                "pace_max_s": round(threshold_s * max_mult, 1),
+                "color": color,
+                "description": desc,
+            }
+
+        logger.info(
+            "pace_zones_calculated",
+            extra={
+                "event_name": "pace_zones_calculated",
+                "user_id": request.user.pk,
+                "organization_id": org.pk,
+                "has_threshold": has_threshold,
+                "outcome": "success",
+            },
+        )
+
+        return Response({
+            "has_threshold": has_threshold,
+            "threshold_pace_s_km": threshold_s,
+            "threshold_pace_display": _fmt_pace(threshold_s),
+            "zones": zones,
+        })

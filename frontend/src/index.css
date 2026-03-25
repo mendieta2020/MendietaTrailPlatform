@@ -1,0 +1,8 @@
+/*
+ * Quantoryn — Tailwind CSS v4 entry point
+ *
+ * Importamos SOLO utilities (sin preflight/reset) para no interferir
+ * con MUI CssBaseline. Esto activa flex, grid, gap, text, bg, etc.
+ * sin sobreescribir los estilos base de Material UI.
+ */
+@import "tailwindcss/utilities";

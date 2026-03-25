@@ -65,55 +65,68 @@ const MiniSparkline = ({ data = [], zone }) => {
   )
 }
 
-const SummaryCards = ({ summary = {} }) => {
-  const cards = [
-    {
-      key: 'overreaching',
-      bg: 'bg-red-50',
-      border: 'border-red-200 border-l-red-500',
-      numColor: 'text-red-600',
-      label: 'En riesgo',
-      sub: 'TSB < -30',
-    },
-    {
-      key: 'fatigued',
-      bg: 'bg-orange-50',
-      border: 'border-orange-200 border-l-orange-500',
-      numColor: 'text-orange-600',
-      label: 'Carga alta',
-      sub: 'TSB -30 a -10',
-    },
-    {
-      key: 'productive',
-      bg: 'bg-amber-50',
-      border: 'border-amber-200 border-l-amber-500',
-      numColor: 'text-amber-600',
-      label: 'Cargando bien',
-      sub: 'TSB -10 a 0',
-    },
-    {
-      key: 'optimal',
-      bg: 'bg-green-50',
-      border: 'border-green-200 border-l-green-500',
-      numColor: 'text-green-600',
-      label: 'En forma',
-      sub: 'TSB 0 a +25',
-    },
-    {
-      key: 'fresh',
-      bg: 'bg-slate-50',
-      border: 'border-slate-200 border-l-slate-400',
-      numColor: 'text-slate-600',
-      label: 'Muy fresco',
-      sub: 'TSB > +25',
-    },
-  ]
+const SUMMARY_CARDS_CONFIG = [
+  {
+    key: 'overreaching',
+    bg: '#fef2f2',
+    borderColor: '#fca5a5',
+    accentColor: '#ef4444',
+    numColor: '#dc2626',
+    label: 'En riesgo',
+    sub: 'TSB < -30',
+  },
+  {
+    key: 'fatigued',
+    bg: '#fff7ed',
+    borderColor: '#fdba74',
+    accentColor: '#f97316',
+    numColor: '#ea580c',
+    label: 'Carga alta',
+    sub: 'TSB -30 a -10',
+  },
+  {
+    key: 'productive',
+    bg: '#fffbeb',
+    borderColor: '#fcd34d',
+    accentColor: '#f59e0b',
+    numColor: '#d97706',
+    label: 'Cargando bien',
+    sub: 'TSB -10 a 0',
+  },
+  {
+    key: 'optimal',
+    bg: '#f0fdf4',
+    borderColor: '#86efac',
+    accentColor: '#22c55e',
+    numColor: '#16a34a',
+    label: 'En forma',
+    sub: 'TSB 0 a +25',
+  },
+  {
+    key: 'fresh',
+    bg: '#f8fafc',
+    borderColor: '#cbd5e1',
+    accentColor: '#94a3b8',
+    numColor: '#475569',
+    label: 'Muy fresco',
+    sub: 'TSB > +25',
+  },
+]
 
+const SummaryCards = ({ summary = {} }) => {
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-      {cards.map(({ key, bg, border, numColor, label, sub }) => (
-        <div key={key} className={`${bg} rounded-xl border border-l-4 ${border} p-4`}>
-          <p className={`text-3xl font-bold ${numColor}`}>{summary[key] ?? 0}</p>
+      {SUMMARY_CARDS_CONFIG.map(({ key, bg, borderColor, accentColor, numColor, label, sub }) => (
+        <div
+          key={key}
+          className="rounded-xl p-4"
+          style={{
+            background: bg,
+            border: `1px solid ${borderColor}`,
+            borderLeft: `4px solid ${accentColor}`,
+          }}
+        >
+          <p className="text-3xl font-bold" style={{ color: numColor }}>{summary[key] ?? 0}</p>
           <p className="text-sm font-semibold text-slate-700 mt-1">{label}</p>
           <p className="text-xs text-slate-500">{sub}</p>
         </div>

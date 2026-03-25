@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-03-23 · Session post PR-141 open_
+_Last updated: 2026-03-24 · Session post PR-145a open_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -24,6 +24,7 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 | PR-141 | pr-141-athlete-device-roster-notifications | Athlete device status in roster + smart notification flow | 🔄 OPEN 2026-03-23 |
 
 | PR-128a | pr-128a-pmc-backend-trimp-ctl-atl-tsb | PMC backend: TRIMP cascade + CTL/ATL/TSB engine + 4 API endpoints | 🔄 OPEN 2026-03-23 |
+| PR-145a | pr-145a-workout-creator-pro | Workout Creator Pro: zone selector Z1-Z5, pace API, intensity bar | 🔄 OPEN 2026-03-24 |
 
 ## Next PR Queue
 
@@ -112,4 +113,10 @@ Coach B2C:     Athlete pays Coach via MercadoPago (AthleteSubscription)
 - Endpoints: /api/athlete/pmc/, /api/athlete/hr-profile/, /api/coach/athletes/<m_id>/pmc/, /api/coach/team-readiness/
 
 ## Test Baseline
-~1311 + 18 = ~1329 tests | CI: backend ✅ frontend ✅
+~1329 + 6 = ~1335 tests | CI: backend ✅ frontend ✅
+
+### PR-145a — Workout Creator Pro (2026-03-24)
+- `GET /api/athlete/pace-zones/`: any active Membership (athlete OR coach), AthleteHRProfile.threshold_pace_s_km, fallback 300 s/km
+- Zone Z1-Z5 → metric_type='hr_zone' + target_label='Z1'...'Z5' in WorkoutInterval
+- WorkoutBuilder redesigned: zone selector, pace badge, estimated time badge, intensity bar, repeated blocks, step reordering
+- Saving API unchanged (createWorkoutBlock + createWorkoutInterval)
