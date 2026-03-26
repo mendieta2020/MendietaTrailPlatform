@@ -3,41 +3,50 @@
  *
  * PR-145d: SVG mini-profile bar for a workout's block structure.
  *
- * Renders a horizontal bar showing the intensity profile of the workout:
- * - Width of each bar: proportional to interval duration vs total
- * - Height of each bar: proportional to zone intensity (ZONE_HEIGHT map)
- * - Bars grow upward from the SVG bottom baseline
- * - All bars use neutral gray (#CBD5E1) so the bar doesn't compete
- *   visually with the compliance color dot.
+ * Zone height is derived from two sources (in priority order):
+ *   1. interval.target_label — parsed for Z1–Z5, "tempo", "threshold", etc.
+ *   2. block.block_type — fallback structural intensity (warmup/main/cooldown/etc.)
+ *
+ * WorkoutInterval has no zone_type field. The available zone signals are:
+ *   - target_label (free text: "Z2", "Threshold", "10k pace", etc.)
+ *   - block_type on the parent block (warmup | main | cooldown | drill |
+ *     strength | custom | recovery_step | free)
  *
  * Props:
  *   blocks: Array of WorkoutBlock objects with nested intervals
  *   estimatedDuration: fallback total duration (seconds) if blocks have no interval durations
- *
- * Rendering logic:
- *   1. If blocks have intervals with duration_seconds → per-interval height + width bars
- *      (block repetitions expand sub-intervals N times)
- *   2. If blocks exist but no interval durations → equal-width, default-height segments
- *   3. If estimatedDuration provided but no blocks → single full-width bar at default height
- *   4. Otherwise → null (no render)
  */
 
 const SVG_H = 32;
 
-const ZONE_HEIGHT = {
-  z1:       0.15,
-  z2:       0.30,
-  z3:       0.55,
-  z4:       0.75,
-  z5:       0.95,
-  recovery: 0.10,
-  warmup:   0.20,
-  cooldown: 0.20,
-  default:  0.25,
+// Block-type → height ratio (0–1). Main set gets highest default.
+const BLOCK_TYPE_HEIGHT = {
+  warmup:        0.20,
+  cooldown:      0.20,
+  recovery_step: 0.10,
+  drill:         0.35,
+  strength:      0.55,
+  main:          0.70,
+  custom:        0.30,
+  free:          0.25,
 };
 
-function zoneH(zone_type) {
-  return (ZONE_HEIGHT[zone_type] ?? ZONE_HEIGHT.default) * SVG_H;
+// Patterns parsed from interval.target_label (case-insensitive)
+const LABEL_PATTERNS = [
+  { re: /\bz5\b|vo2|sprint/i,           h: 0.95 },
+  { re: /\bz4\b|threshold|umbral/i,      h: 0.75 },
+  { re: /\bz3\b|tempo/i,                 h: 0.55 },
+  { re: /\bz2\b|aerobic|aer[oó]bico/i,  h: 0.30 },
+  { re: /\bz1\b|recovery|recuper/i,      h: 0.15 },
+];
+
+function resolveHeight(targetLabel, blockType) {
+  if (targetLabel) {
+    for (const { re, h } of LABEL_PATTERNS) {
+      if (re.test(targetLabel)) return h * SVG_H;
+    }
+  }
+  return (BLOCK_TYPE_HEIGHT[blockType] ?? 0.25) * SVG_H;
 }
 
 export function MiniWorkoutProfile({ blocks, estimatedDuration }) {
@@ -45,16 +54,17 @@ export function MiniWorkoutProfile({ blocks, estimatedDuration }) {
 
   if (blockList.length === 0 && !estimatedDuration) return null;
 
-  // Expand blocks into a flat list of {duration, zone_type} intervals,
+  // Expand blocks into a flat list of {duration, h} intervals,
   // respecting block.repetitions for repeated blocks.
   const intervals = [];
   for (const block of blockList) {
-    const reps = block.repetitions ?? 1;
-    for (let r = 0; r < reps; r++) {
+    const blockReps = block.repetitions ?? 1;
+    for (let r = 0; r < blockReps; r++) {
       for (const iv of (block.intervals ?? [])) {
+        const dur = (iv.repetitions ?? 1) * (iv.duration_seconds ?? 0);
         intervals.push({
-          duration: (iv.repetitions ?? 1) * (iv.duration_seconds ?? 0),
-          zone_type: iv.zone_type ?? null,
+          duration: dur,
+          h: resolveHeight(iv.target_label, block.block_type),
         });
       }
     }
@@ -71,25 +81,25 @@ export function MiniWorkoutProfile({ blocks, estimatedDuration }) {
       .map((iv, i) => ({
         key: i,
         wPct: (iv.duration / totalDuration) * 100,
-        h: zoneH(iv.zone_type),
+        h: iv.h,
       }));
   } else if (blockList.length > 0) {
-    // Case 2: blocks exist but no duration — equal width, default height
+    // Case 2: blocks exist but no duration — equal width, block_type height
     bars = blockList.map((block, i) => ({
       key: i,
       wPct: 100 / blockList.length,
-      h: zoneH(null),
+      h: resolveHeight(null, block.block_type),
     }));
   } else if (estimatedDuration) {
     // Case 3: no blocks, known total duration — single bar at default height
-    bars = [{ key: 0, wPct: 100, h: zoneH(null) }];
+    bars = [{ key: 0, wPct: 100, h: resolveHeight(null, null) }];
   } else {
     return null;
   }
 
   if (bars.length === 0) return null;
 
-  // Build cumulative x offsets (no gap between bars — contiguous profile)
+  // Build cumulative x offsets (no gap — contiguous profile)
   const rects = bars.reduce((acc, bar) => {
     const prevX = acc.length > 0 ? acc[acc.length - 1].x + acc[acc.length - 1].wPct : 0;
     acc.push({ ...bar, x: prevX });

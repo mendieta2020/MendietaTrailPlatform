@@ -85,6 +85,22 @@ const COMPLIANCE_DOT = {
   gray:   null,
 };
 
+const CARD_BG = {
+  green:  '#DCFCE7',
+  yellow: '#FEF9C3',
+  blue:   '#DBEAFE',
+  red:    '#FEE2E2',
+  gray:   '#FFFFFF',
+};
+
+const CARD_BORDER = {
+  green:  '#86EFAC',
+  yellow: '#FDE047',
+  blue:   '#93C5FD',
+  red:    '#FCA5A5',
+  gray:   '#E2E8F0',
+};
+
 const RPE_EMOJI = { 1: '😴', 2: '😐', 3: '🙂', 4: '💪', 5: '🔥' };
 
 // ── WorkoutDayCard — dual-state ─────────────────────────────────────────────────
@@ -128,18 +144,22 @@ function WorkoutDayCard({ assignment, onClick, onCompleteClick }) {
     onCompleteClick(assignment);
   };
 
+  const complianceKey = assignment.compliance_color ?? 'gray';
+  const cardBg = isCompleted ? (CARD_BG[complianceKey] ?? '#FFFFFF') : '#FFFFFF';
+  const cardBorderColor = isCompleted ? (CARD_BORDER[complianceKey] ?? '#E2E8F0') : '#E2E8F0';
+
   return (
     <Paper
       onClick={handleClick}
       sx={{
         borderRadius: 2,
         boxShadow: 'none',
-        border: `1px solid #e2e8f0`,
+        border: `1px solid ${cardBorderColor}`,
         borderLeftColor: color,
         borderLeftWidth: 3,
         borderLeftStyle: 'solid',
         cursor: 'pointer',
-        bgcolor: isCompleted ? '#f0fdf4' : 'white',
+        bgcolor: cardBg,
         transition: 'box-shadow 0.15s',
         '&:hover': { boxShadow: '0 2px 8px rgba(0,0,0,0.08)' },
         mb: 0.5,
