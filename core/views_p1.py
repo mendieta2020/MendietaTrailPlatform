@@ -286,7 +286,9 @@ class WorkoutAssignmentViewSet(
             return WorkoutAssignment.objects.none()
         qs = WorkoutAssignment.objects.filter(
             organization=self.organization
-        ).select_related("planned_workout")
+        ).select_related("planned_workout").prefetch_related(
+            "planned_workout__blocks__intervals"
+        )
         if self.membership.role == "athlete":
             qs = qs.filter(athlete__user=self.request.user)
         else:

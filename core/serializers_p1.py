@@ -196,6 +196,7 @@ _ASSIGNMENT_FIELDS = [
     "athlete_id",
     "planned_workout_id",
     "planned_workout_title",
+    "planned_workout",
     "assigned_by_id",
     "scheduled_date",
     "athlete_moved_date",
@@ -428,6 +429,7 @@ class WorkoutAssignmentSerializer(serializers.ModelSerializer):
     - validators = [] suppresses the auto-generated UniqueConstraint validator
       that would raise KeyError on PATCH. The model's full_clean() and the DB
       constraint remain the authoritative enforcement layer.
+    - planned_workout: read-only nested representation with full blocks/intervals.
     """
 
     athlete_id = serializers.PrimaryKeyRelatedField(
@@ -439,6 +441,7 @@ class WorkoutAssignmentSerializer(serializers.ModelSerializer):
         queryset=PlannedWorkout.objects.none(),
     )
     planned_workout_title = serializers.SerializerMethodField()
+    planned_workout = PlannedWorkoutReadSerializer(read_only=True)
     assigned_by_id = serializers.PrimaryKeyRelatedField(
         source="assigned_by",
         read_only=True,
@@ -452,6 +455,7 @@ class WorkoutAssignmentSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "planned_workout_title",
+            "planned_workout",
             "assigned_by_id",
             "snapshot_version",
             "assigned_at",
@@ -488,9 +492,10 @@ class WorkoutAssignmentAthleteSerializer(serializers.ModelSerializer):
     """
     Athlete-write serializer for WorkoutAssignment.
 
-    Only athlete_notes and athlete_moved_date are writable.
+    Writable by athlete: athlete_notes, athlete_moved_date, status.
     All other fields are read-only.
     organization is not exposed.
+    planned_workout: read-only nested representation with full blocks/intervals.
     """
 
     athlete_id = serializers.PrimaryKeyRelatedField(
@@ -502,6 +507,7 @@ class WorkoutAssignmentAthleteSerializer(serializers.ModelSerializer):
         read_only=True,
     )
     planned_workout_title = serializers.SerializerMethodField()
+    planned_workout = PlannedWorkoutReadSerializer(read_only=True)
     assigned_by_id = serializers.PrimaryKeyRelatedField(
         source="assigned_by",
         read_only=True,
@@ -517,10 +523,10 @@ class WorkoutAssignmentAthleteSerializer(serializers.ModelSerializer):
             "athlete_id",
             "planned_workout_id",
             "planned_workout_title",
+            "planned_workout",
             "assigned_by_id",
             "scheduled_date",
             "day_order",
-            "status",
             "coach_notes",
             "target_zone_override",
             "target_pace_override",

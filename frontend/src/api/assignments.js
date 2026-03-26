@@ -18,3 +18,7 @@ export function createAssignment(orgId, data) {
 export function bulkAssignTeam(orgId, data) {
   return client.post(`${p1Base(orgId)}/assignments/bulk-assign-team/`, data);
 }
+
+export function updateAssignment(orgId, id, data) {
+  return client.patch(`${p1Base(orgId)}/assignments/${id}/`, data);
+}

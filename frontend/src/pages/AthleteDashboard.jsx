@@ -162,7 +162,13 @@ const OnboardingChecklist = ({ hasDevice, orgName }) => {
 const SubscriptionCard = ({ billing, loading }) => {
   if (loading) return null;
 
-  if (!billing) {
+  // null = unknown (API error or 403) — do NOT show inactive banner.
+  // Only show the banner when the API explicitly returns is_active: false (200).
+  if (billing === null) return null;
+
+  const isActive = billing.is_active;
+
+  if (!isActive) {
     return (
       <Paper sx={{ p: 2.5, borderRadius: 2, borderLeft: '4px solid #F59E0B', display: 'flex', alignItems: 'center', gap: 2 }}>
         <CreditCard sx={{ color: '#F59E0B' }} />
@@ -172,8 +178,6 @@ const SubscriptionCard = ({ billing, loading }) => {
       </Paper>
     );
   }
-
-  const isActive = billing.is_active;
 
   return (
     <Paper sx={{ p: 2.5, borderRadius: 2, display: 'flex', alignItems: 'center', gap: 2, borderLeft: `4px solid ${isActive ? '#10B981' : '#EF4444'}` }}>
@@ -306,7 +310,8 @@ const AthleteDashboard = ({ user }) => {
           .catch(() => setHasDevice(false));
       });
 
-    // Fetch billing status
+    // Fetch billing status. On any error (including 403) set null — the banner
+    // only appears when the API explicitly returns is_active:false on a 200.
     getBillingStatus()
       .then(res => setBilling(res.data))
       .catch(() => setBilling(null))

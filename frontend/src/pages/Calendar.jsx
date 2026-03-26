@@ -13,8 +13,7 @@ import {
 import { es } from 'date-fns/locale';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
-import { DndProvider, useDrag } from 'react-dnd';
-import { HTML5Backend } from 'react-dnd-html5-backend';
+
 import {
   Box,
   Paper,
@@ -53,14 +52,13 @@ const localizer = dateFnsLocalizer({
   locales,
 });
 
-const WORKOUT_DRAG_TYPE = 'PLANNED_WORKOUT';
 
 // ── Reducers ──────────────────────────────────────────────────────────────────
 
 function fetchReducer(state, action) {
   switch (action.type) {
     case 'FETCH_START':
-      return { ...state, loading: true, error: null };
+      return { ...state, loading: true, error: null, data: [] };
     case 'FETCH_SUCCESS':
       return { data: action.data, loading: false, error: null };
     case 'FETCH_ERROR':
@@ -77,19 +75,24 @@ function fetchReducer(state, action) {
 // ── Draggable workout card ────────────────────────────────────────────────────
 
 function WorkoutCard({ workout, onDragStart, onDragEnd }) {
-  const [{ isDragging }, drag] = useDrag({
-    type: WORKOUT_DRAG_TYPE,
-    item: () => {
-      onDragStart(workout);
-      return { workout };
-    },
-    end: () => onDragEnd(),
-    collect: (monitor) => ({ isDragging: monitor.isDragging() }),
-  });
+  const [isDragging, setIsDragging] = React.useState(false);
+
+  const handleDragStart = (e) => {
+    e.dataTransfer.effectAllowed = 'copy';
+    onDragStart(workout);
+    setIsDragging(true);
+  };
+
+  const handleDragEnd = () => {
+    onDragEnd();
+    setIsDragging(false);
+  };
 
   return (
     <Box
-      ref={drag}
+      draggable
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
       sx={{
         p: 1.5,
         mb: 1,
@@ -399,7 +402,12 @@ export default function CalendarPage() {
       const workout = draggingWorkoutRef.current;
       draggingWorkoutRef.current = null;
       const target = parseTarget(selectedTarget);
-      if (!workout || !target || !orgId) return;
+      if (!workout || !orgId) return;
+      if (!target) {
+        setSaveError('Seleccioná un atleta o grupo antes de arrastrar el entrenamiento.');
+        setSaving(false);
+        return;
+      }
 
       const scheduledDate = format(start, 'yyyy-MM-dd');
       setSaving(true);
@@ -429,7 +437,15 @@ export default function CalendarPage() {
               });
             });
           })
-          .catch(() => setSaveError('Error al asignar el entrenamiento al grupo. Intenta de nuevo.'))
+          .catch((err) => {
+            const detail = err.response?.data
+              ? JSON.stringify(err.response.data)
+              : err.message;
+            console.error('[Calendar] bulkAssignTeam failed:', detail);
+            setSaveError(
+              `Error al asignar el entrenamiento al grupo: ${detail ?? 'Intenta de nuevo.'}`
+            );
+          })
           .finally(() => setSaving(false));
       } else {
         // Individual athlete assignment
@@ -453,7 +469,15 @@ export default function CalendarPage() {
               },
             });
           })
-          .catch(() => setSaveError('Error al asignar el entrenamiento. Intenta de nuevo.'))
+          .catch((err) => {
+            const detail = err.response?.data
+              ? JSON.stringify(err.response.data)
+              : err.message;
+            console.error('[Calendar] createAssignment failed:', detail);
+            setSaveError(
+              `Error al asignar el entrenamiento: ${detail ?? 'Intenta de nuevo.'}`
+            );
+          })
           .finally(() => setSaving(false));
       }
     },
@@ -481,7 +505,7 @@ export default function CalendarPage() {
 
   return (
     <Layout>
-      <DndProvider backend={HTML5Backend}>
+      <>
         {/* ── Header ── */}
         <Box
           sx={{
@@ -531,7 +555,9 @@ export default function CalendarPage() {
                 </ListSubheader>
               )}
               {athleteState.data.map((a) => {
-                const name = [a.first_name, a.last_name].filter(Boolean).join(' ') || a.email || `Atleta #${a.id}`;
+                const name = [a.first_name, a.last_name].filter(Boolean).join(' ')
+                  || a.email?.split('@')[0]
+                  || `Atleta #${a.id}`;
                 return (
                   <MenuItem key={`a:${a.id}`} value={`a:${a.id}`}>
                     {name}
@@ -697,7 +723,7 @@ export default function CalendarPage() {
             )}
           </Box>
         </Box>
-      </DndProvider>
+      </>
     </Layout>
   );
 }
