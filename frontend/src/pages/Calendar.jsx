@@ -13,8 +13,7 @@ import {
 import { es } from 'date-fns/locale';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
-import { DndProvider, useDrag } from 'react-dnd';
-import { HTML5Backend } from 'react-dnd-html5-backend';
+
 import {
   Box,
   Paper,
@@ -53,14 +52,13 @@ const localizer = dateFnsLocalizer({
   locales,
 });
 
-const WORKOUT_DRAG_TYPE = 'PLANNED_WORKOUT';
 
 // ── Reducers ──────────────────────────────────────────────────────────────────
 
 function fetchReducer(state, action) {
   switch (action.type) {
     case 'FETCH_START':
-      return { ...state, loading: true, error: null };
+      return { ...state, loading: true, error: null, data: [] };
     case 'FETCH_SUCCESS':
       return { data: action.data, loading: false, error: null };
     case 'FETCH_ERROR':
@@ -77,19 +75,24 @@ function fetchReducer(state, action) {
 // ── Draggable workout card ────────────────────────────────────────────────────
 
 function WorkoutCard({ workout, onDragStart, onDragEnd }) {
-  const [{ isDragging }, drag] = useDrag({
-    type: WORKOUT_DRAG_TYPE,
-    item: () => {
-      onDragStart(workout);
-      return { workout };
-    },
-    end: () => onDragEnd(),
-    collect: (monitor) => ({ isDragging: monitor.isDragging() }),
-  });
+  const [isDragging, setIsDragging] = React.useState(false);
+
+  const handleDragStart = (e) => {
+    e.dataTransfer.effectAllowed = 'copy';
+    onDragStart(workout);
+    setIsDragging(true);
+  };
+
+  const handleDragEnd = () => {
+    onDragEnd();
+    setIsDragging(false);
+  };
 
   return (
     <Box
-      ref={drag}
+      draggable
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
       sx={{
         p: 1.5,
         mb: 1,
@@ -502,7 +505,7 @@ export default function CalendarPage() {
 
   return (
     <Layout>
-      <DndProvider backend={HTML5Backend}>
+      <>
         {/* ── Header ── */}
         <Box
           sx={{
@@ -720,7 +723,7 @@ export default function CalendarPage() {
             )}
           </Box>
         </Box>
-      </DndProvider>
+      </>
     </Layout>
   );
 }
