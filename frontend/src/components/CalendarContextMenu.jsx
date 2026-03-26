@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Box, Divider } from '@mui/material';
+import { Box, Divider, Tooltip } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -26,11 +26,22 @@ const DANGER_SX = {
   '&:hover': { bgcolor: 'rgba(239,68,68,0.1)' },
 };
 
+const DISABLED_SX = {
+  ...ITEM_SX,
+  color: '#4a5568',
+  cursor: 'not-allowed',
+  '&:hover': {},
+};
+
+const COMPLETED_STATUSES = new Set(['completed']);
+
 export default function CalendarContextMenu({
   x, y, event, onClose,
   onEdit, onDuplicate, onDelete, onCopyWeek, onDeleteWeek,
 }) {
   const ref = useRef(null);
+
+  const isCompleted = COMPLETED_STATUSES.has(event?.resource?.status);
 
   useEffect(() => {
     const handle = (e) => {
@@ -68,10 +79,21 @@ export default function CalendarContextMenu({
         <ContentCopyIcon sx={{ fontSize: 16, opacity: 0.7 }} />
         Duplicar...
       </Box>
-      <Box sx={DANGER_SX} onClick={() => { onDelete(event); onClose(); }}>
-        <DeleteIcon sx={{ fontSize: 16, opacity: 0.7 }} />
-        Eliminar sesión
-      </Box>
+
+      {isCompleted ? (
+        <Tooltip title="Las sesiones completadas no se pueden eliminar" placement="right">
+          <Box sx={DISABLED_SX}>
+            <DeleteIcon sx={{ fontSize: 16, opacity: 0.4 }} />
+            Eliminar sesión
+          </Box>
+        </Tooltip>
+      ) : (
+        <Box sx={DANGER_SX} onClick={() => { onDelete(event); onClose(); }}>
+          <DeleteIcon sx={{ fontSize: 16, opacity: 0.7 }} />
+          Eliminar sesión
+        </Box>
+      )}
+
       <Divider sx={{ my: 0.5, borderColor: 'rgba(255,255,255,0.07)' }} />
       <Box sx={ITEM_SX} onClick={() => { onCopyWeek(event); onClose(); }}>
         <CalendarMonthIcon sx={{ fontSize: 16, opacity: 0.7 }} />

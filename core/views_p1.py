@@ -677,6 +677,8 @@ class WorkoutAssignmentViewSet(
 
         delta = target_start - source_from
 
+        # All assignments are copied regardless of status (planned or completed).
+        # New assignments are always created as PLANNED with no actual_* data.
         source_assignments = (
             WorkoutAssignment.objects.filter(
                 organization=self.organization,
@@ -684,7 +686,6 @@ class WorkoutAssignmentViewSet(
                 scheduled_date__gte=source_from,
                 scheduled_date__lte=source_to,
             )
-            .exclude(status=WorkoutAssignment.Status.COMPLETED)
             .select_related("planned_workout")
         )
 

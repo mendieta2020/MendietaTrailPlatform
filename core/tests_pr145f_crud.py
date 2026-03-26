@@ -257,9 +257,25 @@ class PR145fCRUDTestCase(TestCase):
         copied = WorkoutAssignment.objects.get(pk=response.data[0]["id"])
         self.assertEqual(copied.athlete, self.athlete2)
 
-    def test_copy_week_skips_completed(self):
+    def test_copy_week_includes_completed_assignments(self):
+        """
+        PR-145f-fix: copy_week copies ALL assignments (planned + completed).
+        New assignments always have status=PLANNED and no actual_* data.
+        """
+        # Mark the existing assignment as completed with actual data
         self.assignment.status = "completed"
-        self.assignment.save(update_fields=["status"])
+        self.assignment.actual_duration_seconds = 3600
+        self.assignment.actual_distance_meters = 10000
+        self.assignment.rpe = 4
+        self.assignment.save(update_fields=["status", "actual_duration_seconds", "actual_distance_meters", "rpe"])
+
+        # Add a second planned assignment in the same week
+        workout2 = _make_planned_workout(self.org, self.library, name="Session B")
+        _make_assignment(
+            self.org, self.athlete, workout2,
+            scheduled_date=datetime.date(2026, 5, 3),
+        )
+
         self.client.force_authenticate(user=self.coach_user)
         payload = {
             "source_athlete_id": self.athlete.id,
@@ -270,8 +286,14 @@ class PR145fCRUDTestCase(TestCase):
         }
         response = self.client.post(f"{self.base_url}copy-week/", payload, format="json")
         self.assertEqual(response.status_code, 201)
-        # Completed assignment must not be copied
-        self.assertEqual(len(response.data), 0)
+        # Both assignments (completed + planned) must be copied
+        self.assertEqual(len(response.data), 2)
+        # All copies are PLANNED with no actual data
+        for item in response.data:
+            self.assertEqual(item["status"], "planned")
+            self.assertIsNone(item["actual_duration_seconds"])
+            self.assertIsNone(item["actual_distance_meters"])
+            self.assertIsNone(item["rpe"])
 
     def test_copy_week_day_order(self):
         # Two assignments on same day

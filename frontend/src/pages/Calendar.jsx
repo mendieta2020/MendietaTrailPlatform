@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useReducer, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import withDragAndDrop from 'react-big-calendar/lib/addons/dragAndDrop';
 import {
@@ -381,6 +382,7 @@ function parseTarget(value) {
 export default function CalendarPage() {
   const { activeOrg } = useOrg();
   const orgId = activeOrg?.org_id ?? null;
+  const navigate = useNavigate();
 
   // Athletes + Teams
   const [athleteState, athleteDispatch] = useReducer(fetchReducer, {
@@ -663,37 +665,45 @@ export default function CalendarPage() {
             });
           }
         );
-      } catch {
+      } catch (err) {
         eventsDispatch({ type: 'ADD_EVENT', event });
-        setSaveError('No se pudo eliminar la sesión.');
+        setSaveError(err?.response?.data?.detail || 'No se pudo eliminar la sesión.');
       }
     },
     [orgId, showUndo]
   );
 
-  // ── PR-145f: Edit session (clone then open) ────────────────────────────────
-  // Simplified: clone the workout and notify. Full WorkoutBuilder integration
-  // is a future PR. For now, clone-workout is triggered for future builder use.
+  // ── PR-145f: Edit session (clone then navigate to WorkoutBuilder) ──────────
 
   const handleEditEvent = useCallback(
     async (event) => {
       const pw = event.planned_workout;
       if (!pw) return;
+
+      let workoutData = pw;
+
+      // If not yet a snapshot, clone first so the library original is untouched
       if (!pw.is_assignment_snapshot) {
         try {
           const res = await cloneAssignmentWorkout(orgId, event.id);
+          workoutData = res.data.planned_workout ?? res.data;
           eventsDispatch({
             type: 'UPDATE_EVENT',
             id: event.id,
-            updates: { planned_workout: res.data.planned_workout },
+            updates: { planned_workout: workoutData },
           });
         } catch {
           setSaveError('No se pudo preparar la edición.');
+          return;
         }
       }
-      // WorkoutBuilder modal integration is handled in a subsequent PR.
+
+      // Store full workout in sessionStorage so WorkoutLibraryPage can hydrate
+      // the builder without needing a libraryId (snapshot has library=null).
+      sessionStorage.setItem('calendarEditWorkout', JSON.stringify(workoutData));
+      navigate(`/library?editWorkout=${workoutData.id}`);
     },
-    [orgId]
+    [orgId, navigate]
   );
 
   // ── PR-145f: Duplicate session ─────────────────────────────────────────────

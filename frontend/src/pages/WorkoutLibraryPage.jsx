@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box, Paper, Typography, Button, IconButton, Chip, CircularProgress, Alert, Divider, Collapse,
   TextField, Dialog, DialogTitle, DialogContent, DialogActions,
@@ -137,6 +138,7 @@ const SESSION_TYPE_LABEL = {
 export default function WorkoutLibraryPage() {
   const { activeOrg, orgLoading } = useOrg();
   const orgId = activeOrg?.org_id;
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // ── Libraries state ─────────────────────────────────────────────────────────
   const [libraries, setLibraries] = useState([]);
@@ -159,6 +161,24 @@ export default function WorkoutLibraryPage() {
   const [builderOpen, setBuilderOpen] = useState(false);
   const [editWorkout, setEditWorkout] = useState(null);   // full workout for edit mode
 
+  // PR-145f: open builder when navigated from Calendar with ?editWorkout=<id>
+  useEffect(() => {
+    const editId = searchParams.get('editWorkout');
+    if (!editId) return;
+    const stored = sessionStorage.getItem('calendarEditWorkout');
+    if (!stored) return;
+    try {
+      const workout = JSON.parse(stored);
+      if (String(workout.id) === String(editId)) {
+        sessionStorage.removeItem('calendarEditWorkout');
+        setSearchParams({}, { replace: true });
+        setEditWorkout(workout);
+        setBuilderOpen(true);
+      }
+    } catch {
+      // malformed sessionStorage — ignore
+    }
+  }, [searchParams, setSearchParams]);
 
   // ── Search / filter / sort ───────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
