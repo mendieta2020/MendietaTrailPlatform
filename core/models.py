@@ -7,6 +7,7 @@ from django.dispatch import receiver
 from datetime import date, timedelta
 from django.db.models import Sum, Q
 from django.utils import timezone
+from django.core.validators import MinValueValidator, MaxValueValidator
 import logging
 import uuid
 
@@ -1239,6 +1240,12 @@ class Athlete(models.Model):
     )
     notes = models.TextField(blank=True, default="")
     is_active = models.BooleanField(default=True, db_index=True)
+
+    # PR-145d: location for weather forecast
+    location_city = models.CharField(max_length=120, blank=True, default="")
+    location_lat = models.FloatField(null=True, blank=True)
+    location_lon = models.FloatField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -2412,6 +2419,28 @@ class WorkoutAssignment(models.Model):
         ),
     )
 
+    # PR-145d: actual execution data (captured by athlete after completing the session)
+    actual_duration_seconds = models.PositiveIntegerField(null=True, blank=True)
+    actual_distance_meters = models.PositiveIntegerField(null=True, blank=True)
+    actual_elevation_gain = models.PositiveIntegerField(null=True, blank=True)
+    rpe = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        help_text="Rate of Perceived Exertion 1–5 (athlete self-report).",
+    )
+    compliance_color = models.CharField(
+        max_length=10, blank=True, default="gray",
+        choices=[
+            ("green", "green"), ("yellow", "yellow"),
+            ("red", "red"), ("blue", "blue"), ("gray", "gray"),
+        ],
+        help_text="Smart compliance category computed on save when status=completed.",
+    )
+    weather_snapshot = models.JSONField(
+        null=True, blank=True,
+        help_text="OWM forecast snapshot for the scheduled date (enriched on list).",
+    )
+
     assigned_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -2453,8 +2482,50 @@ class WorkoutAssignment(models.Model):
         if errors:
             raise ValidationError(errors)
 
+    def calculate_compliance_color(self) -> str:
+        """
+        PR-145d: Smart compliance color comparing actual effort vs planned.
+
+        Uses the most favorable ratio (time OR distance) to avoid penalizing
+        valid terrain changes (e.g. rain forces alternative route = more km, less D+).
+
+        Returns one of: 'green', 'yellow', 'red', 'blue', 'gray'.
+        """
+        if self.status in ("planned", "moved"):
+            return "gray"
+        if self.status in ("skipped", "canceled"):
+            return "red"
+
+        # Completed but no data recorded — trust the athlete
+        if not self.actual_duration_seconds and not self.actual_distance_meters:
+            return "green"
+
+        pw = self.planned_workout if self.planned_workout_id else None
+        ratios = []
+
+        if pw and pw.estimated_duration_seconds and self.actual_duration_seconds:
+            ratios.append(self.actual_duration_seconds / pw.estimated_duration_seconds)
+
+        if pw and pw.estimated_distance_meters and self.actual_distance_meters:
+            ratios.append(self.actual_distance_meters / pw.estimated_distance_meters)
+
+        if not ratios:
+            return "green"
+
+        effort = max(ratios)  # benefit of the doubt: use best ratio
+
+        if effort >= 1.20:
+            return "blue"    # exceeded plan by +20% — coach alert
+        elif effort >= 0.90:
+            return "green"
+        elif effort >= 0.70:
+            return "yellow"
+        else:
+            return "red"
+
     def save(self, *args, **kwargs):
         self.full_clean()
+        self.compliance_color = self.calculate_compliance_color()
         super().save(*args, **kwargs)
 
     @property

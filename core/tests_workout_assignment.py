@@ -95,23 +95,46 @@ class PlanNotRealAssignmentTests(TestCase):
     """
     Enforce the Plan ≠ Real invariant on WorkoutAssignment.
 
-    These tests assert that no execution outcome data lives on the
-    assignment model. If any test here needs to be removed to accommodate
-    a feature request, that feature violates the domain law and must be
-    redesigned.
+    Core rule: device-captured execution data (HR, power, cadence, raw provider
+    payloads) must NEVER live here — it belongs in CompletedActivity.
+
+    PR-145d Exception (explicitly approved):
+    WorkoutAssignment holds three lightweight athlete-self-reported fields:
+      actual_duration_seconds, actual_distance_meters, actual_elevation_gain
+    These are manual estimates entered by the athlete at completion time, NOT
+    device-synced data. They co-exist with CompletedActivity (which holds the
+    authoritative device record). The allowed set is intentionally small and
+    fixed; any new field touching device payloads still fails here.
     """
 
+    # PR-145d: These three fields are explicitly allowed as athlete self-report.
+    _PR145D_ALLOWED_ACTUAL_FIELDS = frozenset({
+        "actual_duration_seconds",
+        "actual_distance_meters",
+        "actual_elevation_gain",
+    })
+
     def test_no_actual_distance_field(self):
+        """
+        PR-145d exception: actual_distance_meters is allowed as self-report.
+        Ambiguous shorter aliases (actual_distance, actual_distance_m) still forbidden.
+        """
         field_names = [f.name for f in WorkoutAssignment._meta.get_fields()]
         self.assertNotIn("actual_distance", field_names)
-        self.assertNotIn("actual_distance_meters", field_names)
         self.assertNotIn("actual_distance_m", field_names)
+        # actual_distance_meters is intentionally present — see class docstring.
+        self.assertIn("actual_distance_meters", field_names)
 
     def test_no_actual_duration_field(self):
+        """
+        PR-145d exception: actual_duration_seconds is allowed as self-report.
+        Ambiguous shorter aliases (actual_duration, actual_duration_s) still forbidden.
+        """
         field_names = [f.name for f in WorkoutAssignment._meta.get_fields()]
         self.assertNotIn("actual_duration", field_names)
-        self.assertNotIn("actual_duration_seconds", field_names)
         self.assertNotIn("actual_duration_s", field_names)
+        # actual_duration_seconds is intentionally present — see class docstring.
+        self.assertIn("actual_duration_seconds", field_names)
 
     def test_no_actual_hr_field(self):
         field_names = [f.name for f in WorkoutAssignment._meta.get_fields()]
@@ -141,12 +164,16 @@ class PlanNotRealAssignmentTests(TestCase):
         self.assertNotIn("raw_payload", field_names)
 
     def test_no_actual_prefix_fields(self):
-        """Brute-force: no field on WorkoutAssignment starts with 'actual_'."""
+        """
+        PR-145d exception: only the three self-reported fields are allowed.
+        Any other actual_* field (device data, HR, power, etc.) is still forbidden.
+        """
         field_names = [f.name for f in WorkoutAssignment._meta.get_fields()]
-        actual_fields = [n for n in field_names if n.startswith("actual_")]
+        actual_fields = set(n for n in field_names if n.startswith("actual_"))
+        disallowed = actual_fields - self._PR145D_ALLOWED_ACTUAL_FIELDS
         self.assertEqual(
-            actual_fields, [],
-            f"Found actual_ fields on WorkoutAssignment: {actual_fields}",
+            disallowed, set(),
+            f"Unexpected actual_ fields on WorkoutAssignment (not in PR-145d allowlist): {disallowed}",
         )
 
     def test_status_is_operational_not_execution_payload(self):

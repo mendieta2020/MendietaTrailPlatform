@@ -209,6 +209,13 @@ _ASSIGNMENT_FIELDS = [
     "target_rpe_override",
     "target_power_override",
     "snapshot_version",
+    # PR-145d: actual execution data
+    "actual_duration_seconds",
+    "actual_distance_meters",
+    "actual_elevation_gain",
+    "rpe",
+    "compliance_color",
+    "weather_snapshot",
     "assigned_at",
     "updated_at",
     "effective_date",
@@ -449,6 +456,10 @@ class WorkoutAssignmentSerializer(serializers.ModelSerializer):
     )
     effective_date = serializers.SerializerMethodField()
 
+    # PR-145d: read-only computed fields
+    compliance_color = serializers.CharField(read_only=True)
+    weather_snapshot = serializers.JSONField(read_only=True)
+
     class Meta:
         model = WorkoutAssignment
         fields = _ASSIGNMENT_FIELDS
@@ -458,6 +469,8 @@ class WorkoutAssignmentSerializer(serializers.ModelSerializer):
             "planned_workout",
             "assigned_by_id",
             "snapshot_version",
+            "compliance_color",
+            "weather_snapshot",
             "assigned_at",
             "updated_at",
             "effective_date",
@@ -515,6 +528,16 @@ class WorkoutAssignmentAthleteSerializer(serializers.ModelSerializer):
     )
     effective_date = serializers.SerializerMethodField()
 
+    # PR-145d: athlete-writable execution fields
+    actual_duration_seconds = serializers.IntegerField(required=False, allow_null=True)
+    actual_distance_meters = serializers.IntegerField(required=False, allow_null=True)
+    actual_elevation_gain = serializers.IntegerField(required=False, allow_null=True)
+    rpe = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=5)
+
+    # PR-145d: server-computed read-only fields
+    compliance_color = serializers.CharField(read_only=True)
+    weather_snapshot = serializers.JSONField(read_only=True)
+
     class Meta:
         model = WorkoutAssignment
         fields = _ASSIGNMENT_FIELDS
@@ -533,6 +556,8 @@ class WorkoutAssignmentAthleteSerializer(serializers.ModelSerializer):
             "target_rpe_override",
             "target_power_override",
             "snapshot_version",
+            "compliance_color",
+            "weather_snapshot",
             "assigned_at",
             "updated_at",
             "effective_date",

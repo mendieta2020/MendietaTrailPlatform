@@ -180,7 +180,18 @@ class AthleteRosterViewSet(OrgTenantMixin, viewsets.ModelViewSet):
             raise DRFValidationError(detail=detail)
 
     def perform_update(self, serializer):
-        self._require_write_role()
+        # PR-145d: athletes may PATCH their own location fields.
+        # All other fields remain coach/owner-only.
+        if self.membership.role == "athlete":
+            _ATHLETE_ALLOWED_FIELDS = {"location_city", "location_lat", "location_lon"}
+            disallowed = set(serializer.validated_data.keys()) - _ATHLETE_ALLOWED_FIELDS
+            if disallowed:
+                raise PermissionDenied(
+                    f"Athletes may only update location fields. "
+                    f"Disallowed fields: {', '.join(sorted(disallowed))}"
+                )
+        else:
+            self._require_write_role()
         try:
             serializer.save()
         except DjangoValidationError as exc:

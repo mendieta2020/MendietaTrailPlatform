@@ -151,6 +151,10 @@ class AthleteRosterSerializer(serializers.ModelSerializer):
             "is_active",
             "devices",
             "membership_id",
+            # PR-145d: location for weather forecast
+            "location_city",
+            "location_lat",
+            "location_lon",
             "created_at",
             "updated_at",
         ]

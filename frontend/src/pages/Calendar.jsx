@@ -44,6 +44,15 @@ import { listAssignments, createAssignment, bulkAssignTeam } from '../api/assign
 const DnDCalendar = withDragAndDrop(Calendar);
 
 const locales = { es };
+
+// PR-145d: compliance border-left color mapping (module-level constant)
+const COMPLIANCE_HEX = {
+  green:  '#22C55E',
+  yellow: '#EAB308',
+  red:    '#EF4444',
+  blue:   '#3B82F6',
+  gray:   '#94A3B8',
+};
 const localizer = dateFnsLocalizer({
   format,
   parse,
@@ -272,9 +281,49 @@ function toEvents(assignments) {
       start: day,
       end: day,
       allDay: true,
+      // PR-145d: map compliance + planned workout fields to top-level
+      compliance_color: a.compliance_color,
+      actual_duration_seconds: a.actual_duration_seconds,
+      actual_distance_meters: a.actual_distance_meters,
+      rpe: a.rpe,
+      planned_workout: a.planned_workout,
       resource: a,
     };
   });
+}
+
+// ── Helpers ── (formatDuration is also used by CoachEventComponent)
+function formatDuration(seconds) {
+  if (!seconds) return null;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `${h}h ${m > 0 ? `${m}min` : ''}`.trim();
+  return `${m}min`;
+}
+
+// ── Coach event component ─────────────────────────────────────────────────────
+
+function CoachEventComponent({ event }) {
+  const pw = event.planned_workout;
+  const duration = pw?.estimated_duration_seconds
+    ? formatDuration(pw.estimated_duration_seconds)
+    : null;
+  const distance = pw?.estimated_distance_meters
+    ? `${(pw.estimated_distance_meters / 1000).toFixed(1)}km`
+    : null;
+
+  return (
+    <div style={{ fontSize: '11px', lineHeight: '1.2', overflow: 'hidden', height: '100%' }}>
+      <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {event.title}
+      </div>
+      {(duration || distance) && (
+        <div style={{ opacity: 0.85 }}>
+          {[duration, distance].filter(Boolean).join(' · ')}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -432,6 +481,11 @@ export default function CalendarPage() {
                   start: day,
                   end: day,
                   allDay: true,
+                  compliance_color: a.compliance_color,
+                  actual_duration_seconds: a.actual_duration_seconds,
+                  actual_distance_meters: a.actual_distance_meters,
+                  rpe: a.rpe,
+                  planned_workout: a.planned_workout,
                   resource: a,
                 },
               });
@@ -465,6 +519,11 @@ export default function CalendarPage() {
                 start: day,
                 end: day,
                 allDay: true,
+                compliance_color: a.compliance_color,
+                actual_duration_seconds: a.actual_duration_seconds,
+                actual_distance_meters: a.actual_distance_meters,
+                rpe: a.rpe,
+                planned_workout: a.planned_workout,
                 resource: a,
               },
             });
@@ -487,17 +546,49 @@ export default function CalendarPage() {
   // ── Calendar styling ──────────────────────────────────────────────────────
 
   const eventPropGetter = useCallback(
-    () => ({
-      style: {
-        backgroundColor: '#F57C00',
-        borderRadius: '5px',
-        border: 'none',
-        color: '#fff',
-        fontSize: '0.72rem',
-        padding: '2px 5px',
-        fontWeight: 500,
-      },
-    }),
+    (event) => {
+      // PR-145d: compliance fields mapped directly to event object in toEvents/ADD_EVENT
+      const complianceColor = event.compliance_color;
+      const borderColor = complianceColor
+        ? (COMPLIANCE_HEX[complianceColor] ?? '#94A3B8')
+        : '#94A3B8';
+
+      // Build tooltip for completed events with actual data
+      let title = event.title ?? '';
+      const durationSecs = event.actual_duration_seconds;
+      const distanceMeters = event.actual_distance_meters;
+      const rpe = event.rpe;
+
+      if (durationSecs || distanceMeters || rpe) {
+        const parts = [];
+        if (durationSecs) {
+          const h = Math.floor(durationSecs / 3600);
+          const m = Math.floor((durationSecs % 3600) / 60);
+          parts.push(h > 0 ? `${h}h ${m}min` : `${m}min`);
+        }
+        if (distanceMeters) {
+          parts.push(`${(distanceMeters / 1000).toFixed(1)}km`);
+        }
+        if (rpe) {
+          parts.push(`RPE: ${rpe}/5`);
+        }
+        title = `Real: ${parts.join(' · ')}`;
+      }
+
+      return {
+        title,
+        style: {
+          backgroundColor: '#F57C00',
+          borderRadius: '5px',
+          borderLeft: `3px solid ${borderColor}`,
+          paddingLeft: '6px',
+          color: '#fff',
+          fontSize: '0.72rem',
+          padding: '2px 5px 2px 6px',
+          fontWeight: 500,
+        },
+      };
+    },
     []
   );
 
@@ -707,6 +798,7 @@ export default function CalendarPage() {
                   culture="es"
                   style={{ height: '100%' }}
                   eventPropGetter={eventPropGetter}
+                  components={{ event: CoachEventComponent }}
                   dragFromOutsideItem={dragFromOutsideItem}
                   onDropFromOutside={handleDropFromOutside}
                   messages={{
