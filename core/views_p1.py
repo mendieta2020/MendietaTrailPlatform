@@ -346,6 +346,41 @@ class WorkoutAssignmentViewSet(
             ctx["organization"] = self.organization
         return ctx
 
+    def list(self, request, *args, **kwargs):
+        """
+        PR-145d: Enrich upcoming assignments (today → +4 days) with OWM weather
+        before serializing. Only assignments without a snapshot are enriched.
+        Weather enrichment is best-effort and never blocks the response.
+        """
+        from core.services_weather import enrich_assignment_weather
+
+        qs = self.filter_queryset(self.get_queryset())
+
+        # Enrich upcoming assignments that have no weather snapshot yet
+        today = datetime.date.today()
+        upcoming_window = today + datetime.timedelta(days=4)
+        to_enrich = (
+            qs.filter(
+                scheduled_date__gte=today,
+                scheduled_date__lte=upcoming_window,
+                weather_snapshot__isnull=True,
+            )
+            .select_related("athlete")
+        )
+        for assignment in to_enrich:
+            try:
+                enrich_assignment_weather(assignment)
+            except Exception:
+                pass  # graceful degradation — never break the list response
+
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
     def perform_create(self, serializer):
         if self.membership.role not in _WRITE_ROLES:
             raise PermissionDenied("Only coaches and owners can create workout assignments.")

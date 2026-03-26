@@ -11,6 +11,9 @@ import {
 import { es } from 'date-fns/locale';
 import AthleteLayout from '../components/AthleteLayout';
 import WorkoutDetailDrawer from '../components/WorkoutDetailDrawer';
+import { CompleteWorkoutModal } from '../components/CompleteWorkoutModal';
+import { MiniWorkoutProfile } from '../components/MiniWorkoutProfile';
+import { weatherChip } from '../hooks/useWeatherIcon';
 import { useAuth } from '../context/AuthContext';
 import { listAssignments, updateAssignment } from '../api/assignments';
 import client from '../api/client';
@@ -72,30 +75,70 @@ const STATUS_CONFIG = {
   moved:     { label: 'Movido',      color: '#7c3aed', bg: '#f5f3ff' },
 };
 
-// ── WorkoutDayCard ─────────────────────────────────────────────────────────────
+// ── Compliance dot ─────────────────────────────────────────────────────────────
 
-function WorkoutDayCard({ assignment, onClick }) {
+const COMPLIANCE_DOT = {
+  green:  '#22C55E',
+  yellow: '#EAB308',
+  red:    '#EF4444',
+  blue:   '#3B82F6',
+  gray:   null,
+};
+
+const RPE_EMOJI = { 1: '😴', 2: '😐', 3: '🙂', 4: '💪', 5: '🔥' };
+
+// ── WorkoutDayCard — dual-state ─────────────────────────────────────────────────
+
+function WorkoutDayCard({ assignment, onClick, onCompleteClick }) {
   const pw = assignment.planned_workout;
   const discipline = pw?.discipline ?? 'other';
   const color = sportColor(discipline);
-  const statusCfg = STATUS_CONFIG[assignment.status] ?? STATUS_CONFIG.planned;
   const isCompleted = assignment.status === 'completed';
 
-  const duration = fmtDuration(pw?.estimated_duration_seconds);
-  const distance = fmtDistance(pw?.estimated_distance_meters);
-  const dplus = pw?.elevation_gain_min_m;
+  // Metrics: prefer actual data when completed
+  const hasDuration = isCompleted && assignment.actual_duration_seconds != null;
+  const hasDistance = isCompleted && assignment.actual_distance_meters != null;
+  const hasElevation = isCompleted && assignment.actual_elevation_gain != null;
+
+  const duration = hasDuration
+    ? fmtDuration(assignment.actual_duration_seconds)
+    : fmtDuration(pw?.estimated_duration_seconds);
+  const distance = hasDistance
+    ? fmtDistance(assignment.actual_distance_meters)
+    : fmtDistance(pw?.estimated_distance_meters);
+  const dplus = hasElevation
+    ? assignment.actual_elevation_gain
+    : pw?.elevation_gain_min_m;
+
+  const metricsLabel = isCompleted && (hasDuration || hasDistance || hasElevation)
+    ? `Real: ${[duration, distance, dplus ? `${dplus}m D+` : null].filter(Boolean).join(' · ')}`
+    : [duration, distance, dplus ? `${dplus}m D+` : null].filter(Boolean).join(' · ') || '—';
+
+  const dotColor = COMPLIANCE_DOT[assignment.compliance_color];
+  const chip = weatherChip(assignment.weather_snapshot);
+  const blocks = pw?.blocks ?? [];
+
+  const handleClick = (e) => {
+    e.stopPropagation();
+    onClick(assignment);
+  };
+
+  const handleCompleteClick = (e) => {
+    e.stopPropagation();
+    onCompleteClick(assignment);
+  };
 
   return (
     <Paper
-      onClick={() => onClick(assignment)}
+      onClick={handleClick}
       sx={{
         borderRadius: 2,
-        borderLeft: `3px solid ${color}`,
         boxShadow: 'none',
         border: `1px solid #e2e8f0`,
         borderLeftColor: color,
+        borderLeftWidth: 3,
+        borderLeftStyle: 'solid',
         cursor: 'pointer',
-        opacity: isCompleted ? 0.85 : 1,
         bgcolor: isCompleted ? '#f0fdf4' : 'white',
         transition: 'box-shadow 0.15s',
         '&:hover': { boxShadow: '0 2px 8px rgba(0,0,0,0.08)' },
@@ -104,7 +147,7 @@ function WorkoutDayCard({ assignment, onClick }) {
         minWidth: 0,
       }}
     >
-      {/* Sport + status */}
+      {/* Row 1: Sport label + weather + compliance dot */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.25 }}>
         <Typography
           variant="caption"
@@ -112,39 +155,68 @@ function WorkoutDayCard({ assignment, onClick }) {
         >
           {sportLabel(discipline)}
         </Typography>
-        {isCompleted && (
-          <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 700 }}>✓</span>
-        )}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          {chip && (
+            <Typography variant="caption" sx={{ fontSize: '0.6rem', color: '#475569' }}>
+              {chip}
+            </Typography>
+          )}
+          {isCompleted && dotColor && (
+            <Box
+              title={`Compliance: ${assignment.compliance_color}`}
+              sx={{
+                width: 8, height: 8, borderRadius: '50%',
+                bgcolor: dotColor, flexShrink: 0,
+              }}
+            />
+          )}
+          {isCompleted && !dotColor && (
+            <span style={{ fontSize: 10, color: '#16a34a', fontWeight: 700 }}>✓</span>
+          )}
+        </Box>
       </Box>
 
-      {/* Name */}
+      {/* Row 2: Workout name */}
       <Typography
         variant="body2"
-        sx={{ fontWeight: 600, color: '#1e293b', fontSize: '0.75rem', lineHeight: 1.3, mb: 0.5 }}
+        sx={{ fontWeight: 600, color: '#1e293b', fontSize: '0.75rem', lineHeight: 1.3, mb: 0.25 }}
         noWrap
       >
         {pw?.name ?? 'Entrenamiento'}
       </Typography>
 
-      {/* Metrics */}
+      {/* Row 3: Metrics */}
       <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.65rem', display: 'block' }}>
-        {[duration, distance, dplus ? `${dplus}m D+` : null].filter(Boolean).join(' · ') || '—'}
+        {metricsLabel}
       </Typography>
 
-      {/* Status chip */}
-      <Box
-        sx={{
-          mt: 0.5,
-          display: 'inline-block',
-          px: 0.75, py: 0.15,
-          borderRadius: 1,
-          bgcolor: statusCfg.bg,
-          color: statusCfg.color,
-          fontSize: '0.6rem',
-          fontWeight: 600,
-        }}
-      >
-        {statusCfg.label}
+      {/* Row 4: Mini workout profile bar */}
+      <MiniWorkoutProfile blocks={blocks} />
+
+      {/* Row 5: Status + RPE */}
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.5 }}>
+        {isCompleted ? (
+          <Typography variant="caption" sx={{ color: '#16a34a', fontSize: '0.6rem', fontWeight: 600 }}>
+            ✓ Completado
+          </Typography>
+        ) : (
+          <Typography
+            variant="caption"
+            onClick={handleCompleteClick}
+            sx={{
+              color: '#64748b', fontSize: '0.6rem', fontWeight: 500,
+              cursor: 'pointer', textDecoration: 'underline',
+              '&:hover': { color: '#f97316' },
+            }}
+          >
+            Marcar completado
+          </Typography>
+        )}
+        {isCompleted && assignment.rpe != null && (
+          <Typography variant="caption" sx={{ fontSize: '0.65rem' }} title={`RPE ${assignment.rpe}/5`}>
+            {RPE_EMOJI[assignment.rpe] ?? ''} {assignment.rpe}/5
+          </Typography>
+        )}
       </Box>
     </Paper>
   );
@@ -247,6 +319,8 @@ const AthleteMyTraining = () => {
   const [error, setError] = useState('');
   const [pmcData, setPmcData] = useState(null);
   const [selectedAssignment, setSelectedAssignment] = useState(null);
+  const [completeModalOpen, setCompleteModalOpen] = useState(false);
+  const [completeTarget, setCompleteTarget] = useState(null);
 
   const fetchData = useCallback(async () => {
     if (!orgId) { setLoading(false); return; }
@@ -287,6 +361,20 @@ const AthleteMyTraining = () => {
       }
     } catch (err) {
       console.error('[AthleteMyTraining] mark complete error:', err);
+    }
+  };
+
+  const handleOpenCompleteModal = (assignment) => {
+    setCompleteTarget(assignment);
+    setCompleteModalOpen(true);
+  };
+
+  const handleCompleteSubmit = async (data) => {
+    if (!orgId || !completeTarget) return;
+    const res = await updateAssignment(orgId, completeTarget.id, data);
+    setAssignments((prev) => prev.map((a) => a.id === completeTarget.id ? res.data : a));
+    if (selectedAssignment?.id === completeTarget.id) {
+      setSelectedAssignment(res.data);
     }
   };
 
@@ -415,6 +503,7 @@ const AthleteMyTraining = () => {
                             key={a.id}
                             assignment={a}
                             onClick={setSelectedAssignment}
+                            onCompleteClick={handleOpenCompleteModal}
                           />
                         ))}
                       </Box>
@@ -435,6 +524,14 @@ const AthleteMyTraining = () => {
         assignment={selectedAssignment}
         onClose={() => setSelectedAssignment(null)}
         onMarkComplete={handleMarkComplete}
+      />
+
+      {/* Complete workout modal */}
+      <CompleteWorkoutModal
+        open={completeModalOpen}
+        onClose={() => { setCompleteModalOpen(false); setCompleteTarget(null); }}
+        onSubmit={handleCompleteSubmit}
+        assignment={completeTarget}
       />
     </AthleteLayout>
   );

@@ -44,6 +44,15 @@ import { listAssignments, createAssignment, bulkAssignTeam } from '../api/assign
 const DnDCalendar = withDragAndDrop(Calendar);
 
 const locales = { es };
+
+// PR-145d: compliance border-left color mapping (module-level constant)
+const COMPLIANCE_HEX = {
+  green:  '#22C55E',
+  yellow: '#EAB308',
+  red:    '#EF4444',
+  blue:   '#3B82F6',
+  gray:   '#94A3B8',
+};
 const localizer = dateFnsLocalizer({
   format,
   parse,
@@ -487,17 +496,51 @@ export default function CalendarPage() {
   // ── Calendar styling ──────────────────────────────────────────────────────
 
   const eventPropGetter = useCallback(
-    () => ({
-      style: {
-        backgroundColor: '#F57C00',
-        borderRadius: '5px',
-        border: 'none',
-        color: '#fff',
-        fontSize: '0.72rem',
-        padding: '2px 5px',
-        fontWeight: 500,
-      },
-    }),
+    (event) => {
+      const resource = event.resource;
+      const isCompleted = resource?.status === 'completed';
+      const complianceColor = resource?.compliance_color;
+      const borderColor = isCompleted && complianceColor
+        ? (COMPLIANCE_HEX[complianceColor] ?? '#94A3B8')
+        : '#94A3B8';
+
+      // Build tooltip for completed events with actual data
+      let title = event.title ?? '';
+      if (isCompleted) {
+        const parts = [];
+        if (resource.actual_duration_seconds) {
+          const h = Math.floor(resource.actual_duration_seconds / 3600);
+          const m = Math.floor((resource.actual_duration_seconds % 3600) / 60);
+          parts.push(h > 0 ? `${h}h ${m}min` : `${m}min`);
+        }
+        if (resource.actual_distance_meters) {
+          parts.push(`${(resource.actual_distance_meters / 1000).toFixed(1)}km`);
+        }
+        if (resource.actual_elevation_gain) {
+          parts.push(`${resource.actual_elevation_gain}m D+`);
+        }
+        if (resource.rpe) {
+          parts.push(`RPE: ${resource.rpe}/5`);
+        }
+        if (parts.length > 0) {
+          title = `Real: ${parts.join(' · ')}`;
+        }
+      }
+
+      return {
+        title,
+        style: {
+          backgroundColor: '#F57C00',
+          borderRadius: '5px',
+          border: 'none',
+          borderLeft: `4px solid ${borderColor}`,
+          color: '#fff',
+          fontSize: '0.72rem',
+          padding: '2px 5px',
+          fontWeight: 500,
+        },
+      };
+    },
     []
   );
 
