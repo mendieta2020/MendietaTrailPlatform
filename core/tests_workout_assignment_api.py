@@ -469,15 +469,16 @@ class WorkoutAssignmentAPITests(TestCase):
     # Athlete update — blocked fields (read-only in athlete serializer)
     # -------------------------------------------------------------------------
 
-    def test_athlete_cannot_change_status(self):
-        """status field is read-only in athlete serializer — change must be ignored."""
+    def test_athlete_can_mark_status_completed(self):
+        """Athletes may PATCH status to 'completed' to self-report a finished workout.
+        PR-145c made status writable for athletes so they can mark sessions done."""
         self.client.force_authenticate(user=self.athlete_user)
         response = self.client.patch(
             self.detail_url, {"status": "completed"}, format="json"
         )
         self.assertEqual(response.status_code, 200)
         self.assignment.refresh_from_db()
-        self.assertEqual(self.assignment.status, "planned")  # unchanged
+        self.assertEqual(self.assignment.status, "completed")
 
     def test_athlete_cannot_change_coach_notes(self):
         """coach_notes is read-only in athlete serializer — change must be ignored."""
