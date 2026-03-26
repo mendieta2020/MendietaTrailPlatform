@@ -281,14 +281,49 @@ function toEvents(assignments) {
       start: day,
       end: day,
       allDay: true,
-      // PR-145d: map compliance fields to top-level for eventPropGetter access
+      // PR-145d: map compliance + planned workout fields to top-level
       compliance_color: a.compliance_color,
       actual_duration_seconds: a.actual_duration_seconds,
       actual_distance_meters: a.actual_distance_meters,
       rpe: a.rpe,
+      planned_workout: a.planned_workout,
       resource: a,
     };
   });
+}
+
+// ── Helpers ── (formatDuration is also used by CoachEventComponent)
+function formatDuration(seconds) {
+  if (!seconds) return null;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `${h}h ${m > 0 ? `${m}min` : ''}`.trim();
+  return `${m}min`;
+}
+
+// ── Coach event component ─────────────────────────────────────────────────────
+
+function CoachEventComponent({ event }) {
+  const pw = event.planned_workout;
+  const duration = pw?.estimated_duration_seconds
+    ? formatDuration(pw.estimated_duration_seconds)
+    : null;
+  const distance = pw?.estimated_distance_meters
+    ? `${(pw.estimated_distance_meters / 1000).toFixed(1)}km`
+    : null;
+
+  return (
+    <div style={{ fontSize: '11px', lineHeight: '1.2', overflow: 'hidden', height: '100%' }}>
+      <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {event.title}
+      </div>
+      {(duration || distance) && (
+        <div style={{ opacity: 0.85 }}>
+          {[duration, distance].filter(Boolean).join(' · ')}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -450,6 +485,7 @@ export default function CalendarPage() {
                   actual_duration_seconds: a.actual_duration_seconds,
                   actual_distance_meters: a.actual_distance_meters,
                   rpe: a.rpe,
+                  planned_workout: a.planned_workout,
                   resource: a,
                 },
               });
@@ -487,6 +523,7 @@ export default function CalendarPage() {
                 actual_duration_seconds: a.actual_duration_seconds,
                 actual_distance_meters: a.actual_distance_meters,
                 rpe: a.rpe,
+                planned_workout: a.planned_workout,
                 resource: a,
               },
             });
@@ -761,6 +798,7 @@ export default function CalendarPage() {
                   culture="es"
                   style={{ height: '100%' }}
                   eventPropGetter={eventPropGetter}
+                  components={{ event: CoachEventComponent }}
                   dragFromOutsideItem={dragFromOutsideItem}
                   onDropFromOutside={handleDropFromOutside}
                   messages={{

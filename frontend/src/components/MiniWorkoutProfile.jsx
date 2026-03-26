@@ -3,77 +3,114 @@
  *
  * PR-145d: SVG mini-profile bar for a workout's block structure.
  *
- * Renders a horizontal proportional bar showing the distribution of
- * workout blocks by duration. All blocks use a neutral gray (#CBD5E1)
- * so the bar doesn't compete visually with the compliance color dot.
+ * Renders a horizontal bar showing the intensity profile of the workout:
+ * - Width of each bar: proportional to interval duration vs total
+ * - Height of each bar: proportional to zone intensity (ZONE_HEIGHT map)
+ * - Bars grow upward from the SVG bottom baseline
+ * - All bars use neutral gray (#CBD5E1) so the bar doesn't compete
+ *   visually with the compliance color dot.
  *
  * Props:
  *   blocks: Array of WorkoutBlock objects with nested intervals
  *   estimatedDuration: fallback total duration (seconds) if blocks have no interval durations
  *
  * Rendering logic:
- *   1. If blocks have intervals with duration_seconds → proportional segments per block
- *   2. If blocks exist but no interval durations → equal-width segments (one per block)
- *   3. If estimatedDuration provided but no blocks → single full-width bar
+ *   1. If blocks have intervals with duration_seconds → per-interval height + width bars
+ *      (block repetitions expand sub-intervals N times)
+ *   2. If blocks exist but no interval durations → equal-width, default-height segments
+ *   3. If estimatedDuration provided but no blocks → single full-width bar at default height
  *   4. Otherwise → null (no render)
  */
+
+const SVG_H = 32;
+
+const ZONE_HEIGHT = {
+  z1:       0.15,
+  z2:       0.30,
+  z3:       0.55,
+  z4:       0.75,
+  z5:       0.95,
+  recovery: 0.10,
+  warmup:   0.20,
+  cooldown: 0.20,
+  default:  0.25,
+};
+
+function zoneH(zone_type) {
+  return (ZONE_HEIGHT[zone_type] ?? ZONE_HEIGHT.default) * SVG_H;
+}
 
 export function MiniWorkoutProfile({ blocks, estimatedDuration }) {
   const blockList = blocks ?? [];
 
   if (blockList.length === 0 && !estimatedDuration) return null;
 
-  // Try to compute per-block durations from intervals
-  const blockDurations = blockList.map((block) =>
-    (block.intervals ?? []).reduce((s, iv) => {
-      return s + (iv.repetitions ?? 1) * (iv.duration_seconds ?? 0);
-    }, 0)
-  );
+  // Expand blocks into a flat list of {duration, zone_type} intervals,
+  // respecting block.repetitions for repeated blocks.
+  const intervals = [];
+  for (const block of blockList) {
+    const reps = block.repetitions ?? 1;
+    for (let r = 0; r < reps; r++) {
+      for (const iv of (block.intervals ?? [])) {
+        intervals.push({
+          duration: (iv.repetitions ?? 1) * (iv.duration_seconds ?? 0),
+          zone_type: iv.zone_type ?? null,
+        });
+      }
+    }
+  }
 
-  const totalFromIntervals = blockDurations.reduce((s, d) => s + d, 0);
+  const totalDuration = intervals.reduce((s, iv) => s + iv.duration, 0);
 
-  let segments;
+  let bars;
 
-  if (totalFromIntervals > 0) {
-    // Case 1: proper interval durations available
-    segments = blockDurations.filter((d) => d > 0).map((d) => d / totalFromIntervals);
+  if (totalDuration > 0) {
+    // Case 1: interval durations available → proportional width + zone height
+    bars = intervals
+      .filter((iv) => iv.duration > 0)
+      .map((iv, i) => ({
+        key: i,
+        wPct: (iv.duration / totalDuration) * 100,
+        h: zoneH(iv.zone_type),
+      }));
   } else if (blockList.length > 0) {
-    // Case 2: blocks exist but no duration data — equal-width segments
-    segments = blockList.map(() => 1 / blockList.length);
+    // Case 2: blocks exist but no duration — equal width, default height
+    bars = blockList.map((block, i) => ({
+      key: i,
+      wPct: 100 / blockList.length,
+      h: zoneH(null),
+    }));
   } else if (estimatedDuration) {
-    // Case 3: no blocks, but we know total duration — single bar
-    segments = [1];
+    // Case 3: no blocks, known total duration — single bar at default height
+    bars = [{ key: 0, wPct: 100, h: zoneH(null) }];
   } else {
     return null;
   }
 
-  if (segments.length === 0) return null;
+  if (bars.length === 0) return null;
 
-  // Build cumulative x offsets
-  const bars = [];
-  let x = 0;
-  for (let i = 0; i < segments.length; i++) {
-    const w = segments[i] * 100;
-    bars.push({ x, w: Math.max(w - 0.8, 0.5) }); // 0.8% gap between blocks
-    x += w;
-  }
+  // Build cumulative x offsets (no gap between bars — contiguous profile)
+  const rects = bars.reduce((acc, bar) => {
+    const prevX = acc.length > 0 ? acc[acc.length - 1].x + acc[acc.length - 1].wPct : 0;
+    acc.push({ ...bar, x: prevX });
+    return acc;
+  }, []);
 
   return (
     <svg
       width="100%"
-      height={16}
-      style={{ display: 'block', borderRadius: 3, overflow: 'hidden', marginTop: 4 }}
+      height={SVG_H}
+      style={{ display: 'block', overflow: 'visible', marginTop: 4 }}
       aria-hidden="true"
     >
-      {bars.map((bar, i) => (
+      {rects.map((r) => (
         <rect
-          key={i}
-          x={`${bar.x}%`}
-          y={2}
-          width={`${bar.w}%`}
-          height={12}
+          key={r.key}
+          x={`${r.x}%`}
+          y={SVG_H - r.h}
+          width={`${r.wPct}%`}
+          height={r.h}
           fill="#CBD5E1"
-          rx={2}
         />
       ))}
     </svg>
