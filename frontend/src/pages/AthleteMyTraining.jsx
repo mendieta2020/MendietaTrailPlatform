@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Navigate } from 'react-router-dom';
 import {
   Box, Typography, Paper, IconButton, Chip, CircularProgress, Alert,
 } from '@mui/material';
@@ -248,7 +249,7 @@ const AthleteMyTraining = () => {
   const [selectedAssignment, setSelectedAssignment] = useState(null);
 
   const fetchData = useCallback(async () => {
-    if (!orgId) return;
+    if (!orgId) { setLoading(false); return; }
     setLoading(true);
     setError('');
     try {
@@ -288,6 +289,11 @@ const AthleteMyTraining = () => {
       console.error('[AthleteMyTraining] mark complete error:', err);
     }
   };
+
+  const role = user?.memberships?.[0]?.role;
+  if (role && role !== 'athlete') {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   const weeks = buildCalendarWeeks(currentDate);
 

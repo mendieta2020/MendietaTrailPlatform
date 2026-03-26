@@ -531,7 +531,9 @@ export default function CalendarPage() {
                 </ListSubheader>
               )}
               {athleteState.data.map((a) => {
-                const name = [a.first_name, a.last_name].filter(Boolean).join(' ') || a.email || `Atleta #${a.id}`;
+                const name = [a.first_name, a.last_name].filter(Boolean).join(' ')
+                  || a.email?.split('@')[0]
+                  || `Atleta #${a.id}`;
                 return (
                   <MenuItem key={`a:${a.id}`} value={`a:${a.id}`}>
                     {name}
