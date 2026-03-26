@@ -408,6 +408,7 @@ class PlannedWorkoutReadSerializer(serializers.ModelSerializer):
             "planned_tss",
             "planned_if",
             "blocks",
+            "is_assignment_snapshot",
             "created_by_id",
             "created_at",
             "updated_at",
@@ -416,6 +417,7 @@ class PlannedWorkoutReadSerializer(serializers.ModelSerializer):
             "id",
             "library_id",
             "blocks",
+            "is_assignment_snapshot",
             "created_by_id",
             "created_at",
             "updated_at",
@@ -495,10 +497,8 @@ class WorkoutAssignmentSerializer(serializers.ModelSerializer):
             self.fields["planned_workout_id"].queryset = PlannedWorkout.objects.filter(
                 organization=organization
             )
-        # scheduled_date is immutable after creation.
-        if self.instance is not None:
-            self.fields["scheduled_date"].read_only = True
-            self.fields["scheduled_date"].required = False
+        # PR-145f: scheduled_date is now writable on update for coaches (drag-to-move).
+        # Athletes still cannot update it (enforced by WorkoutAssignmentAthleteSerializer).
 
 
 class WorkoutAssignmentAthleteSerializer(serializers.ModelSerializer):

@@ -252,13 +252,14 @@ class WorkoutAssignmentViewSet(
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
     """
-    List, retrieve, create, and update WorkoutAssignment within an organization.
+    List, retrieve, create, update, and delete WorkoutAssignment within an organization.
 
-    Destroy is intentionally not exposed — use status="canceled" to retire
-    an assignment and preserve the audit trail.
+    PR-145f: destroy added. Completed assignments cannot be deleted (preserved as history).
+    Use status="canceled" to retire an assignment without removing it.
 
     Role rules:
     - coach/owner: list all, retrieve any, create, update any (all fields per matrix).
@@ -553,6 +554,220 @@ class WorkoutAssignmentViewSet(
             {"created": len(assignments), "assignments": serializer.data},
             status=status.HTTP_201_CREATED,
         )
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        DELETE /api/p1/orgs/<org_id>/assignments/<pk>/
+
+        PR-145f: Coaches and owners can delete planned assignments.
+        Completed assignments are protected — use status="canceled" instead.
+        """
+        if self.membership.role not in _WRITE_ROLES:
+            raise PermissionDenied("Only coaches and owners can delete assignments.")
+        instance = self.get_object()
+        if instance.status == WorkoutAssignment.Status.COMPLETED:
+            return Response(
+                {"detail": "No se puede eliminar una sesión completada."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        instance.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["post"], url_path="clone-workout")
+    def clone_workout(self, request, *args, **kwargs):
+        """
+        POST /api/p1/orgs/<org_id>/assignments/<pk>/clone-workout/
+
+        PR-145f: Clones the PlannedWorkout of this assignment and points the
+        assignment at the clone. The original library workout remains untouched.
+        The coach can then edit the clone without affecting other athletes.
+        """
+        if self.membership.role not in _WRITE_ROLES:
+            raise PermissionDenied("Only coaches and owners can clone workouts.")
+
+        assignment = self.get_object()
+        original = assignment.planned_workout
+
+        if original is None:
+            return Response(
+                {"detail": "Sin workout planificado."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Skip clone if already a snapshot
+        if original.is_assignment_snapshot:
+            serializer = WorkoutAssignmentSerializer(
+                assignment, context=self.get_serializer_context()
+            )
+            return Response(serializer.data)
+
+        # Clone the PlannedWorkout (detached from library)
+        clone = PlannedWorkout.objects.get(pk=original.pk)
+        clone.pk = None
+        clone.name = f"{original.name} (personalizado)"
+        clone.is_assignment_snapshot = True
+        clone.library = None
+        clone.save()
+
+        # Clone blocks and intervals
+        for block in original.blocks.prefetch_related("intervals").all():
+            original_block_pk = block.pk
+            block.pk = None
+            block.planned_workout = clone
+            block.save()
+            for interval in WorkoutBlock.objects.get(pk=original_block_pk).intervals.all():
+                interval.pk = None
+                interval.block = block
+                interval.save()
+
+        # Point assignment at the clone
+        assignment.planned_workout = clone
+        assignment.save(update_fields=["planned_workout"])
+
+        serializer = WorkoutAssignmentSerializer(
+            assignment, context=self.get_serializer_context()
+        )
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["post"], url_path="copy-week")
+    def copy_week(self, request, *args, **kwargs):
+        """
+        POST /api/p1/orgs/<org_id>/assignments/copy-week/
+
+        PR-145f: Copies all planned assignments for a source athlete in a date
+        range to a target athlete starting at target_week_start.
+        Completed assignments are never copied.
+        """
+        if self.membership.role not in _WRITE_ROLES:
+            raise PermissionDenied("Only coaches and owners can copy weeks.")
+
+        source_athlete_id = request.data.get("source_athlete_id")
+        source_date_from = request.data.get("source_date_from")
+        source_date_to = request.data.get("source_date_to")
+        target_athlete_id = request.data.get("target_athlete_id")
+        target_week_start = request.data.get("target_week_start")
+
+        errors = {}
+        if not source_athlete_id:
+            errors["source_athlete_id"] = "This field is required."
+        if not source_date_from:
+            errors["source_date_from"] = "This field is required."
+        if not source_date_to:
+            errors["source_date_to"] = "This field is required."
+        if not target_athlete_id:
+            errors["target_athlete_id"] = "This field is required."
+        if not target_week_start:
+            errors["target_week_start"] = "This field is required."
+        if errors:
+            raise DRFValidationError(errors)
+
+        try:
+            source_from = datetime.date.fromisoformat(str(source_date_from))
+            source_to = datetime.date.fromisoformat(str(source_date_to))
+            target_start = datetime.date.fromisoformat(str(target_week_start))
+        except ValueError as exc:
+            raise DRFValidationError({"detail": f"Invalid date format: {exc}"})
+
+        source_athlete = get_object_or_404(
+            Athlete, pk=source_athlete_id, organization=self.organization
+        )
+        target_athlete = get_object_or_404(
+            Athlete, pk=target_athlete_id, organization=self.organization
+        )
+
+        delta = target_start - source_from
+
+        source_assignments = (
+            WorkoutAssignment.objects.filter(
+                organization=self.organization,
+                athlete=source_athlete,
+                scheduled_date__gte=source_from,
+                scheduled_date__lte=source_to,
+            )
+            .exclude(status=WorkoutAssignment.Status.COMPLETED)
+            .select_related("planned_workout")
+        )
+
+        created = []
+        for src in source_assignments:
+            new_date = src.scheduled_date + delta
+            existing_count = WorkoutAssignment.objects.filter(
+                organization=self.organization,
+                athlete=target_athlete,
+                scheduled_date=new_date,
+            ).count()
+            new_assignment = WorkoutAssignment(
+                organization=self.organization,
+                athlete=target_athlete,
+                planned_workout=src.planned_workout,
+                scheduled_date=new_date,
+                day_order=existing_count + 1,
+                assigned_by=request.user,
+                status=WorkoutAssignment.Status.PLANNED,
+            )
+            new_assignment.save()
+            created.append(new_assignment)
+
+        serializer = WorkoutAssignmentSerializer(
+            created, many=True, context=self.get_serializer_context()
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=["post"], url_path="delete-week")
+    def delete_week(self, request, *args, **kwargs):
+        """
+        POST /api/p1/orgs/<org_id>/assignments/delete-week/
+
+        PR-145f: Deletes planned assignments for an athlete in a date range.
+        Completed assignments are never deleted.
+        Returns counts of deleted and protected (completed) assignments.
+        """
+        if self.membership.role not in _WRITE_ROLES:
+            raise PermissionDenied("Only coaches and owners can delete weeks.")
+
+        athlete_id = request.data.get("athlete_id")
+        date_from = request.data.get("date_from")
+        date_to = request.data.get("date_to")
+
+        errors = {}
+        if not athlete_id:
+            errors["athlete_id"] = "This field is required."
+        if not date_from:
+            errors["date_from"] = "This field is required."
+        if not date_to:
+            errors["date_to"] = "This field is required."
+        if errors:
+            raise DRFValidationError(errors)
+
+        try:
+            d_from = datetime.date.fromisoformat(str(date_from))
+            d_to = datetime.date.fromisoformat(str(date_to))
+        except ValueError as exc:
+            raise DRFValidationError({"detail": f"Invalid date format: {exc}"})
+
+        athlete = get_object_or_404(
+            Athlete, pk=athlete_id, organization=self.organization
+        )
+
+        to_delete = WorkoutAssignment.objects.filter(
+            organization=self.organization,
+            athlete=athlete,
+            scheduled_date__gte=d_from,
+            scheduled_date__lte=d_to,
+        ).exclude(status=WorkoutAssignment.Status.COMPLETED)
+
+        protected = WorkoutAssignment.objects.filter(
+            organization=self.organization,
+            athlete=athlete,
+            scheduled_date__gte=d_from,
+            scheduled_date__lte=d_to,
+            status=WorkoutAssignment.Status.COMPLETED,
+        ).count()
+
+        deleted_count = to_delete.count()
+        to_delete.delete()
+
+        return Response({"deleted": deleted_count, "protected_completed": protected})
 
 
 # ==============================================================================

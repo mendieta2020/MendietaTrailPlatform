@@ -20,7 +20,7 @@ Coverage:
 - assigned_by is server-controlled
 - organization is not in response
 - scheduled_date accepted on create
-- scheduled_date cannot be changed on update
+- scheduled_date can be changed on update by coaches (PR-145f drag-to-move)
 - snapshot_version captured from planned_workout.structure_version on create
 - Coach can update coach-controlled fields (status, coach_notes, overrides)
 - Athlete can update athlete_notes on own assignment
@@ -30,7 +30,7 @@ Coverage:
 - Athlete cannot update target overrides (ignored / read-only)
 - Athlete cannot update another athlete's assignment (404)
 - effective_date reflects athlete_moved_date when set
-- No DELETE endpoint exposed (405)
+- DELETE endpoint exposed (PR-145f: planned → 204, completed → 400)
 - No migration generated
 """
 
@@ -382,12 +382,11 @@ class WorkoutAssignmentAPITests(TestCase):
         self.assertEqual(response.data["snapshot_version"], self.workout.structure_version)
 
     # -------------------------------------------------------------------------
-    # scheduled_date immutability
+    # scheduled_date mutability (PR-145f: coaches can move sessions)
     # -------------------------------------------------------------------------
 
-    def test_scheduled_date_cannot_be_changed_on_update(self):
-        """scheduled_date is read-only after creation; the value must not change."""
-        original_date = self.assignment.scheduled_date
+    def test_scheduled_date_can_be_changed_by_coach(self):
+        """PR-145f: coaches can update scheduled_date for drag-to-move."""
         self.client.force_authenticate(user=self.coach_user)
         response = self.client.patch(
             self.detail_url,
@@ -396,7 +395,7 @@ class WorkoutAssignmentAPITests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assignment.refresh_from_db()
-        self.assertEqual(self.assignment.scheduled_date, original_date)
+        self.assertEqual(str(self.assignment.scheduled_date), "2099-12-31")
 
     # -------------------------------------------------------------------------
     # Coach update
@@ -539,13 +538,13 @@ class WorkoutAssignmentAPITests(TestCase):
         self.assertEqual(response.data["effective_date"], datetime.date(2026, 4, 15))
 
     # -------------------------------------------------------------------------
-    # No DELETE
+    # DELETE — PR-145f: now exposed; planned → 204, completed → 400
     # -------------------------------------------------------------------------
 
-    def test_delete_not_exposed(self):
+    def test_delete_planned_returns_204(self):
         self.client.force_authenticate(user=self.coach_user)
         response = self.client.delete(self.detail_url)
-        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.status_code, 204)
 
     # -------------------------------------------------------------------------
     # No migration generated (smoke check — import only)

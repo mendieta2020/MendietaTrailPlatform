@@ -39,7 +39,15 @@ import { Users, BookOpen } from 'lucide-react';
 import Layout from '../components/Layout';
 import { useOrg } from '../context/OrgContext';
 import { listAthletes, listTeams, listLibraries, listPlannedWorkouts } from '../api/p1';
-import { listAssignments, createAssignment, bulkAssignTeam } from '../api/assignments';
+import {
+  listAssignments, createAssignment, bulkAssignTeam,
+  moveAssignment, deleteAssignment, cloneAssignmentWorkout,
+} from '../api/assignments';
+import UndoToast from '../components/UndoToast';
+import CalendarContextMenu from '../components/CalendarContextMenu';
+import DuplicateSessionModal from '../components/DuplicateSessionModal';
+import CopyWeekModal from '../components/CopyWeekModal';
+import DeleteWeekModal from '../components/DeleteWeekModal';
 
 const DnDCalendar = withDragAndDrop(Calendar);
 
@@ -76,6 +84,30 @@ function fetchReducer(state, action) {
       return { data: [], loading: false, error: null };
     case 'ADD_EVENT':
       return { ...state, data: [...state.data, action.event] };
+    case 'REMOVE_EVENT':
+      return { ...state, data: state.data.filter((e) => e.id !== action.id) };
+    case 'MOVE_EVENT':
+      return {
+        ...state,
+        data: state.data.map((e) =>
+          e.id === action.id
+            ? {
+                ...e,
+                scheduled_date: action.newDate,
+                start: parseISO(action.newDate),
+                end: parseISO(action.newDate),
+                resource: { ...e.resource, scheduled_date: action.newDate },
+              }
+            : e
+        ),
+      };
+    case 'UPDATE_EVENT':
+      return {
+        ...state,
+        data: state.data.map((e) =>
+          e.id === action.id ? { ...e, ...action.updates } : e
+        ),
+      };
     default:
       return state;
   }
@@ -303,7 +335,7 @@ function formatDuration(seconds) {
 
 // ── Coach event component ─────────────────────────────────────────────────────
 
-function CoachEventComponent({ event }) {
+function CoachEventComponent({ event, onContextMenu }) {
   const pw = event.planned_workout;
   const duration = pw?.estimated_duration_seconds
     ? formatDuration(pw.estimated_duration_seconds)
@@ -313,7 +345,14 @@ function CoachEventComponent({ event }) {
     : null;
 
   return (
-    <div style={{ fontSize: '11px', lineHeight: '1.2', overflow: 'hidden', height: '100%' }}>
+    <div
+      style={{ fontSize: '11px', lineHeight: '1.2', overflow: 'hidden', height: '100%' }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onContextMenu) onContextMenu(e.clientX, e.clientY, event);
+      }}
+    >
       <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {event.title}
       </div>
@@ -370,6 +409,21 @@ export default function CalendarPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
+
+  // PR-145f: undo toast
+  const [undoToast, setUndoToast] = useState(null);
+
+  // PR-145f: context menu
+  const [contextMenu, setContextMenu] = useState(null); // { x, y, event }
+
+  // PR-145f: modals
+  const [duplicating, setDuplicating] = useState(null);
+  const [copyingWeek, setCopyingWeek] = useState(null);
+  const [deletingWeek, setDeletingWeek] = useState(null);
+
+  const showUndo = useCallback((message, onUndo) => {
+    setUndoToast({ message, onUndo });
+  }, []);
 
   // Ref to track currently dragged workout (synchronous, avoids stale closures)
   const draggingWorkoutRef = useRef(null);
@@ -541,6 +595,185 @@ export default function CalendarPage() {
       }
     },
     [orgId, selectedTarget]
+  );
+
+  // ── PR-145f: Drag existing events (move) ──────────────────────────────────
+
+  const handleEventDrop = useCallback(
+    async ({ event, start }) => {
+      const newDate = format(start, 'yyyy-MM-dd');
+      const oldDate = event.resource?.scheduled_date ?? format(event.start, 'yyyy-MM-dd');
+      if (newDate === oldDate) return;
+
+      eventsDispatch({ type: 'MOVE_EVENT', id: event.id, newDate });
+
+      try {
+        await moveAssignment(orgId, event.id, newDate);
+        showUndo(
+          `${event.title} → ${format(start, 'EEEE d MMM', { locale: es })}`,
+          async () => {
+            await moveAssignment(orgId, event.id, oldDate);
+            eventsDispatch({ type: 'MOVE_EVENT', id: event.id, newDate: oldDate });
+          }
+        );
+      } catch {
+        eventsDispatch({ type: 'MOVE_EVENT', id: event.id, newDate: oldDate });
+        setSaveError('No se pudo mover la sesión.');
+      }
+    },
+    [orgId, showUndo]
+  );
+
+  // ── PR-145f: Context menu opener ───────────────────────────────────────────
+
+  const handleContextMenu = useCallback((x, y, event) => {
+    setContextMenu({ x, y, event });
+  }, []);
+
+  // ── PR-145f: Delete individual session ────────────────────────────────────
+
+  const handleDeleteEvent = useCallback(
+    async (event) => {
+      eventsDispatch({ type: 'REMOVE_EVENT', id: event.id });
+      try {
+        await deleteAssignment(orgId, event.id);
+        showUndo(
+          `"${event.title}" eliminado`,
+          async () => {
+            const res = await createAssignment(orgId, {
+              planned_workout_id: event.planned_workout?.id,
+              athlete_id: event.resource?.athlete_id ?? event.resource?.athlete,
+              scheduled_date: event.resource?.scheduled_date ?? format(event.start, 'yyyy-MM-dd'),
+            });
+            const a = res.data;
+            const day = parseISO(a.effective_date ?? a.scheduled_date);
+            eventsDispatch({
+              type: 'ADD_EVENT',
+              event: {
+                id: a.id,
+                title: a.planned_workout_title ?? event.title,
+                start: day, end: day, allDay: true,
+                compliance_color: a.compliance_color,
+                actual_duration_seconds: a.actual_duration_seconds,
+                actual_distance_meters: a.actual_distance_meters,
+                rpe: a.rpe,
+                planned_workout: a.planned_workout,
+                resource: a,
+              },
+            });
+          }
+        );
+      } catch {
+        eventsDispatch({ type: 'ADD_EVENT', event });
+        setSaveError('No se pudo eliminar la sesión.');
+      }
+    },
+    [orgId, showUndo]
+  );
+
+  // ── PR-145f: Edit session (clone then open) ────────────────────────────────
+  // Simplified: clone the workout and notify. Full WorkoutBuilder integration
+  // is a future PR. For now, clone-workout is triggered for future builder use.
+
+  const handleEditEvent = useCallback(
+    async (event) => {
+      const pw = event.planned_workout;
+      if (!pw) return;
+      if (!pw.is_assignment_snapshot) {
+        try {
+          const res = await cloneAssignmentWorkout(orgId, event.id);
+          eventsDispatch({
+            type: 'UPDATE_EVENT',
+            id: event.id,
+            updates: { planned_workout: res.data.planned_workout },
+          });
+        } catch {
+          setSaveError('No se pudo preparar la edición.');
+        }
+      }
+      // WorkoutBuilder modal integration is handled in a subsequent PR.
+    },
+    [orgId]
+  );
+
+  // ── PR-145f: Duplicate session ─────────────────────────────────────────────
+
+  const handleDuplicate = useCallback(
+    async ({ targetAthleteId, targetDate }) => {
+      if (!duplicating) return;
+      try {
+        const res = await createAssignment(orgId, {
+          planned_workout_id: duplicating.planned_workout?.id,
+          athlete_id: targetAthleteId,
+          scheduled_date: targetDate,
+        });
+        const a = res.data;
+        const day = parseISO(a.effective_date ?? a.scheduled_date);
+        // Only add to calendar if same athlete currently selected
+        const target = parseTarget(selectedTarget);
+        if (target?.type === 'a' && target.id === targetAthleteId) {
+          eventsDispatch({
+            type: 'ADD_EVENT',
+            event: {
+              id: a.id,
+              title: a.planned_workout_title ?? duplicating.title,
+              start: day, end: day, allDay: true,
+              compliance_color: a.compliance_color,
+              actual_duration_seconds: a.actual_duration_seconds,
+              actual_distance_meters: a.actual_distance_meters,
+              rpe: a.rpe,
+              planned_workout: a.planned_workout,
+              resource: a,
+            },
+          });
+        }
+      } catch {
+        setSaveError('No se pudo duplicar la sesión.');
+      }
+    },
+    [orgId, duplicating, selectedTarget]
+  );
+
+  // ── PR-145f: Copy week success ─────────────────────────────────────────────
+
+  const handleCopyWeekSuccess = useCallback(
+    ({ targetAthleteId, targetWeekStart }) => {
+      const target = parseTarget(selectedTarget);
+      if (target?.type === 'a' && target.id === targetAthleteId) {
+        // Reload events for this athlete (simple approach: trigger re-fetch)
+        eventsDispatch({ type: 'FETCH_START' });
+        listAssignments(orgId, { athleteId: target.id, dateFrom, dateTo })
+          .then((res) => {
+            const data = res.data?.results ?? res.data ?? [];
+            eventsDispatch({ type: 'FETCH_SUCCESS', data: toEvents(data) });
+          })
+          .catch(() => eventsDispatch({ type: 'FETCH_ERROR', error: 'No se pudo recargar.' }));
+      }
+      showUndo(`Semana copiada a partir de ${targetWeekStart}`, null);
+    },
+    [orgId, selectedTarget, dateFrom, dateTo, showUndo]
+  );
+
+  // ── PR-145f: Delete week success ──────────────────────────────────────────
+
+  const handleDeleteWeekSuccess = useCallback(
+    (data) => {
+      // Reload events
+      const target = parseTarget(selectedTarget);
+      if (!target) return;
+      eventsDispatch({ type: 'FETCH_START' });
+      const params = target.type === 't'
+        ? { teamId: target.id, dateFrom, dateTo }
+        : { athleteId: target.id, dateFrom, dateTo };
+      listAssignments(orgId, params)
+        .then((res) => {
+          const evData = res.data?.results ?? res.data ?? [];
+          eventsDispatch({ type: 'FETCH_SUCCESS', data: toEvents(evData) });
+        })
+        .catch(() => eventsDispatch({ type: 'FETCH_ERROR', error: 'No se pudo recargar.' }));
+      showUndo(`${data?.deleted ?? 0} sesiones eliminadas`, null);
+    },
+    [orgId, selectedTarget, dateFrom, dateTo, showUndo]
   );
 
   // ── Calendar styling ──────────────────────────────────────────────────────
@@ -798,9 +1031,17 @@ export default function CalendarPage() {
                   culture="es"
                   style={{ height: '100%' }}
                   eventPropGetter={eventPropGetter}
-                  components={{ event: CoachEventComponent }}
+                  components={{
+                    event: (props) => (
+                      <CoachEventComponent
+                        {...props}
+                        onContextMenu={handleContextMenu}
+                      />
+                    ),
+                  }}
                   dragFromOutsideItem={dragFromOutsideItem}
                   onDropFromOutside={handleDropFromOutside}
+                  onEventDrop={handleEventDrop}
                   messages={{
                     next: 'Siguiente',
                     previous: 'Anterior',
@@ -815,6 +1056,57 @@ export default function CalendarPage() {
             )}
           </Box>
         </Box>
+
+        {/* PR-145f: undo toast */}
+        {undoToast && (
+          <UndoToast
+            message={undoToast.message}
+            onUndo={undoToast.onUndo}
+            onClose={() => setUndoToast(null)}
+          />
+        )}
+
+        {/* PR-145f: context menu */}
+        {contextMenu && (
+          <CalendarContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            event={contextMenu.event}
+            onClose={() => setContextMenu(null)}
+            onEdit={handleEditEvent}
+            onDuplicate={(ev) => { setDuplicating(ev); setContextMenu(null); }}
+            onDelete={(ev) => { handleDeleteEvent(ev); setContextMenu(null); }}
+            onCopyWeek={(ev) => { setCopyingWeek(ev); setContextMenu(null); }}
+            onDeleteWeek={(ev) => { setDeletingWeek(ev); setContextMenu(null); }}
+          />
+        )}
+
+        {/* PR-145f: modals */}
+        <DuplicateSessionModal
+          open={!!duplicating}
+          assignment={duplicating}
+          athletes={athleteState.data}
+          onClose={() => setDuplicating(null)}
+          onConfirm={handleDuplicate}
+        />
+
+        <CopyWeekModal
+          open={!!copyingWeek}
+          sourceEvent={copyingWeek}
+          athletes={athleteState.data}
+          orgId={orgId}
+          onClose={() => setCopyingWeek(null)}
+          onSuccess={handleCopyWeekSuccess}
+        />
+
+        <DeleteWeekModal
+          open={!!deletingWeek}
+          event={deletingWeek}
+          orgId={orgId}
+          athleteId={parseTarget(selectedTarget)?.type === 'a' ? parseTarget(selectedTarget)?.id : null}
+          onClose={() => setDeletingWeek(null)}
+          onSuccess={handleDeleteWeekSuccess}
+        />
       </>
     </Layout>
   );

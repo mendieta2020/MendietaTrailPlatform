@@ -486,10 +486,18 @@ class WorkoutStructureCascadeTests(TestCase):
         self.block.delete()
         self.assertFalse(WorkoutInterval.objects.filter(block_id=block_id).exists())
 
-    def test_deleting_library_cascades_to_workouts(self):
+    def test_deleting_library_orphans_workouts(self):
+        """
+        PR-145f: library FK is now SET_NULL (was CASCADE) to support
+        is_assignment_snapshot workouts that have library=None.
+        Deleting a library no longer deletes its workouts — they become orphaned
+        with library=None instead.
+        """
         workout_id = self.workout.pk
         self.lib.delete()
-        self.assertFalse(PlannedWorkout.objects.filter(pk=workout_id).exists())
+        # Workout still exists, library reference nulled out
+        self.assertTrue(PlannedWorkout.objects.filter(pk=workout_id).exists())
+        self.assertIsNone(PlannedWorkout.objects.get(pk=workout_id).library)
 
 
 # ---------------------------------------------------------------------------
