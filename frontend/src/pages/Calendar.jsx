@@ -281,6 +281,11 @@ function toEvents(assignments) {
       start: day,
       end: day,
       allDay: true,
+      // PR-145d: map compliance fields to top-level for eventPropGetter access
+      compliance_color: a.compliance_color,
+      actual_duration_seconds: a.actual_duration_seconds,
+      actual_distance_meters: a.actual_distance_meters,
+      rpe: a.rpe,
       resource: a,
     };
   });
@@ -441,6 +446,10 @@ export default function CalendarPage() {
                   start: day,
                   end: day,
                   allDay: true,
+                  compliance_color: a.compliance_color,
+                  actual_duration_seconds: a.actual_duration_seconds,
+                  actual_distance_meters: a.actual_distance_meters,
+                  rpe: a.rpe,
                   resource: a,
                 },
               });
@@ -474,6 +483,10 @@ export default function CalendarPage() {
                 start: day,
                 end: day,
                 allDay: true,
+                compliance_color: a.compliance_color,
+                actual_duration_seconds: a.actual_duration_seconds,
+                actual_distance_meters: a.actual_distance_meters,
+                rpe: a.rpe,
                 resource: a,
               },
             });
@@ -497,34 +510,32 @@ export default function CalendarPage() {
 
   const eventPropGetter = useCallback(
     (event) => {
-      const resource = event.resource;
-      const isCompleted = resource?.status === 'completed';
-      const complianceColor = resource?.compliance_color;
-      const borderColor = isCompleted && complianceColor
+      // PR-145d: compliance fields mapped directly to event object in toEvents/ADD_EVENT
+      const complianceColor = event.compliance_color;
+      const borderColor = complianceColor
         ? (COMPLIANCE_HEX[complianceColor] ?? '#94A3B8')
         : '#94A3B8';
 
       // Build tooltip for completed events with actual data
       let title = event.title ?? '';
-      if (isCompleted) {
+      const durationSecs = event.actual_duration_seconds;
+      const distanceMeters = event.actual_distance_meters;
+      const rpe = event.rpe;
+
+      if (durationSecs || distanceMeters || rpe) {
         const parts = [];
-        if (resource.actual_duration_seconds) {
-          const h = Math.floor(resource.actual_duration_seconds / 3600);
-          const m = Math.floor((resource.actual_duration_seconds % 3600) / 60);
+        if (durationSecs) {
+          const h = Math.floor(durationSecs / 3600);
+          const m = Math.floor((durationSecs % 3600) / 60);
           parts.push(h > 0 ? `${h}h ${m}min` : `${m}min`);
         }
-        if (resource.actual_distance_meters) {
-          parts.push(`${(resource.actual_distance_meters / 1000).toFixed(1)}km`);
+        if (distanceMeters) {
+          parts.push(`${(distanceMeters / 1000).toFixed(1)}km`);
         }
-        if (resource.actual_elevation_gain) {
-          parts.push(`${resource.actual_elevation_gain}m D+`);
+        if (rpe) {
+          parts.push(`RPE: ${rpe}/5`);
         }
-        if (resource.rpe) {
-          parts.push(`RPE: ${resource.rpe}/5`);
-        }
-        if (parts.length > 0) {
-          title = `Real: ${parts.join(' · ')}`;
-        }
+        title = `Real: ${parts.join(' · ')}`;
       }
 
       return {
@@ -532,11 +543,11 @@ export default function CalendarPage() {
         style: {
           backgroundColor: '#F57C00',
           borderRadius: '5px',
-          border: 'none',
-          borderLeft: `4px solid ${borderColor}`,
+          borderLeft: `3px solid ${borderColor}`,
+          paddingLeft: '6px',
           color: '#fff',
           fontSize: '0.72rem',
-          padding: '2px 5px',
+          padding: '2px 5px 2px 6px',
           fontWeight: 500,
         },
       };

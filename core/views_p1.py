@@ -385,11 +385,23 @@ class WorkoutAssignmentViewSet(
         if self.membership.role not in _WRITE_ROLES:
             raise PermissionDenied("Only coaches and owners can create workout assignments.")
         planned_workout = serializer.validated_data["planned_workout"]
+        athlete = serializer.validated_data.get("athlete")
+        scheduled_date = serializer.validated_data.get("scheduled_date")
+
+        # Auto-calculate day_order to support double/triple sessions on the same day.
+        # Count existing assignments for this athlete+date to determine next order slot.
+        existing_count = WorkoutAssignment.objects.filter(
+            organization=self.organization,
+            athlete=athlete,
+            scheduled_date=scheduled_date,
+        ).count()
+
         try:
             serializer.save(
                 organization=self.organization,
                 assigned_by=self.request.user,
                 snapshot_version=planned_workout.structure_version,
+                day_order=existing_count + 1,
             )
         except DjangoValidationError as exc:
             detail = exc.message_dict if hasattr(exc, "message_dict") else {"detail": str(exc)}

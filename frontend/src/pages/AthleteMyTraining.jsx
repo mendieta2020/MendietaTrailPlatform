@@ -191,7 +191,10 @@ function WorkoutDayCard({ assignment, onClick, onCompleteClick }) {
       </Typography>
 
       {/* Row 4: Mini workout profile bar */}
-      <MiniWorkoutProfile blocks={blocks} />
+      <MiniWorkoutProfile
+        blocks={blocks}
+        estimatedDuration={pw?.estimated_duration_seconds}
+      />
 
       {/* Row 5: Status + RPE */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.5 }}>

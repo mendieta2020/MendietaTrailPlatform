@@ -1,22 +1,24 @@
 """
 core/tests_pr145d_compliance.py
 
-PR-145d: Smart Compliance + RPE + Weather snapshot
+PR-145d: Smart Compliance + RPE + Weather snapshot + Double/Triple sessions
 
 Tests:
-  1. compliance_planned → gray
-  2. compliance_skipped → red
-  3. compliance_completed_no_data → green (trust athlete)
-  4. compliance_green → actual >= 90% planned
-  5. compliance_yellow → actual 70–89% planned
-  6. compliance_red → actual < 70% planned
-  7. compliance_blue → actual >= 120% planned
-  8. compliance_uses_max_ratio → distance green even when duration yellow
-  9. compliance_recalculated_on_save → recalcs when status changes to completed
- 10. rpe_field_stored → RPE 1-5 saved correctly
- 11. rpe_out_of_range → ValidationError on RPE > 5
- 12. weather_snapshot_stored → JSONField round-trips correctly
- 13. athlete_location_fields → location_city/lat/lon stored correctly
+  1.  compliance_planned → gray
+  2.  compliance_skipped → red
+  3.  compliance_completed_no_data → green (trust athlete)
+  4.  compliance_green → actual >= 90% planned
+  5.  compliance_yellow → actual 70–89% planned
+  6.  compliance_red → actual < 70% planned
+  7.  compliance_blue → actual >= 120% planned
+  8.  compliance_uses_max_ratio → distance green even when duration yellow
+  9.  compliance_recalculated_on_save → recalcs when status changes to completed
+ 10.  rpe_field_stored → RPE 1-5 saved correctly
+ 11.  rpe_out_of_range → ValidationError on RPE > 5
+ 12.  weather_snapshot_stored → JSONField round-trips correctly
+ 13.  athlete_location_fields → location_city/lat/lon stored correctly
+ 14.  double_session_same_day → day_order auto-increments to 2
+ 15.  triple_session_same_day → day_order auto-increments to 3
 """
 
 import pytest
@@ -24,6 +26,8 @@ from datetime import date
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from rest_framework import status as http_status
+from rest_framework.test import APIClient
 
 from core.models import (
     Athlete,
@@ -270,3 +274,137 @@ class TestAthleteLocationFields:
         assert athlete.location_lat is None
         assert athlete.location_lon is None
         assert athlete.location_city == ""
+
+
+# ── Tests: Double/Triple sessions (FIX A) ────────────────────────────────────
+
+@pytest.fixture
+def planned_workout_b(db, org, coach_user, library):
+    """A second PlannedWorkout for multi-session day tests."""
+    return PlannedWorkout.objects.create(
+        organization=org,
+        library=library,
+        name="Fuerza",
+        discipline="strength",
+        created_by=coach_user,
+        estimated_duration_seconds=1800,
+    )
+
+
+@pytest.fixture
+def planned_workout_c(db, org, coach_user, library):
+    """A third PlannedWorkout for triple-session day tests."""
+    return PlannedWorkout.objects.create(
+        organization=org,
+        library=library,
+        name="Natación",
+        discipline="swim",
+        created_by=coach_user,
+        estimated_duration_seconds=2700,
+    )
+
+
+@pytest.mark.django_db
+class TestDoubleTripleSession:
+    """
+    FIX A: Verify that the API auto-increments day_order for same-day assignments.
+    Uses the API endpoint so the perform_create logic (day_order calculation) is exercised.
+    """
+
+    def _api_client(self, user):
+        client = APIClient()
+        client.force_authenticate(user=user)
+        return client
+
+    def _url(self, org_id):
+        return f"/api/p1/orgs/{org_id}/assignments/"
+
+    def test_double_session_same_day(
+        self, org, athlete, planned_workout, planned_workout_b, coach_user
+    ):
+        """Two workouts on the same day must have day_order=1 and day_order=2."""
+        client = self._api_client(coach_user)
+        today = date.today().isoformat()
+
+        r1 = client.post(self._url(org.id), {
+            "athlete_id": athlete.id,
+            "planned_workout_id": planned_workout.id,
+            "scheduled_date": today,
+        }, format="json")
+        assert r1.status_code == http_status.HTTP_201_CREATED, r1.data
+
+        r2 = client.post(self._url(org.id), {
+            "athlete_id": athlete.id,
+            "planned_workout_id": planned_workout_b.id,
+            "scheduled_date": today,
+        }, format="json")
+        assert r2.status_code == http_status.HTTP_201_CREATED, r2.data
+
+        assert r1.data["day_order"] == 1
+        assert r2.data["day_order"] == 2
+
+    def test_triple_session_same_day(
+        self, org, athlete, planned_workout, planned_workout_b, planned_workout_c, coach_user
+    ):
+        """Three workouts on the same day must have day_order=1, 2, and 3."""
+        client = self._api_client(coach_user)
+        today = date.today().isoformat()
+
+        r1 = client.post(self._url(org.id), {
+            "athlete_id": athlete.id,
+            "planned_workout_id": planned_workout.id,
+            "scheduled_date": today,
+        }, format="json")
+        assert r1.status_code == http_status.HTTP_201_CREATED, r1.data
+
+        r2 = client.post(self._url(org.id), {
+            "athlete_id": athlete.id,
+            "planned_workout_id": planned_workout_b.id,
+            "scheduled_date": today,
+        }, format="json")
+        assert r2.status_code == http_status.HTTP_201_CREATED, r2.data
+
+        r3 = client.post(self._url(org.id), {
+            "athlete_id": athlete.id,
+            "planned_workout_id": planned_workout_c.id,
+            "scheduled_date": today,
+        }, format="json")
+        assert r3.status_code == http_status.HTTP_201_CREATED, r3.data
+
+        assert r1.data["day_order"] == 1
+        assert r2.data["day_order"] == 2
+        assert r3.data["day_order"] == 3
+
+    def test_different_athletes_dont_interfere(
+        self, org, athlete, planned_workout, planned_workout_b, coach_user, athlete_user
+    ):
+        """Second athlete can also have day_order=1 on the same date."""
+        # Create a second athlete
+        user2 = get_user_model().objects.create_user(
+            username="athlete2_145d", password="pass"
+        )
+        Membership.objects.create(
+            user=user2, organization=org, role="athlete", is_active=True
+        )
+        athlete2 = Athlete.objects.create(user=user2, organization=org)
+
+        client = self._api_client(coach_user)
+        today = date.today().isoformat()
+
+        r1 = client.post(self._url(org.id), {
+            "athlete_id": athlete.id,
+            "planned_workout_id": planned_workout.id,
+            "scheduled_date": today,
+        }, format="json")
+        assert r1.status_code == http_status.HTTP_201_CREATED, r1.data
+
+        r2 = client.post(self._url(org.id), {
+            "athlete_id": athlete2.id,
+            "planned_workout_id": planned_workout_b.id,
+            "scheduled_date": today,
+        }, format="json")
+        assert r2.status_code == http_status.HTTP_201_CREATED, r2.data
+
+        # Both should get day_order=1 — they're different athletes
+        assert r1.data["day_order"] == 1
+        assert r2.data["day_order"] == 1

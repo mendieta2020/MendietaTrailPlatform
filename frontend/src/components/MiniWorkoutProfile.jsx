@@ -9,62 +9,73 @@
  *
  * Props:
  *   blocks: Array of WorkoutBlock objects with nested intervals
+ *   estimatedDuration: fallback total duration (seconds) if blocks have no interval durations
  *
- * Returns null if there are no blocks or no intervals with duration data.
+ * Rendering logic:
+ *   1. If blocks have intervals with duration_seconds → proportional segments per block
+ *   2. If blocks exist but no interval durations → equal-width segments (one per block)
+ *   3. If estimatedDuration provided but no blocks → single full-width bar
+ *   4. Otherwise → null (no render)
  */
 
-function getTotalDuration(blocks) {
-  let total = 0;
-  for (const block of blocks) {
-    for (const interval of block.intervals ?? []) {
-      const reps = interval.repetitions ?? 1;
-      const dur = interval.duration_seconds ?? 0;
-      total += reps * dur;
-    }
-  }
-  return total;
-}
+export function MiniWorkoutProfile({ blocks, estimatedDuration }) {
+  const blockList = blocks ?? [];
 
-export function MiniWorkoutProfile({ blocks }) {
-  if (!blocks?.length) return null;
+  if (blockList.length === 0 && !estimatedDuration) return null;
 
-  const total = getTotalDuration(blocks);
-  if (total === 0) return null;
-
-  // Build segments: one per block
-  const segments = blocks.map((block) => {
-    const blockDur = (block.intervals ?? []).reduce((s, iv) => {
+  // Try to compute per-block durations from intervals
+  const blockDurations = blockList.map((block) =>
+    (block.intervals ?? []).reduce((s, iv) => {
       return s + (iv.repetitions ?? 1) * (iv.duration_seconds ?? 0);
-    }, 0);
-    return blockDur;
-  }).filter((d) => d > 0);
+    }, 0)
+  );
+
+  const totalFromIntervals = blockDurations.reduce((s, d) => s + d, 0);
+
+  let segments;
+
+  if (totalFromIntervals > 0) {
+    // Case 1: proper interval durations available
+    segments = blockDurations.filter((d) => d > 0).map((d) => d / totalFromIntervals);
+  } else if (blockList.length > 0) {
+    // Case 2: blocks exist but no duration data — equal-width segments
+    segments = blockList.map(() => 1 / blockList.length);
+  } else if (estimatedDuration) {
+    // Case 3: no blocks, but we know total duration — single bar
+    segments = [1];
+  } else {
+    return null;
+  }
 
   if (segments.length === 0) return null;
+
+  // Build cumulative x offsets
+  const bars = [];
+  let x = 0;
+  for (let i = 0; i < segments.length; i++) {
+    const w = segments[i] * 100;
+    bars.push({ x, w: Math.max(w - 0.8, 0.5) }); // 0.8% gap between blocks
+    x += w;
+  }
 
   return (
     <svg
       width="100%"
-      height="8"
+      height={16}
       style={{ display: 'block', borderRadius: 3, overflow: 'hidden', marginTop: 4 }}
       aria-hidden="true"
     >
-      {segments.reduce((acc, dur, i) => {
-        const pct = (dur / total) * 100;
-        const x = acc.x;
-        acc.rects.push(
-          <rect
-            key={i}
-            x={`${x}%`}
-            y={0}
-            width={`${pct - 0.5}%`}
-            height="8"
-            fill="#CBD5E1"
-            rx={1}
-          />
-        );
-        acc.x += pct;
-        return acc;
-      }, { x: 0, rects: [] }).rects}
+      {bars.map((bar, i) => (
+        <rect
+          key={i}
+          x={`${bar.x}%`}
+          y={2}
+          width={`${bar.w}%`}
+          height={12}
+          fill="#CBD5E1"
+          rx={2}
+        />
+      ))}
     </svg>
   );
 }
