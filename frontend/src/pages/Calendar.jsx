@@ -399,7 +399,12 @@ export default function CalendarPage() {
       const workout = draggingWorkoutRef.current;
       draggingWorkoutRef.current = null;
       const target = parseTarget(selectedTarget);
-      if (!workout || !target || !orgId) return;
+      if (!workout || !orgId) return;
+      if (!target) {
+        setSaveError('Seleccioná un atleta o grupo antes de arrastrar el entrenamiento.');
+        setSaving(false);
+        return;
+      }
 
       const scheduledDate = format(start, 'yyyy-MM-dd');
       setSaving(true);
@@ -429,7 +434,15 @@ export default function CalendarPage() {
               });
             });
           })
-          .catch(() => setSaveError('Error al asignar el entrenamiento al grupo. Intenta de nuevo.'))
+          .catch((err) => {
+            const detail = err.response?.data
+              ? JSON.stringify(err.response.data)
+              : err.message;
+            console.error('[Calendar] bulkAssignTeam failed:', detail);
+            setSaveError(
+              `Error al asignar el entrenamiento al grupo: ${detail ?? 'Intenta de nuevo.'}`
+            );
+          })
           .finally(() => setSaving(false));
       } else {
         // Individual athlete assignment
@@ -453,7 +466,15 @@ export default function CalendarPage() {
               },
             });
           })
-          .catch(() => setSaveError('Error al asignar el entrenamiento. Intenta de nuevo.'))
+          .catch((err) => {
+            const detail = err.response?.data
+              ? JSON.stringify(err.response.data)
+              : err.message;
+            console.error('[Calendar] createAssignment failed:', detail);
+            setSaveError(
+              `Error al asignar el entrenamiento: ${detail ?? 'Intenta de nuevo.'}`
+            );
+          })
           .finally(() => setSaving(false));
       }
     },
