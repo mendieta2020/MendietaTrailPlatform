@@ -768,7 +768,10 @@ function SimpleStepRow({ block, bIdx, iv, isFirst, isLast, paceZones, discipline
   const isStrength = discipline === 'strength' || discipline === 'mobility';
 
   return (
-    <div className="group flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-200 shadow-sm mb-2">
+    <div
+      className="group flex items-center gap-3 px-4 py-3 rounded-xl mb-2"
+      style={{ background: '#fff', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px 0 rgba(0,0,0,0.07), 0 1px 2px -1px rgba(0,0,0,0.04)' }}
+    >
       <DragHandleIcon sx={{ color: '#cbd5e1', fontSize: 16, cursor: 'grab', flexShrink: 0 }} />
 
       <span className="text-xs font-bold text-slate-400 flex-shrink-0 text-center" style={{ width: 18 }}>
@@ -859,7 +862,7 @@ function SubStepRow({ iv, iIdx, bIdx, isOnly, paceZones, discipline, onSetValue,
   };
 
   return (
-    <div className="group flex items-center gap-3 px-4 py-2 pl-8 bg-slate-50 border-t border-slate-100">
+    <div className="group flex items-center gap-3 px-4 py-2 pl-8" style={{ background: '#f8fafc', borderTop: '1px solid #f1f5f9' }}>
       <span className="w-5 h-5 rounded-full bg-slate-200 text-xs font-bold text-slate-600 flex items-center justify-center flex-shrink-0">
         {letters[iIdx] ?? iIdx + 1}
       </span>
@@ -944,7 +947,7 @@ function SubStepRow({ iv, iIdx, bIdx, isOnly, paceZones, discipline, onSetValue,
 function RepeatedBlockHeader({ block, bIdx, isFirst, isLast, onSetBlock, onMove, onRemove, onAddInterval }) {
   const setBlock = (key, val) => onSetBlock(bIdx, key, val);
   return (
-    <div className="group flex items-center gap-3 px-4 py-2 bg-amber-50 border-l-4 border-amber-500">
+    <div className="group flex items-center gap-3 px-4 py-2" style={{ background: '#fffbeb', borderLeft: '4px solid #f59e0b' }}>
       <DragHandleIcon sx={{ color: '#fbbf24', fontSize: 16, cursor: 'grab', flexShrink: 0 }} />
 
       <RepeatIcon sx={{ color: '#d97706', fontSize: 16, flexShrink: 0 }} />
@@ -1425,7 +1428,7 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                     );
                   }
                   return (
-                    <div key={bIdx} className="rounded-xl border border-slate-200 shadow-sm mb-2 overflow-hidden">
+                    <div key={bIdx} className="rounded-xl mb-2 overflow-hidden" style={{ border: '1px solid #e2e8f0', boxShadow: '0 1px 3px 0 rgba(0,0,0,0.07), 0 1px 2px -1px rgba(0,0,0,0.04)' }}>
                       <RepeatedBlockHeader
                         block={block}
                         bIdx={bIdx}
