@@ -84,12 +84,14 @@ export function MiniWorkoutProfile({ blocks, estimatedDuration }) {
         h: iv.h,
       }));
   } else if (blockList.length > 0) {
-    // Case 2: blocks exist but no duration — equal width, block_type height
-    bars = blockList.map((block, i) => ({
-      key: i,
-      wPct: 100 / blockList.length,
-      h: resolveHeight(null, block.block_type),
-    }));
+    // Case 2: blocks exist but no duration — equal width, best zone height from intervals
+    bars = blockList.map((block, i) => {
+      const h = (block.intervals ?? []).reduce(
+        (best, iv) => Math.max(best, resolveHeight(iv.target_label, block.block_type)),
+        resolveHeight(null, block.block_type),
+      );
+      return { key: i, wPct: 100 / blockList.length, h };
+    });
   } else if (estimatedDuration) {
     // Case 3: no blocks, known total duration — single bar at default height
     bars = [{ key: 0, wPct: 100, h: resolveHeight(null, null) }];

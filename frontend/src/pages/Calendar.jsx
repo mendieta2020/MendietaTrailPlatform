@@ -1093,7 +1093,10 @@ export default function CalendarPage() {
               eventsDispatch({
                 type: 'UPDATE_EVENT',
                 id: selectedEvent.id,
-                updates: { planned_workout: updatedWorkout },
+                updates: {
+                  planned_workout: updatedWorkout,
+                  resource: { ...selectedEvent.resource, planned_workout: updatedWorkout },
+                },
               });
             }
           }}
