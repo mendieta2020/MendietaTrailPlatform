@@ -360,6 +360,50 @@ class PR145fCRUDTestCase(TestCase):
         self.assertEqual(response.data["protected_completed"], 1)
 
     # -------------------------------------------------------------------------
+    # PR-145f-fix2: update-snapshot endpoint
+    # -------------------------------------------------------------------------
+
+    def _make_snapshot(self):
+        """Helper: clone self.assignment's workout into a snapshot."""
+        self.client.force_authenticate(user=self.coach_user)
+        self.client.post(f"{self.detail_url}clone-workout/", format="json")
+        self.assignment.refresh_from_db()
+        return self.assignment.planned_workout
+
+    def test_update_snapshot_patches_workout_name(self):
+        """PATCH update-snapshot changes snapshot name; original library workout untouched."""
+        snapshot = self._make_snapshot()
+        original_name = self.workout.name
+
+        url = f"{self.detail_url}update-snapshot/"
+        response = self.client.patch(url, {"name": "Fartlek editado"}, format="json")
+        self.assertEqual(response.status_code, 200)
+
+        snapshot.refresh_from_db()
+        self.assertEqual(snapshot.name, "Fartlek editado")
+
+        # Original library workout must be untouched
+        self.workout.refresh_from_db()
+        self.assertEqual(self.workout.name, original_name)
+
+    def test_update_snapshot_blocked_for_library_workout(self):
+        """update-snapshot returns 400 when the assignment workout is NOT a snapshot."""
+        self.client.force_authenticate(user=self.coach_user)
+        # self.assignment.planned_workout is the original library workout (not snapshot)
+        url = f"{self.detail_url}update-snapshot/"
+        response = self.client.patch(url, {"name": "Should fail"}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_update_snapshot_requires_write_role(self):
+        """update-snapshot returns 403 for athlete role."""
+        self._make_snapshot()
+        # Authenticate as athlete
+        self.client.force_authenticate(user=self.athlete_user)
+        url = f"{self.detail_url}update-snapshot/"
+        response = self.client.patch(url, {"name": "Hacked"}, format="json")
+        self.assertEqual(response.status_code, 403)
+
+    # -------------------------------------------------------------------------
     # Snapshot hidden from library listing
     # -------------------------------------------------------------------------
 

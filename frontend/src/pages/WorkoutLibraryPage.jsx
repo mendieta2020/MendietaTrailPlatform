@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Box, Paper, Typography, Button, IconButton, Chip, CircularProgress, Alert, Divider, Collapse,
   TextField, Dialog, DialogTitle, DialogContent, DialogActions,
@@ -30,6 +30,7 @@ import {
   listPlannedWorkouts, getPlannedWorkout, createPlannedWorkout,
   createWorkoutBlock, createWorkoutInterval, deletePlannedWorkout,
 } from '../api/p1';
+import { updateAssignmentSnapshot } from '../api/assignments';
 
 const DIFFICULTY_CONFIG = {
   EASY:      { label: 'Fácil',       color: '#22c55e' },
@@ -139,6 +140,7 @@ export default function WorkoutLibraryPage() {
   const { activeOrg, orgLoading } = useOrg();
   const orgId = activeOrg?.org_id;
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   // ── Libraries state ─────────────────────────────────────────────────────────
   const [libraries, setLibraries] = useState([]);
@@ -160,6 +162,8 @@ export default function WorkoutLibraryPage() {
   // ── Workout builder ─────────────────────────────────────────────────────────
   const [builderOpen, setBuilderOpen] = useState(false);
   const [editWorkout, setEditWorkout] = useState(null);   // full workout for edit mode
+  // PR-145f-fix2: assignmentId stored when editing a snapshot from the calendar
+  const snapshotAssignmentId = useRef(null);
 
   // PR-145f: open builder when navigated from Calendar with ?editWorkout=<id>
   useEffect(() => {
@@ -168,10 +172,14 @@ export default function WorkoutLibraryPage() {
     const stored = sessionStorage.getItem('calendarEditWorkout');
     if (!stored) return;
     try {
-      const workout = JSON.parse(stored);
+      const parsed = JSON.parse(stored);
+      // Support both old format { id, ... } and new format { workout, assignmentId }
+      const workout = parsed.workout ?? parsed;
+      const assignmentId = parsed.assignmentId ?? null;
       if (String(workout.id) === String(editId)) {
         sessionStorage.removeItem('calendarEditWorkout');
         setSearchParams({}, { replace: true });
+        snapshotAssignmentId.current = assignmentId;
         setEditWorkout(workout);
         setBuilderOpen(true);
       }
@@ -280,8 +288,19 @@ export default function WorkoutLibraryPage() {
 
   const handleWorkoutUpdated = (workout) => {
     setWorkouts((prev) => prev.map((w) => (w.id === workout.id ? workout : w)));
-    toast('Entrenamiento actualizado.');
+    // If this was a snapshot edit from the calendar, navigate back.
+    if (snapshotAssignmentId.current) {
+      snapshotAssignmentId.current = null;
+      navigate('/calendar');
+    } else {
+      toast('Entrenamiento actualizado.');
+    }
   };
+
+  // PR-145f-fix2: snapshot save handler passed to WorkoutBuilder when library=null
+  const handleSnapshotSave = snapshotAssignmentId.current
+    ? (data) => updateAssignmentSnapshot(orgId, snapshotAssignmentId.current, data)
+    : null;
 
   const handleEditWorkout = async (workoutId) => {
     try {
@@ -873,12 +892,13 @@ export default function WorkoutLibraryPage() {
       {/* ── Workout Builder Dialog ── */}
       <WorkoutBuilder
         open={builderOpen}
-        onClose={() => { setBuilderOpen(false); setEditWorkout(null); }}
+        onClose={() => { setBuilderOpen(false); setEditWorkout(null); snapshotAssignmentId.current = null; }}
         orgId={orgId}
         libraryId={selectedLibId}
         onSaved={handleWorkoutSaved}
         editWorkout={editWorkout}
         onUpdated={handleWorkoutUpdated}
+        onSnapshotSave={handleSnapshotSave}
       />
 
       {/* ── Snackbar ── */}

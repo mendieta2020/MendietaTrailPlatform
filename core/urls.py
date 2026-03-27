@@ -296,6 +296,12 @@ urlpatterns = [
         WorkoutAssignmentViewSet.as_view({'post': 'clone_workout'}),
         name='p1-assignment-clone-workout',
     ),
+    # PR-145f-fix2: Update snapshot workout (library-agnostic PATCH)
+    path(
+        'p1/orgs/<int:org_id>/assignments/<int:pk>/update-snapshot/',
+        WorkoutAssignmentViewSet.as_view({'patch': 'update_snapshot'}),
+        name='p1-assignment-update-snapshot',
+    ),
     # PR-145: Bulk team workout assignment
     path(
         'p1/orgs/<int:org_id>/assignments/bulk-assign-team/',

@@ -698,9 +698,12 @@ export default function CalendarPage() {
         }
       }
 
-      // Store full workout in sessionStorage so WorkoutLibraryPage can hydrate
-      // the builder without needing a libraryId (snapshot has library=null).
-      sessionStorage.setItem('calendarEditWorkout', JSON.stringify(workoutData));
+      // Store full workout + assignmentId in sessionStorage so WorkoutLibraryPage
+      // can hydrate the builder and route the save to update-snapshot endpoint.
+      sessionStorage.setItem(
+        'calendarEditWorkout',
+        JSON.stringify({ workout: workoutData, assignmentId: event.id }),
+      );
       navigate(`/library?editWorkout=${workoutData.id}`);
     },
     [orgId, navigate]

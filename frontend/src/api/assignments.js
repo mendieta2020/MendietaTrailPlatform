@@ -35,6 +35,10 @@ export function cloneAssignmentWorkout(orgId, id) {
   return client.post(`${p1Base(orgId)}/assignments/${id}/clone-workout/`);
 }
 
+export function updateAssignmentSnapshot(orgId, assignmentId, data) {
+  return client.patch(`${p1Base(orgId)}/assignments/${assignmentId}/update-snapshot/`, data);
+}
+
 export function copyWeek(orgId, payload) {
   return client.post(`${p1Base(orgId)}/assignments/copy-week/`, payload);
 }

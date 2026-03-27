@@ -770,6 +770,66 @@ class WorkoutAssignmentViewSet(
 
         return Response({"deleted": deleted_count, "protected_completed": protected})
 
+    @action(detail=True, methods=["patch"], url_path="update-snapshot")
+    def update_snapshot(self, request, *args, **kwargs):
+        """
+        PATCH /api/p1/orgs/<org_id>/assignments/<pk>/update-snapshot/
+
+        Update the PlannedWorkout snapshot linked to this assignment.
+        Accepts workout metadata + optional `blocks` array with nested intervals.
+        Handles the full replace atomically (delete old blocks, create new ones).
+
+        Guards:
+        - write role required (coach / owner)
+        - workout must be is_assignment_snapshot=True
+        - Plan ≠ Real: never touches CompletedActivity
+        """
+        if self.membership.role not in _WRITE_ROLES:
+            raise PermissionDenied("Only coaches and owners can edit assignment snapshots.")
+
+        assignment = self.get_object()
+        pw = assignment.planned_workout
+
+        if not pw:
+            return Response({"detail": "Esta sesión no tiene workout asociado."}, status=400)
+        if not pw.is_assignment_snapshot:
+            return Response(
+                {"detail": "Solo se pueden editar sesiones personalizadas (snapshot)."},
+                status=400,
+            )
+
+        # Update workout metadata (partial — only provided fields are written).
+        blocks_data = request.data.pop("blocks", None) if isinstance(request.data, dict) else None
+        serializer = PlannedWorkoutWriteSerializer(
+            pw, data=request.data, partial=True,
+            context=self.get_serializer_context(),
+        )
+        serializer.is_valid(raise_exception=True)
+        pw = serializer.save()
+
+        # Replace blocks + intervals atomically if blocks payload is provided.
+        if blocks_data is not None:
+            pw.blocks.all().delete()
+            for block_dict in blocks_data:
+                intervals_data = block_dict.pop("intervals", [])
+                block = WorkoutBlock.objects.create(
+                    organization=self.organization,
+                    planned_workout=pw,
+                    name=block_dict.get("name", ""),
+                    block_type=block_dict.get("block_type", "custom"),
+                    order_index=block_dict.get("order_index", 1),
+                    repetitions=block_dict.get("repetitions", 1),
+                )
+                for iv_dict in intervals_data:
+                    WorkoutInterval.objects.create(
+                        organization=self.organization,
+                        block=block,
+                        **{k: v for k, v in iv_dict.items() if k not in ("id",)},
+                    )
+
+        pw.refresh_from_db()
+        return Response(PlannedWorkoutReadSerializer(pw, context=self.get_serializer_context()).data)
+
 
 # ==============================================================================
 # PR-119: Reconciliation ViewSet

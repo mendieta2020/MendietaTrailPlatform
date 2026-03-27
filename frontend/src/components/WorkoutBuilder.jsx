@@ -1011,7 +1011,7 @@ function RepeatedBlockHeader({ block, bIdx, isFirst, isLast, onSetBlock, onMove,
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
-export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSaved, editWorkout, onUpdated }) {
+export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSaved, editWorkout, onUpdated, onSnapshotSave }) {
   const isEditMode = !!editWorkout;
   const [form, setForm] = useState(INITIAL_FORM);
   const [blocks, setBlocks] = useState([emptyBlock(1)]);
@@ -1092,6 +1092,55 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
         ...(totals.totalSeconds > 0 && { estimated_duration_seconds: Math.round(totals.totalSeconds) }),
         ...(totals.totalMeters > 0 && { estimated_distance_meters: Math.round(totals.totalMeters) }),
       };
+
+      // PR-145f-fix2: snapshot path — single atomic PATCH via update-snapshot endpoint.
+      // Build nested blocks+intervals payload and delegate to the caller.
+      if (isEditMode && onSnapshotSave) {
+        const blocksPayload = blocks.map((block) => {
+          const stepMeta = STEP_TYPE_MAP[block.block_type] ?? STEP_TYPES[1];
+          const isStrengthDiscipline = form.discipline === 'strength' || form.discipline === 'mobility';
+          const intervals = block.intervals.map((iv, idx) => {
+            const hasZone = !!iv.zone;
+            if (isStrengthDiscipline) {
+              const reps = Number(iv.target_value_low) || null;
+              const kg = Number(iv.target_value_high) || null;
+              const sets = Number(iv.repetitions) || 1;
+              const label = `${sets}×${reps ?? '?'}${kg ? ` @ ${kg}kg` : ''}`;
+              return {
+                order_index: idx + 1, repetitions: sets, metric_type: 'rpe',
+                ...(iv.description.trim() && { description: iv.description.trim() }),
+                target_label: label,
+                ...(reps != null && { target_value_low: reps }),
+                ...(kg != null && { target_value_high: kg }),
+                ...(iv.recovery_seconds && { recovery_seconds: Number(iv.recovery_seconds) }),
+                duration_seconds: null, distance_meters: null,
+              };
+            }
+            return {
+              order_index: idx + 1,
+              repetitions: Number(iv.repetitions) || 1,
+              metric_type: hasZone ? 'hr_zone' : (iv.metric_type || 'free'),
+              ...(iv.description.trim() && { description: iv.description.trim() }),
+              ...(iv.measure === 'tiempo' && iv.duration_seconds && { duration_seconds: Number(iv.duration_seconds) }),
+              ...(iv.measure === 'distancia' && iv.distance_meters && { distance_meters: Number(iv.distance_meters) }),
+              target_label: hasZone ? iv.zone : (iv.target_label || ''),
+              ...(iv.recovery_seconds && { recovery_seconds: Number(iv.recovery_seconds) }),
+            };
+          });
+          return {
+            name: block.name.trim() || stepMeta.label,
+            block_type: ['warmup', 'main', 'cooldown', 'drill', 'strength', 'custom'].includes(block.block_type)
+              ? block.block_type : 'custom',
+            order_index: block.order_index,
+            repetitions: Number(block.repetitions) || 1,
+            intervals,
+          };
+        });
+        const res = await onSnapshotSave({ ...workoutPayload, blocks: blocksPayload });
+        onUpdated?.(res.data);
+        handleClose();
+        return;
+      }
 
       let workoutId, workoutData;
       if (isEditMode) {
