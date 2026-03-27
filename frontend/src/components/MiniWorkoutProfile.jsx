@@ -2,15 +2,15 @@
  * MiniWorkoutProfile.jsx
  *
  * PR-145d: SVG mini-profile bar for a workout's block structure.
+ * PR-145g-fix5: Reverted fill to gray; robust blockReps helper;
+ *   Case 2 uses block_type height (original logic) + repetition expansion.
  *
  * Zone height is derived from two sources (in priority order):
  *   1. interval.target_label — parsed for Z1–Z5, "tempo", "threshold", etc.
  *   2. block.block_type — fallback structural intensity (warmup/main/cooldown/etc.)
  *
- * WorkoutInterval has no zone_type field. The available zone signals are:
- *   - target_label (free text: "Z2", "Threshold", "10k pace", etc.)
- *   - block_type on the parent block (warmup | main | cooldown | drill |
- *     strength | custom | recovery_step | free)
+ * Fill is always #CBD5E1 (gray) — color is intentionally kept neutral so
+ * the profile is readable on small calendar cards and in the drawer alike.
  *
  * Props:
  *   blocks: Array of WorkoutBlock objects with nested intervals
@@ -49,33 +49,56 @@ function resolveHeight(targetLabel, blockType) {
   return (BLOCK_TYPE_HEIGHT[blockType] ?? 0.25) * SVG_H;
 }
 
+// Read repetitions safely: handles undefined, null, 0, or alternate field name.
+function getBlockReps(block) {
+  return Math.max(1, Number(block.repetitions || block.repeat_count || 1));
+}
+
 export function MiniWorkoutProfile({ blocks, estimatedDuration }) {
   const blockList = blocks ?? [];
 
   if (blockList.length === 0 && !estimatedDuration) return null;
 
-  // Expand blocks into a flat list of {duration, h} intervals,
-  // respecting block.repetitions for repeated blocks.
+  // Expand blocks into a flat list of {duration, distance, h} intervals,
+  // respecting block repetitions for repeated blocks.
+  // Both duration and distance are tracked so the right axis can be chosen.
   const intervals = [];
   for (const block of blockList) {
-    const blockReps = block.repetitions ?? 1;
-    for (let r = 0; r < blockReps; r++) {
+    const reps = getBlockReps(block);
+    for (let r = 0; r < reps; r++) {
       for (const iv of (block.intervals ?? [])) {
-        const dur = (iv.repetitions ?? 1) * (iv.duration_seconds ?? 0);
+        const ivReps = Math.max(1, Number(iv.repetitions) || 1);
+        const dur  = ivReps * (iv.duration_seconds  ?? 0);
+        const dist = ivReps * (iv.distance_meters   ?? 0);
         intervals.push({
           duration: dur,
+          distance: dist,
           h: resolveHeight(iv.target_label, block.block_type),
         });
       }
     }
   }
 
+  const totalDistance = intervals.reduce((s, iv) => s + iv.distance, 0);
   const totalDuration = intervals.reduce((s, iv) => s + iv.duration, 0);
 
   let bars;
 
-  if (totalDuration > 0) {
-    // Case 1: interval durations available → proportional width + zone height
+  if (totalDistance > 0) {
+    // Case Distance (priority): distance-based intervals exist.
+    // Use distance-proportional widths; skip time-only intervals (recovery,
+    // rest) so they don't crowd out the main efforts.
+    // Example: 1km warmup + 4×(1km Z4 + 180sec rest) + 1km cooldown
+    //   → 6 distance bars (warmup, 4×Z4, cooldown); rest bars filtered out.
+    bars = intervals
+      .filter((iv) => iv.distance > 0)
+      .map((iv, i) => ({
+        key: i,
+        wPct: (iv.distance / totalDistance) * 100,
+        h: iv.h,
+      }));
+  } else if (totalDuration > 0) {
+    // Case Time: no distance data — proportional width from duration.
     bars = intervals
       .filter((iv) => iv.duration > 0)
       .map((iv, i) => ({
@@ -84,15 +107,18 @@ export function MiniWorkoutProfile({ blocks, estimatedDuration }) {
         h: iv.h,
       }));
   } else if (blockList.length > 0) {
-    // Case 2: blocks exist but no duration — equal width, block_type height
-    bars = blockList.map((block, i) => ({
-      key: i,
-      wPct: 100 / blockList.length,
-      h: resolveHeight(null, block.block_type),
-    }));
+    // Case Equal: no time or distance data — equal widths from block expansion.
+    const expanded = [];
+    for (const block of blockList) {
+      const reps = getBlockReps(block);
+      const h = (BLOCK_TYPE_HEIGHT[block.block_type] ?? 0.25) * SVG_H;
+      for (let r = 0; r < reps; r++) expanded.push({ h });
+    }
+    if (expanded.length === 0) return null;
+    bars = expanded.map((b, i) => ({ key: i, wPct: 100 / expanded.length, h: b.h }));
   } else if (estimatedDuration) {
     // Case 3: no blocks, known total duration — single bar at default height
-    bars = [{ key: 0, wPct: 100, h: resolveHeight(null, null) }];
+    bars = [{ key: 0, wPct: 100, h: 0.25 * SVG_H }];
   } else {
     return null;
   }

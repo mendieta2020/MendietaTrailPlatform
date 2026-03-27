@@ -26,7 +26,8 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 | PR-128a | pr-128a-pmc-backend-trimp-ctl-atl-tsb | PMC backend: TRIMP cascade + CTL/ATL/TSB engine + 4 API endpoints | 🔄 OPEN 2026-03-23 |
 | PR-145a | pr-145a-workout-creator-pro | Workout Creator Pro: zone selector Z1-Z5, pace API, intensity bar | ✅ 2026-03-24 |
 | PR-145b | pr-145b-library-upgrade | Library UX upgrade: search/filter/sort, empty state, WorkoutProfileChart, difficulty+D+, 4 builder modes, BlockType migration | ✅ 2026-03-25 |
-| PR-145f | pr-145f-coach-calendar-crud | Coach Calendar CRUD: drag-to-move, delete, clone workout, copy week, delete week, context menu, undo toast | 🔄 OPEN 2026-03-26 |
+| PR-145f | pr-145f-coach-calendar-crud | Coach Calendar CRUD: drag-to-move, delete, clone workout, copy week, delete week, context menu, undo toast | ✅ MERGED 2026-03-26 |
+| PR-145g | main (810c395) | Coach event drawer (WorkoutCoachDrawer 480px) + coach_comment retention loop + athlete selector memory | ✅ MERGED 2026-03-27 |
 
 ## Next PR Queue
 
@@ -131,7 +132,7 @@ Coach B2C:     Athlete pays Coach via MercadoPago (AthleteSubscription)
 - Endpoints: /api/athlete/pmc/, /api/athlete/hr-profile/, /api/coach/athletes/<m_id>/pmc/, /api/coach/team-readiness/
 
 ## Test Baseline
-~1329 + 6 = ~1335 tests | CI: backend ✅ frontend ✅
+~1335 + 4 = ~1339 tests | CI: backend ✅ frontend ✅
 
 ### PR-145a — Workout Creator Pro (2026-03-24)
 - `GET /api/athlete/pace-zones/`: any active Membership (athlete OR coach), AthleteHRProfile.threshold_pace_s_km, fallback 300 s/km

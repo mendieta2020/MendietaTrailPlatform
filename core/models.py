@@ -2450,6 +2450,10 @@ class WorkoutAssignment(models.Model):
         help_text="OWM forecast snapshot for the scheduled date (enriched on list).",
     )
 
+    # PR-145g: coach post-session comment (retention loop)
+    coach_comment = models.TextField(blank=True, default='')
+    coach_commented_at = models.DateTimeField(null=True, blank=True)
+
     assigned_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

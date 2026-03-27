@@ -46,3 +46,10 @@ export function copyWeek(orgId, payload) {
 export function deleteWeek(orgId, payload) {
   return client.post(`${p1Base(orgId)}/assignments/delete-week/`, payload);
 }
+
+export function addCoachComment(orgId, assignmentId, comment) {
+  return client.patch(
+    `${p1Base(orgId)}/assignments/${assignmentId}/coach-comment/`,
+    { coach_comment: comment }
+  );
+}
