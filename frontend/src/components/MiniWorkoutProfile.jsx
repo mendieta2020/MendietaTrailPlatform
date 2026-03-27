@@ -2,11 +2,15 @@
  * MiniWorkoutProfile.jsx
  *
  * PR-145d: SVG mini-profile bar for a workout's block structure.
- * PR-145g-fix4: Added zone-aware colors; robust repetitions fallback.
+ * PR-145g-fix5: Reverted fill to gray; robust blockReps helper;
+ *   Case 2 uses block_type height (original logic) + repetition expansion.
  *
- * Zone height and color are derived from two sources (in priority order):
+ * Zone height is derived from two sources (in priority order):
  *   1. interval.target_label — parsed for Z1–Z5, "tempo", "threshold", etc.
  *   2. block.block_type — fallback structural intensity (warmup/main/cooldown/etc.)
+ *
+ * Fill is always #CBD5E1 (gray) — color is intentionally kept neutral so
+ * the profile is readable on small calendar cards and in the drawer alike.
  *
  * Props:
  *   blocks: Array of WorkoutBlock objects with nested intervals
@@ -14,14 +18,6 @@
  */
 
 const SVG_H = 32;
-
-const ZONE_COLORS_MINI = {
-  Z1: '#94A3B8',
-  Z2: '#60A5FA',
-  Z3: '#34D399',
-  Z4: '#FBBF24',
-  Z5: '#F87171',
-};
 
 // Block-type → height ratio (0–1). Main set gets highest default.
 const BLOCK_TYPE_HEIGHT = {
@@ -37,24 +33,24 @@ const BLOCK_TYPE_HEIGHT = {
 
 // Patterns parsed from interval.target_label (case-insensitive)
 const LABEL_PATTERNS = [
-  { re: /\bz5\b|vo2|sprint/i,           h: 0.95, zone: 'Z5' },
-  { re: /\bz4\b|threshold|umbral/i,      h: 0.75, zone: 'Z4' },
-  { re: /\bz3\b|tempo/i,                 h: 0.55, zone: 'Z3' },
-  { re: /\bz2\b|aerobic|aer[oó]bico/i,  h: 0.30, zone: 'Z2' },
-  { re: /\bz1\b|recovery|recuper/i,      h: 0.15, zone: 'Z1' },
+  { re: /\bz5\b|vo2|sprint/i,           h: 0.95 },
+  { re: /\bz4\b|threshold|umbral/i,      h: 0.75 },
+  { re: /\bz3\b|tempo/i,                 h: 0.55 },
+  { re: /\bz2\b|aerobic|aer[oó]bico/i,  h: 0.30 },
+  { re: /\bz1\b|recovery|recuper/i,      h: 0.15 },
 ];
 
-function resolveHeightAndZone(targetLabel, blockType) {
+function resolveHeight(targetLabel, blockType) {
   if (targetLabel) {
-    for (const { re, h, zone } of LABEL_PATTERNS) {
-      if (re.test(targetLabel)) return { h: h * SVG_H, zone };
+    for (const { re, h } of LABEL_PATTERNS) {
+      if (re.test(targetLabel)) return h * SVG_H;
     }
   }
-  return { h: (BLOCK_TYPE_HEIGHT[blockType] ?? 0.25) * SVG_H, zone: null };
+  return (BLOCK_TYPE_HEIGHT[blockType] ?? 0.25) * SVG_H;
 }
 
-// Safely read repetitions — handles undefined, null, 0, or alternate field names.
-function blockReps(block) {
+// Read repetitions safely: handles undefined, null, 0, or alternate field name.
+function getBlockReps(block) {
   return Math.max(1, Number(block.repetitions || block.repeat_count || 1));
 }
 
@@ -63,16 +59,18 @@ export function MiniWorkoutProfile({ blocks, estimatedDuration }) {
 
   if (blockList.length === 0 && !estimatedDuration) return null;
 
-  // Expand blocks into a flat list of {duration, h, zone} intervals,
+  // Expand blocks into a flat list of {duration, h} intervals,
   // respecting block repetitions for repeated blocks.
   const intervals = [];
   for (const block of blockList) {
-    const reps = blockReps(block);
+    const reps = getBlockReps(block);
     for (let r = 0; r < reps; r++) {
       for (const iv of (block.intervals ?? [])) {
         const dur = Math.max(1, Number(iv.repetitions) || 1) * (iv.duration_seconds ?? 0);
-        const { h, zone } = resolveHeightAndZone(iv.target_label, block.block_type);
-        intervals.push({ duration: dur, h, zone });
+        intervals.push({
+          duration: dur,
+          h: resolveHeight(iv.target_label, block.block_type),
+        });
       }
     }
   }
@@ -82,34 +80,29 @@ export function MiniWorkoutProfile({ blocks, estimatedDuration }) {
   let bars;
 
   if (totalDuration > 0) {
-    // Case 1: interval durations available → proportional width + zone height/color
+    // Case 1: interval durations available → proportional width + zone height
     bars = intervals
       .filter((iv) => iv.duration > 0)
       .map((iv, i) => ({
         key: i,
         wPct: (iv.duration / totalDuration) * 100,
         h: iv.h,
-        zone: iv.zone,
       }));
   } else if (blockList.length > 0) {
-    // Case 2: blocks exist but no duration (distance-based) — equal width,
-    // best zone height/color from intervals; expand repeated blocks.
+    // Case 2: blocks exist but no duration (distance-based) — equal width per
+    // expanded bar, height from block_type (reliable even without target_label).
+    // Expand repeated blocks: a 5x block yields 5 equal bars.
     const expanded = [];
     for (const block of blockList) {
-      const reps = blockReps(block);
-      // Find the highest-intensity interval to represent this block's color + height.
-      let best = resolveHeightAndZone(null, block.block_type);
-      for (const iv of (block.intervals ?? [])) {
-        const candidate = resolveHeightAndZone(iv.target_label, block.block_type);
-        if (candidate.h > best.h) best = candidate;
-      }
-      for (let r = 0; r < reps; r++) expanded.push({ h: best.h, zone: best.zone });
+      const reps = getBlockReps(block);
+      const h = (BLOCK_TYPE_HEIGHT[block.block_type] ?? 0.25) * SVG_H;
+      for (let r = 0; r < reps; r++) expanded.push({ h });
     }
     if (expanded.length === 0) return null;
-    bars = expanded.map((b, i) => ({ key: i, wPct: 100 / expanded.length, h: b.h, zone: b.zone }));
+    bars = expanded.map((b, i) => ({ key: i, wPct: 100 / expanded.length, h: b.h }));
   } else if (estimatedDuration) {
     // Case 3: no blocks, known total duration — single bar at default height
-    bars = [{ key: 0, wPct: 100, h: 0.25 * SVG_H, zone: null }];
+    bars = [{ key: 0, wPct: 100, h: 0.25 * SVG_H }];
   } else {
     return null;
   }
@@ -137,7 +130,7 @@ export function MiniWorkoutProfile({ blocks, estimatedDuration }) {
           y={SVG_H - r.h}
           width={`${r.wPct}%`}
           height={r.h}
-          fill={ZONE_COLORS_MINI[r.zone] ?? '#CBD5E1'}
+          fill="#CBD5E1"
         />
       ))}
     </svg>
