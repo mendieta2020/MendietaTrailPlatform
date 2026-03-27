@@ -232,8 +232,9 @@ export default function WorkoutCoachDrawer({
   };
 
   const handleEditSaved = (updatedWorkout) => {
+    // Notify Calendar to update the event and refresh selectedEvent —
+    // the drawer stays open; Calendar's onSaved handles the rest.
     onSaved?.(updatedWorkout);
-    onClose();
   };
 
   // ── Weather chip ──────────────────────────────────────────────────────────

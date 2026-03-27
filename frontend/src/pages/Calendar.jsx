@@ -1090,14 +1090,21 @@ export default function CalendarPage() {
           onClose={() => setSelectedEvent(null)}
           onSaved={(updatedWorkout) => {
             if (selectedEvent) {
+              const updatedEvent = {
+                ...selectedEvent,
+                planned_workout: updatedWorkout,
+                resource: { ...selectedEvent.resource, planned_workout: updatedWorkout },
+              };
               eventsDispatch({
                 type: 'UPDATE_EVENT',
                 id: selectedEvent.id,
                 updates: {
                   planned_workout: updatedWorkout,
-                  resource: { ...selectedEvent.resource, planned_workout: updatedWorkout },
+                  resource: updatedEvent.resource,
                 },
               });
+              // Keep drawer open and show fresh data
+              setSelectedEvent(updatedEvent);
             }
           }}
           onMarkComplete={() => {}}
