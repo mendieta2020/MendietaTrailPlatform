@@ -1928,9 +1928,18 @@ class PlannedWorkout(models.Model):
     )
     library = models.ForeignKey(
         "WorkoutLibrary",
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
         related_name="planned_workouts",
         db_index=True,
+    )
+    # PR-145f: assignment snapshots are per-athlete clones not tied to any library
+    is_assignment_snapshot = models.BooleanField(
+        default=False,
+        help_text=(
+            "True when this PlannedWorkout was cloned for a specific WorkoutAssignment. "
+            "Snapshots are excluded from library listings."
+        ),
     )
     name = models.CharField(max_length=300)
     description = models.TextField(blank=True, default="")

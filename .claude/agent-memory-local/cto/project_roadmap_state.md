@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-03-24 · Session post PR-145a open_
+_Last updated: 2026-03-25 · PR-145b merged — starting PR-145c+d_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -24,9 +24,27 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 | PR-141 | pr-141-athlete-device-roster-notifications | Athlete device status in roster + smart notification flow | 🔄 OPEN 2026-03-23 |
 
 | PR-128a | pr-128a-pmc-backend-trimp-ctl-atl-tsb | PMC backend: TRIMP cascade + CTL/ATL/TSB engine + 4 API endpoints | 🔄 OPEN 2026-03-23 |
-| PR-145a | pr-145a-workout-creator-pro | Workout Creator Pro: zone selector Z1-Z5, pace API, intensity bar | 🔄 OPEN 2026-03-24 |
+| PR-145a | pr-145a-workout-creator-pro | Workout Creator Pro: zone selector Z1-Z5, pace API, intensity bar | ✅ 2026-03-24 |
+| PR-145b | pr-145b-library-upgrade | Library UX upgrade: search/filter/sort, empty state, WorkoutProfileChart, difficulty+D+, 4 builder modes, BlockType migration | ✅ 2026-03-25 |
+| PR-145f | pr-145f-coach-calendar-crud | Coach Calendar CRUD: drag-to-move, delete, clone workout, copy week, delete week, context menu, undo toast | 🔄 OPEN 2026-03-26 |
 
 ## Next PR Queue
+
+### PR-145c+d — Athlete Calendar + Strength Builder (⏳ IN PROGRESS — branch: pr-145c-athlete-calendar)
+Unified PR. Scope:
+- AthleteMyTraining.jsx: month calendar with WorkoutAssignment events (dual-layer cards)
+- WorkoutDetailDrawer.jsx: full workout detail read-only + mark as complete
+- WeekSummaryRow: natural language summary (done/total · km · D+ · TSS) + CTL/ATL/TSB badges
+- Fix: AthleteDashboard showing coach metrics (DashboardRouter bug)
+- Strength mode in WorkoutBuilder: EJERCICIO/SERIES/REPS/PESO/DESCANSO table when discipline=strength
+- updateAssignment() added to frontend/src/api/assignments.js
+
+Design differentiators vs competitors:
+- Dual-layer card (plan top / real ghost bottom) — nadie lo hace
+- D+ como métrica primaria en cards de trail — nadie lo hace
+- Week header con lenguaje natural — nadie lo hace
+- CTL/ATL/TSB visible para atleta Y coach (transparencia de carga)
+- Risk: Medium
 
 ### PR-128b — PMC Frontend chart (AthleteProgress page reads DailyLoad)
 - Reads /api/athlete/pmc/ + /api/coach/athletes/<m_id>/pmc/

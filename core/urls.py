@@ -280,6 +280,7 @@ urlpatterns = [
             'get': 'retrieve',
             'put': 'update',
             'patch': 'partial_update',
+            'delete': 'destroy',  # PR-145f
         }),
         name='p1-assignment-detail',
     ),
@@ -289,11 +290,35 @@ urlpatterns = [
         WorkoutAssignmentViewSet.as_view({'post': 'push'}),
         name='p1-assignment-push',
     ),
+    # PR-145f: Clone workout for per-assignment editing
+    path(
+        'p1/orgs/<int:org_id>/assignments/<int:pk>/clone-workout/',
+        WorkoutAssignmentViewSet.as_view({'post': 'clone_workout'}),
+        name='p1-assignment-clone-workout',
+    ),
+    # PR-145f-fix2: Update snapshot workout (library-agnostic PATCH)
+    path(
+        'p1/orgs/<int:org_id>/assignments/<int:pk>/update-snapshot/',
+        WorkoutAssignmentViewSet.as_view({'patch': 'update_snapshot'}),
+        name='p1-assignment-update-snapshot',
+    ),
     # PR-145: Bulk team workout assignment
     path(
         'p1/orgs/<int:org_id>/assignments/bulk-assign-team/',
         WorkoutAssignmentViewSet.as_view({'post': 'bulk_assign_team'}),
         name='p1-assignment-bulk-assign-team',
+    ),
+    # PR-145f: Copy week
+    path(
+        'p1/orgs/<int:org_id>/assignments/copy-week/',
+        WorkoutAssignmentViewSet.as_view({'post': 'copy_week'}),
+        name='p1-assignment-copy-week',
+    ),
+    # PR-145f: Delete week
+    path(
+        'p1/orgs/<int:org_id>/assignments/delete-week/',
+        WorkoutAssignmentViewSet.as_view({'post': 'delete_week'}),
+        name='p1-assignment-delete-week',
     ),
 
     # ==============================================================================
