@@ -1088,7 +1088,15 @@ export default function CalendarPage() {
           event={selectedEvent}
           orgId={orgId}
           onClose={() => setSelectedEvent(null)}
-          onEdit={handleEditEvent}
+          onSaved={(updatedWorkout) => {
+            if (selectedEvent) {
+              eventsDispatch({
+                type: 'UPDATE_EVENT',
+                id: selectedEvent.id,
+                updates: { planned_workout: updatedWorkout },
+              });
+            }
+          }}
           onMarkComplete={() => {}}
         />
 

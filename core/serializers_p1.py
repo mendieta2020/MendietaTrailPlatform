@@ -219,6 +219,8 @@ _ASSIGNMENT_FIELDS = [
     # PR-145g: coach comment
     "coach_comment",
     "coach_commented_at",
+    # PR-145g-fix: athlete display name (read-only, derived from athlete.user)
+    "athlete_name",
     "assigned_at",
     "updated_at",
     "effective_date",
@@ -465,6 +467,9 @@ class WorkoutAssignmentSerializer(serializers.ModelSerializer):
     compliance_color = serializers.CharField(read_only=True)
     weather_snapshot = serializers.JSONField(read_only=True)
 
+    # PR-145g-fix: athlete display name
+    athlete_name = serializers.SerializerMethodField()
+
     class Meta:
         model = WorkoutAssignment
         fields = _ASSIGNMENT_FIELDS
@@ -478,6 +483,7 @@ class WorkoutAssignmentSerializer(serializers.ModelSerializer):
             "weather_snapshot",
             "coach_comment",
             "coach_commented_at",
+            "athlete_name",
             "assigned_at",
             "updated_at",
             "effective_date",
@@ -491,6 +497,13 @@ class WorkoutAssignmentSerializer(serializers.ModelSerializer):
 
     def get_effective_date(self, obj):
         return obj.effective_date
+
+    def get_athlete_name(self, obj):
+        if obj.athlete_id is None:
+            return ""
+        user = obj.athlete.user
+        name = f"{user.first_name} {user.last_name}".strip()
+        return name or user.username or ""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -543,6 +556,9 @@ class WorkoutAssignmentAthleteSerializer(serializers.ModelSerializer):
     compliance_color = serializers.CharField(read_only=True)
     weather_snapshot = serializers.JSONField(read_only=True)
 
+    # PR-145g-fix: athlete display name
+    athlete_name = serializers.SerializerMethodField()
+
     class Meta:
         model = WorkoutAssignment
         fields = _ASSIGNMENT_FIELDS
@@ -565,6 +581,7 @@ class WorkoutAssignmentAthleteSerializer(serializers.ModelSerializer):
             "weather_snapshot",
             "coach_comment",
             "coach_commented_at",
+            "athlete_name",
             "assigned_at",
             "updated_at",
             "effective_date",
@@ -578,6 +595,13 @@ class WorkoutAssignmentAthleteSerializer(serializers.ModelSerializer):
 
     def get_effective_date(self, obj):
         return obj.effective_date
+
+    def get_athlete_name(self, obj):
+        if obj.athlete_id is None:
+            return ""
+        user = obj.athlete.user
+        name = f"{user.first_name} {user.last_name}".strip()
+        return name or user.username or ""
 
 
 # ==============================================================================

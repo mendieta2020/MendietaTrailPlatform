@@ -24,7 +24,8 @@ import { Close } from '@mui/icons-material';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { MiniWorkoutProfile } from './MiniWorkoutProfile';
-import { addCoachComment } from '../api/assignments';
+import { addCoachComment, cloneAssignmentWorkout } from '../api/assignments';
+import WorkoutAssignmentEditModal from './WorkoutAssignmentEditModal';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -170,7 +171,7 @@ export default function WorkoutCoachDrawer({
   event,
   orgId,
   onClose,
-  onEdit,
+  onSaved,
   onMarkComplete,
 }) {
   const open = !!event;
@@ -205,6 +206,34 @@ export default function WorkoutCoachDrawer({
     } catch {
       setCommentStatus('error');
     }
+  };
+
+  // ── FIX 3: Inline edit modal state ────────────────────────────────────────
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editWorkout, setEditWorkout] = useState(null);
+  const [editLoading, setEditLoading] = useState(false);
+
+  const handleOpenEdit = async () => {
+    if (!assignment?.id || !pw) return;
+    let workoutData = pw;
+    if (!pw.is_assignment_snapshot) {
+      setEditLoading(true);
+      try {
+        const res = await cloneAssignmentWorkout(orgId, assignment.id);
+        workoutData = res.data.planned_workout ?? res.data;
+      } catch {
+        setEditLoading(false);
+        return;
+      }
+      setEditLoading(false);
+    }
+    setEditWorkout(workoutData);
+    setEditModalOpen(true);
+  };
+
+  const handleEditSaved = (updatedWorkout) => {
+    onSaved?.(updatedWorkout);
+    onClose();
   };
 
   // ── Weather chip ──────────────────────────────────────────────────────────
@@ -323,6 +352,43 @@ export default function WorkoutCoachDrawer({
               blocks={pw.blocks}
               estimatedDuration={pw.estimated_duration_seconds}
             />
+          </Box>
+        )}
+
+        {/* ── FIX 2: WORKOUT STEPS ────────────────────────────────────── */}
+        {pw?.blocks?.length > 0 && (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.3, display: 'block', mb: 0.75 }}>
+              Pasos del entrenamiento
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+              {pw.blocks.map((block, bi) => {
+                const typeLabel =
+                  block.block_type === 'warmup'   ? '🔆 Calentamiento' :
+                  block.block_type === 'cooldown' ? '❄️ Vuelta a la calma' :
+                  block.block_type === 'repeat'   ? `🔁 ${block.repeat_count ?? 1}× Repetición` :
+                  block.name ?? '▶ Principal';
+                return (
+                  <Box key={bi} sx={{ pl: 1.5, borderLeft: `3px solid ${color}55`, py: 0.25 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 700, color: '#475569', display: 'block', fontSize: '0.75rem' }}>
+                      {typeLabel}
+                    </Typography>
+                    {block.intervals?.map((iv, ii) => {
+                      const parts = [];
+                      if (iv.target_label) parts.push(iv.target_label);
+                      if (iv.value_seconds) parts.push(fmtDuration(iv.value_seconds));
+                      if (iv.distance_meters) parts.push(fmtDistance(iv.distance_meters));
+                      if (iv.description) parts.push(iv.description);
+                      return (
+                        <Typography key={ii} variant="caption" sx={{ color: '#64748b', display: 'block', fontSize: '0.72rem', pl: 0.5 }}>
+                          · {parts.length ? parts.join(' — ') : 'Intervalo'}
+                        </Typography>
+                      );
+                    })}
+                  </Box>
+                );
+              })}
+            </Box>
           </Box>
         )}
 
@@ -477,10 +543,11 @@ export default function WorkoutCoachDrawer({
         <Button
           variant="outlined"
           size="small"
-          onClick={() => { onEdit?.(event); onClose(); }}
+          onClick={handleOpenEdit}
+          disabled={editLoading}
           sx={{ flex: 1, borderRadius: 2, textTransform: 'none', fontWeight: 600, borderColor: '#e2e8f0', color: '#475569' }}
         >
-          ✏ Editar sesión
+          {editLoading ? <CircularProgress size={14} /> : '✏ Editar sesión'}
         </Button>
         {!isCompleted && (
           <Button
@@ -493,6 +560,17 @@ export default function WorkoutCoachDrawer({
           </Button>
         )}
       </Box>
+      {/* FIX 3: Inline edit modal */}
+      {editModalOpen && (
+        <WorkoutAssignmentEditModal
+          open={editModalOpen}
+          onClose={() => setEditModalOpen(false)}
+          assignmentId={assignment?.id}
+          orgId={orgId}
+          initialWorkout={editWorkout}
+          onSaved={handleEditSaved}
+        />
+      )}
     </Drawer>
   );
 }
