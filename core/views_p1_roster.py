@@ -432,6 +432,7 @@ class TeamViewSet(OrgTenantMixin, viewsets.ModelViewSet):
 
             athletes_data.append({
                 "athlete_id": athlete.pk,
+                "user_id": athlete.user_id,  # User PK — needed for messaging
                 "athlete_name": (athlete.user.get_full_name() or athlete.user.username),
                 "days": days,
                 "summary": {

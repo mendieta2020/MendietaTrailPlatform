@@ -332,12 +332,21 @@ function SummaryBadge({ summary, onClick }) {
 
 // ── AlertModal ────────────────────────────────────────────────────────────────
 
-function AlertModal({ open, onClose, athleteId, athleteName, orgId, onSent }) {
+// Fallback message templates for historical/offline alerts
+const FALLBACK_TEMPLATES = {
+  inactive_4d: (name) => `Hola ${name}, hace varios días que no completás entrenamientos. ¿Todo bien? Contame qué pasó.`,
+  overload: (name) => `Hola ${name}, esta semana superaste el plan en más de un 20%. Excelente compromiso, pero cuidá el cuerpo. Revisamos juntos la próxima semana.`,
+  acwr_spike: (name) => `Hola ${name}, esta semana entrenaste mucho más de lo habitual. Riesgo de sobrecarga elevado. La próxima semana reducimos el volumen.`,
+};
+
+function AlertModal({ open, onClose, athleteId, userId, athleteName, orgId, onSent, onError, preAlertType }) {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState(null);
   const [msgText, setMsgText] = useState('');
   const [sending, setSending] = useState(false);
+
+  const firstName = athleteName?.split(' ')[0] ?? athleteName ?? 'atleta';
 
   useEffect(() => {
     if (!open || !orgId || !athleteId) return;
@@ -347,15 +356,30 @@ function AlertModal({ open, onClose, athleteId, athleteName, orgId, onSent }) {
     getAthleteAlerts(orgId, athleteId)
       .then((res) => {
         const data = res.data?.alerts ?? [];
-        setAlerts(data);
         if (data.length > 0) {
+          setAlerts(data);
           setSelectedAlert(data[0]);
           setMsgText(data[0].message_template ?? '');
+        } else if (preAlertType) {
+          // Historical alert: API has no current alert but badge showed one
+          // Build a synthetic alert so coach can still send a message
+          const syntheticAlert = {
+            type: preAlertType,
+            severity: preAlertType === 'acwr_spike' ? 'danger' : 'warning',
+            message_template: FALLBACK_TEMPLATES[preAlertType]?.(firstName) ?? '',
+            phone_number: null,
+            days_count: null,
+          };
+          setAlerts([syntheticAlert]);
+          setSelectedAlert(syntheticAlert);
+          setMsgText(syntheticAlert.message_template);
+        } else {
+          setAlerts([]);
         }
       })
       .catch(() => setAlerts([]))
       .finally(() => setLoading(false));
-  }, [open, orgId, athleteId]);
+  }, [open, orgId, athleteId, preAlertType, firstName]);
 
   const handleSelectAlert = (alert) => {
     setSelectedAlert(alert);
@@ -364,18 +388,25 @@ function AlertModal({ open, onClose, athleteId, athleteName, orgId, onSent }) {
 
   const handleSend = async () => {
     if (!msgText.trim() || !selectedAlert) return;
+    if (!userId) {
+      onError?.('No se pudo identificar al atleta. Recargá la página.');
+      return;
+    }
     setSending(true);
     try {
       await sendMessage(orgId, {
-        recipient_id: athleteId,
+        recipient_id: userId,   // ← User.pk (not Athlete.pk)
         content: msgText,
         alert_type: selectedAlert.type,
         whatsapp_sent: false,
       });
       onSent?.();
       onClose();
-    } catch {
-      // Silently ignore — parent snackbar handles success
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+        || err?.response?.data?.recipient_id
+        || 'Error al enviar el mensaje. Intentá de nuevo.';
+      onError?.(Array.isArray(detail) ? detail[0] : detail);
     } finally {
       setSending(false);
     }
@@ -530,7 +561,7 @@ export default function Plantilla() {
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
 
   // Alert modal
-  const [alertModal, setAlertModal] = useState({ open: false, athleteId: null, athleteName: '' });
+  const [alertModal, setAlertModal] = useState({ open: false, athleteId: null, userId: null, athleteName: '', preAlertType: null });
 
   // ── Load teams ──────────────────────────────────────────────────────────────
 
@@ -816,7 +847,13 @@ export default function Plantilla() {
                         <Box component="td" sx={{ textAlign: 'center', p: 0.5 }}>
                           <SummaryBadge
                             summary={athlete.summary}
-                            onClick={athlete.summary.alert ? () => setAlertModal({ open: true, athleteId: athlete.athlete_id, athleteName: athlete.athlete_name }) : undefined}
+                            onClick={athlete.summary.alert ? () => setAlertModal({
+                              open: true,
+                              athleteId: athlete.athlete_id,
+                              userId: athlete.user_id,
+                              athleteName: athlete.athlete_name,
+                              preAlertType: athlete.summary.alert,
+                            }) : undefined}
                           />
                         </Box>
                       </Box>
@@ -894,9 +931,12 @@ export default function Plantilla() {
         open={alertModal.open}
         onClose={() => setAlertModal((s) => ({ ...s, open: false }))}
         athleteId={alertModal.athleteId}
+        userId={alertModal.userId}
         athleteName={alertModal.athleteName}
         orgId={orgId}
+        preAlertType={alertModal.preAlertType}
         onSent={() => setSnack({ open: true, message: 'Mensaje enviado ✓', severity: 'success' })}
+        onError={(msg) => setSnack({ open: true, message: msg, severity: 'error' })}
       />
 
       {/* ── Snackbar ── */}
