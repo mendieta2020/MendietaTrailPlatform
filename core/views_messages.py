@@ -232,26 +232,31 @@ class AthleteAlertsView(OrgTenantMixin, APIView):
         future_assignments = [a for a in assignments if a.scheduled_date > today]
 
         # ── 1. inactive_4d ───────────────────────────────────────────────────
-        # Count consecutive days (from today backward) where assignment exists
-        # but status != COMPLETED.
+        # Count consecutive days (from most-recent assignment date backward)
+        # where assignment exists but status != COMPLETED.
+        # NOTE: we start from the most recent assignment date, NOT necessarily
+        # today, so a gap between the last assignment and today doesn't mask
+        # an existing inactive streak.
         consecutive_inactive = 0
-        check_date = today
         past_by_date = {}
         for a in past_assignments:
             past_by_date.setdefault(a.scheduled_date, []).append(a)
 
-        while check_date >= past_28_start:
-            day_assignments = past_by_date.get(check_date, [])
-            if not day_assignments:
-                # No assignment → stop counting (not "inactive", just unscheduled)
-                break
-            all_completed = all(
-                a.status == WorkoutAssignment.Status.COMPLETED for a in day_assignments
-            )
-            if all_completed:
-                break
-            consecutive_inactive += 1
-            check_date -= datetime.timedelta(days=1)
+        if past_by_date:
+            most_recent = max(past_by_date.keys())
+            check_date = most_recent
+            while check_date >= past_28_start:
+                day_assignments = past_by_date.get(check_date, [])
+                if not day_assignments:
+                    # No assignment on this day → stop streak
+                    break
+                all_completed = all(
+                    a.status == WorkoutAssignment.Status.COMPLETED for a in day_assignments
+                )
+                if all_completed:
+                    break
+                consecutive_inactive += 1
+                check_date -= datetime.timedelta(days=1)
 
         if consecutive_inactive >= 4:
             template = ALERT_MESSAGES["inactive_4d"]

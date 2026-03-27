@@ -381,8 +381,10 @@ function AlertModal({ open, onClose, athleteId, athleteName, orgId, onSent }) {
     }
   };
 
+  // Show WhatsApp button for any urgent/warning alert when athlete has a phone number
+  const URGENT_TYPES = ['acwr_spike', 'inactive_4d', 'overload_sustained'];
   const showWhatsApp =
-    selectedAlert?.type === 'acwr_spike' && selectedAlert?.phone_number;
+    URGENT_TYPES.includes(selectedAlert?.type) && selectedAlert?.phone_number;
 
   const ALERT_LABEL = {
     inactive_4d: '⚠️ Inactividad',
