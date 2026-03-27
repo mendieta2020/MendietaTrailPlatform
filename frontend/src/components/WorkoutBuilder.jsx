@@ -766,13 +766,9 @@ function SimpleStepRow({ block, bIdx, iv, isFirst, isLast, paceZones, discipline
   };
 
   const isStrength = discipline === 'strength' || discipline === 'mobility';
-  const zoneColor = iv.zone ? ZONE_MAP[iv.zone]?.color : null;
 
   return (
-    <div
-      className="group flex items-center gap-2 px-3 py-2 hover:bg-amber-50 transition-colors border-b border-slate-100"
-      style={{ borderLeft: `3px solid ${isStrength ? '#a855f7' : (zoneColor ?? 'transparent')}` }}
-    >
+    <div className="group flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-200 shadow-sm mb-2">
       <DragHandleIcon sx={{ color: '#cbd5e1', fontSize: 16, cursor: 'grab', flexShrink: 0 }} />
 
       <span className="text-xs font-bold text-slate-400 flex-shrink-0 text-center" style={{ width: 18 }}>
@@ -789,8 +785,7 @@ function SimpleStepRow({ block, bIdx, iv, isFirst, isLast, paceZones, discipline
         value={isStrength ? iv.description : block.name}
         onChange={(e) => isStrength ? setIv('description', e.target.value) : setBlock('name', e.target.value)}
         placeholder={isStrength ? 'Nombre del ejercicio…' : 'Descripción del paso…'}
-        className="flex-1 min-w-0 px-2 text-sm text-slate-700 placeholder-slate-300 bg-transparent border border-transparent rounded-md focus:outline-none focus:border-slate-300 focus:bg-white transition-colors"
-        style={{ height: 30 }}
+        className="flex-1 min-w-0 rounded-lg border border-slate-200 px-2 py-1 text-sm text-slate-700 placeholder-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
       />
 
       {isStrength ? (
@@ -863,17 +858,9 @@ function SubStepRow({ iv, iIdx, bIdx, isOnly, paceZones, discipline, onSetValue,
     set('target_label', zone || '');
   };
 
-  const zoneColor = iv.zone ? ZONE_MAP[iv.zone]?.color : null;
-
   return (
-    <div
-      className="group flex items-center gap-2 pr-3 py-1.5 hover:bg-amber-50 transition-colors border-b border-amber-100"
-      style={{
-        paddingLeft: 48,
-        borderLeft: `3px solid ${isStrength ? '#a855f750' : (zoneColor ?? '#fed7aa')}`,
-      }}
-    >
-      <span className="text-xs font-bold text-amber-500 flex-shrink-0 text-center" style={{ width: 18 }}>
+    <div className="group flex items-center gap-3 px-4 py-2 pl-8 bg-slate-50 border-t border-slate-100">
+      <span className="w-5 h-5 rounded-full bg-slate-200 text-xs font-bold text-slate-600 flex items-center justify-center flex-shrink-0">
         {letters[iIdx] ?? iIdx + 1}
       </span>
 
@@ -886,8 +873,7 @@ function SubStepRow({ iv, iIdx, bIdx, isOnly, paceZones, discipline, onSetValue,
         value={iv.description}
         onChange={(e) => set('description', e.target.value)}
         placeholder={isStrength ? 'Nombre del ejercicio…' : 'Descripción del sub-paso…'}
-        className="flex-1 min-w-0 px-2 text-sm text-slate-700 placeholder-slate-300 bg-transparent border border-transparent rounded-md focus:outline-none focus:border-slate-300 focus:bg-white transition-colors"
-        style={{ height: 28 }}
+        className="flex-1 min-w-0 rounded-lg border border-slate-200 px-2 py-1 text-sm text-slate-700 placeholder-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
       />
 
       {isStrength ? (
@@ -958,10 +944,7 @@ function SubStepRow({ iv, iIdx, bIdx, isOnly, paceZones, discipline, onSetValue,
 function RepeatedBlockHeader({ block, bIdx, isFirst, isLast, onSetBlock, onMove, onRemove, onAddInterval }) {
   const setBlock = (key, val) => onSetBlock(bIdx, key, val);
   return (
-    <div
-      className="group flex items-center gap-2 px-3 py-2 border-b border-amber-200 transition-colors"
-      style={{ background: '#fffbeb', borderLeft: '3px solid #f59e0b' }}
-    >
+    <div className="group flex items-center gap-3 px-4 py-2 bg-amber-50 border-l-4 border-amber-500">
       <DragHandleIcon sx={{ color: '#fbbf24', fontSize: 16, cursor: 'grab', flexShrink: 0 }} />
 
       <RepeatIcon sx={{ color: '#d97706', fontSize: 16, flexShrink: 0 }} />
@@ -982,8 +965,7 @@ function RepeatedBlockHeader({ block, bIdx, isFirst, isLast, onSetBlock, onMove,
         value={block.name}
         onChange={(e) => setBlock('name', e.target.value)}
         placeholder="Nombre del bloque (ej: Intervalos 4×1km)…"
-        className="flex-1 min-w-0 px-2 text-sm font-semibold text-amber-800 placeholder-amber-300 bg-transparent border border-transparent rounded-md focus:outline-none focus:border-amber-300 focus:bg-white transition-colors"
-        style={{ height: 28 }}
+        className="flex-1 min-w-0 rounded-lg border border-amber-200 px-2 py-1 text-sm font-semibold text-amber-800 placeholder-amber-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
       />
 
       <Tooltip title="Agregar sub-paso">
@@ -1288,13 +1270,19 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                 <div className="grid grid-cols-2 gap-3">
                   <TextField
                     select label="Deporte" value={form.discipline} onChange={setField('discipline')} size="small"
-                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', bgcolor: 'white' } }}
+                    sx={{
+                      '& .MuiOutlinedInput-root': { borderRadius: '8px', bgcolor: 'white' },
+                      '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: '#f59e0b' },
+                    }}
                   >
                     {SPORT_OPTIONS.map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
                   </TextField>
                   <TextField
                     select label="Tipo de sesión" value={form.session_type} onChange={setField('session_type')} size="small"
-                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', bgcolor: 'white' } }}
+                    sx={{
+                      '& .MuiOutlinedInput-root': { borderRadius: '8px', bgcolor: 'white' },
+                      '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: '#f59e0b' },
+                    }}
                   >
                     {SESSION_TYPE_OPTIONS.map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
                   </TextField>
@@ -1303,7 +1291,10 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                 <div className="grid grid-cols-2 gap-3">
                   <TextField
                     select label="Dificultad" value={form.difficulty} onChange={setField('difficulty')} size="small"
-                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', bgcolor: 'white' } }}
+                    sx={{
+                      '& .MuiOutlinedInput-root': { borderRadius: '8px', bgcolor: 'white' },
+                      '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: '#f59e0b' },
+                    }}
                   >
                     <MenuItem value="">Sin definir</MenuItem>
                     <MenuItem value="easy">🟢 Fácil</MenuItem>
@@ -1319,7 +1310,7 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                         value={form.elevation_gain_min_m}
                         onChange={setField('elevation_gain_min_m')}
                         inputProps={{ min: 0, step: 50 }}
-                        sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: '8px', bgcolor: 'white' } }}
+                        sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: '8px', bgcolor: 'white' }, '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: '#f59e0b' } }}
                       />
                       <span className="text-slate-400 text-sm flex-shrink-0">–</span>
                       <TextField
@@ -1327,7 +1318,7 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                         value={form.elevation_gain_max_m}
                         onChange={setField('elevation_gain_max_m')}
                         inputProps={{ min: 0, step: 50 }}
-                        sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: '8px', bgcolor: 'white' } }}
+                        sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: '8px', bgcolor: 'white' }, '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: '#f59e0b' } }}
                       />
                     </div>
                   ) : (
@@ -1380,60 +1371,29 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
             </div>
 
             {/* Section 2: Steps */}
-            <div className="px-5 pt-4 pb-2 flex items-center justify-between">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
-                Pasos del entrenamiento
-                <span className="ml-1.5 px-1.5 py-0.5 bg-slate-200 rounded text-slate-600">
-                  {blocks.length}
-                </span>
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={addSimpleStep}
-                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-amber-700 border border-amber-300 rounded-lg hover:bg-amber-50 transition-colors"
-                >
-                  <AddIcon sx={{ fontSize: 14 }} />
-                  {(form.discipline === 'strength' || form.discipline === 'mobility') ? 'Agregar ejercicio' : 'Agregar paso'}
-                </button>
-                {form.discipline !== 'strength' && form.discipline !== 'mobility' && (
+            <div className="px-5 pt-4 pb-2">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
+                  Pasos del Entrenamiento
+                </h3>
+                <div className="flex gap-2">
                   <button
-                    onClick={addRepeatedBlock}
-                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-purple-700 border border-purple-300 rounded-lg hover:bg-purple-50 transition-colors"
+                    onClick={addSimpleStep}
+                    className="px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors"
                   >
-                    <RepeatIcon sx={{ fontSize: 14 }} />
-                    Bloque repetido
+                    + {(form.discipline === 'strength' || form.discipline === 'mobility') ? 'Agregar ejercicio' : 'Agregar paso'}
                   </button>
-                )}
+                  {form.discipline !== 'strength' && form.discipline !== 'mobility' && (
+                    <button
+                      onClick={addRepeatedBlock}
+                      className="px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors"
+                    >
+                      ↺ Bloque repetido
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
-
-            {/* Column headers */}
-            {(form.discipline === 'strength' || form.discipline === 'mobility') ? (
-              <div className="flex items-center gap-2 px-3 py-1.5 border-y border-slate-100 bg-slate-50">
-                <div style={{ width: 16 }} />
-                <div style={{ width: 18 }} />
-                <div style={{ minWidth: 140, flex: '0 0 140px' }}
-                  className="text-xs font-semibold text-slate-400 uppercase tracking-wide">TIPO</div>
-                <div className="flex-1 text-xs font-semibold text-slate-400 uppercase tracking-wide">EJERCICIO</div>
-                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide" style={{ width: 180 }}>SERIES × REPS @ PESO</div>
-                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide" style={{ width: 80 }}>DESCANSO</div>
-                <div style={{ width: 72 }} />
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 px-3 py-1.5 border-y border-slate-100 bg-slate-50">
-                <div style={{ width: 16 }} />
-                <div style={{ width: 18 }} />
-                <div style={{ minWidth: 140, flex: '0 0 140px' }}
-                  className="text-xs font-semibold text-slate-400 uppercase tracking-wide">TIPO</div>
-                <div className="flex-1 text-xs font-semibold text-slate-400 uppercase tracking-wide">DESCRIPCIÓN</div>
-                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide" style={{ width: 118 }}>OBJETIVO</div>
-                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide" style={{ width: 168 }}>
-                  {form.discipline === 'bike' ? 'ZONA FC' : 'ZONA RITMO'}
-                </div>
-                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide" style={{ width: 80 }}>RECUP.</div>
-                <div style={{ width: 72 }} />
-              </div>
-            )}
 
             {/* Steps list */}
             {blocks.length === 0 ? (
@@ -1443,7 +1403,7 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                 <p className="text-xs text-slate-400 mt-1">Agrega un paso simple o un bloque de intervalos repetidos.</p>
               </div>
             ) : (
-              <div className="border-b border-slate-100">
+              <div className="px-5 pb-3">
                 {blocks.map((block, bIdx) => {
                   if (!block.isRepeated) {
                     const iv = block.intervals[0] ?? emptyInterval();
@@ -1465,7 +1425,7 @@ export default function WorkoutBuilder({ open, onClose, orgId, libraryId, onSave
                     );
                   }
                   return (
-                    <div key={bIdx}>
+                    <div key={bIdx} className="rounded-xl border border-slate-200 shadow-sm mb-2 overflow-hidden">
                       <RepeatedBlockHeader
                         block={block}
                         bIdx={bIdx}

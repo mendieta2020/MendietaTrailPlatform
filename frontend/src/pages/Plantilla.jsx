@@ -315,7 +315,8 @@ function SummaryBadge({ summary }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function Plantilla() {
-  const { orgId } = useOrg();
+  const { activeOrg } = useOrg();
+  const orgId = activeOrg?.org_id ?? null;
   const navigate = useNavigate();
 
   // Week navigation
