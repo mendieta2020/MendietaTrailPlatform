@@ -1058,6 +1058,12 @@ class Team(models.Model):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True, default="")
     is_active = models.BooleanField(default=True, db_index=True)
+    members = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name='member_of_teams',
+        blank=True,
+        verbose_name='Atletas del grupo',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

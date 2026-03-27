@@ -16,9 +16,12 @@ OrgTenantMixin contract:
 - Fail-closed: no active membership → PermissionDenied 403.
 """
 
+import datetime
 import logging
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db.models import Prefetch
+from django.shortcuts import get_object_or_404
 from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied
@@ -34,6 +37,7 @@ from core.models import (
     Coach,
     Membership,
     Team,
+    WorkoutAssignment,
 )
 from core.tenancy import get_active_membership
 
@@ -258,6 +262,191 @@ class TeamViewSet(OrgTenantMixin, viewsets.ModelViewSet):
             raise PermissionDenied("Only owners can deactivate teams.")
         instance.is_active = False
         instance.save(update_fields=["is_active", "updated_at"])
+
+    # ── Team members CRUD (PR-145h) ──────────────────────────────────────────
+
+    @action(detail=True, methods=["get", "post"], url_path="members")
+    def members(self, request, *args, **kwargs):
+        """
+        GET  /api/p1/orgs/<org_id>/teams/<pk>/members/  — list athletes in team.
+        POST /api/p1/orgs/<org_id>/teams/<pk>/members/  — add athlete to team.
+
+        Athletes are managed via the Athlete.team FK (organization-scoped).
+        Only coaches and owners can write. All roles can read.
+        """
+        team = get_object_or_404(Team, pk=self.kwargs["pk"], organization=self.organization)
+
+        if request.method == "GET":
+            athletes = Athlete.objects.filter(
+                team=team, organization=self.organization, is_active=True
+            ).select_related("user")
+            data = [
+                {
+                    "athlete_id": a.pk,
+                    "name": (a.user.get_full_name() or a.user.username),
+                    "username": a.user.username,
+                }
+                for a in athletes
+            ]
+            return Response(data)
+
+        # POST — add athlete to team
+        if self.membership.role not in _WRITE_ROLES:
+            raise PermissionDenied("Only coaches and owners can manage team members.")
+        athlete_id = request.data.get("athlete_id")
+        if not athlete_id:
+            raise DRFValidationError({"athlete_id": "This field is required."})
+        athlete = get_object_or_404(
+            Athlete, pk=athlete_id, organization=self.organization, is_active=True
+        )
+        athlete.team = team
+        athlete.save(update_fields=["team"])
+        return Response(
+            {"athlete_id": athlete.pk, "team_id": team.pk},
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"members/(?P<athlete_id>\d+)",
+    )
+    def remove_member(self, request, athlete_id=None, *args, **kwargs):
+        """
+        DELETE /api/p1/orgs/<org_id>/teams/<pk>/members/<athlete_id>/
+
+        Removes athlete from team by clearing Athlete.team FK.
+        Only coaches and owners can remove members.
+        """
+        if self.membership.role not in _WRITE_ROLES:
+            raise PermissionDenied("Only coaches and owners can manage team members.")
+        team = get_object_or_404(Team, pk=self.kwargs["pk"], organization=self.organization)
+        athlete = get_object_or_404(
+            Athlete, pk=athlete_id, organization=self.organization
+        )
+        if athlete.team_id != team.pk:
+            raise DRFValidationError({"detail": "Athlete is not a member of this team."})
+        athlete.team = None
+        athlete.save(update_fields=["team"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # ── Compliance week (PR-145h) ─────────────────────────────────────────────
+
+    @action(detail=True, methods=["get"], url_path="compliance-week")
+    def compliance_week(self, request, *args, **kwargs):
+        """
+        GET /api/p1/orgs/<org_id>/teams/<pk>/compliance-week/?week=YYYY-MM-DD
+
+        Returns a 7-day compliance grid (Mon→Sun) for every athlete in the team.
+        week param = ISO date of any day in the desired week (defaults to today).
+
+        Colors: green (≥90%), yellow (70-89%), red (<70%),
+                blue (≥120%), gray (planned, no real data), null (no assignment).
+        Alert:  "inactive_4d" | "overload" | null.
+
+        Single optimized query: fetches all assignments for team+week in one shot,
+        then groups in Python.
+        """
+        team = get_object_or_404(Team, pk=self.kwargs["pk"], organization=self.organization)
+
+        week_param = request.query_params.get("week")
+        try:
+            ref = datetime.date.fromisoformat(week_param) if week_param else datetime.date.today()
+        except ValueError:
+            raise DRFValidationError({"week": "Invalid date format. Use YYYY-MM-DD."})
+
+        # Normalize to Monday of the week.
+        week_start = ref - datetime.timedelta(days=ref.weekday())
+        week_end = week_start + datetime.timedelta(days=6)
+        week_days = [week_start + datetime.timedelta(days=i) for i in range(7)]
+
+        athletes = list(
+            Athlete.objects.filter(
+                team=team, organization=self.organization, is_active=True
+            ).select_related("user").order_by("user__last_name", "user__first_name")
+        )
+        athlete_ids = [a.pk for a in athletes]
+
+        # Single query: all assignments for these athletes in this week.
+        assignments = list(
+            WorkoutAssignment.objects.filter(
+                organization=self.organization,
+                athlete_id__in=athlete_ids,
+                scheduled_date__gte=week_start,
+                scheduled_date__lte=week_end,
+            ).select_related("planned_workout", "athlete")
+        )
+
+        # Index by (athlete_id, date).
+        from collections import defaultdict  # noqa: PLC0415
+        by_athlete_date = defaultdict(dict)
+        for a in assignments:
+            by_athlete_date[a.athlete_id][a.scheduled_date] = a
+
+        def _color(assignment):
+            if assignment.status != WorkoutAssignment.Status.COMPLETED:
+                return "gray"
+            color = assignment.compliance_color
+            return color if color else "gray"
+
+        def _day_entry(assignment):
+            return {
+                "color": _color(assignment),
+                "assignment_id": assignment.pk,
+                "workout_name": assignment.planned_workout.name if assignment.planned_workout else "",
+            }
+
+        athletes_data = []
+        for athlete in athletes:
+            day_map = by_athlete_date.get(athlete.pk, {})
+            days = {}
+            completed = 0
+            total = 0
+            consecutive_incomplete = 0
+            max_consecutive = 0
+
+            for day in week_days:
+                assignment = day_map.get(day)
+                if assignment is None:
+                    days[day.isoformat()] = None
+                    # Missing assignment doesn't count as incomplete streak
+                else:
+                    days[day.isoformat()] = _day_entry(assignment)
+                    total += 1
+                    if assignment.status == WorkoutAssignment.Status.COMPLETED:
+                        completed += 1
+                        consecutive_incomplete = 0
+                    else:
+                        consecutive_incomplete += 1
+                        max_consecutive = max(max_consecutive, consecutive_incomplete)
+
+            compliance_pct = round((completed / total * 100) if total > 0 else 0)
+
+            # Alert logic
+            if max_consecutive >= 4:
+                alert = "inactive_4d"
+            elif compliance_pct >= 120:
+                alert = "overload"
+            else:
+                alert = None
+
+            athletes_data.append({
+                "athlete_id": athlete.pk,
+                "athlete_name": (athlete.user.get_full_name() or athlete.user.username),
+                "days": days,
+                "summary": {
+                    "completed": completed,
+                    "total": total,
+                    "compliance_pct": compliance_pct,
+                    "alert": alert,
+                },
+            })
+
+        return Response({
+            "week_start": week_start.isoformat(),
+            "week_end": week_end.isoformat(),
+            "athletes": athletes_data,
+        })
 
 
 class MembershipViewSet(

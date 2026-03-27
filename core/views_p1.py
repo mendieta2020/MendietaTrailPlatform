@@ -555,6 +555,121 @@ class WorkoutAssignmentViewSet(
             status=status.HTTP_201_CREATED,
         )
 
+    @action(detail=False, methods=["post"], url_path="bulk-create")
+    def bulk_create(self, request, *args, **kwargs):
+        """
+        POST /api/p1/orgs/<org_id>/assignments/bulk-create/
+
+        PR-145h: Assigns a PlannedWorkout to a list of specific athletes on a given date.
+        Idempotent: if athlete already has an assignment for that workout+date, skip.
+
+        Request body:
+          {
+            "athlete_ids": [1, 2, 3],
+            "planned_workout_id": <int>,
+            "scheduled_date": "YYYY-MM-DD"
+          }
+
+        Returns:
+          { "created": <int>, "skipped": <int>, "assignments": [...] }
+        """
+        from django.db import transaction  # noqa: PLC0415
+
+        if self.membership.role not in _WRITE_ROLES:
+            raise PermissionDenied("Only coaches and owners can bulk-create assignments.")
+
+        athlete_ids = request.data.get("athlete_ids")
+        planned_workout_id = request.data.get("planned_workout_id")
+        scheduled_date_raw = request.data.get("scheduled_date")
+
+        errors = {}
+        if not athlete_ids or not isinstance(athlete_ids, list):
+            errors["athlete_ids"] = "Must be a non-empty list."
+        if not planned_workout_id:
+            errors["planned_workout_id"] = "This field is required."
+        if not scheduled_date_raw:
+            errors["scheduled_date"] = "This field is required."
+        if errors:
+            raise DRFValidationError(errors)
+
+        try:
+            scheduled_date = datetime.date.fromisoformat(str(scheduled_date_raw))
+        except ValueError:
+            raise DRFValidationError(
+                {"scheduled_date": "Invalid date format. Use YYYY-MM-DD."}
+            )
+
+        planned_workout = get_object_or_404(
+            PlannedWorkout,
+            pk=planned_workout_id,
+            organization=self.organization,
+        )
+
+        # Validate all athlete_ids belong to this org — fail-closed (Law 1).
+        from core.models import Athlete  # noqa: PLC0415
+        athletes = list(
+            Athlete.objects.filter(
+                pk__in=athlete_ids,
+                organization=self.organization,
+                is_active=True,
+            ).select_related("user")
+        )
+        if len(athletes) != len(set(athlete_ids)):
+            raise DRFValidationError(
+                {"athlete_ids": "One or more athletes not found in this organization."}
+            )
+
+        created_assignments = []
+        skipped = 0
+
+        with transaction.atomic():
+            for athlete in athletes:
+                # Idempotency: skip if same athlete+workout+date already exists.
+                if WorkoutAssignment.objects.filter(
+                    organization=self.organization,
+                    athlete=athlete,
+                    planned_workout=planned_workout,
+                    scheduled_date=scheduled_date,
+                ).exists():
+                    skipped += 1
+                    continue
+
+                existing_count = WorkoutAssignment.objects.filter(
+                    organization=self.organization,
+                    athlete=athlete,
+                    scheduled_date=scheduled_date,
+                ).count()
+
+                assignment = WorkoutAssignment.objects.create(
+                    organization=self.organization,
+                    athlete=athlete,
+                    planned_workout=planned_workout,
+                    scheduled_date=scheduled_date,
+                    assigned_by=request.user,
+                    snapshot_version=planned_workout.structure_version,
+                    day_order=existing_count + 1,
+                )
+                created_assignments.append(assignment)
+
+        # Re-fetch with select_related for serialization.
+        created_ids = [a.pk for a in created_assignments]
+        assignments_qs = WorkoutAssignment.objects.filter(
+            pk__in=created_ids
+        ).select_related("planned_workout", "athlete__user").prefetch_related(
+            "planned_workout__blocks__intervals"
+        )
+        serializer = WorkoutAssignmentSerializer(
+            assignments_qs, many=True, context=self.get_serializer_context()
+        )
+        return Response(
+            {
+                "created": len(created_assignments),
+                "skipped": skipped,
+                "assignments": serializer.data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
     def destroy(self, request, *args, **kwargs):
         """
         DELETE /api/p1/orgs/<org_id>/assignments/<pk>/

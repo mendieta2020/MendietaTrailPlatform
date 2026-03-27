@@ -11,6 +11,7 @@ import {
   CalendarMonth,  // Icono para Calendario
   Payment,        // Icono para Finanzas
   Groups,         // <--- NUEVO ICONO PARA GRUPOS
+  GridView,       // Icono para Plantilla
   Link as LinkIcon,  // Icono para Conexiones
   Logout,         // Icono para Cerrar Sesión
   Settings,       // Icono para Configuración (Futuro)
@@ -59,6 +60,7 @@ const Layout = ({ children }) => {
     { text: 'Mi Organización', icon: <Business />, path: '/coach-dashboard' },
     { text: 'Librería', icon: <LibraryBooksIcon />, path: '/library' },
     { text: 'Calendario', icon: <CalendarMonth />, path: '/calendar' },
+    { text: 'Plantilla', icon: <GridView />, path: '/plantilla' },
     { text: 'Grupos', icon: <Groups />, path: '/teams' },
     { text: 'Alumnos', icon: <People />, path: '/athletes' },
     { text: 'Analytics', icon: <BarChart2 size={20} />, path: '/coach/analytics' },

@@ -53,3 +53,11 @@ export function addCoachComment(orgId, assignmentId, comment) {
     { coach_comment: comment }
   );
 }
+
+export function bulkCreateAssignments(orgId, data) {
+  return client.post(`${p1Base(orgId)}/assignments/bulk-create/`, data);
+}
+
+export function getAssignment(orgId, id) {
+  return client.get(`${p1Base(orgId)}/assignments/${id}/`);
+}
