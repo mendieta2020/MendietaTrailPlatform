@@ -372,8 +372,7 @@ function WorkoutProfileChart({ blocks, paceZones, discipline }) {
   let totalS = 0;
 
   for (const block of blocks) {
-    const isRepeat = block.block_type === 'repeat';
-    const reps = isRepeat ? Math.max(1, Number(block.repetitions) || 1) : 1;
+    const reps = Math.max(1, Number(block.repetitions) || 1);
     for (let r = 0; r < reps; r++) {
       for (const iv of block.intervals ?? []) {
         const ivReps = Math.max(1, Number(iv.repetitions) || 1);

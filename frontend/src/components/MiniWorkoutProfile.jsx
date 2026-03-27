@@ -85,13 +85,17 @@ export function MiniWorkoutProfile({ blocks, estimatedDuration }) {
       }));
   } else if (blockList.length > 0) {
     // Case 2: blocks exist but no duration — equal width, best zone height from intervals
-    bars = blockList.map((block, i) => {
+    // Expand repeated blocks so a 5x block yields 5 bars.
+    const expanded = [];
+    for (const block of blockList) {
+      const blockReps = block.repetitions ?? 1;
       const h = (block.intervals ?? []).reduce(
         (best, iv) => Math.max(best, resolveHeight(iv.target_label, block.block_type)),
         resolveHeight(null, block.block_type),
       );
-      return { key: i, wPct: 100 / blockList.length, h };
-    });
+      for (let r = 0; r < blockReps; r++) expanded.push({ h });
+    }
+    bars = expanded.map((b, i) => ({ key: i, wPct: 100 / expanded.length, h: b.h }));
   } else if (estimatedDuration) {
     // Case 3: no blocks, known total duration — single bar at default height
     bars = [{ key: 0, wPct: 100, h: resolveHeight(null, null) }];
