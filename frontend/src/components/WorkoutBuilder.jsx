@@ -161,7 +161,9 @@ function workoutToFormState(workout) {
     elevation_gain_max_m: workout.elevation_gain_max_m ?? '',
   };
   const blocks = (workout.blocks ?? []).map((b, bIdx) => {
-    const intervals = (b.intervals ?? []).map((iv) => {
+    // Accept both 'intervals' (current API) and 'steps' (alternate field name)
+    const rawIvs = b.intervals ?? b.steps ?? [];
+    const intervals = rawIvs.map((iv) => {
       const m = inferMeasure(iv);
       return {
         description: iv.description ?? '',
@@ -180,14 +182,17 @@ function workoutToFormState(workout) {
       };
     });
     const reps = b.repetitions ?? 1;
+    const isRepeated = reps > 1 || intervals.length > 1;
+    // Guard: repeated block with no intervals must show at least one sub-step row
+    const safeIntervals = (isRepeated && intervals.length === 0) ? [emptyInterval()] : intervals;
     return {
       id: b.id,
       name: b.name ?? '',
       block_type: b.block_type ?? 'main',
       order_index: b.order_index ?? bIdx + 1,
       repetitions: reps,
-      isRepeated: reps > 1 || intervals.length > 1,
-      intervals,
+      isRepeated,
+      intervals: safeIntervals,
     };
   });
   return { form, blocks };
