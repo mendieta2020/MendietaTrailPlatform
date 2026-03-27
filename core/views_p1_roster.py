@@ -402,6 +402,7 @@ class TeamViewSet(OrgTenantMixin, viewsets.ModelViewSet):
             days = {}
             completed = 0
             total = 0
+            overload_days = 0   # days where compliance_color == "blue" (>=120% effort)
             consecutive_incomplete = 0
             max_consecutive = 0
 
@@ -416,17 +417,24 @@ class TeamViewSet(OrgTenantMixin, viewsets.ModelViewSet):
                     if assignment.status == WorkoutAssignment.Status.COMPLETED:
                         completed += 1
                         consecutive_incomplete = 0
+                        # Track blue (overload) days — actual effort >= 120% of planned
+                        if assignment.compliance_color == "blue":
+                            overload_days += 1
                     else:
                         consecutive_incomplete += 1
                         max_consecutive = max(max_consecutive, consecutive_incomplete)
 
             compliance_pct = round((completed / total * 100) if total > 0 else 0)
 
-            # Alert logic
+            # Alert logic (priority order: inactive > overload > praise > none)
+            # overload: >= 4 days this week where actual effort exceeded plan by >=20%
             if max_consecutive >= 4:
                 alert = "inactive_4d"
-            elif compliance_pct >= 120:
+            elif overload_days >= 4:
                 alert = "overload"
+            elif compliance_pct >= 90 and completed >= 1:
+                # Good week: coach can send praise/kudos
+                alert = "praise"
             else:
                 alert = None
 

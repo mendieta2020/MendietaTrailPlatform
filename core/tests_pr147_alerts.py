@@ -149,24 +149,42 @@ def test_send_message_success(setup):
 
 
 # ---------------------------------------------------------------------------
-# 2. test_athlete_cannot_send_message
+# 2. test_athlete_can_reply_to_coach (bidirectional messaging)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.django_db
-def test_athlete_cannot_send_message(setup):
+def test_athlete_can_reply_to_coach(setup):
+    """Athletes can now reply to coaches (bidirectional messaging)."""
     org = setup["org"]
     athlete_user = setup["athlete_user"]
     coach_user = setup["coach_user"]
     c = _client(athlete_user)
 
+    # Athlete → coach: should succeed (201)
     resp = c.post(f"/api/p1/orgs/{org.pk}/messages/", {
         "recipient_id": coach_user.pk,
-        "content": "Hola coach",
-        "alert_type": "",
+        "content": "Hola coach, recibí tu mensaje!",
+        "alert_type": "athlete_reply",
     }, format="json")
 
-    assert resp.status_code == status.HTTP_403_FORBIDDEN
-    assert InternalMessage.objects.count() == 0
+    assert resp.status_code == status.HTTP_201_CREATED
+    assert InternalMessage.objects.count() == 1
+
+    # Athlete → another athlete: should be forbidden (403)
+    User = get_user_model()
+    other_athlete_user = User.objects.create_user(username="other_a", password="pass")
+    Membership.objects.create(
+        user=other_athlete_user,
+        organization=org,
+        role="athlete",
+        is_active=True,
+    )
+    resp2 = c.post(f"/api/p1/orgs/{org.pk}/messages/", {
+        "recipient_id": other_athlete_user.pk,
+        "content": "Hola compañero",
+        "alert_type": "",
+    }, format="json")
+    assert resp2.status_code == status.HTTP_400_BAD_REQUEST  # not a coach
 
 
 # ---------------------------------------------------------------------------

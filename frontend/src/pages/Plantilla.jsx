@@ -322,6 +322,19 @@ function SummaryBadge({ summary, onClick }) {
       </Tooltip>
     );
   }
+  if (alert === 'praise') {
+    return (
+      <Tooltip title="¡Semana excelente! — click para felicitar">
+        <Typography
+          variant="caption"
+          onClick={onClick}
+          sx={{ color: '#22C55E', fontWeight: 700, cursor: clickable ? 'pointer' : 'default', '&:hover': clickable ? { textDecoration: 'underline' } : {} }}
+        >
+          🏆 {compliance_pct}%
+        </Typography>
+      </Tooltip>
+    );
+  }
   const color = compliance_pct >= 90 ? '#22C55E' : compliance_pct >= 70 ? '#EAB308' : '#EF4444';
   return (
     <Typography variant="caption" sx={{ color, fontWeight: 700 }}>
@@ -337,6 +350,7 @@ const FALLBACK_TEMPLATES = {
   inactive_4d: (name) => `Hola ${name}, hace varios días que no completás entrenamientos. ¿Todo bien? Contame qué pasó.`,
   overload: (name) => `Hola ${name}, esta semana superaste el plan en más de un 20%. Excelente compromiso, pero cuidá el cuerpo. Revisamos juntos la próxima semana.`,
   acwr_spike: (name) => `Hola ${name}, esta semana entrenaste mucho más de lo habitual. Riesgo de sobrecarga elevado. La próxima semana reducimos el volumen.`,
+  praise: (name) => `¡${name}! Completaste todos los entrenamientos de la semana. Eso es disciplina de élite. ¡Seguí así! 💪`,
 };
 
 function AlertModal({ open, onClose, athleteId, userId, athleteName, orgId, onSent, onError, preAlertType }) {
@@ -420,10 +434,12 @@ function AlertModal({ open, onClose, athleteId, userId, athleteName, orgId, onSe
   const ALERT_LABEL = {
     inactive_4d: '⚠️ Inactividad',
     acwr_spike: '🔴 Sobrecarga ACWR',
+    overload: '🔵 Sobrecarga semana',
     overload_sustained: '🔵 Sobrecarga sostenida',
     monotony: '🟡 Monotonía',
     no_plan: '📋 Sin plan',
     streak_positive: '🟢 Racha positiva',
+    praise: '🏆 Semana excelente',
   };
 
   return (
@@ -467,9 +483,11 @@ function AlertModal({ open, onClose, athleteId, userId, athleteName, orgId, onSe
                   variant="text"
                   sx={{ alignSelf: 'flex-start', color: '#F57C00', pl: 0 }}
                   onClick={() => {
-                    sessionStorage.setItem('plantilla_selected_athlete_id', athleteId);
-                    sessionStorage.setItem('plantilla_selected_athlete_name', athleteName);
-                    window.open('/calendar', '_blank');
+                    // Use the same sessionStorage key Calendar.jsx reads for target selection
+                    sessionStorage.setItem('calendarSelectedTarget', `a:${athleteId}`);
+                    onClose();
+                    // Navigate in same tab — new tab loses auth context
+                    window.location.href = '/calendar';
                   }}
                 >
                   Ver calendario →

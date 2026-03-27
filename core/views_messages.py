@@ -80,9 +80,6 @@ class InternalMessageListCreateView(OrgTenantMixin, APIView):
         return Response({"results": messages})
 
     def post(self, request, org_id):
-        if self.membership.role not in _WRITE_ROLES:
-            raise PermissionDenied("Only coaches can send messages.")
-
         recipient_id = request.data.get("recipient_id")
         content = request.data.get("content", "").strip()
         alert_type = request.data.get("alert_type", "")
@@ -93,16 +90,33 @@ class InternalMessageListCreateView(OrgTenantMixin, APIView):
         if not content:
             raise DRFValidationError({"content": "Message content cannot be empty."})
 
-        # Validate recipient is a member of this org
-        if not Membership.objects.filter(
-            user_id=recipient_id,
-            organization=self.organization,
-            role="athlete",
-            is_active=True,
-        ).exists():
-            raise DRFValidationError(
-                {"recipient_id": "Recipient is not an active athlete in this organization."}
-            )
+        is_coach = self.membership.role in _WRITE_ROLES
+        is_athlete = self.membership.role == "athlete"
+
+        if is_coach:
+            # Coach → athlete: recipient must be an active athlete in this org
+            if not Membership.objects.filter(
+                user_id=recipient_id,
+                organization=self.organization,
+                role="athlete",
+                is_active=True,
+            ).exists():
+                raise DRFValidationError(
+                    {"recipient_id": "Recipient is not an active athlete in this organization."}
+                )
+        elif is_athlete:
+            # Athlete → coach: recipient must be an active coach/admin/owner in this org
+            if not Membership.objects.filter(
+                user_id=recipient_id,
+                organization=self.organization,
+                role__in=_WRITE_ROLES,
+                is_active=True,
+            ).exists():
+                raise DRFValidationError(
+                    {"recipient_id": "You can only reply to a coach in your organization."}
+                )
+        else:
+            raise PermissionDenied("Only org members can send messages.")
 
         msg = InternalMessage.objects.create(
             organization=self.organization,

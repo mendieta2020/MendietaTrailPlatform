@@ -214,6 +214,8 @@ const AthleteLayout = ({ children, user }) => {
         open={openMessages}
         onClose={() => setOpenMessages(false)}
         messages={messages}
+        orgId={orgId}
+        onMessageSent={fetchMessages}
       />
     </Box>
   );
