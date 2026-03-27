@@ -34,6 +34,7 @@ import AthleteProgress from './pages/AthleteProgress';
 import AthleteProfile from './pages/AthleteProfile';
 import CoachAnalytics from './pages/CoachAnalytics';
 import CoachAthletePMC from './pages/CoachAthletePMC';
+import Plantilla from './pages/Plantilla';
 
 
 // --- DASHBOARD ROUTER: renders athlete or coach dashboard based on role ---
@@ -149,6 +150,16 @@ function App() {
             element={
               <ProtectedRoute>
                 <CalendarPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* 4b. Plantilla de Entrenamiento (PR-145h) */}
+          <Route
+            path="/plantilla"
+            element={
+              <ProtectedRoute>
+                <Plantilla />
               </ProtectedRoute>
             }
           />

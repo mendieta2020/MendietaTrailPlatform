@@ -314,6 +314,12 @@ urlpatterns = [
         WorkoutAssignmentViewSet.as_view({'post': 'bulk_assign_team'}),
         name='p1-assignment-bulk-assign-team',
     ),
+    # PR-145h: Bulk create by athlete_ids
+    path(
+        'p1/orgs/<int:org_id>/assignments/bulk-create/',
+        WorkoutAssignmentViewSet.as_view({'post': 'bulk_create'}),
+        name='p1-assignment-bulk-create',
+    ),
     # PR-145f: Copy week
     path(
         'p1/orgs/<int:org_id>/assignments/copy-week/',
@@ -511,6 +517,23 @@ urlpatterns = [
             'delete': 'destroy',
         }),
         name='p1-team-detail',
+    ),
+    # Team members CRUD (PR-145h)
+    path(
+        'p1/orgs/<int:org_id>/teams/<int:pk>/members/',
+        TeamViewSet.as_view({'get': 'members', 'post': 'members'}),
+        name='p1-team-members',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/teams/<int:pk>/members/<int:athlete_id>/',
+        TeamViewSet.as_view({'delete': 'remove_member'}),
+        name='p1-team-members-detail',
+    ),
+    # Team compliance week (PR-145h)
+    path(
+        'p1/orgs/<int:org_id>/teams/<int:pk>/compliance-week/',
+        TeamViewSet.as_view({'get': 'compliance_week'}),
+        name='p1-team-compliance-week',
     ),
 
     # Membership (no destroy)
