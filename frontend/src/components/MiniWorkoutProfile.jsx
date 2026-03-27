@@ -59,28 +59,46 @@ export function MiniWorkoutProfile({ blocks, estimatedDuration }) {
 
   if (blockList.length === 0 && !estimatedDuration) return null;
 
-  // Expand blocks into a flat list of {duration, h} intervals,
+  // Expand blocks into a flat list of {duration, distance, h} intervals,
   // respecting block repetitions for repeated blocks.
+  // Both duration and distance are tracked so the right axis can be chosen.
   const intervals = [];
   for (const block of blockList) {
     const reps = getBlockReps(block);
     for (let r = 0; r < reps; r++) {
       for (const iv of (block.intervals ?? [])) {
-        const dur = Math.max(1, Number(iv.repetitions) || 1) * (iv.duration_seconds ?? 0);
+        const ivReps = Math.max(1, Number(iv.repetitions) || 1);
+        const dur  = ivReps * (iv.duration_seconds  ?? 0);
+        const dist = ivReps * (iv.distance_meters   ?? 0);
         intervals.push({
           duration: dur,
+          distance: dist,
           h: resolveHeight(iv.target_label, block.block_type),
         });
       }
     }
   }
 
+  const totalDistance = intervals.reduce((s, iv) => s + iv.distance, 0);
   const totalDuration = intervals.reduce((s, iv) => s + iv.duration, 0);
 
   let bars;
 
-  if (totalDuration > 0) {
-    // Case 1: interval durations available → proportional width + zone height
+  if (totalDistance > 0) {
+    // Case Distance (priority): distance-based intervals exist.
+    // Use distance-proportional widths; skip time-only intervals (recovery,
+    // rest) so they don't crowd out the main efforts.
+    // Example: 1km warmup + 4×(1km Z4 + 180sec rest) + 1km cooldown
+    //   → 6 distance bars (warmup, 4×Z4, cooldown); rest bars filtered out.
+    bars = intervals
+      .filter((iv) => iv.distance > 0)
+      .map((iv, i) => ({
+        key: i,
+        wPct: (iv.distance / totalDistance) * 100,
+        h: iv.h,
+      }));
+  } else if (totalDuration > 0) {
+    // Case Time: no distance data — proportional width from duration.
     bars = intervals
       .filter((iv) => iv.duration > 0)
       .map((iv, i) => ({
@@ -89,32 +107,15 @@ export function MiniWorkoutProfile({ blocks, estimatedDuration }) {
         h: iv.h,
       }));
   } else if (blockList.length > 0) {
-    // Case 2: distance-based — proportional width from block distance,
-    // height from block_type. Expand repeated blocks (5x → 5 bars).
+    // Case Equal: no time or distance data — equal widths from block expansion.
     const expanded = [];
     for (const block of blockList) {
       const reps = getBlockReps(block);
       const h = (BLOCK_TYPE_HEIGHT[block.block_type] ?? 0.25) * SVG_H;
-      // Total distance for one repetition of this block across its intervals.
-      const onceMeters = (block.intervals ?? []).reduce(
-        (s, iv) => s + Math.max(1, Number(iv.repetitions) || 1) * (iv.distance_meters ?? 0),
-        0,
-      );
-      for (let r = 0; r < reps; r++) expanded.push({ h, meters: onceMeters });
+      for (let r = 0; r < reps; r++) expanded.push({ h });
     }
     if (expanded.length === 0) return null;
-    const totalMeters = expanded.reduce((s, b) => s + b.meters, 0);
-    if (totalMeters > 0) {
-      // Proportional widths: warmup 2km gets less width than main 3km.
-      bars = expanded.map((b, i) => ({
-        key: i,
-        wPct: (b.meters / totalMeters) * 100,
-        h: b.h,
-      }));
-    } else {
-      // No distance data — fall back to equal widths.
-      bars = expanded.map((b, i) => ({ key: i, wPct: 100 / expanded.length, h: b.h }));
-    }
+    bars = expanded.map((b, i) => ({ key: i, wPct: 100 / expanded.length, h: b.h }));
   } else if (estimatedDuration) {
     // Case 3: no blocks, known total duration — single bar at default height
     bars = [{ key: 0, wPct: 100, h: 0.25 * SVG_H }];
