@@ -49,6 +49,7 @@ import CalendarContextMenu from '../components/CalendarContextMenu';
 import DuplicateSessionModal from '../components/DuplicateSessionModal';
 import CopyWeekModal from '../components/CopyWeekModal';
 import DeleteWeekModal from '../components/DeleteWeekModal';
+import WorkoutCoachDrawer from '../components/WorkoutCoachDrawer';
 
 const DnDCalendar = withDragAndDrop(Calendar);
 
@@ -397,7 +398,13 @@ export default function CalendarPage() {
   });
 
   // Unified selection: '' | 'a:<id>' | 't:<id>'
-  const [selectedTarget, setSelectedTarget] = useState('');
+  // PR-145g: restore last selected athlete from sessionStorage
+  const [selectedTarget, setSelectedTarget] = useState(() => {
+    return sessionStorage.getItem('calendarSelectedTarget') ?? '';
+  });
+
+  // PR-145g: drawer state
+  const [selectedEvent, setSelectedEvent] = useState(null);
 
   // Calendar events
   const [eventsState, eventsDispatch] = useReducer(fetchReducer, {
@@ -873,7 +880,11 @@ export default function CalendarPage() {
             <Select
               value={selectedTarget}
               label="Atleta o Grupo"
-              onChange={(e) => setSelectedTarget(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setSelectedTarget(v);
+                sessionStorage.setItem('calendarSelectedTarget', v);
+              }}
               disabled={(athleteState.loading || teamState.loading) || !orgId}
             >
               {teamState.data.length > 0 && (
@@ -1055,6 +1066,7 @@ export default function CalendarPage() {
                   dragFromOutsideItem={dragFromOutsideItem}
                   onDropFromOutside={handleDropFromOutside}
                   onEventDrop={handleEventDrop}
+                  onSelectEvent={(event) => setSelectedEvent(event)}
                   messages={{
                     next: 'Siguiente',
                     previous: 'Anterior',
@@ -1069,6 +1081,16 @@ export default function CalendarPage() {
             )}
           </Box>
         </Box>
+
+        {/* PR-145g: Coach event drawer (key resets internal comment state on event change) */}
+        <WorkoutCoachDrawer
+          key={selectedEvent?.id ?? 'none'}
+          event={selectedEvent}
+          orgId={orgId}
+          onClose={() => setSelectedEvent(null)}
+          onEdit={handleEditEvent}
+          onMarkComplete={() => {}}
+        />
 
         {/* PR-145f: undo toast */}
         {undoToast && (

@@ -830,6 +830,28 @@ class WorkoutAssignmentViewSet(
         pw.refresh_from_db()
         return Response(PlannedWorkoutReadSerializer(pw, context=self.get_serializer_context()).data)
 
+    @action(detail=True, methods=["patch"], url_path="coach-comment")
+    def add_coach_comment(self, request, *args, **kwargs):
+        """
+        PATCH /api/p1/orgs/<org_id>/assignments/<pk>/coach-comment/
+
+        El coach deja o actualiza su comentario en una sesión.
+        Cualquier sesión (planned o completed) puede tener comentario.
+        """
+        if self.membership.role not in _WRITE_ROLES:
+            raise PermissionDenied("Solo coaches y owners pueden comentar.")
+
+        comment = request.data.get("coach_comment", "")
+        assignment = self.get_object()
+        assignment.coach_comment = comment
+        assignment.coach_commented_at = timezone.now() if comment else None
+        assignment.save(update_fields=["coach_comment", "coach_commented_at"])
+
+        return Response({
+            "coach_comment": assignment.coach_comment,
+            "coach_commented_at": assignment.coach_commented_at,
+        })
+
 
 # ==============================================================================
 # PR-119: Reconciliation ViewSet

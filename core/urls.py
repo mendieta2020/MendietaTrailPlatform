@@ -302,6 +302,12 @@ urlpatterns = [
         WorkoutAssignmentViewSet.as_view({'patch': 'update_snapshot'}),
         name='p1-assignment-update-snapshot',
     ),
+    # PR-145g: Coach post-session comment
+    path(
+        'p1/orgs/<int:org_id>/assignments/<int:pk>/coach-comment/',
+        WorkoutAssignmentViewSet.as_view({'patch': 'add_coach_comment'}),
+        name='p1-assignment-coach-comment',
+    ),
     # PR-145: Bulk team workout assignment
     path(
         'p1/orgs/<int:org_id>/assignments/bulk-assign-team/',
