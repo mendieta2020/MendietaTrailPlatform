@@ -74,6 +74,11 @@ from core.views_p1_roster import (  # PR-129 / PR-141
     MembershipViewSet,
     TeamViewSet,
 )
+from core.views_messages import (  # PR-147
+    InternalMessageListCreateView,
+    InternalMessageMarkReadView,
+    AthleteAlertsView,
+)
 
 # Creamos el router para la API REST estándar
 router = DefaultRouter()
@@ -596,5 +601,27 @@ urlpatterns = [
             'delete': 'destroy',
         }),
         name='p1-external-identity-detail',
+    ),
+
+    # ==============================================================================
+    # PR-147: Internal Messages & Smart Alerts
+    # URL: /api/p1/orgs/<org_id>/messages/
+    #      /api/p1/orgs/<org_id>/messages/<id>/read/
+    #      /api/p1/orgs/<org_id>/athletes/<athlete_id>/alerts/
+    # ==============================================================================
+    path(
+        'p1/orgs/<int:org_id>/messages/',
+        InternalMessageListCreateView.as_view(),
+        name='p1-messages-list-create',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/messages/<int:pk>/read/',
+        InternalMessageMarkReadView.as_view(),
+        name='p1-messages-mark-read',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/athletes/<int:athlete_id>/alerts/',
+        AthleteAlertsView.as_view(),
+        name='p1-athlete-alerts',
     ),
 ]

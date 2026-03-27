@@ -35,7 +35,14 @@ import {
   AccordionSummary,
   AccordionDetails,
   IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  TextField,
 } from '@mui/material';
+import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import {
   ChevronLeft,
   ChevronRight,
@@ -52,6 +59,7 @@ import { useOrg } from '../context/OrgContext';
 import { getTeams, getComplianceWeek } from '../api/teams';
 import { listLibraries, listPlannedWorkouts } from '../api/p1';
 import { bulkCreateAssignments, getAssignment } from '../api/assignments';
+import { getAthleteAlerts, sendMessage } from '../api/messages';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -284,12 +292,18 @@ function DayCell({ day, dayData, onDotClick, onDrop, draggingRef }) {
 
 // ── SummaryBadge ──────────────────────────────────────────────────────────────
 
-function SummaryBadge({ summary }) {
+function SummaryBadge({ summary, onClick }) {
   const { compliance_pct, alert } = summary;
+  const clickable = !!onClick;
+
   if (alert === 'inactive_4d') {
     return (
-      <Tooltip title="4+ días sin completar">
-        <Typography variant="caption" sx={{ color: '#EF4444', fontWeight: 700 }}>
+      <Tooltip title="4+ días sin completar — click para enviar mensaje">
+        <Typography
+          variant="caption"
+          onClick={onClick}
+          sx={{ color: '#EF4444', fontWeight: 700, cursor: clickable ? 'pointer' : 'default', '&:hover': clickable ? { textDecoration: 'underline' } : {} }}
+        >
           ⚠️ Inactivo
         </Typography>
       </Tooltip>
@@ -297,8 +311,12 @@ function SummaryBadge({ summary }) {
   }
   if (alert === 'overload') {
     return (
-      <Tooltip title="Sobrecarga ≥120%">
-        <Typography variant="caption" sx={{ color: '#3B82F6', fontWeight: 700 }}>
+      <Tooltip title="Sobrecarga ≥120% — click para enviar mensaje">
+        <Typography
+          variant="caption"
+          onClick={onClick}
+          sx={{ color: '#3B82F6', fontWeight: 700, cursor: clickable ? 'pointer' : 'default', '&:hover': clickable ? { textDecoration: 'underline' } : {} }}
+        >
           🔵 {compliance_pct}%
         </Typography>
       </Tooltip>
@@ -309,6 +327,169 @@ function SummaryBadge({ summary }) {
     <Typography variant="caption" sx={{ color, fontWeight: 700 }}>
       {compliance_pct}%
     </Typography>
+  );
+}
+
+// ── AlertModal ────────────────────────────────────────────────────────────────
+
+function AlertModal({ open, onClose, athleteId, athleteName, orgId, onSent }) {
+  const [alerts, setAlerts] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedAlert, setSelectedAlert] = useState(null);
+  const [msgText, setMsgText] = useState('');
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    if (!open || !orgId || !athleteId) return;
+    setLoading(true);
+    setSelectedAlert(null);
+    setMsgText('');
+    getAthleteAlerts(orgId, athleteId)
+      .then((res) => {
+        const data = res.data?.alerts ?? [];
+        setAlerts(data);
+        if (data.length > 0) {
+          setSelectedAlert(data[0]);
+          setMsgText(data[0].message_template ?? '');
+        }
+      })
+      .catch(() => setAlerts([]))
+      .finally(() => setLoading(false));
+  }, [open, orgId, athleteId]);
+
+  const handleSelectAlert = (alert) => {
+    setSelectedAlert(alert);
+    setMsgText(alert.message_template ?? '');
+  };
+
+  const handleSend = async () => {
+    if (!msgText.trim() || !selectedAlert) return;
+    setSending(true);
+    try {
+      await sendMessage(orgId, {
+        recipient_id: athleteId,
+        content: msgText,
+        alert_type: selectedAlert.type,
+        whatsapp_sent: false,
+      });
+      onSent?.();
+      onClose();
+    } catch {
+      // Silently ignore — parent snackbar handles success
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const showWhatsApp =
+    selectedAlert?.type === 'acwr_spike' && selectedAlert?.phone_number;
+
+  const ALERT_LABEL = {
+    inactive_4d: '⚠️ Inactividad',
+    acwr_spike: '🔴 Sobrecarga ACWR',
+    overload_sustained: '🔵 Sobrecarga sostenida',
+    monotony: '🟡 Monotonía',
+    no_plan: '📋 Sin plan',
+    streak_positive: '🟢 Racha positiva',
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ pb: 1 }}>
+        {selectedAlert ? `${ALERT_LABEL[selectedAlert.type] ?? selectedAlert.type} — ${athleteName}` : `Alertas — ${athleteName}`}
+      </DialogTitle>
+      <DialogContent dividers>
+        {loading && <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', my: 2 }} />}
+
+        {!loading && alerts.length === 0 && (
+          <Typography variant="body2" color="text.secondary">
+            Sin alertas activas para este atleta.
+          </Typography>
+        )}
+
+        {!loading && alerts.length > 0 && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {/* Alert selector (if multiple) */}
+            {alerts.length > 1 && (
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                {alerts.map((a) => (
+                  <Button
+                    key={a.type}
+                    size="small"
+                    variant={selectedAlert?.type === a.type ? 'contained' : 'outlined'}
+                    onClick={() => handleSelectAlert(a)}
+                    sx={{ fontSize: '0.75rem' }}
+                  >
+                    {ALERT_LABEL[a.type] ?? a.type}
+                  </Button>
+                ))}
+              </Box>
+            )}
+
+            {selectedAlert && selectedAlert.type !== 'no_plan' && (
+              <>
+                {/* Calendar link */}
+                <Button
+                  size="small"
+                  variant="text"
+                  sx={{ alignSelf: 'flex-start', color: '#F57C00', pl: 0 }}
+                  onClick={() => {
+                    sessionStorage.setItem('plantilla_selected_athlete_id', athleteId);
+                    sessionStorage.setItem('plantilla_selected_athlete_name', athleteName);
+                    window.open('/calendar', '_blank');
+                  }}
+                >
+                  Ver calendario →
+                </Button>
+
+                {/* Message editor */}
+                <TextField
+                  label="Mensaje para el atleta"
+                  multiline
+                  minRows={4}
+                  value={msgText}
+                  onChange={(e) => setMsgText(e.target.value)}
+                  fullWidth
+                  size="small"
+                />
+              </>
+            )}
+
+            {selectedAlert?.type === 'no_plan' && (
+              <Typography variant="body2" color="text.secondary">
+                Este atleta no tiene entrenamientos planificados en los próximos 7 días. Revisá su calendario y asigná sesiones.
+              </Typography>
+            )}
+          </Box>
+        )}
+      </DialogContent>
+
+      <DialogActions sx={{ px: 2, pb: 2, gap: 1 }}>
+        <Button onClick={onClose} color="inherit">Cancelar</Button>
+        {showWhatsApp && (
+          <Button
+            variant="outlined"
+            color="success"
+            startIcon={<WhatsAppIcon />}
+            href={`https://wa.me/${selectedAlert.phone_number}?text=${encodeURIComponent(msgText)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            WhatsApp
+          </Button>
+        )}
+        {selectedAlert && selectedAlert.type !== 'no_plan' && (
+          <Button
+            variant="contained"
+            disabled={sending || !msgText.trim()}
+            onClick={handleSend}
+            sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#E65100' } }}
+          >
+            {sending ? 'Enviando…' : 'Enviar →'}
+          </Button>
+        )}
+      </DialogActions>
+    </Dialog>
   );
 }
 
@@ -345,6 +526,9 @@ export default function Plantilla() {
 
   // Snackbar
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
+
+  // Alert modal
+  const [alertModal, setAlertModal] = useState({ open: false, athleteId: null, athleteName: '' });
 
   // ── Load teams ──────────────────────────────────────────────────────────────
 
@@ -628,7 +812,10 @@ export default function Plantilla() {
                         })}
                         {/* Summary */}
                         <Box component="td" sx={{ textAlign: 'center', p: 0.5 }}>
-                          <SummaryBadge summary={athlete.summary} />
+                          <SummaryBadge
+                            summary={athlete.summary}
+                            onClick={athlete.summary.alert ? () => setAlertModal({ open: true, athleteId: athlete.athlete_id, athleteName: athlete.athlete_name }) : undefined}
+                          />
                         </Box>
                       </Box>
                     ))}
@@ -699,6 +886,15 @@ export default function Plantilla() {
               .catch(() => {});
           }
         }}
+      />
+
+      <AlertModal
+        open={alertModal.open}
+        onClose={() => setAlertModal((s) => ({ ...s, open: false }))}
+        athleteId={alertModal.athleteId}
+        athleteName={alertModal.athleteName}
+        orgId={orgId}
+        onSent={() => setSnack({ open: true, message: 'Mensaje enviado ✓', severity: 'success' })}
       />
 
       {/* ── Snackbar ── */}

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box, Drawer, AppBar, Toolbar, List, Typography, Divider, IconButton,
-  ListItem, ListItemButton, ListItemIcon, ListItemText, Avatar
+  ListItem, ListItemButton, ListItemIcon, ListItemText, Avatar, Badge,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -11,9 +11,13 @@ import {
   Link as LinkIcon,
   Person,
   Logout,
+  Notifications as NotificationsIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { logoutSession } from '../api/authClient';
+import { getMessages, markMessageRead } from '../api/messages';
+import { useOrg } from '../context/OrgContext';
+import MessagesDrawer from './MessagesDrawer';
 
 const drawerWidth = 260;
 
@@ -27,8 +31,45 @@ const menuItems = [
 
 const AthleteLayout = ({ children, user }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [openMessages, setOpenMessages] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const pollingRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
+  const { activeOrg } = useOrg();
+  const orgId = activeOrg?.org_id ?? null;
+
+  const fetchMessages = useCallback(() => {
+    if (!orgId) return;
+    getMessages(orgId)
+      .then((res) => setMessages(res.data?.results ?? []))
+      .catch(() => {});
+  }, [orgId]);
+
+  useEffect(() => {
+    fetchMessages();
+    pollingRef.current = setInterval(fetchMessages, 60000);
+    return () => clearInterval(pollingRef.current);
+  }, [fetchMessages]);
+
+  const unreadCount = messages.filter((m) => !m.read_at).length;
+
+  const handleOpenMessages = () => {
+    setOpenMessages(true);
+    // Mark all unread as read
+    const unread = messages.filter((m) => !m.read_at);
+    unread.forEach((m) => {
+      markMessageRead(orgId, m.id)
+        .then(() => {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === m.id ? { ...msg, read_at: new Date().toISOString() } : msg
+            )
+          );
+        })
+        .catch(() => {});
+    });
+  };
 
   const handleLogout = async () => {
     await logoutSession();
@@ -134,6 +175,11 @@ const AthleteLayout = ({ children, user }) => {
           <Typography variant="h6" noWrap sx={{ flexGrow: 1, fontWeight: 700, fontSize: '1.1rem' }}>
             Panel del Atleta
           </Typography>
+          <IconButton color="inherit" onClick={handleOpenMessages} sx={{ mr: 1 }}>
+            <Badge badgeContent={unreadCount > 0 ? unreadCount : null} color="error">
+              <NotificationsIcon />
+            </Badge>
+          </IconButton>
           <Avatar sx={{ bgcolor: '#F57C00', fontWeight: 'bold', width: 32, height: 32, fontSize: '0.8rem' }}>
             {initials}
           </Avatar>
@@ -163,6 +209,12 @@ const AthleteLayout = ({ children, user }) => {
         <Toolbar />
         {children}
       </Box>
+
+      <MessagesDrawer
+        open={openMessages}
+        onClose={() => setOpenMessages(false)}
+        messages={messages}
+      />
     </Box>
   );
 };

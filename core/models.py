@@ -1252,6 +1252,9 @@ class Athlete(models.Model):
     location_lat = models.FloatField(null=True, blank=True)
     location_lon = models.FloatField(null=True, blank=True)
 
+    # PR-147: phone number for WhatsApp alert dispatch
+    phone_number = models.CharField(max_length=20, blank=True, default='')
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -3284,6 +3287,50 @@ class AthleteNotification(models.Model):
 
     def __str__(self):
         return f"Notification({self.notification_type}) → user={self.recipient_id} org={self.organization_id} read={self.read}"
+
+
+# ==============================================================================
+#  PR-147: InternalMessage — coach-to-athlete rich messages with alert context
+# ==============================================================================
+
+class InternalMessage(models.Model):
+    """
+    Coach-authored message to an athlete, triggered by an alert or manually.
+
+    Tenancy: organization FK is non-nullable (fail-closed Law 1).
+    Idempotency: no duplicate guard needed — coaches may send multiple messages.
+    WhatsApp: whatsapp_sent=True records that the coach also sent via WhatsApp.
+    """
+
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="internal_messages",
+    )
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="sent_messages",
+    )
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="received_messages",
+    )
+    content = models.TextField()
+    alert_type = models.CharField(max_length=30, blank=True, default='')
+    whatsapp_sent = models.BooleanField(default=False)
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["recipient", "organization", "read_at"]),
+        ]
+
+    def __str__(self):
+        return f"InternalMessage(sender={self.sender_id}→recipient={self.recipient_id} org={self.organization_id} type={self.alert_type})"
 
 
 # ==============================================================================
