@@ -480,6 +480,7 @@ class TeamViewSet(OrgTenantMixin, viewsets.ModelViewSet):
                 "athlete_id": athlete.pk,
                 "user_id": athlete.user_id,
                 "athlete_name": (athlete.user.get_full_name() or athlete.user.username),
+                "phone_number": athlete.phone_number or "",
                 "days": days,
                 "sessions_per_day": sessions_per_day,
                 "compliance_color": compliance_color,
@@ -808,8 +809,12 @@ class CoachBriefingView(OrgTenantMixin, APIView):
         week_start = today - datetime.timedelta(days=today.weekday())
         four_days_ago = today - datetime.timedelta(days=4)
 
-        # Total active athletes in the org.
-        athletes_total = Athlete.objects.filter(organization=org, is_active=True).count()
+        # Total athletes in org visible to the coach (same set as Plantilla roster).
+        athletes_total = Membership.objects.filter(
+            organization=org,
+            role=Membership.Role.ATHLETE,
+            is_active=True,
+        ).count()
 
         # Athletes who completed at least 1 assignment yesterday.
         athletes_trained_yesterday = (

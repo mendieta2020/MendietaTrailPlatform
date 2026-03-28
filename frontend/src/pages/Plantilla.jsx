@@ -369,12 +369,12 @@ function SummaryBadge({ summary, onClick }) {
 // Fallback message templates for historical/offline alerts
 const FALLBACK_TEMPLATES = {
   inactive_4d: (name) => `Hola ${name}, hace varios días que no completás entrenamientos. ¿Todo bien? Contame qué pasó.`,
-  overload: (name) => `Hola ${name}, esta semana superaste el plan en más de un 20%. Excelente compromiso, pero cuidá el cuerpo. Revisamos juntos la próxima semana.`,
+  overload: (name, pct) => `Hola ${name}, esta semana superaste el plan en un ${pct}%. Excelente compromiso, pero cuidá el cuerpo. Revisamos juntos la próxima semana.`,
   acwr_spike: (name) => `Hola ${name}, esta semana entrenaste mucho más de lo habitual. Riesgo de sobrecarga elevado. La próxima semana reducimos el volumen.`,
   praise: (name) => `¡${name}! Completaste todos los entrenamientos de la semana. Eso es disciplina de élite. ¡Seguí así! 💪`,
 };
 
-function AlertModal({ open, onClose, athleteId, userId, athleteName, orgId, onSent, onError, preAlertType }) {
+function AlertModal({ open, onClose, athleteId, userId, athleteName, orgId, onSent, onError, preAlertType, phoneNumber, compliancePct }) {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState(null);
@@ -401,8 +401,8 @@ function AlertModal({ open, onClose, athleteId, userId, athleteName, orgId, onSe
           const syntheticAlert = {
             type: preAlertType,
             severity: preAlertType === 'acwr_spike' ? 'danger' : 'warning',
-            message_template: FALLBACK_TEMPLATES[preAlertType]?.(firstName) ?? '',
-            phone_number: null,
+            message_template: FALLBACK_TEMPLATES[preAlertType]?.(firstName, compliancePct) ?? '',
+            phone_number: phoneNumber || null,
             days_count: null,
           };
           setAlerts([syntheticAlert]);
@@ -414,7 +414,7 @@ function AlertModal({ open, onClose, athleteId, userId, athleteName, orgId, onSe
       })
       .catch(() => setAlerts([]))
       .finally(() => setLoading(false));
-  }, [open, orgId, athleteId, preAlertType, firstName]);
+  }, [open, orgId, athleteId, preAlertType, firstName, phoneNumber, compliancePct]);
 
   const handleSelectAlert = (alert) => {
     setSelectedAlert(alert);
@@ -600,7 +600,7 @@ export default function Plantilla() {
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
 
   // Alert modal
-  const [alertModal, setAlertModal] = useState({ open: false, athleteId: null, userId: null, athleteName: '', preAlertType: null });
+  const [alertModal, setAlertModal] = useState({ open: false, athleteId: null, userId: null, athleteName: '', preAlertType: null, phoneNumber: '', compliancePct: 0 });
 
   // ── Load teams ──────────────────────────────────────────────────────────────
 
@@ -678,6 +678,7 @@ export default function Plantilla() {
   const handleAthleteClick = (athleteId, athleteName) => {
     sessionStorage.setItem('plantilla_selected_athlete_id', athleteId);
     sessionStorage.setItem('plantilla_selected_athlete_name', athleteName);
+    sessionStorage.setItem('calendarSelectedTarget', `a:${athleteId}`);
     navigate('/calendar');
   };
 
@@ -894,6 +895,8 @@ export default function Plantilla() {
                               userId: athlete.user_id,
                               athleteName: athlete.athlete_name,
                               preAlertType: athlete.summary.alert,
+                              phoneNumber: athlete.phone_number || '',
+                              compliancePct: athlete.summary.compliance_pct,
                             }) : undefined}
                           />
                         </Box>
@@ -976,6 +979,8 @@ export default function Plantilla() {
         athleteName={alertModal.athleteName}
         orgId={orgId}
         preAlertType={alertModal.preAlertType}
+        phoneNumber={alertModal.phoneNumber}
+        compliancePct={alertModal.compliancePct}
         onSent={() => setSnack({ open: true, message: 'Mensaje enviado ✓', severity: 'success' })}
         onError={(msg) => setSnack({ open: true, message: msg, severity: 'error' })}
       />
