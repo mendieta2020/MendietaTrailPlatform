@@ -71,17 +71,26 @@ class InternalMessageListCreateView(OrgTenantMixin, APIView):
     def get(self, request, org_id):
         from django.db.models import Q  # noqa: PLC0415
 
-        qs = InternalMessage.objects.filter(
-            organization=self.organization,
-        ).select_related("sender", "recipient").order_by("-created_at")
-
-        if self.membership.role == "athlete":
-            # Show full conversation: messages received OR sent by the athlete
-            qs = qs.filter(Q(recipient=request.user) | Q(sender=request.user))
+        qs = (
+            InternalMessage.objects.filter(
+                organization=self.organization,
+            )
+            # All roles: show only their own conversation thread (sent or received)
+            .filter(Q(recipient=request.user) | Q(sender=request.user))
+            .select_related("sender", "recipient")
+            .order_by("-created_at")
+        )
 
         messages = [_message_to_dict(m) for m in qs[:50]]
 
-        # Include the list of coaches available to message (for athletes starting a new thread)
+        # Unread count for this user (drives notification bell badge)
+        unread_count = InternalMessage.objects.filter(
+            organization=self.organization,
+            recipient=request.user,
+            read_at__isnull=True,
+        ).count()
+
+        # Coaches list — for athletes starting a new thread (not needed for coaches)
         coaches = []
         if self.membership.role == "athlete":
             coach_memberships = (
@@ -101,7 +110,7 @@ class InternalMessageListCreateView(OrgTenantMixin, APIView):
                 for m in coach_memberships
             ]
 
-        return Response({"results": messages, "coaches": coaches})
+        return Response({"results": messages, "coaches": coaches, "unread_count": unread_count})
 
     def post(self, request, org_id):
         recipient_id = request.data.get("recipient_id")

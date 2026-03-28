@@ -1,26 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box, Drawer, AppBar, Toolbar, List, Typography, Divider, IconButton,
-  ListItem, ListItemButton, ListItemIcon, ListItemText, Avatar, Tooltip
+  ListItem, ListItemButton, ListItemIcon, ListItemText, Avatar, Tooltip, Badge
 } from '@mui/material';
 import AthleteLayout from './AthleteLayout';
+import MessagesDrawer from './MessagesDrawer';
 import {
   Menu as MenuIcon,
-  Dashboard,      // Icono para Inicio
-  People,         // Icono para Alumnos
-  CalendarMonth,  // Icono para Calendario
-  Payment,        // Icono para Finanzas
-  Groups,         // <--- NUEVO ICONO PARA GRUPOS
-  GridView,       // Icono para Plantilla
-  Link as LinkIcon,  // Icono para Conexiones
-  Logout,         // Icono para Cerrar Sesión
-  Settings,       // Icono para Configuración (Futuro)
-  Business,       // Icono para Mi Organización
-  LibraryBooks as LibraryBooksIcon  // Icono para Librería
+  Dashboard,
+  People,
+  CalendarMonth,
+  Payment,
+  Groups,
+  GridView,
+  Link as LinkIcon,
+  Logout,
+  Settings,
+  Business,
+  LibraryBooks as LibraryBooksIcon,
+  Notifications as NotificationsIcon,
 } from '@mui/icons-material';
 import { BarChart2 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { logoutSession } from '../api/authClient';
+import { getMessages, markMessageRead } from '../api/messages';
+import { useOrg } from '../context/OrgContext';
 import client from '../api/client';
 
 const drawerWidth = 260;
@@ -29,8 +33,14 @@ const Layout = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userRole, setUserRole] = useState('coach'); // Default to coach
   const [userInfo, setUserInfo] = useState(null);
+  const [openMessages, setOpenMessages] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const pollingRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
+  const { activeOrg } = useOrg();
+  const orgId = activeOrg?.org_id ?? null;
 
   // Fetch user role on mount
   useEffect(() => {
@@ -50,6 +60,38 @@ const Layout = ({ children }) => {
   const handleLogout = async () => {
     await logoutSession();
     window.location.href = '/';
+  };
+
+  // ── Coach notification bell ────────────────────────────────────────────────
+  const fetchCoachMessages = useCallback(() => {
+    if (!orgId || userRole === 'athlete') return;
+    getMessages(orgId)
+      .then((res) => {
+        setMessages(res.data?.results ?? []);
+        setUnreadCount(res.data?.unread_count ?? 0);
+      })
+      .catch(() => {});
+  }, [orgId, userRole]);
+
+  useEffect(() => {
+    fetchCoachMessages();
+    pollingRef.current = setInterval(fetchCoachMessages, 60000);
+    return () => clearInterval(pollingRef.current);
+  }, [fetchCoachMessages]);
+
+  const handleOpenCoachMessages = () => {
+    setOpenMessages(true);
+    const unread = messages.filter((m) => !m.read_at && m.sender_id !== userInfo?.id);
+    unread.forEach((m) => {
+      markMessageRead(orgId, m.id)
+        .then(() => {
+          setMessages((prev) =>
+            prev.map((msg) => msg.id === m.id ? { ...msg, read_at: new Date().toISOString() } : msg)
+          );
+          setUnreadCount((c) => Math.max(0, c - 1));
+        })
+        .catch(() => {});
+    });
   };
 
   const isAdminOrOwner = userRole === 'owner' || userRole === 'admin';
@@ -170,10 +212,30 @@ const Layout = ({ children }) => {
             {userRole === 'athlete' ? 'Panel del Atleta 🚀' : 'Panel de Entrenadores 🚀'}
           </Typography>
 
+          {/* 🔔 Coach notification bell */}
+          <IconButton color="inherit" onClick={handleOpenCoachMessages} sx={{ mr: 1 }}>
+            <Badge badgeContent={unreadCount > 0 ? unreadCount : null} color="error">
+              <NotificationsIcon />
+            </Badge>
+          </IconButton>
+
           {/* Avatar del usuario (Esquina superior derecha) */}
-          <Avatar sx={{ bgcolor: '#F57C00', fontWeight: 'bold' }}>FM</Avatar>
+          <Avatar sx={{ bgcolor: '#F57C00', fontWeight: 'bold' }}>
+            {userInfo?.first_name?.[0] ?? 'C'}{userInfo?.last_name?.[0] ?? ''}
+          </Avatar>
         </Toolbar>
       </AppBar>
+
+      {/* Coach messages drawer */}
+      <MessagesDrawer
+        open={openMessages}
+        onClose={() => setOpenMessages(false)}
+        messages={messages}
+        coaches={[]}
+        orgId={orgId}
+        currentUserId={userInfo?.id}
+        onMessageSent={fetchCoachMessages}
+      />
 
       {/* MENÚ LATERAL (DRAWER) */}
       <Box component="nav" sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}>

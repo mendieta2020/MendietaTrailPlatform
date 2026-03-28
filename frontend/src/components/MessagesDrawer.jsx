@@ -46,11 +46,16 @@ const MessagesDrawer = ({ open, onClose, messages, coaches = [], orgId, currentU
   const [composing, setComposing] = useState(false);
   const [selectedCoachId, setSelectedCoachId] = useState('');
 
+  // Quick-reply: tracks who the athlete clicked to reply to
+  const [quickReplyRecipientId, setQuickReplyRecipientId] = useState(null);
+  const [quickReplyName, setQuickReplyName] = useState('');
+
   // Find the default recipient: sender of the most recent message NOT from current user
   const lastIncoming = displayed.find((m) => m.sender_id !== currentUserId);
-  const defaultRecipientId = lastIncoming?.sender_id ?? null;
+  const defaultRecipientId = quickReplyRecipientId ?? lastIncoming?.sender_id ?? null;
+  const defaultRecipientName = quickReplyName || lastIncoming?.sender_name || '';
 
-  // Who to send to: if composing from scratch, use selectedCoachId; otherwise reply to last sender
+  // Who to send to: if composing from scratch, use selectedCoachId; otherwise reply to clicked/last sender
   const recipientId = composing ? selectedCoachId : defaultRecipientId;
 
   const handleSend = async () => {
@@ -155,20 +160,31 @@ const MessagesDrawer = ({ open, onClose, messages, coaches = [], orgId, currentU
             {displayed.map((msg, idx) => {
               const isFromMe = currentUserId && msg.sender_id === currentUserId;
               const isUnread = !msg.read_at && !isFromMe;
+              const isSelectedForReply = quickReplyRecipientId === msg.sender_id && !isFromMe;
               return (
                 <React.Fragment key={msg.id}>
                   <ListItem
                     alignItems="flex-start"
+                    onClick={!isFromMe ? () => {
+                      setQuickReplyRecipientId(msg.sender_id);
+                      setQuickReplyName(msg.sender_name);
+                      setComposing(false);
+                    } : undefined}
                     sx={{
                       px: 2,
                       py: 1.5,
-                      bgcolor: isFromMe
-                        ? '#F0FDF4'       // athlete's own message = green tint
-                        : isUnread
-                          ? '#FFFBEB'     // unread coach message = amber
-                          : 'white',
+                      bgcolor: isSelectedForReply
+                        ? '#FFF7ED'       // selected for reply = orange tint
+                        : isFromMe
+                          ? '#F0FDF4'     // my message = green tint
+                          : isUnread
+                            ? '#FFFBEB'   // unread = amber
+                            : 'white',
                       gap: 1,
                       justifyContent: isFromMe ? 'flex-end' : 'flex-start',
+                      cursor: !isFromMe ? 'pointer' : 'default',
+                      borderLeft: isSelectedForReply ? '3px solid #F57C00' : '3px solid transparent',
+                      '&:hover': !isFromMe ? { bgcolor: '#FFF7ED' } : {},
                     }}
                   >
                     {/* Unread dot — only for incoming unread */}
@@ -213,6 +229,12 @@ const MessagesDrawer = ({ open, onClose, messages, coaches = [], orgId, currentU
       {/* Reply / compose box — pinned at bottom */}
       {(defaultRecipientId || (composing && selectedCoachId)) && (
         <Box sx={{ px: 2, py: 1.5, bgcolor: 'white', borderTop: '1px solid #E2E8F0', flexShrink: 0 }}>
+          {/* "Respondiendo a X" hint */}
+          {!composing && defaultRecipientName && (
+            <Typography variant="caption" sx={{ color: '#F57C00', fontWeight: 600, display: 'block', mb: 0.5 }}>
+              ↩ Respondiendo a {defaultRecipientName}
+            </Typography>
+          )}
           {replyError && (
             <Typography variant="caption" color="error" sx={{ display: 'block', mb: 0.5 }}>
               {replyError}
@@ -224,7 +246,7 @@ const MessagesDrawer = ({ open, onClose, messages, coaches = [], orgId, currentU
               multiline
               maxRows={3}
               size="small"
-              placeholder={composing ? 'Escribí tu mensaje...' : 'Responderle a tu coach...'}
+              placeholder={composing ? 'Escribí tu mensaje...' : `Responderle a ${defaultRecipientName || 'tu coach'}...`}
               value={replyText}
               onChange={(e) => setReplyText(e.target.value)}
               onKeyDown={(e) => {

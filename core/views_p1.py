@@ -962,6 +962,22 @@ class WorkoutAssignmentViewSet(
         assignment.coach_commented_at = timezone.now() if comment else None
         assignment.save(update_fields=["coach_comment", "coach_commented_at"])
 
+        # Notify the athlete via InternalMessage when coach leaves a non-empty comment
+        if comment and assignment.athlete and assignment.athlete.user_id:
+            from core.models import InternalMessage  # noqa: PLC0415
+            workout_name = (
+                assignment.planned_workout.name
+                if assignment.planned_workout
+                else "tu sesión"
+            )
+            InternalMessage.objects.create(
+                organization=self.organization,
+                sender=request.user,
+                recipient_id=assignment.athlete.user_id,
+                content=f"📋 Comentario en '{workout_name}': {comment}",
+                alert_type="session_comment",
+            )
+
         return Response({
             "coach_comment": assignment.coach_comment,
             "coach_commented_at": assignment.coach_commented_at,
