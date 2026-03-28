@@ -218,7 +218,7 @@ const AthleteLayout = ({ children, user }) => {
         open={openMessages}
         onClose={() => setOpenMessages(false)}
         messages={messages}
-        coaches={coaches}
+        contacts={coaches}
         orgId={orgId}
         currentUserId={user?.id}
         onMessageSent={fetchMessages}

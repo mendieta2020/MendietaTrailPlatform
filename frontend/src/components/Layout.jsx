@@ -24,6 +24,7 @@ import { BarChart2 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { logoutSession } from '../api/authClient';
 import { getMessages, markMessageRead } from '../api/messages';
+import { listAthletes } from '../api/p1';
 import { useOrg } from '../context/OrgContext';
 import client from '../api/client';
 
@@ -35,6 +36,7 @@ const Layout = ({ children }) => {
   const [userInfo, setUserInfo] = useState(null);
   const [openMessages, setOpenMessages] = useState(false);
   const [messages, setMessages] = useState([]);
+  const [athletes, setAthletes] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const pollingRef = useRef(null);
   const navigate = useNavigate();
@@ -78,6 +80,24 @@ const Layout = ({ children }) => {
     pollingRef.current = setInterval(fetchCoachMessages, 60000);
     return () => clearInterval(pollingRef.current);
   }, [fetchCoachMessages]);
+
+  // Fetch athletes so coach can start new conversations from the messages drawer
+  useEffect(() => {
+    if (!orgId || userRole === 'athlete') return;
+    listAthletes(orgId)
+      .then((res) => {
+        const list = res.data?.results ?? res.data ?? [];
+        setAthletes(
+          list
+            .filter((a) => a.user_id)
+            .map((a) => ({
+              user_id: a.user_id,
+              name: `${a.first_name ?? ''} ${a.last_name ?? ''}`.trim() || a.email || 'Atleta',
+            }))
+        );
+      })
+      .catch(() => {});
+  }, [orgId, userRole]);
 
   const handleOpenCoachMessages = () => {
     setOpenMessages(true);
@@ -231,7 +251,7 @@ const Layout = ({ children }) => {
         open={openMessages}
         onClose={() => setOpenMessages(false)}
         messages={messages}
-        coaches={[]}
+        contacts={athletes}
         orgId={orgId}
         currentUserId={userInfo?.id}
         onMessageSent={fetchCoachMessages}

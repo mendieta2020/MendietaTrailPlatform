@@ -1,11 +1,22 @@
 /**
- * MessagesDrawer.jsx — PR-147 (final)
+ * MessagesDrawer.jsx — PR-147 (final-v2)
  *
- * Right-side drawer for the athlete:
+ * Right-side drawer for athletes AND coaches:
  * - Full conversation thread (sent + received)
  * - "Tú" = messages sent by the current user (currentUserId)
- * - Reply to a coach message OR start a new conversation
+ * - Filter tabs: Todos / No Leídas / Leídas
+ * - Reply to a specific message (per-message highlight, NOT per-sender)
+ * - Compose new conversation: pencil icon → dropdown of contacts
  * - Reply box pinned at bottom
+ *
+ * Props:
+ *   open           — boolean
+ *   onClose        — fn
+ *   messages       — array of message objects
+ *   contacts       — array of { user_id, name } — coaches (for athletes) or athletes (for coaches)
+ *   orgId          — string/number
+ *   currentUserId  — number
+ *   onMessageSent  — fn called after a successful send
  */
 
 import React, { useState } from 'react';
@@ -24,6 +35,8 @@ import {
   Select,
   FormControl,
   InputLabel,
+  Tab,
+  Tabs,
 } from '@mui/material';
 import { Close as CloseIcon, Send as SendIcon, Edit as EditIcon } from '@mui/icons-material';
 import { sendMessage } from '../api/messages';
@@ -38,26 +51,57 @@ function timeAgo(isoString) {
   return `hace ${days} día${days !== 1 ? 's' : ''}`;
 }
 
-const MessagesDrawer = ({ open, onClose, messages, coaches = [], orgId, currentUserId, onMessageSent }) => {
-  const displayed = messages.slice(0, 30);
+const MessagesDrawer = ({
+  open,
+  onClose,
+  messages,
+  contacts = [],       // unified prop: coaches list (for athletes) OR athletes list (for coaches)
+  coaches,             // legacy alias — accepted for backward compat, maps to contacts
+  orgId,
+  currentUserId,
+  onMessageSent,
+}) => {
+  // Backward-compat: if old `coaches` prop is passed instead of `contacts`, use it
+  const contactList = contacts.length > 0 ? contacts : (coaches ?? []);
+
+  // ── Filter tab state ────────────────────────────────────────────────────────
+  const [filterTab, setFilterTab] = useState('all'); // 'all' | 'unread' | 'read'
+
+  // ── Reply / compose state ───────────────────────────────────────────────────
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
   const [replyError, setReplyError] = useState('');
   const [composing, setComposing] = useState(false);
-  const [selectedCoachId, setSelectedCoachId] = useState('');
+  const [selectedContactId, setSelectedContactId] = useState('');
 
-  // Quick-reply: tracks who the athlete clicked to reply to
+  // Quick-reply: tracks the SPECIFIC message the user clicked (not just sender)
+  const [quickReplyMessageId, setQuickReplyMessageId] = useState(null);
   const [quickReplyRecipientId, setQuickReplyRecipientId] = useState(null);
   const [quickReplyName, setQuickReplyName] = useState('');
 
-  // Find the default recipient: sender of the most recent message NOT from current user
-  const lastIncoming = displayed.find((m) => m.sender_id !== currentUserId);
-  const defaultRecipientId = quickReplyRecipientId ?? lastIncoming?.sender_id ?? null;
+  // ── Derived display list ────────────────────────────────────────────────────
+  const allMessages = messages.slice(0, 50);
+
+  const unreadCount = allMessages.filter(
+    (m) => !m.read_at && m.sender_id !== currentUserId
+  ).length;
+
+  const displayed = allMessages.filter((m) => {
+    const isIncoming = m.sender_id !== currentUserId;
+    if (filterTab === 'unread') return isIncoming && !m.read_at;
+    if (filterTab === 'read')   return !isIncoming || !!m.read_at;
+    return true;
+  });
+
+  // ── Default recipient for reply box ────────────────────────────────────────
+  const lastIncoming = allMessages.find((m) => m.sender_id !== currentUserId);
+  const defaultRecipientId   = quickReplyRecipientId ?? lastIncoming?.sender_id ?? null;
   const defaultRecipientName = quickReplyName || lastIncoming?.sender_name || '';
 
-  // Who to send to: if composing from scratch, use selectedCoachId; otherwise reply to clicked/last sender
-  const recipientId = composing ? selectedCoachId : defaultRecipientId;
+  // Who to send to
+  const recipientId = composing ? selectedContactId : defaultRecipientId;
 
+  // ── Send ────────────────────────────────────────────────────────────────────
   const handleSend = async () => {
     if (!replyText.trim() || !recipientId || !orgId) return;
     setSending(true);
@@ -71,7 +115,10 @@ const MessagesDrawer = ({ open, onClose, messages, coaches = [], orgId, currentU
       });
       setReplyText('');
       setComposing(false);
-      setSelectedCoachId('');
+      setSelectedContactId('');
+      setQuickReplyMessageId(null);
+      setQuickReplyRecipientId(null);
+      setQuickReplyName('');
       onMessageSent?.();
     } catch (err) {
       const data = err?.response?.data;
@@ -83,7 +130,7 @@ const MessagesDrawer = ({ open, onClose, messages, coaches = [], orgId, currentU
   };
 
   const canSend = !!(recipientId && replyText.trim() && orgId);
-  const hasCoaches = coaches.length > 0;
+  const hasContacts = contactList.length > 0;
 
   return (
     <Drawer
@@ -92,12 +139,12 @@ const MessagesDrawer = ({ open, onClose, messages, coaches = [], orgId, currentU
       onClose={onClose}
       PaperProps={{ sx: { width: 360, bgcolor: '#F8FAFC', display: 'flex', flexDirection: 'column' } }}
     >
-      {/* Header */}
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
       <Box sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.5, bgcolor: 'white', borderBottom: '1px solid #E2E8F0', flexShrink: 0 }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 700, flexGrow: 1, color: '#1E293B' }}>
-          Mensajes de tu coach
+          Mensajes
         </Typography>
-        {hasCoaches && (
+        {hasContacts && (
           <IconButton
             size="small"
             title="Nuevo mensaje"
@@ -112,8 +159,8 @@ const MessagesDrawer = ({ open, onClose, messages, coaches = [], orgId, currentU
         </IconButton>
       </Box>
 
-      {/* Compose new message panel */}
-      {composing && hasCoaches && (
+      {/* ── Compose new message panel ───────────────────────────────────────── */}
+      {composing && hasContacts && (
         <Box sx={{ px: 2, py: 1.5, bgcolor: '#FFF7ED', borderBottom: '1px solid #FED7AA', flexShrink: 0 }}>
           <Typography variant="caption" sx={{ color: '#92400E', fontWeight: 600, display: 'block', mb: 1 }}>
             Nuevo mensaje
@@ -121,12 +168,12 @@ const MessagesDrawer = ({ open, onClose, messages, coaches = [], orgId, currentU
           <FormControl fullWidth size="small">
             <InputLabel sx={{ fontSize: '0.82rem' }}>Enviar a</InputLabel>
             <Select
-              value={selectedCoachId}
+              value={selectedContactId}
               label="Enviar a"
-              onChange={(e) => setSelectedCoachId(e.target.value)}
+              onChange={(e) => setSelectedContactId(e.target.value)}
               sx={{ fontSize: '0.82rem' }}
             >
-              {coaches.map((c) => (
+              {contactList.map((c) => (
                 <MenuItem key={c.user_id} value={c.user_id} sx={{ fontSize: '0.82rem' }}>
                   {c.name}
                 </MenuItem>
@@ -136,14 +183,40 @@ const MessagesDrawer = ({ open, onClose, messages, coaches = [], orgId, currentU
         </Box>
       )}
 
-      {/* Message list — scrollable */}
+      {/* ── Filter tabs: Todos / No Leídas / Leídas ───────────────────────── */}
+      <Box sx={{ bgcolor: 'white', borderBottom: '1px solid #E2E8F0', flexShrink: 0 }}>
+        <Tabs
+          value={filterTab}
+          onChange={(_, v) => setFilterTab(v)}
+          variant="fullWidth"
+          sx={{
+            minHeight: 36,
+            '& .MuiTab-root': { minHeight: 36, fontSize: '0.75rem', fontWeight: 600, py: 0, textTransform: 'none' },
+            '& .Mui-selected': { color: '#F57C00' },
+            '& .MuiTabs-indicator': { bgcolor: '#F57C00' },
+          }}
+        >
+          <Tab label="Todos" value="all" />
+          <Tab
+            label={unreadCount > 0 ? `No Leídas (${unreadCount})` : 'No Leídas'}
+            value="unread"
+          />
+          <Tab label="Leídas" value="read" />
+        </Tabs>
+      </Box>
+
+      {/* ── Message list — scrollable ───────────────────────────────────────── */}
       <Box sx={{ flex: 1, overflowY: 'auto' }}>
         {displayed.length === 0 ? (
           <Box sx={{ p: 3, textAlign: 'center' }}>
             <Typography variant="body2" color="text.secondary">
-              No tenés mensajes todavía.
+              {filterTab === 'unread'
+                ? 'Sin mensajes no leídos.'
+                : filterTab === 'read'
+                ? 'Sin mensajes leídos todavía.'
+                : 'No tenés mensajes todavía.'}
             </Typography>
-            {hasCoaches && (
+            {filterTab === 'all' && hasContacts && (
               <Button
                 size="small"
                 variant="outlined"
@@ -151,21 +224,24 @@ const MessagesDrawer = ({ open, onClose, messages, coaches = [], orgId, currentU
                 onClick={() => setComposing(true)}
                 startIcon={<EditIcon fontSize="small" />}
               >
-                Escribirle al coach
+                Escribir un mensaje
               </Button>
             )}
           </Box>
         ) : (
           <List disablePadding>
             {displayed.map((msg, idx) => {
-              const isFromMe = currentUserId && msg.sender_id === currentUserId;
-              const isUnread = !msg.read_at && !isFromMe;
-              const isSelectedForReply = quickReplyRecipientId === msg.sender_id && !isFromMe;
+              const isFromMe        = currentUserId && msg.sender_id === currentUserId;
+              const isUnread        = !msg.read_at && !isFromMe;
+              // Highlight only the SPECIFIC message the user clicked, not every message from same sender
+              const isSelectedForReply = quickReplyMessageId === msg.id && !isFromMe;
+
               return (
                 <React.Fragment key={msg.id}>
                   <ListItem
                     alignItems="flex-start"
                     onClick={!isFromMe ? () => {
+                      setQuickReplyMessageId(msg.id);
                       setQuickReplyRecipientId(msg.sender_id);
                       setQuickReplyName(msg.sender_name);
                       setComposing(false);
@@ -226,8 +302,8 @@ const MessagesDrawer = ({ open, onClose, messages, coaches = [], orgId, currentU
         )}
       </Box>
 
-      {/* Reply / compose box — pinned at bottom */}
-      {(defaultRecipientId || (composing && selectedCoachId)) && (
+      {/* ── Reply / compose box — pinned at bottom ─────────────────────────── */}
+      {(defaultRecipientId || (composing && selectedContactId)) && (
         <Box sx={{ px: 2, py: 1.5, bgcolor: 'white', borderTop: '1px solid #E2E8F0', flexShrink: 0 }}>
           {/* "Respondiendo a X" hint */}
           {!composing && defaultRecipientName && (
