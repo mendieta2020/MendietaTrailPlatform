@@ -69,15 +69,39 @@ class InternalMessageListCreateView(OrgTenantMixin, APIView):
         self.resolve_membership(self.kwargs["org_id"])
 
     def get(self, request, org_id):
+        from django.db.models import Q  # noqa: PLC0415
+
         qs = InternalMessage.objects.filter(
             organization=self.organization,
         ).select_related("sender", "recipient").order_by("-created_at")
 
         if self.membership.role == "athlete":
-            qs = qs.filter(recipient=request.user)
+            # Show full conversation: messages received OR sent by the athlete
+            qs = qs.filter(Q(recipient=request.user) | Q(sender=request.user))
 
         messages = [_message_to_dict(m) for m in qs[:50]]
-        return Response({"results": messages})
+
+        # Include the list of coaches available to message (for athletes starting a new thread)
+        coaches = []
+        if self.membership.role == "athlete":
+            coach_memberships = (
+                Membership.objects.filter(
+                    organization=self.organization,
+                    role__in=_WRITE_ROLES,
+                    is_active=True,
+                )
+                .select_related("user")
+                .order_by("user__first_name")
+            )
+            coaches = [
+                {
+                    "user_id": m.user_id,
+                    "name": m.user.get_full_name() or m.user.username,
+                }
+                for m in coach_memberships
+            ]
+
+        return Response({"results": messages, "coaches": coaches})
 
     def post(self, request, org_id):
         recipient_id = request.data.get("recipient_id")

@@ -33,6 +33,7 @@ const AthleteLayout = ({ children, user }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openMessages, setOpenMessages] = useState(false);
   const [messages, setMessages] = useState([]);
+  const [coaches, setCoaches] = useState([]);
   const pollingRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -42,7 +43,10 @@ const AthleteLayout = ({ children, user }) => {
   const fetchMessages = useCallback(() => {
     if (!orgId) return;
     getMessages(orgId)
-      .then((res) => setMessages(res.data?.results ?? []))
+      .then((res) => {
+        setMessages(res.data?.results ?? []);
+        setCoaches(res.data?.coaches ?? []);
+      })
       .catch(() => {});
   }, [orgId]);
 
@@ -214,7 +218,9 @@ const AthleteLayout = ({ children, user }) => {
         open={openMessages}
         onClose={() => setOpenMessages(false)}
         messages={messages}
+        coaches={coaches}
         orgId={orgId}
+        currentUserId={user?.id}
         onMessageSent={fetchMessages}
       />
     </Box>
