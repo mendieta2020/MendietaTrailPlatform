@@ -66,9 +66,10 @@ from core.views_athlete import (  # PR-139 / PR-141
     AthleteNotificationListView,
     AthleteNotificationMarkReadView,
 )
-from core.views_p1_roster import (  # PR-129 / PR-141
+from core.views_p1_roster import (  # PR-129 / PR-141 / PR-148
     AthleteCoachAssignmentViewSet,
     AthleteRosterViewSet,
+    CoachBriefingView,
     CoachNotifyAthleteDeviceView,
     CoachViewSet,
     MembershipViewSet,
@@ -604,6 +605,13 @@ urlpatterns = [
     ),
 
     # ==============================================================================
+    # PR-148: Coach morning briefing
+    path(
+        'p1/orgs/<int:org_id>/coach-briefing/',
+        CoachBriefingView.as_view(),
+        name='p1-coach-briefing',
+    ),
+
     # PR-147: Internal Messages & Smart Alerts
     # URL: /api/p1/orgs/<org_id>/messages/
     #      /api/p1/orgs/<org_id>/messages/<id>/read/

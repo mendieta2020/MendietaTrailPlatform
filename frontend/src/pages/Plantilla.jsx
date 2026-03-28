@@ -258,8 +258,9 @@ function ComplianceDot({ color, onClick }) {
 
 // ── DayCell ───────────────────────────────────────────────────────────────────
 
-function DayCell({ day, dayData, onDotClick, onDrop, draggingRef }) {
+function DayCell({ day, dayData, sessionCount, onDotClick, onDrop, draggingRef }) {
   const [dragOver, setDragOver] = useState(false);
+  const extra = sessionCount >= 2 ? sessionCount - 1 : 0;
 
   return (
     <Box
@@ -271,7 +272,8 @@ function DayCell({ day, dayData, onDotClick, onDrop, draggingRef }) {
         if (draggingRef.current) onDrop(day, draggingRef.current);
       }}
       sx={{
-        width: 52, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        width: 52, height: 48, position: 'relative',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
         borderRadius: 1,
         bgcolor: dragOver ? 'rgba(245,124,0,0.15)' : 'transparent',
         border: dragOver ? '1px dashed #F57C00' : '1px solid transparent',
@@ -285,6 +287,19 @@ function DayCell({ day, dayData, onDotClick, onDrop, draggingRef }) {
         />
       ) : (
         <Box sx={{ width: 22, height: 22, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.04)', mx: 'auto' }} />
+      )}
+      {extra > 0 && (
+        <Tooltip title={`${sessionCount} sesiones este día`} placement="top">
+          <Box sx={{
+            position: 'absolute', top: 2, right: 2,
+            bgcolor: '#F97316', color: '#fff',
+            fontSize: '0.6rem', fontWeight: 700,
+            borderRadius: '4px', px: 0.4, lineHeight: '14px',
+            cursor: 'default',
+          }}>
+            +{extra}
+          </Box>
+        </Tooltip>
       )}
     </Box>
   );
@@ -335,10 +350,16 @@ function SummaryBadge({ summary, onClick }) {
       </Tooltip>
     );
   }
-  const color = compliance_pct >= 90 ? '#22C55E' : compliance_pct >= 70 ? '#EAB308' : '#EF4444';
+  // Real compliance color scale (PR-148)
+  const pctColor =
+    compliance_pct >= 120 ? '#3B82F6'  // blue — overload
+    : compliance_pct >= 100 ? '#22C55E' // green — on target
+    : compliance_pct >= 70  ? '#F59E0B' // yellow — below plan
+    : '#EF4444';                         // red — significant under
+  const overloadSuffix = compliance_pct >= 120 ? ' ↑' : '';
   return (
-    <Typography variant="caption" sx={{ color, fontWeight: 700 }}>
-      {compliance_pct}%
+    <Typography variant="caption" sx={{ color: pctColor, fontWeight: 700 }}>
+      {compliance_pct}%{overloadSuffix}
     </Typography>
   );
 }
@@ -849,11 +870,13 @@ export default function Plantilla() {
                         {weekDays.map((day, idx) => {
                           const iso = toISO(day);
                           const dayData = athlete.days?.[iso] ?? null;
+                          const sessionCount = athlete.sessions_per_day?.[iso] ?? 0;
                           return (
                             <Box component="td" key={idx} sx={{ p: 0.25, textAlign: 'center' }}>
                               <DayCell
                                 day={day}
                                 dayData={dayData}
+                                sessionCount={sessionCount}
                                 onDotClick={handleDotClick}
                                 onDrop={handleDrop}
                                 draggingRef={draggingWorkoutRef}

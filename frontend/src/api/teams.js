@@ -13,3 +13,6 @@ export const addTeamMember = (orgId, teamId, athleteId) =>
 
 export const removeTeamMember = (orgId, teamId, athleteId) =>
   client.delete(`${p1Base(orgId)}/teams/${teamId}/members/${athleteId}/`);
+
+export const getCoachBriefing = (orgId) =>
+  client.get(`${p1Base(orgId)}/coach-briefing/`);
