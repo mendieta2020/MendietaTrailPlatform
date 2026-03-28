@@ -35,7 +35,14 @@ import {
   AccordionSummary,
   AccordionDetails,
   IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  TextField,
 } from '@mui/material';
+import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import {
   ChevronLeft,
   ChevronRight,
@@ -52,6 +59,7 @@ import { useOrg } from '../context/OrgContext';
 import { getTeams, getComplianceWeek } from '../api/teams';
 import { listLibraries, listPlannedWorkouts } from '../api/p1';
 import { bulkCreateAssignments, getAssignment } from '../api/assignments';
+import { getAthleteAlerts, sendMessage } from '../api/messages';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -284,12 +292,18 @@ function DayCell({ day, dayData, onDotClick, onDrop, draggingRef }) {
 
 // ── SummaryBadge ──────────────────────────────────────────────────────────────
 
-function SummaryBadge({ summary }) {
+function SummaryBadge({ summary, onClick }) {
   const { compliance_pct, alert } = summary;
+  const clickable = !!onClick;
+
   if (alert === 'inactive_4d') {
     return (
-      <Tooltip title="4+ días sin completar">
-        <Typography variant="caption" sx={{ color: '#EF4444', fontWeight: 700 }}>
+      <Tooltip title="4+ días sin completar — click para enviar mensaje">
+        <Typography
+          variant="caption"
+          onClick={onClick}
+          sx={{ color: '#EF4444', fontWeight: 700, cursor: clickable ? 'pointer' : 'default', '&:hover': clickable ? { textDecoration: 'underline' } : {} }}
+        >
           ⚠️ Inactivo
         </Typography>
       </Tooltip>
@@ -297,9 +311,26 @@ function SummaryBadge({ summary }) {
   }
   if (alert === 'overload') {
     return (
-      <Tooltip title="Sobrecarga ≥120%">
-        <Typography variant="caption" sx={{ color: '#3B82F6', fontWeight: 700 }}>
+      <Tooltip title="Sobrecarga ≥120% — click para enviar mensaje">
+        <Typography
+          variant="caption"
+          onClick={onClick}
+          sx={{ color: '#3B82F6', fontWeight: 700, cursor: clickable ? 'pointer' : 'default', '&:hover': clickable ? { textDecoration: 'underline' } : {} }}
+        >
           🔵 {compliance_pct}%
+        </Typography>
+      </Tooltip>
+    );
+  }
+  if (alert === 'praise') {
+    return (
+      <Tooltip title="¡Semana excelente! — click para felicitar">
+        <Typography
+          variant="caption"
+          onClick={onClick}
+          sx={{ color: '#22C55E', fontWeight: 700, cursor: clickable ? 'pointer' : 'default', '&:hover': clickable ? { textDecoration: 'underline' } : {} }}
+        >
+          🏆 {compliance_pct}%
         </Typography>
       </Tooltip>
     );
@@ -309,6 +340,207 @@ function SummaryBadge({ summary }) {
     <Typography variant="caption" sx={{ color, fontWeight: 700 }}>
       {compliance_pct}%
     </Typography>
+  );
+}
+
+// ── AlertModal ────────────────────────────────────────────────────────────────
+
+// Fallback message templates for historical/offline alerts
+const FALLBACK_TEMPLATES = {
+  inactive_4d: (name) => `Hola ${name}, hace varios días que no completás entrenamientos. ¿Todo bien? Contame qué pasó.`,
+  overload: (name) => `Hola ${name}, esta semana superaste el plan en más de un 20%. Excelente compromiso, pero cuidá el cuerpo. Revisamos juntos la próxima semana.`,
+  acwr_spike: (name) => `Hola ${name}, esta semana entrenaste mucho más de lo habitual. Riesgo de sobrecarga elevado. La próxima semana reducimos el volumen.`,
+  praise: (name) => `¡${name}! Completaste todos los entrenamientos de la semana. Eso es disciplina de élite. ¡Seguí así! 💪`,
+};
+
+function AlertModal({ open, onClose, athleteId, userId, athleteName, orgId, onSent, onError, preAlertType }) {
+  const [alerts, setAlerts] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedAlert, setSelectedAlert] = useState(null);
+  const [msgText, setMsgText] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const firstName = athleteName?.split(' ')[0] ?? athleteName ?? 'atleta';
+
+  useEffect(() => {
+    if (!open || !orgId || !athleteId) return;
+    setLoading(true);
+    setSelectedAlert(null);
+    setMsgText('');
+    getAthleteAlerts(orgId, athleteId)
+      .then((res) => {
+        const data = res.data?.alerts ?? [];
+        if (data.length > 0) {
+          setAlerts(data);
+          setSelectedAlert(data[0]);
+          setMsgText(data[0].message_template ?? '');
+        } else if (preAlertType) {
+          // Historical alert: API has no current alert but badge showed one
+          // Build a synthetic alert so coach can still send a message
+          const syntheticAlert = {
+            type: preAlertType,
+            severity: preAlertType === 'acwr_spike' ? 'danger' : 'warning',
+            message_template: FALLBACK_TEMPLATES[preAlertType]?.(firstName) ?? '',
+            phone_number: null,
+            days_count: null,
+          };
+          setAlerts([syntheticAlert]);
+          setSelectedAlert(syntheticAlert);
+          setMsgText(syntheticAlert.message_template);
+        } else {
+          setAlerts([]);
+        }
+      })
+      .catch(() => setAlerts([]))
+      .finally(() => setLoading(false));
+  }, [open, orgId, athleteId, preAlertType, firstName]);
+
+  const handleSelectAlert = (alert) => {
+    setSelectedAlert(alert);
+    setMsgText(alert.message_template ?? '');
+  };
+
+  const handleSend = async () => {
+    if (!msgText.trim() || !selectedAlert) return;
+    if (!userId) {
+      onError?.('No se pudo identificar al atleta. Recargá la página.');
+      return;
+    }
+    setSending(true);
+    try {
+      await sendMessage(orgId, {
+        recipient_id: userId,   // ← User.pk (not Athlete.pk)
+        content: msgText,
+        alert_type: selectedAlert.type,
+        whatsapp_sent: false,
+      });
+      onSent?.();
+      onClose();
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+        || err?.response?.data?.recipient_id
+        || 'Error al enviar el mensaje. Intentá de nuevo.';
+      onError?.(Array.isArray(detail) ? detail[0] : detail);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Show WhatsApp button for any urgent/warning alert when athlete has a phone number
+  const URGENT_TYPES = ['acwr_spike', 'inactive_4d', 'overload_sustained'];
+  const showWhatsApp =
+    URGENT_TYPES.includes(selectedAlert?.type) && selectedAlert?.phone_number;
+
+  const ALERT_LABEL = {
+    inactive_4d: '⚠️ Inactividad',
+    acwr_spike: '🔴 Sobrecarga ACWR',
+    overload: '🔵 Sobrecarga semana',
+    overload_sustained: '🔵 Sobrecarga sostenida',
+    monotony: '🟡 Monotonía',
+    no_plan: '📋 Sin plan',
+    streak_positive: '🟢 Racha positiva',
+    praise: '🏆 Semana excelente',
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ pb: 1 }}>
+        {selectedAlert ? `${ALERT_LABEL[selectedAlert.type] ?? selectedAlert.type} — ${athleteName}` : `Alertas — ${athleteName}`}
+      </DialogTitle>
+      <DialogContent dividers>
+        {loading && <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', my: 2 }} />}
+
+        {!loading && alerts.length === 0 && (
+          <Typography variant="body2" color="text.secondary">
+            Sin alertas activas para este atleta.
+          </Typography>
+        )}
+
+        {!loading && alerts.length > 0 && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {/* Alert selector (if multiple) */}
+            {alerts.length > 1 && (
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                {alerts.map((a) => (
+                  <Button
+                    key={a.type}
+                    size="small"
+                    variant={selectedAlert?.type === a.type ? 'contained' : 'outlined'}
+                    onClick={() => handleSelectAlert(a)}
+                    sx={{ fontSize: '0.75rem' }}
+                  >
+                    {ALERT_LABEL[a.type] ?? a.type}
+                  </Button>
+                ))}
+              </Box>
+            )}
+
+            {selectedAlert && selectedAlert.type !== 'no_plan' && (
+              <>
+                {/* Calendar link */}
+                <Button
+                  size="small"
+                  variant="text"
+                  sx={{ alignSelf: 'flex-start', color: '#F57C00', pl: 0 }}
+                  onClick={() => {
+                    // Use the same sessionStorage key Calendar.jsx reads for target selection
+                    sessionStorage.setItem('calendarSelectedTarget', `a:${athleteId}`);
+                    onClose();
+                    // Navigate in same tab — new tab loses auth context
+                    window.location.href = '/calendar';
+                  }}
+                >
+                  Ver calendario →
+                </Button>
+
+                {/* Message editor */}
+                <TextField
+                  label="Mensaje para el atleta"
+                  multiline
+                  minRows={4}
+                  value={msgText}
+                  onChange={(e) => setMsgText(e.target.value)}
+                  fullWidth
+                  size="small"
+                />
+              </>
+            )}
+
+            {selectedAlert?.type === 'no_plan' && (
+              <Typography variant="body2" color="text.secondary">
+                Este atleta no tiene entrenamientos planificados en los próximos 7 días. Revisá su calendario y asigná sesiones.
+              </Typography>
+            )}
+          </Box>
+        )}
+      </DialogContent>
+
+      <DialogActions sx={{ px: 2, pb: 2, gap: 1 }}>
+        <Button onClick={onClose} color="inherit">Cancelar</Button>
+        {showWhatsApp && (
+          <Button
+            variant="outlined"
+            color="success"
+            startIcon={<WhatsAppIcon />}
+            href={`https://wa.me/${selectedAlert.phone_number}?text=${encodeURIComponent(msgText)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            WhatsApp
+          </Button>
+        )}
+        {selectedAlert && selectedAlert.type !== 'no_plan' && (
+          <Button
+            variant="contained"
+            disabled={sending || !msgText.trim()}
+            onClick={handleSend}
+            sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#E65100' } }}
+          >
+            {sending ? 'Enviando…' : 'Enviar →'}
+          </Button>
+        )}
+      </DialogActions>
+    </Dialog>
   );
 }
 
@@ -345,6 +577,9 @@ export default function Plantilla() {
 
   // Snackbar
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
+
+  // Alert modal
+  const [alertModal, setAlertModal] = useState({ open: false, athleteId: null, userId: null, athleteName: '', preAlertType: null });
 
   // ── Load teams ──────────────────────────────────────────────────────────────
 
@@ -628,7 +863,16 @@ export default function Plantilla() {
                         })}
                         {/* Summary */}
                         <Box component="td" sx={{ textAlign: 'center', p: 0.5 }}>
-                          <SummaryBadge summary={athlete.summary} />
+                          <SummaryBadge
+                            summary={athlete.summary}
+                            onClick={athlete.summary.alert ? () => setAlertModal({
+                              open: true,
+                              athleteId: athlete.athlete_id,
+                              userId: athlete.user_id,
+                              athleteName: athlete.athlete_name,
+                              preAlertType: athlete.summary.alert,
+                            }) : undefined}
+                          />
                         </Box>
                       </Box>
                     ))}
@@ -699,6 +943,18 @@ export default function Plantilla() {
               .catch(() => {});
           }
         }}
+      />
+
+      <AlertModal
+        open={alertModal.open}
+        onClose={() => setAlertModal((s) => ({ ...s, open: false }))}
+        athleteId={alertModal.athleteId}
+        userId={alertModal.userId}
+        athleteName={alertModal.athleteName}
+        orgId={orgId}
+        preAlertType={alertModal.preAlertType}
+        onSent={() => setSnack({ open: true, message: 'Mensaje enviado ✓', severity: 'success' })}
+        onError={(msg) => setSnack({ open: true, message: msg, severity: 'error' })}
       />
 
       {/* ── Snackbar ── */}

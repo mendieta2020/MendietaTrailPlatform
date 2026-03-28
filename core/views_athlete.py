@@ -73,19 +73,25 @@ class AthleteTodayView(APIView):
         org = membership.organization
         today = timezone.localdate()
 
-        assignment = (
+        # Priority: show PLANNED/MOVED first (still pending). If all are done,
+        # still show today's first assignment so the athlete can review their day.
+        all_today = (
             WorkoutAssignment.objects.filter(
                 organization=org,
                 athlete__user=request.user,
                 scheduled_date=today,
-                status__in=[
-                    WorkoutAssignment.Status.PLANNED,
-                    WorkoutAssignment.Status.MOVED,
-                ],
             )
             .select_related("planned_workout")
             .order_by("day_order")
-            .first()
+        )
+
+        # Prefer pending assignment; fall back to first COMPLETED one.
+        # CANCELED and SKIPPED are intentionally excluded — they must not appear on "Hoy".
+        assignment = (
+            all_today.filter(
+                status__in=[WorkoutAssignment.Status.PLANNED, WorkoutAssignment.Status.MOVED]
+            ).first()
+            or all_today.filter(status=WorkoutAssignment.Status.COMPLETED).first()
         )
 
         has_workout = assignment is not None

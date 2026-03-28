@@ -365,6 +365,29 @@ const AthleteMyTraining = () => {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Deep-link from MessagesDrawer:
+  // Step 1 (mount-only) — navigate to the right month so the correct data is fetched.
+  // Step 2 (data-watch) — once assignments load, find and open the target drawer.
+  // Both setState calls are conditional one-shots; they cannot loop.
+  useEffect(() => {
+    const assignmentDate = sessionStorage.getItem('openAssignmentDate');
+    if (!assignmentDate) return;
+    const targetDate = new Date(assignmentDate + 'T00:00:00');
+    sessionStorage.removeItem('openAssignmentDate');
+    setCurrentDate(targetDate);
+  }, []); // intentionally mount-only
+
+  useEffect(() => {
+    const assignmentId = sessionStorage.getItem('openAssignmentId');
+    if (!assignmentId || loading || assignments.length === 0) return;
+    const targetId = parseInt(assignmentId, 10);
+    const found = assignments.find((a) => a.id === targetId);
+    if (found) {
+      sessionStorage.removeItem('openAssignmentId');
+      setSelectedAssignment(found);
+    }
+  }, [assignments, loading]);
+
   useEffect(() => {
     client.get('/api/athlete/pmc/')
       .then((res) => setPmcData(res.data))
