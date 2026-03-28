@@ -1,25 +1,23 @@
 /**
- * MessagesDrawer.jsx — PR-147 (final-v2)
+ * MessagesDrawer.jsx — PR-147 (v3 — WhatsApp-style)
  *
- * Right-side drawer for athletes AND coaches:
- * - Full conversation thread (sent + received)
- * - "Tú" = messages sent by the current user (currentUserId)
- * - Filter tabs: Todos / No Leídas / Leídas
- * - Reply to a specific message (per-message highlight, NOT per-sender)
- * - Compose new conversation: pencil icon → dropdown of contacts
- * - Reply box pinned at bottom
+ * Two-panel messaging experience:
  *
- * Props:
- *   open           — boolean
- *   onClose        — fn
- *   messages       — array of message objects
- *   contacts       — array of { user_id, name } — coaches (for athletes) or athletes (for coaches)
- *   orgId          — string/number
- *   currentUserId  — number
- *   onMessageSent  — fn called after a successful send
+ * Panel 1 — Conversation list:
+ *   - One entry per contact (grouped by the OTHER person in the thread)
+ *   - Shows: avatar letter, name, last message preview, timestamp, unread badge
+ *   - Tabs: Todos / No Leídas / Leídas
+ *   - Compose button (pencil) → new conversation with any contact
+ *
+ * Panel 2 — Thread view (after tapping a conversation):
+ *   - Full chronological exchange with that ONE person
+ *   - Back button returns to list
+ *   - Reply box pinned at bottom
+ *
+ * Works for BOTH coach (contacts = athletes) and athlete (contacts = coaches).
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Box,
   Drawer,
@@ -28,6 +26,10 @@ import {
   IconButton,
   List,
   ListItem,
+  ListItemButton,
+  ListItemAvatar,
+  ListItemText,
+  Avatar,
   TextField,
   Button,
   CircularProgress,
@@ -37,72 +39,153 @@ import {
   InputLabel,
   Tab,
   Tabs,
+  Badge,
 } from '@mui/material';
-import { Close as CloseIcon, Send as SendIcon, Edit as EditIcon } from '@mui/icons-material';
+import {
+  Close as CloseIcon,
+  Send as SendIcon,
+  Edit as EditIcon,
+  ArrowBack as ArrowBackIcon,
+} from '@mui/icons-material';
 import { sendMessage } from '../api/messages';
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
 function timeAgo(isoString) {
   const diff = Date.now() - new Date(isoString).getTime();
   const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'ahora';
   if (mins < 60) return `hace ${mins}m`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `hace ${hrs}h`;
   const days = Math.floor(hrs / 24);
-  return `hace ${days} día${days !== 1 ? 's' : ''}`;
+  return `hace ${days}d`;
 }
+
+function avatarLetters(name = '') {
+  const parts = name.trim().split(' ').filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return (parts[0]?.[0] ?? '?').toUpperCase();
+}
+
+// Derive a stable background color for each contact from their name
+const AVATAR_COLORS = ['#F57C00', '#2563EB', '#059669', '#7C3AED', '#DC2626', '#0891B2'];
+function avatarColor(name = '') {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
 
 const MessagesDrawer = ({
   open,
   onClose,
   messages,
-  contacts = [],       // unified prop: coaches list (for athletes) OR athletes list (for coaches)
-  coaches,             // legacy alias — accepted for backward compat, maps to contacts
+  contacts = [],
+  coaches,           // legacy alias
   orgId,
   currentUserId,
   onMessageSent,
 }) => {
-  // Backward-compat: if old `coaches` prop is passed instead of `contacts`, use it
   const contactList = contacts.length > 0 ? contacts : (coaches ?? []);
 
-  // ── Filter tab state ────────────────────────────────────────────────────────
-  const [filterTab, setFilterTab] = useState('all'); // 'all' | 'unread' | 'read'
+  // ── Navigation state ──────────────────────────────────────────────────────
+  const [view, setView] = useState('list');          // 'list' | 'thread'
+  const [activeContactId, setActiveContactId] = useState(null);
+  const [activeContactName, setActiveContactName] = useState('');
 
-  // ── Reply / compose state ───────────────────────────────────────────────────
+  // ── List-level state ──────────────────────────────────────────────────────
+  const [filterTab, setFilterTab] = useState('all');
+  const [composing, setComposing] = useState(false);
+  const [newContactId, setNewContactId] = useState('');
+
+  // ── Thread-level state ────────────────────────────────────────────────────
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
   const [replyError, setReplyError] = useState('');
-  const [composing, setComposing] = useState(false);
-  const [selectedContactId, setSelectedContactId] = useState('');
+  const threadBottomRef = useRef(null);
 
-  // Quick-reply: tracks the SPECIFIC message the user clicked (not just sender)
-  const [quickReplyMessageId, setQuickReplyMessageId] = useState(null);
-  const [quickReplyRecipientId, setQuickReplyRecipientId] = useState(null);
-  const [quickReplyName, setQuickReplyName] = useState('');
+  // Reset to list when drawer is closed
+  useEffect(() => {
+    if (!open) {
+      setView('list');
+      setActiveContactId(null);
+      setActiveContactName('');
+      setComposing(false);
+      setNewContactId('');
+      setReplyText('');
+      setReplyError('');
+    }
+  }, [open]);
 
-  // ── Derived display list ────────────────────────────────────────────────────
-  const allMessages = messages.slice(0, 50);
+  // Scroll to bottom of thread on open / new messages
+  useEffect(() => {
+    if (view === 'thread') {
+      setTimeout(() => threadBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+    }
+  }, [view, messages]);
 
-  const unreadCount = allMessages.filter(
-    (m) => !m.read_at && m.sender_id !== currentUserId
-  ).length;
+  // ── Conversation grouping ─────────────────────────────────────────────────
+  const conversations = useMemo(() => {
+    const map = {};
+    messages.forEach((msg) => {
+      const isFromMe = msg.sender_id === currentUserId;
+      const otherId   = isFromMe ? msg.recipient_id   : msg.sender_id;
+      const otherName = isFromMe ? (msg.recipient_name ?? '') : (msg.sender_name ?? '');
 
-  const displayed = allMessages.filter((m) => {
-    const isIncoming = m.sender_id !== currentUserId;
-    if (filterTab === 'unread') return isIncoming && !m.read_at;
-    if (filterTab === 'read')   return !isIncoming || !!m.read_at;
+      if (!map[otherId]) {
+        map[otherId] = {
+          contactId:   otherId,
+          contactName: otherName,
+          messages:    [],
+          unreadCount: 0,
+          lastAt:      msg.created_at,
+        };
+      }
+      map[otherId].messages.push(msg);
+      if (!msg.read_at && !isFromMe) map[otherId].unreadCount++;
+      // keep most-recent timestamp
+      if (msg.created_at > map[otherId].lastAt) map[otherId].lastAt = msg.created_at;
+    });
+
+    return Object.values(map).sort((a, b) => (b.lastAt > a.lastAt ? 1 : -1));
+  }, [messages, currentUserId]);
+
+  const totalUnread = conversations.reduce((s, c) => s + c.unreadCount, 0);
+
+  const filteredConversations = conversations.filter((c) => {
+    if (filterTab === 'unread') return c.unreadCount > 0;
+    if (filterTab === 'read')   return c.unreadCount === 0;
     return true;
   });
 
-  // ── Default recipient for reply box ────────────────────────────────────────
-  const lastIncoming = allMessages.find((m) => m.sender_id !== currentUserId);
-  const defaultRecipientId   = quickReplyRecipientId ?? lastIncoming?.sender_id ?? null;
-  const defaultRecipientName = quickReplyName || lastIncoming?.sender_name || '';
+  // Active thread messages — chronological (oldest first, newest at bottom)
+  const threadMessages = useMemo(() => {
+    if (!activeContactId) return [];
+    const conv = conversations.find((c) => c.contactId === activeContactId);
+    return (conv?.messages ?? []).slice().sort((a, b) => (a.created_at > b.created_at ? 1 : -1));
+  }, [conversations, activeContactId]);
 
-  // Who to send to
-  const recipientId = composing ? selectedContactId : defaultRecipientId;
+  // ── Actions ───────────────────────────────────────────────────────────────
+  const openThread = (contactId, contactName) => {
+    setActiveContactId(contactId);
+    setActiveContactName(contactName);
+    setReplyText('');
+    setReplyError('');
+    setView('thread');
+  };
 
-  // ── Send ────────────────────────────────────────────────────────────────────
+  const startNewConversation = () => {
+    if (!newContactId) return;
+    const contact = contactList.find((c) => c.user_id === newContactId);
+    setComposing(false);
+    setNewContactId('');
+    openThread(newContactId, contact?.name ?? '');
+  };
+
   const handleSend = async () => {
+    const recipientId = view === 'thread' ? activeContactId : null;
     if (!replyText.trim() || !recipientId || !orgId) return;
     setSending(true);
     setReplyError('');
@@ -114,11 +197,6 @@ const MessagesDrawer = ({
         whatsapp_sent: false,
       });
       setReplyText('');
-      setComposing(false);
-      setSelectedContactId('');
-      setQuickReplyMessageId(null);
-      setQuickReplyRecipientId(null);
-      setQuickReplyName('');
       onMessageSent?.();
     } catch (err) {
       const data = err?.response?.data;
@@ -129,20 +207,42 @@ const MessagesDrawer = ({
     }
   };
 
-  const canSend = !!(recipientId && replyText.trim() && orgId);
+  const canSend = !!(activeContactId && replyText.trim() && orgId);
   const hasContacts = contactList.length > 0;
 
-  return (
-    <Drawer
-      anchor="right"
-      open={open}
-      onClose={onClose}
-      PaperProps={{ sx: { width: 360, bgcolor: '#F8FAFC', display: 'flex', flexDirection: 'column' } }}
-    >
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
+  // ── Render helpers ────────────────────────────────────────────────────────
+
+  const renderHeader = () => {
+    if (view === 'thread') {
+      return (
+        <Box sx={{ display: 'flex', alignItems: 'center', px: 1.5, py: 1.5, bgcolor: 'white', borderBottom: '1px solid #E2E8F0', flexShrink: 0, gap: 0.5 }}>
+          <IconButton size="small" onClick={() => setView('list')} sx={{ color: '#64748B' }}>
+            <ArrowBackIcon fontSize="small" />
+          </IconButton>
+          <Avatar
+            sx={{ width: 30, height: 30, fontSize: '0.72rem', fontWeight: 700, bgcolor: avatarColor(activeContactName), mx: 0.5 }}
+          >
+            {avatarLetters(activeContactName)}
+          </Avatar>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1E293B', flexGrow: 1, fontSize: '0.9rem' }}>
+            {activeContactName}
+          </Typography>
+          <IconButton onClick={onClose} size="small">
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Box>
+      );
+    }
+
+    return (
       <Box sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.5, bgcolor: 'white', borderBottom: '1px solid #E2E8F0', flexShrink: 0 }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 700, flexGrow: 1, color: '#1E293B' }}>
           Mensajes
+          {totalUnread > 0 && (
+            <Box component="span" sx={{ ml: 1, bgcolor: '#F57C00', color: 'white', borderRadius: '10px', px: 0.8, py: 0.1, fontSize: '0.68rem', fontWeight: 700, verticalAlign: 'middle' }}>
+              {totalUnread}
+            </Box>
+          )}
         </Typography>
         {hasContacts && (
           <IconButton
@@ -158,19 +258,25 @@ const MessagesDrawer = ({
           <CloseIcon fontSize="small" />
         </IconButton>
       </Box>
+    );
+  };
 
-      {/* ── Compose new message panel ───────────────────────────────────────── */}
+  // ── Conversation list view ────────────────────────────────────────────────
+
+  const renderList = () => (
+    <>
+      {/* New message compose panel */}
       {composing && hasContacts && (
         <Box sx={{ px: 2, py: 1.5, bgcolor: '#FFF7ED', borderBottom: '1px solid #FED7AA', flexShrink: 0 }}>
           <Typography variant="caption" sx={{ color: '#92400E', fontWeight: 600, display: 'block', mb: 1 }}>
-            Nuevo mensaje
+            Nueva conversación
           </Typography>
-          <FormControl fullWidth size="small">
+          <FormControl fullWidth size="small" sx={{ mb: 1 }}>
             <InputLabel sx={{ fontSize: '0.82rem' }}>Enviar a</InputLabel>
             <Select
-              value={selectedContactId}
+              value={newContactId}
               label="Enviar a"
-              onChange={(e) => setSelectedContactId(e.target.value)}
+              onChange={(e) => setNewContactId(e.target.value)}
               sx={{ fontSize: '0.82rem' }}
             >
               {contactList.map((c) => (
@@ -180,10 +286,20 @@ const MessagesDrawer = ({
               ))}
             </Select>
           </FormControl>
+          <Button
+            fullWidth
+            size="small"
+            variant="contained"
+            disabled={!newContactId}
+            onClick={startNewConversation}
+            sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#E65100' }, fontSize: '0.78rem', textTransform: 'none' }}
+          >
+            Abrir conversación
+          </Button>
         </Box>
       )}
 
-      {/* ── Filter tabs: Todos / No Leídas / Leídas ───────────────────────── */}
+      {/* Filter tabs */}
       <Box sx={{ bgcolor: 'white', borderBottom: '1px solid #E2E8F0', flexShrink: 0 }}>
         <Tabs
           value={filterTab}
@@ -197,161 +313,222 @@ const MessagesDrawer = ({
           }}
         >
           <Tab label="Todos" value="all" />
-          <Tab
-            label={unreadCount > 0 ? `No Leídas (${unreadCount})` : 'No Leídas'}
-            value="unread"
-          />
+          <Tab label={totalUnread > 0 ? `No Leídas (${totalUnread})` : 'No Leídas'} value="unread" />
           <Tab label="Leídas" value="read" />
         </Tabs>
       </Box>
 
-      {/* ── Message list — scrollable ───────────────────────────────────────── */}
+      {/* Conversation list */}
       <Box sx={{ flex: 1, overflowY: 'auto' }}>
-        {displayed.length === 0 ? (
+        {filteredConversations.length === 0 ? (
           <Box sx={{ p: 3, textAlign: 'center' }}>
             <Typography variant="body2" color="text.secondary">
-              {filterTab === 'unread'
-                ? 'Sin mensajes no leídos.'
-                : filterTab === 'read'
-                ? 'Sin mensajes leídos todavía.'
-                : 'No tenés mensajes todavía.'}
+              {filterTab === 'unread' ? 'Sin mensajes no leídos.' : filterTab === 'read' ? 'Sin conversaciones leídas.' : 'Sin conversaciones todavía.'}
             </Typography>
             {filterTab === 'all' && hasContacts && (
               <Button
                 size="small"
                 variant="outlined"
-                sx={{ mt: 2, fontSize: '0.78rem', borderColor: '#F57C00', color: '#F57C00' }}
+                sx={{ mt: 2, fontSize: '0.78rem', borderColor: '#F57C00', color: '#F57C00', textTransform: 'none' }}
                 onClick={() => setComposing(true)}
                 startIcon={<EditIcon fontSize="small" />}
               >
-                Escribir un mensaje
+                Iniciar conversación
               </Button>
             )}
           </Box>
         ) : (
           <List disablePadding>
-            {displayed.map((msg, idx) => {
-              const isFromMe        = currentUserId && msg.sender_id === currentUserId;
-              const isUnread        = !msg.read_at && !isFromMe;
-              // Highlight only the SPECIFIC message the user clicked, not every message from same sender
-              const isSelectedForReply = quickReplyMessageId === msg.id && !isFromMe;
+            {filteredConversations.map((conv, idx) => {
+              // Last message for preview
+              const lastMsg = conv.messages[0]; // messages are newest-first from API
+              const isLastFromMe = lastMsg?.sender_id === currentUserId;
+              const preview = lastMsg?.content ?? '';
 
               return (
-                <React.Fragment key={msg.id}>
-                  <ListItem
-                    alignItems="flex-start"
-                    onClick={!isFromMe ? () => {
-                      setQuickReplyMessageId(msg.id);
-                      setQuickReplyRecipientId(msg.sender_id);
-                      setQuickReplyName(msg.sender_name);
-                      setComposing(false);
-                    } : undefined}
-                    sx={{
-                      px: 2,
-                      py: 1.5,
-                      bgcolor: isSelectedForReply
-                        ? '#FFF7ED'       // selected for reply = orange tint
-                        : isFromMe
-                          ? '#F0FDF4'     // my message = green tint
-                          : isUnread
-                            ? '#FFFBEB'   // unread = amber
-                            : 'white',
-                      gap: 1,
-                      justifyContent: isFromMe ? 'flex-end' : 'flex-start',
-                      cursor: !isFromMe ? 'pointer' : 'default',
-                      borderLeft: isSelectedForReply ? '3px solid #F57C00' : '3px solid transparent',
-                      '&:hover': !isFromMe ? { bgcolor: '#FFF7ED' } : {},
-                    }}
-                  >
-                    {/* Unread dot — only for incoming unread */}
-                    {!isFromMe && (
-                      <Box sx={{ pt: '6px', minWidth: 10 }}>
-                        {isUnread && (
-                          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#F97316' }} />
-                        )}
-                      </Box>
-                    )}
-                    <Box sx={{ maxWidth: '85%' }}>
-                      <Box sx={{ display: 'flex', justifyContent: isFromMe ? 'flex-end' : 'space-between', mb: 0.25, gap: 2 }}>
-                        <Typography variant="caption" sx={{ fontWeight: 700, color: isFromMe ? '#16A34A' : '#374151' }}>
-                          {isFromMe ? 'Tú' : msg.sender_name}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: '#9CA3AF' }}>
-                          {timeAgo(msg.created_at)}
-                        </Typography>
-                      </Box>
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          color: '#4B5563',
-                          fontSize: '0.82rem',
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        {msg.content}
-                      </Typography>
-                    </Box>
+                <React.Fragment key={conv.contactId}>
+                  <ListItem disablePadding>
+                    <ListItemButton
+                      onClick={() => openThread(conv.contactId, conv.contactName)}
+                      sx={{
+                        px: 2,
+                        py: 1.25,
+                        bgcolor: conv.unreadCount > 0 ? '#FFFBEB' : 'white',
+                        '&:hover': { bgcolor: '#F8FAFC' },
+                        alignItems: 'center',
+                      }}
+                    >
+                      <ListItemAvatar sx={{ minWidth: 46 }}>
+                        <Badge
+                          badgeContent={conv.unreadCount > 0 ? conv.unreadCount : null}
+                          color="error"
+                          overlap="circular"
+                          anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+                        >
+                          <Avatar
+                            sx={{
+                              width: 38,
+                              height: 38,
+                              fontSize: '0.82rem',
+                              fontWeight: 700,
+                              bgcolor: avatarColor(conv.contactName),
+                            }}
+                          >
+                            {avatarLetters(conv.contactName)}
+                          </Avatar>
+                        </Badge>
+                      </ListItemAvatar>
+                      <ListItemText
+                        primary={
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                            <Typography
+                              variant="body2"
+                              sx={{ fontWeight: conv.unreadCount > 0 ? 700 : 500, color: '#1E293B', fontSize: '0.875rem' }}
+                            >
+                              {conv.contactName}
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: '#9CA3AF', flexShrink: 0, ml: 1 }}>
+                              {timeAgo(conv.lastAt)}
+                            </Typography>
+                          </Box>
+                        }
+                        secondary={
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              color: conv.unreadCount > 0 ? '#374151' : '#9CA3AF',
+                              fontWeight: conv.unreadCount > 0 ? 600 : 400,
+                              display: 'block',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              maxWidth: 220,
+                            }}
+                          >
+                            {isLastFromMe ? 'Tú: ' : ''}{preview}
+                          </Typography>
+                        }
+                        secondaryTypographyProps={{ component: 'div' }}
+                      />
+                    </ListItemButton>
                   </ListItem>
-                  {idx < displayed.length - 1 && (
-                    <Divider sx={{ borderColor: '#F1F5F9' }} />
-                  )}
+                  {idx < filteredConversations.length - 1 && <Divider sx={{ borderColor: '#F1F5F9' }} />}
                 </React.Fragment>
               );
             })}
           </List>
         )}
       </Box>
+    </>
+  );
 
-      {/* ── Reply / compose box — pinned at bottom ─────────────────────────── */}
-      {(defaultRecipientId || (composing && selectedContactId)) && (
-        <Box sx={{ px: 2, py: 1.5, bgcolor: 'white', borderTop: '1px solid #E2E8F0', flexShrink: 0 }}>
-          {/* "Respondiendo a X" hint */}
-          {!composing && defaultRecipientName && (
-            <Typography variant="caption" sx={{ color: '#F57C00', fontWeight: 600, display: 'block', mb: 0.5 }}>
-              ↩ Respondiendo a {defaultRecipientName}
+  // ── Thread view ───────────────────────────────────────────────────────────
+
+  const renderThread = () => (
+    <>
+      {/* Messages — scrollable, chronological */}
+      <Box sx={{ flex: 1, overflowY: 'auto', py: 1 }}>
+        {threadMessages.length === 0 ? (
+          <Box sx={{ p: 3, textAlign: 'center' }}>
+            <Typography variant="body2" color="text.secondary">
+              Empezá la conversación con {activeContactName}.
             </Typography>
-          )}
-          {replyError && (
-            <Typography variant="caption" color="error" sx={{ display: 'block', mb: 0.5 }}>
-              {replyError}
-            </Typography>
-          )}
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
-            <TextField
-              fullWidth
-              multiline
-              maxRows={3}
-              size="small"
-              placeholder={composing ? 'Escribí tu mensaje...' : `Responderle a ${defaultRecipientName || 'tu coach'}...`}
-              value={replyText}
-              onChange={(e) => setReplyText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.82rem', borderRadius: 2 } }}
-            />
-            <IconButton
-              onClick={handleSend}
-              disabled={sending || !canSend}
-              size="small"
-              sx={{
-                bgcolor: '#F57C00',
-                color: 'white',
-                '&:hover': { bgcolor: '#E65100' },
-                '&.Mui-disabled': { bgcolor: '#E5E7EB', color: '#9CA3AF' },
-                width: 36,
-                height: 36,
-                flexShrink: 0,
-              }}
-            >
-              {sending ? <CircularProgress size={16} color="inherit" /> : <SendIcon fontSize="small" />}
-            </IconButton>
           </Box>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, px: 2 }}>
+            {threadMessages.map((msg) => {
+              const isFromMe = msg.sender_id === currentUserId;
+              return (
+                <Box
+                  key={msg.id}
+                  sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: isFromMe ? 'flex-end' : 'flex-start',
+                  }}
+                >
+                  <Box
+                    sx={{
+                      maxWidth: '80%',
+                      bgcolor: isFromMe ? '#F57C00' : 'white',
+                      color: isFromMe ? 'white' : '#1E293B',
+                      borderRadius: isFromMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                      px: 1.5,
+                      py: 1,
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
+                    }}
+                  >
+                    <Typography variant="body2" sx={{ fontSize: '0.84rem', lineHeight: 1.4, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                      {msg.content}
+                    </Typography>
+                  </Box>
+                  <Typography variant="caption" sx={{ color: '#9CA3AF', mt: 0.25, mx: 0.5, fontSize: '0.68rem' }}>
+                    {timeAgo(msg.created_at)}
+                  </Typography>
+                </Box>
+              );
+            })}
+            <div ref={threadBottomRef} />
+          </Box>
+        )}
+      </Box>
+
+      {/* Reply box — pinned at bottom */}
+      <Box sx={{ px: 2, py: 1.5, bgcolor: 'white', borderTop: '1px solid #E2E8F0', flexShrink: 0 }}>
+        {replyError && (
+          <Typography variant="caption" color="error" sx={{ display: 'block', mb: 0.5 }}>
+            {replyError}
+          </Typography>
+        )}
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
+          <TextField
+            fullWidth
+            multiline
+            maxRows={4}
+            size="small"
+            placeholder={`Escribirle a ${activeContactName}...`}
+            value={replyText}
+            onChange={(e) => setReplyText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.82rem', borderRadius: 2 } }}
+          />
+          <IconButton
+            onClick={handleSend}
+            disabled={sending || !canSend}
+            size="small"
+            sx={{
+              bgcolor: '#F57C00',
+              color: 'white',
+              '&:hover': { bgcolor: '#E65100' },
+              '&.Mui-disabled': { bgcolor: '#E5E7EB', color: '#9CA3AF' },
+              width: 36,
+              height: 36,
+              flexShrink: 0,
+            }}
+          >
+            {sending ? <CircularProgress size={16} color="inherit" /> : <SendIcon fontSize="small" />}
+          </IconButton>
         </Box>
-      )}
+      </Box>
+    </>
+  );
+
+  // ── Main render ───────────────────────────────────────────────────────────
+
+  return (
+    <Drawer
+      anchor="right"
+      open={open}
+      onClose={onClose}
+      PaperProps={{ sx: { width: 360, bgcolor: '#F8FAFC', display: 'flex', flexDirection: 'column' } }}
+    >
+      {renderHeader()}
+      {view === 'list' ? renderList() : renderThread()}
     </Drawer>
   );
 };

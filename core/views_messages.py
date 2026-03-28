@@ -49,6 +49,7 @@ def _message_to_dict(msg):
         "sender_id": msg.sender_id,
         "sender_name": msg.sender.get_full_name() or msg.sender.username,
         "recipient_id": msg.recipient_id,
+        "recipient_name": msg.recipient.get_full_name() or msg.recipient.username,
         "content": msg.content,
         "alert_type": msg.alert_type,
         "whatsapp_sent": msg.whatsapp_sent,
