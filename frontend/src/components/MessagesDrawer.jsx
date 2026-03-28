@@ -1,20 +1,20 @@
 /**
- * MessagesDrawer.jsx — PR-147 (v3 — WhatsApp-style)
+ * MessagesDrawer.jsx — PR-147 (v4 — polish)
  *
- * Two-panel messaging experience:
+ * Two-panel WhatsApp-style messaging:
  *
- * Panel 1 — Conversation list:
- *   - One entry per contact (grouped by the OTHER person in the thread)
- *   - Shows: avatar letter, name, last message preview, timestamp, unread badge
+ * Panel 1 — Conversation list
+ *   - One entry per contact, sorted by most recent
+ *   - Unread badge per conversation
  *   - Tabs: Todos / No Leídas / Leídas
- *   - Compose button (pencil) → new conversation with any contact
+ *   - Compose pencil → new conversation with any contact
  *
- * Panel 2 — Thread view (after tapping a conversation):
- *   - Full chronological exchange with that ONE person
- *   - Back button returns to list
- *   - Reply box pinned at bottom
- *
- * Works for BOTH coach (contacts = athletes) and athlete (contacts = coaches).
+ * Panel 2 — Thread view
+ *   - Full chronological exchange with ONE person
+ *   - Date separators: "Hoy", "Ayer", "Lunes 24 mar"
+ *   - Read receipts: ✓ sent · ✓✓ orange = read (only on own messages)
+ *   - Auto-marks conversation as read on thread open
+ *   - Reply box pinned at bottom (Enter to send, Shift+Enter = newline)
  */
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
@@ -46,10 +46,12 @@ import {
   Send as SendIcon,
   Edit as EditIcon,
   ArrowBack as ArrowBackIcon,
+  Done as DoneIcon,
+  DoneAll as DoneAllIcon,
 } from '@mui/icons-material';
-import { sendMessage } from '../api/messages';
+import { sendMessage, markMessageRead } from '../api/messages';
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function timeAgo(isoString) {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -68,7 +70,6 @@ function avatarLetters(name = '') {
   return (parts[0]?.[0] ?? '?').toUpperCase();
 }
 
-// Derive a stable background color for each contact from their name
 const AVATAR_COLORS = ['#F57C00', '#2563EB', '#059669', '#7C3AED', '#DC2626', '#0891B2'];
 function avatarColor(name = '') {
   let hash = 0;
@@ -76,37 +77,59 @@ function avatarColor(name = '') {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-// ── Component ────────────────────────────────────────────────────────────────
+/** Returns a label like "Hoy", "Ayer", or "lunes 24 mar" */
+function dateSeparatorLabel(isoString) {
+  const date = new Date(isoString);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  if (date.toDateString() === today.toDateString()) return 'Hoy';
+  if (date.toDateString() === yesterday.toDateString()) return 'Ayer';
+  return date.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'short' });
+}
+
+function isSameDay(a, b) {
+  const da = new Date(a);
+  const db = new Date(b);
+  return (
+    da.getFullYear() === db.getFullYear() &&
+    da.getMonth() === db.getMonth() &&
+    da.getDate() === db.getDate()
+  );
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 const MessagesDrawer = ({
   open,
   onClose,
   messages,
   contacts = [],
-  coaches,           // legacy alias
+  coaches,            // legacy alias
   orgId,
   currentUserId,
   onMessageSent,
 }) => {
   const contactList = contacts.length > 0 ? contacts : (coaches ?? []);
 
-  // ── Navigation state ──────────────────────────────────────────────────────
-  const [view, setView] = useState('list');          // 'list' | 'thread'
+  // ── Navigation ────────────────────────────────────────────────────────────
+  const [view, setView] = useState('list');
   const [activeContactId, setActiveContactId] = useState(null);
   const [activeContactName, setActiveContactName] = useState('');
 
-  // ── List-level state ──────────────────────────────────────────────────────
+  // ── List state ────────────────────────────────────────────────────────────
   const [filterTab, setFilterTab] = useState('all');
   const [composing, setComposing] = useState(false);
   const [newContactId, setNewContactId] = useState('');
 
-  // ── Thread-level state ────────────────────────────────────────────────────
+  // ── Thread state ──────────────────────────────────────────────────────────
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
   const [replyError, setReplyError] = useState('');
   const threadBottomRef = useRef(null);
 
-  // Reset to list when drawer is closed
+  // Reset on close
   useEffect(() => {
     if (!open) {
       setView('list');
@@ -119,7 +142,7 @@ const MessagesDrawer = ({
     }
   }, [open]);
 
-  // Scroll to bottom of thread on open / new messages
+  // Scroll to bottom when entering thread or new messages arrive
   useEffect(() => {
     if (view === 'thread') {
       setTimeout(() => threadBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
@@ -130,25 +153,17 @@ const MessagesDrawer = ({
   const conversations = useMemo(() => {
     const map = {};
     messages.forEach((msg) => {
-      const isFromMe = msg.sender_id === currentUserId;
+      const isFromMe  = msg.sender_id === currentUserId;
       const otherId   = isFromMe ? msg.recipient_id   : msg.sender_id;
       const otherName = isFromMe ? (msg.recipient_name ?? '') : (msg.sender_name ?? '');
 
       if (!map[otherId]) {
-        map[otherId] = {
-          contactId:   otherId,
-          contactName: otherName,
-          messages:    [],
-          unreadCount: 0,
-          lastAt:      msg.created_at,
-        };
+        map[otherId] = { contactId: otherId, contactName: otherName, messages: [], unreadCount: 0, lastAt: msg.created_at };
       }
       map[otherId].messages.push(msg);
       if (!msg.read_at && !isFromMe) map[otherId].unreadCount++;
-      // keep most-recent timestamp
       if (msg.created_at > map[otherId].lastAt) map[otherId].lastAt = msg.created_at;
     });
-
     return Object.values(map).sort((a, b) => (b.lastAt > a.lastAt ? 1 : -1));
   }, [messages, currentUserId]);
 
@@ -160,7 +175,7 @@ const MessagesDrawer = ({
     return true;
   });
 
-  // Active thread messages — chronological (oldest first, newest at bottom)
+  // Thread messages — chronological (oldest → newest, so newest is at bottom)
   const threadMessages = useMemo(() => {
     if (!activeContactId) return [];
     const conv = conversations.find((c) => c.contactId === activeContactId);
@@ -168,7 +183,18 @@ const MessagesDrawer = ({
   }, [conversations, activeContactId]);
 
   // ── Actions ───────────────────────────────────────────────────────────────
+
   const openThread = (contactId, contactName) => {
+    // Auto-mark all unread messages from this contact as read
+    const conv = conversations.find((c) => c.contactId === contactId);
+    if (conv && orgId) {
+      const unread = conv.messages.filter((m) => !m.read_at && m.sender_id !== currentUserId);
+      if (unread.length > 0) {
+        Promise.all(unread.map((m) => markMessageRead(orgId, m.id).catch(() => {}))).then(() => {
+          onMessageSent?.(); // Refresh once after all are marked
+        });
+      }
+    }
     setActiveContactId(contactId);
     setActiveContactName(contactName);
     setReplyText('');
@@ -185,13 +211,12 @@ const MessagesDrawer = ({
   };
 
   const handleSend = async () => {
-    const recipientId = view === 'thread' ? activeContactId : null;
-    if (!replyText.trim() || !recipientId || !orgId) return;
+    if (!replyText.trim() || !activeContactId || !orgId) return;
     setSending(true);
     setReplyError('');
     try {
       await sendMessage(orgId, {
-        recipient_id: recipientId,
+        recipient_id: activeContactId,
         content: replyText.trim(),
         alert_type: 'athlete_reply',
         whatsapp_sent: false,
@@ -210,18 +235,16 @@ const MessagesDrawer = ({
   const canSend = !!(activeContactId && replyText.trim() && orgId);
   const hasContacts = contactList.length > 0;
 
-  // ── Render helpers ────────────────────────────────────────────────────────
+  // ── Header ────────────────────────────────────────────────────────────────
 
   const renderHeader = () => {
     if (view === 'thread') {
       return (
-        <Box sx={{ display: 'flex', alignItems: 'center', px: 1.5, py: 1.5, bgcolor: 'white', borderBottom: '1px solid #E2E8F0', flexShrink: 0, gap: 0.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', px: 1.5, py: 1.25, bgcolor: 'white', borderBottom: '1px solid #E2E8F0', flexShrink: 0, gap: 0.5 }}>
           <IconButton size="small" onClick={() => setView('list')} sx={{ color: '#64748B' }}>
             <ArrowBackIcon fontSize="small" />
           </IconButton>
-          <Avatar
-            sx={{ width: 30, height: 30, fontSize: '0.72rem', fontWeight: 700, bgcolor: avatarColor(activeContactName), mx: 0.5 }}
-          >
+          <Avatar sx={{ width: 30, height: 30, fontSize: '0.72rem', fontWeight: 700, bgcolor: avatarColor(activeContactName), mx: 0.5 }}>
             {avatarLetters(activeContactName)}
           </Avatar>
           <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1E293B', flexGrow: 1, fontSize: '0.9rem' }}>
@@ -261,11 +284,10 @@ const MessagesDrawer = ({
     );
   };
 
-  // ── Conversation list view ────────────────────────────────────────────────
+  // ── Panel 1: Conversation list ────────────────────────────────────────────
 
   const renderList = () => (
     <>
-      {/* New message compose panel */}
       {composing && hasContacts && (
         <Box sx={{ px: 2, py: 1.5, bgcolor: '#FFF7ED', borderBottom: '1px solid #FED7AA', flexShrink: 0 }}>
           <Typography variant="caption" sx={{ color: '#92400E', fontWeight: 600, display: 'block', mb: 1 }}>
@@ -287,9 +309,7 @@ const MessagesDrawer = ({
             </Select>
           </FormControl>
           <Button
-            fullWidth
-            size="small"
-            variant="contained"
+            fullWidth size="small" variant="contained"
             disabled={!newContactId}
             onClick={startNewConversation}
             sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#E65100' }, fontSize: '0.78rem', textTransform: 'none' }}
@@ -318,7 +338,6 @@ const MessagesDrawer = ({
         </Tabs>
       </Box>
 
-      {/* Conversation list */}
       <Box sx={{ flex: 1, overflowY: 'auto' }}>
         {filteredConversations.length === 0 ? (
           <Box sx={{ p: 3, textAlign: 'center' }}>
@@ -326,12 +345,9 @@ const MessagesDrawer = ({
               {filterTab === 'unread' ? 'Sin mensajes no leídos.' : filterTab === 'read' ? 'Sin conversaciones leídas.' : 'Sin conversaciones todavía.'}
             </Typography>
             {filterTab === 'all' && hasContacts && (
-              <Button
-                size="small"
-                variant="outlined"
+              <Button size="small" variant="outlined"
                 sx={{ mt: 2, fontSize: '0.78rem', borderColor: '#F57C00', color: '#F57C00', textTransform: 'none' }}
-                onClick={() => setComposing(true)}
-                startIcon={<EditIcon fontSize="small" />}
+                onClick={() => setComposing(true)} startIcon={<EditIcon fontSize="small" />}
               >
                 Iniciar conversación
               </Button>
@@ -340,8 +356,7 @@ const MessagesDrawer = ({
         ) : (
           <List disablePadding>
             {filteredConversations.map((conv, idx) => {
-              // Last message for preview
-              const lastMsg = conv.messages[0]; // messages are newest-first from API
+              const lastMsg = conv.messages[0]; // newest first from API
               const isLastFromMe = lastMsg?.sender_id === currentUserId;
               const preview = lastMsg?.content ?? '';
 
@@ -351,29 +366,19 @@ const MessagesDrawer = ({
                     <ListItemButton
                       onClick={() => openThread(conv.contactId, conv.contactName)}
                       sx={{
-                        px: 2,
-                        py: 1.25,
+                        px: 2, py: 1.25,
                         bgcolor: conv.unreadCount > 0 ? '#FFFBEB' : 'white',
                         '&:hover': { bgcolor: '#F8FAFC' },
                         alignItems: 'center',
                       }}
                     >
-                      <ListItemAvatar sx={{ minWidth: 46 }}>
+                      <ListItemAvatar sx={{ minWidth: 48 }}>
                         <Badge
                           badgeContent={conv.unreadCount > 0 ? conv.unreadCount : null}
-                          color="error"
-                          overlap="circular"
+                          color="error" overlap="circular"
                           anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
                         >
-                          <Avatar
-                            sx={{
-                              width: 38,
-                              height: 38,
-                              fontSize: '0.82rem',
-                              fontWeight: 700,
-                              bgcolor: avatarColor(conv.contactName),
-                            }}
-                          >
+                          <Avatar sx={{ width: 40, height: 40, fontSize: '0.82rem', fontWeight: 700, bgcolor: avatarColor(conv.contactName) }}>
                             {avatarLetters(conv.contactName)}
                           </Avatar>
                         </Badge>
@@ -381,10 +386,7 @@ const MessagesDrawer = ({
                       <ListItemText
                         primary={
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                            <Typography
-                              variant="body2"
-                              sx={{ fontWeight: conv.unreadCount > 0 ? 700 : 500, color: '#1E293B', fontSize: '0.875rem' }}
-                            >
+                            <Typography variant="body2" sx={{ fontWeight: conv.unreadCount > 0 ? 700 : 500, color: '#1E293B', fontSize: '0.875rem' }}>
                               {conv.contactName}
                             </Typography>
                             <Typography variant="caption" sx={{ color: '#9CA3AF', flexShrink: 0, ml: 1 }}>
@@ -393,18 +395,11 @@ const MessagesDrawer = ({
                           </Box>
                         }
                         secondary={
-                          <Typography
-                            variant="caption"
-                            sx={{
-                              color: conv.unreadCount > 0 ? '#374151' : '#9CA3AF',
-                              fontWeight: conv.unreadCount > 0 ? 600 : 400,
-                              display: 'block',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              maxWidth: 220,
-                            }}
-                          >
+                          <Typography variant="caption" sx={{
+                            color: conv.unreadCount > 0 ? '#374151' : '#9CA3AF',
+                            fontWeight: conv.unreadCount > 0 ? 600 : 400,
+                            display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 210,
+                          }}>
                             {isLastFromMe ? 'Tú: ' : ''}{preview}
                           </Typography>
                         }
@@ -422,12 +417,11 @@ const MessagesDrawer = ({
     </>
   );
 
-  // ── Thread view ───────────────────────────────────────────────────────────
+  // ── Panel 2: Thread view ──────────────────────────────────────────────────
 
   const renderThread = () => (
     <>
-      {/* Messages — scrollable, chronological */}
-      <Box sx={{ flex: 1, overflowY: 'auto', py: 1 }}>
+      <Box sx={{ flex: 1, overflowY: 'auto', py: 1.5, bgcolor: '#F8FAFC' }}>
         {threadMessages.length === 0 ? (
           <Box sx={{ p: 3, textAlign: 'center' }}>
             <Typography variant="body2" color="text.secondary">
@@ -435,37 +429,59 @@ const MessagesDrawer = ({
             </Typography>
           </Box>
         ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, px: 2 }}>
-            {threadMessages.map((msg) => {
-              const isFromMe = msg.sender_id === currentUserId;
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, px: 1.5 }}>
+            {threadMessages.map((msg, idx) => {
+              const isFromMe  = msg.sender_id === currentUserId;
+              const isRead    = !!msg.read_at;
+
+              // Date separator: show when this message is on a different day than the previous one
+              const prevMsg = threadMessages[idx - 1];
+              const showDateSep = idx === 0 || !isSameDay(msg.created_at, prevMsg.created_at);
+
               return (
-                <Box
-                  key={msg.id}
-                  sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: isFromMe ? 'flex-end' : 'flex-start',
-                  }}
-                >
-                  <Box
-                    sx={{
-                      maxWidth: '80%',
+                <React.Fragment key={msg.id}>
+                  {/* ── Date separator ── */}
+                  {showDateSep && (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', my: 1 }}>
+                      <Typography variant="caption" sx={{
+                        bgcolor: '#E2E8F0', color: '#64748B', borderRadius: '10px',
+                        px: 1.5, py: 0.25, fontSize: '0.7rem', fontWeight: 600, textTransform: 'capitalize',
+                      }}>
+                        {dateSeparatorLabel(msg.created_at)}
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {/* ── Message bubble ── */}
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: isFromMe ? 'flex-end' : 'flex-start' }}>
+                    <Box sx={{
+                      maxWidth: '82%',
                       bgcolor: isFromMe ? '#F57C00' : 'white',
                       color: isFromMe ? 'white' : '#1E293B',
                       borderRadius: isFromMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                      px: 1.5,
-                      py: 1,
+                      px: 1.5, py: 0.875,
                       boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
-                    }}
-                  >
-                    <Typography variant="body2" sx={{ fontSize: '0.84rem', lineHeight: 1.4, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                      {msg.content}
-                    </Typography>
+                    }}>
+                      <Typography variant="body2" sx={{ fontSize: '0.84rem', lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                        {msg.content}
+                      </Typography>
+                    </Box>
+
+                    {/* Timestamp + read receipt (only on sent messages) */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, mt: 0.25, mx: 0.5 }}>
+                      <Typography variant="caption" sx={{ color: '#9CA3AF', fontSize: '0.67rem' }}>
+                        {timeAgo(msg.created_at)}
+                      </Typography>
+                      {isFromMe && (
+                        isRead ? (
+                          <DoneAllIcon sx={{ fontSize: '0.85rem', color: '#F57C00' }} titleAccess="Leído" />
+                        ) : (
+                          <DoneIcon sx={{ fontSize: '0.85rem', color: '#CBD5E1' }} titleAccess="Enviado" />
+                        )
+                      )}
+                    </Box>
                   </Box>
-                  <Typography variant="caption" sx={{ color: '#9CA3AF', mt: 0.25, mx: 0.5, fontSize: '0.68rem' }}>
-                    {timeAgo(msg.created_at)}
-                  </Typography>
-                </Box>
+                </React.Fragment>
               );
             })}
             <div ref={threadBottomRef} />
@@ -473,7 +489,7 @@ const MessagesDrawer = ({
         )}
       </Box>
 
-      {/* Reply box — pinned at bottom */}
+      {/* Reply box */}
       <Box sx={{ px: 2, py: 1.5, bgcolor: 'white', borderTop: '1px solid #E2E8F0', flexShrink: 0 }}>
         {replyError && (
           <Typography variant="caption" color="error" sx={{ display: 'block', mb: 0.5 }}>
@@ -482,18 +498,12 @@ const MessagesDrawer = ({
         )}
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
           <TextField
-            fullWidth
-            multiline
-            maxRows={4}
-            size="small"
+            fullWidth multiline maxRows={4} size="small"
             placeholder={`Escribirle a ${activeContactName}...`}
             value={replyText}
             onChange={(e) => setReplyText(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
             }}
             sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.82rem', borderRadius: 2 } }}
           />
@@ -502,13 +512,10 @@ const MessagesDrawer = ({
             disabled={sending || !canSend}
             size="small"
             sx={{
-              bgcolor: '#F57C00',
-              color: 'white',
+              bgcolor: '#F57C00', color: 'white',
               '&:hover': { bgcolor: '#E65100' },
               '&.Mui-disabled': { bgcolor: '#E5E7EB', color: '#9CA3AF' },
-              width: 36,
-              height: 36,
-              flexShrink: 0,
+              width: 36, height: 36, flexShrink: 0,
             }}
           >
             {sending ? <CircularProgress size={16} color="inherit" /> : <SendIcon fontSize="small" />}
@@ -518,7 +525,7 @@ const MessagesDrawer = ({
     </>
   );
 
-  // ── Main render ───────────────────────────────────────────────────────────
+  // ── Root render ───────────────────────────────────────────────────────────
 
   return (
     <Drawer
