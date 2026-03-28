@@ -70,6 +70,61 @@ from core.tenancy import OrgTenantMixin
 _WRITE_ROLES = {"owner", "coach"}
 
 
+def _notify_coach_of_athlete_note(assignment, athlete_user, organization):
+    """
+    Send an InternalMessage to the athlete's coach when the athlete saves a
+    non-empty note on a workout assignment.
+
+    Recipient resolution (in order):
+      1. assignment.athlete.coach.user  — directly assigned coach
+      2. First active coach/owner Membership in the org  — fallback
+
+    No notification is sent if no coach user can be resolved.
+    """
+    from core.models import InternalMessage, Membership  # noqa: PLC0415
+
+    coach_user = None
+
+    # 1. Primary: athlete's assigned coach
+    if assignment.athlete and assignment.athlete.coach_id:
+        try:
+            coach_user = assignment.athlete.coach.user
+        except Exception:  # noqa: BLE001
+            pass
+
+    # 2. Fallback: first active coach/owner in the org
+    if coach_user is None:
+        m = (
+            Membership.objects.filter(
+                organization=organization,
+                role__in=_WRITE_ROLES,
+                is_active=True,
+            )
+            .select_related("user")
+            .first()
+        )
+        if m:
+            coach_user = m.user
+
+    if not coach_user or coach_user == athlete_user:
+        return  # nothing to do
+
+    workout_name = (
+        assignment.planned_workout.name
+        if assignment.planned_workout
+        else "tu sesión"
+    )
+    InternalMessage.objects.create(
+        organization=organization,
+        sender=athlete_user,
+        recipient=coach_user,
+        content=f"💬 Nota en '{workout_name}': {assignment.athlete_notes}",
+        alert_type="athlete_session_note",
+        reference_id=assignment.pk,
+        reference_date=assignment.scheduled_date,
+    )
+
+
 class RaceEventViewSet(OrgTenantMixin, viewsets.ModelViewSet):
     """
     CRUD for organization-scoped RaceEvent catalog.
@@ -412,11 +467,25 @@ class WorkoutAssignmentViewSet(
         # Athletes can update their own (queryset already restricts to own).
         # The athlete serializer enforces write-only on athlete_notes + athlete_moved_date.
         # Coaches can update any assignment in the org.
+
+        # Capture current athlete_notes before save (for change detection)
+        old_athlete_notes = serializer.instance.athlete_notes or ""
+
         try:
             serializer.save()
         except DjangoValidationError as exc:
             detail = exc.message_dict if hasattr(exc, "message_dict") else {"detail": str(exc)}
             raise DRFValidationError(detail=detail)
+
+        # Notify coach when athlete saves a non-empty note that has changed
+        instance = serializer.instance
+        new_notes = instance.athlete_notes or ""
+        if (
+            self.membership.role == "athlete"
+            and new_notes
+            and new_notes != old_athlete_notes
+        ):
+            _notify_coach_of_athlete_note(instance, self.request.user, self.organization)
 
     @action(detail=True, methods=["post"], url_path="push")
     def push(self, request, *args, **kwargs):

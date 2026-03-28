@@ -9,9 +9,12 @@
  *   - Actual distance (km)
  *   - Actual elevation gain D+ (optional)
  *   - RPE 1–5 (emoji selector)
+ *   - Nota para el coach (athlete_notes) — optional free-text
+ *     When non-empty, the backend sends it as an InternalMessage to the coach
+ *     with a deep-link to this session.
  *
  * If the assignment already has actual_duration_seconds (e.g. from Strava),
- * those fields are pre-filled and disabled — only RPE is requested.
+ * those fields are pre-filled and disabled — only RPE + note are requested.
  *
  * Props:
  *   open       {boolean}
@@ -56,6 +59,7 @@ export function CompleteWorkoutModal({ open, onClose, onSubmit, assignment }) {
   const [distanceKm, setDistanceKm] = useState('');
   const [elevationM, setElevationM] = useState('');
   const [rpe, setRpe] = useState(null);
+  const [noteText, setNoteText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -75,6 +79,7 @@ export function CompleteWorkoutModal({ open, onClose, onSubmit, assignment }) {
       setElevationM('');
     }
     setRpe(assignment.rpe ?? null);
+    setNoteText(assignment.athlete_notes ?? '');
     setError('');
   }, [open, assignment, hasDeviceData]);
 
@@ -94,6 +99,7 @@ export function CompleteWorkoutModal({ open, onClose, onSubmit, assignment }) {
         actual_distance_meters: distanceMeters || null,
         actual_elevation_gain: elevation,
         rpe: rpe,
+        athlete_notes: noteText.trim() || '',
       });
       onClose();
     } catch {
@@ -217,6 +223,34 @@ export function CompleteWorkoutModal({ open, onClose, onSubmit, assignment }) {
             </Button>
           ))}
         </Box>
+
+        {/* Note to coach */}
+        <Typography variant="caption" sx={{ color: '#475569', fontWeight: 600, display: 'block', mt: 2, mb: 0.5 }}>
+          Nota para tu coach <span style={{ fontWeight: 400, color: '#94A3B8' }}>(opcional)</span>
+        </Typography>
+        <TextField
+          fullWidth
+          multiline
+          minRows={2}
+          maxRows={4}
+          size="small"
+          placeholder="¿Algo que quieras contarle a tu coach sobre esta sesión?"
+          value={noteText}
+          onChange={(e) => setNoteText(e.target.value)}
+          sx={{
+            '& .MuiOutlinedInput-root': {
+              fontSize: '0.83rem',
+              borderRadius: 2,
+              '&.Mui-focused fieldset': { borderColor: '#f97316' },
+            },
+          }}
+        />
+
+        {noteText.trim() && (
+          <Typography variant="caption" sx={{ color: '#f97316', fontWeight: 600, display: 'block', mt: 0.5 }}>
+            💬 Tu nota llegará al coach con un link directo a esta sesión
+          </Typography>
+        )}
 
         {error && (
           <Typography variant="caption" sx={{ color: '#dc2626', display: 'block', mt: 1 }}>
