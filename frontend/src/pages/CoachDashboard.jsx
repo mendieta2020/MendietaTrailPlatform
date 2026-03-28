@@ -26,6 +26,7 @@ import AssignmentCalendar from '../components/AssignmentCalendar';
 import ManageConnectionsModal from '../components/roster/ManageConnectionsModal';
 import { useOrg } from '../context/OrgContext';
 import { listExternalIdentities, getDashboardAnalytics } from '../api/p1';
+import { getCoachBriefing } from '../api/teams';
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 
@@ -262,6 +263,66 @@ function PmcSection({ orgId }) {
   );
 }
 
+// ── Coach Briefing Card (PR-148) ──────────────────────────────────────────────
+
+function CoachBriefingCard({ orgId }) {
+  const [briefing, setBriefing] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!orgId) return;
+    getCoachBriefing(orgId)
+      .then((res) => setBriefing(res.data))
+      .catch(() => {});
+  }, [orgId]);
+
+  if (!briefing || briefing.athletes_total === 0) return null;
+
+  const dateLabel = briefing.yesterday_date
+    ? new Date(briefing.yesterday_date + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
+    : '';
+
+  const rows = [
+    {
+      icon: '✅',
+      text: `${briefing.athletes_trained_yesterday}/${briefing.athletes_total} atletas entrenaron`,
+    },
+    briefing.athletes_overloaded > 0 && {
+      icon: '🔵',
+      text: `${briefing.athletes_overloaded} con sobrecarga esta semana`,
+    },
+    briefing.athletes_inactive_4d > 0 && {
+      icon: '⚠️',
+      text: `${briefing.athletes_inactive_4d} sin actividad (4+ días)`,
+    },
+    briefing.unread_messages > 0 && {
+      icon: '💬',
+      text: `${briefing.unread_messages} mensaje${briefing.unread_messages !== 1 ? 's' : ''} sin leer`,
+    },
+  ].filter(Boolean);
+
+  return (
+    <Paper
+      sx={{
+        p: 2.5, mb: 3, borderRadius: 3,
+        border: '1px solid', borderColor: 'divider',
+        boxShadow: '0 1px 3px 0 rgba(0,0,0,0.06)',
+        borderLeft: '4px solid #F57C00',
+      }}
+    >
+      <Typography variant="subtitle2" fontWeight={700} color="text.primary" sx={{ mb: 1.5 }}>
+        Resumen de Ayer — {dateLabel}
+      </Typography>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+        {rows.map((row, i) => (
+          <Typography key={i} variant="body2" color="text.secondary">
+            {row.icon} {row.text}
+          </Typography>
+        ))}
+      </Box>
+    </Paper>
+  );
+}
+
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 
 export default function CoachDashboard() {
@@ -378,6 +439,9 @@ export default function CoachDashboard() {
           </Box>
         </Box>
       </Paper>
+
+      {/* PR-148: Morning briefing card */}
+      <CoachBriefingCard orgId={activeOrg.org_id} />
 
       {/* Analytics section — key ensures fresh state on org switch */}
       <PmcSection key={activeOrg.org_id} orgId={activeOrg.org_id} />

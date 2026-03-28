@@ -35,6 +35,7 @@ from core.models import (
     AthleteCoachAssignment,
     AthleteNotification,
     Coach,
+    InternalMessage,
     Membership,
     Team,
     WorkoutAssignment,
@@ -330,7 +331,7 @@ class TeamViewSet(OrgTenantMixin, viewsets.ModelViewSet):
         athlete.save(update_fields=["team"])
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-    # ── Compliance week (PR-145h) ─────────────────────────────────────────────
+    # ── Compliance week (PR-145h / PR-148) ───────────────────────────────────────
 
     @action(detail=True, methods=["get"], url_path="compliance-week")
     def compliance_week(self, request, *args, **kwargs):
@@ -340,12 +341,12 @@ class TeamViewSet(OrgTenantMixin, viewsets.ModelViewSet):
         Returns a 7-day compliance grid (Mon→Sun) for every athlete in the team.
         week param = ISO date of any day in the desired week (defaults to today).
 
-        Colors: green (≥90%), yellow (70-89%), red (<70%),
-                blue (≥120%), gray (planned, no real data), null (no assignment).
-        Alert:  "inactive_4d" | "overload" | null.
+        PR-148 changes:
+        - compliance_pct is now real (actual / planned ratio avg), not binary count.
+        - sessions_per_day added: days with ≥2 non-canceled/skipped sessions.
+        - compliance_color added at the athlete level (red/yellow/green/blue).
 
-        Single optimized query: fetches all assignments for team+week in one shot,
-        then groups in Python.
+        Single bulk query: all assignments for team+week, grouped in Python.
         """
         team = get_object_or_404(Team, pk=self.kwargs["pk"], organization=self.organization)
 
@@ -367,7 +368,7 @@ class TeamViewSet(OrgTenantMixin, viewsets.ModelViewSet):
         )
         athlete_ids = [a.pk for a in athletes]
 
-        # Single query: all assignments for these athletes in this week.
+        # Single bulk query: all assignments for these athletes in this week.
         assignments = list(
             WorkoutAssignment.objects.filter(
                 organization=self.organization,
@@ -377,17 +378,28 @@ class TeamViewSet(OrgTenantMixin, viewsets.ModelViewSet):
             ).select_related("planned_workout", "athlete")
         )
 
-        # Index by (athlete_id, date).
-        from collections import defaultdict  # noqa: PLC0415
+        from collections import defaultdict, Counter  # noqa: PLC0415
+
+        # For dot display: last assignment per (athlete, day) wins.
         by_athlete_date = defaultdict(dict)
+        # All COMPLETED assignments per athlete (for real compliance_pct).
+        completed_by_athlete = defaultdict(list)
+        # Count of non-CANCELED/SKIPPED sessions per athlete per day.
+        sessions_count_by_athlete = defaultdict(Counter)
+
+        _EXCLUDED = {WorkoutAssignment.Status.CANCELED, WorkoutAssignment.Status.SKIPPED}
+
         for a in assignments:
             by_athlete_date[a.athlete_id][a.scheduled_date] = a
+            if a.status == WorkoutAssignment.Status.COMPLETED:
+                completed_by_athlete[a.athlete_id].append(a)
+            if a.status not in _EXCLUDED:
+                sessions_count_by_athlete[a.athlete_id][a.scheduled_date.isoformat()] += 1
 
         def _color(assignment):
             if assignment.status != WorkoutAssignment.Status.COMPLETED:
                 return "gray"
-            color = assignment.compliance_color
-            return color if color else "gray"
+            return assignment.compliance_color or "gray"
 
         def _day_entry(assignment):
             return {
@@ -396,13 +408,37 @@ class TeamViewSet(OrgTenantMixin, viewsets.ModelViewSet):
                 "workout_name": assignment.planned_workout.name if assignment.planned_workout else "",
             }
 
+        def _assignment_compliance_pct(a):
+            """Real compliance % for a single COMPLETED assignment."""
+            if not a.actual_duration_seconds and not a.actual_distance_meters:
+                return 100.0  # Completed manually without sync — trust the athlete
+            pw = a.planned_workout
+            ratios = []
+            if pw and pw.estimated_duration_seconds and a.actual_duration_seconds:
+                ratios.append(a.actual_duration_seconds / pw.estimated_duration_seconds)
+            if pw and pw.estimated_distance_meters and a.actual_distance_meters:
+                ratios.append(a.actual_distance_meters / pw.estimated_distance_meters)
+            if not ratios:
+                return 100.0
+            return (sum(ratios) / len(ratios)) * 100
+
+        def _week_compliance_color(pct):
+            if pct < 70:
+                return "red"
+            if pct < 100:
+                return "yellow"
+            if pct < 120:
+                return "green"
+            return "blue"
+
         athletes_data = []
         for athlete in athletes:
             day_map = by_athlete_date.get(athlete.pk, {})
+            all_completed = completed_by_athlete.get(athlete.pk, [])
+            sessions_count = sessions_count_by_athlete.get(athlete.pk, Counter())
+
             days = {}
-            completed = 0
-            total = 0
-            overload_days = 0   # days where compliance_color == "blue" (>=120% effort)
+            overload_days = 0   # days where per-day compliance_color == "blue"
             consecutive_incomplete = 0
             max_consecutive = 0
 
@@ -410,39 +446,44 @@ class TeamViewSet(OrgTenantMixin, viewsets.ModelViewSet):
                 assignment = day_map.get(day)
                 if assignment is None:
                     days[day.isoformat()] = None
-                    # Missing assignment doesn't count as incomplete streak
                 else:
                     days[day.isoformat()] = _day_entry(assignment)
-                    total += 1
                     if assignment.status == WorkoutAssignment.Status.COMPLETED:
-                        completed += 1
                         consecutive_incomplete = 0
-                        # Track blue (overload) days — actual effort >= 120% of planned
                         if assignment.compliance_color == "blue":
                             overload_days += 1
-                    else:
+                    elif assignment.status not in _EXCLUDED:
                         consecutive_incomplete += 1
                         max_consecutive = max(max_consecutive, consecutive_incomplete)
 
-            compliance_pct = round((completed / total * 100) if total > 0 else 0)
+            # Real compliance_pct: mean of actual/planned ratios across all completed assignments.
+            completed = len(all_completed)
+            total = sum(sessions_count.values())
+            pct_list = [_assignment_compliance_pct(a) for a in all_completed]
+            compliance_pct = round(sum(pct_list) / len(pct_list)) if pct_list else 0
+            compliance_color = _week_compliance_color(compliance_pct) if completed > 0 else "gray"
 
-            # Alert logic (priority order: inactive > overload > praise > none)
-            # overload: >= 4 days this week where actual effort exceeded plan by >=20%
+            # Multi-session indicator: days with ≥2 sessions this week.
+            sessions_per_day = {date: cnt for date, cnt in sessions_count.items() if cnt >= 2}
+
+            # Alert logic (priority: inactive > overload > praise > none)
             if max_consecutive >= 4:
                 alert = "inactive_4d"
             elif overload_days >= 4:
                 alert = "overload"
             elif compliance_pct >= 90 and completed >= 1:
-                # Good week: coach can send praise/kudos
                 alert = "praise"
             else:
                 alert = None
 
             athletes_data.append({
                 "athlete_id": athlete.pk,
-                "user_id": athlete.user_id,  # User PK — needed for messaging
+                "user_id": athlete.user_id,
                 "athlete_name": (athlete.user.get_full_name() or athlete.user.username),
+                "phone_number": athlete.phone_number or "",
                 "days": days,
+                "sessions_per_day": sessions_per_day,
+                "compliance_color": compliance_color,
                 "summary": {
                     "completed": completed,
                     "total": total,
@@ -737,3 +778,105 @@ class CoachNotifyAthleteDeviceView(APIView):
             },
         )
         return Response({"ok": True, "created": created})
+
+
+class CoachBriefingView(OrgTenantMixin, APIView):
+    """
+    GET /api/p1/orgs/<org_id>/coach-briefing/
+
+    Morning briefing for coaches and owners: yesterday's training summary,
+    overloaded and inactive athletes, and unread message count.
+
+    PR-148: All queries are bulk (no loops). Organization-scoped (fail-closed).
+    Roles: coach, owner only.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if getattr(self, "swagger_fake_view", False):
+            return
+        self.resolve_membership(self.kwargs["org_id"])
+
+    def get(self, request, org_id):
+        if self.membership.role not in {"owner", "coach"}:
+            raise PermissionDenied("Only coaches and owners can access the briefing.")
+
+        org = self.organization
+        today = datetime.date.today()
+        yesterday = today - datetime.timedelta(days=1)
+        week_start = today - datetime.timedelta(days=today.weekday())
+        four_days_ago = today - datetime.timedelta(days=4)
+
+        # Total athletes in org visible to the coach (same set as Plantilla roster).
+        athletes_total = Membership.objects.filter(
+            organization=org,
+            role=Membership.Role.ATHLETE,
+            is_active=True,
+        ).count()
+
+        # Athletes who completed at least 1 assignment yesterday.
+        athletes_trained_yesterday = (
+            WorkoutAssignment.objects.filter(
+                organization=org,
+                scheduled_date=yesterday,
+                status=WorkoutAssignment.Status.COMPLETED,
+            )
+            .values("athlete_id")
+            .distinct()
+            .count()
+        )
+
+        # Athletes with at least 1 blue (≥120% effort) assignment this week.
+        athletes_overloaded = (
+            WorkoutAssignment.objects.filter(
+                organization=org,
+                scheduled_date__range=(week_start, today),
+                status=WorkoutAssignment.Status.COMPLETED,
+                compliance_color="blue",
+            )
+            .values("athlete_id")
+            .distinct()
+            .count()
+        )
+
+        # Athletes with no COMPLETED assignment in the last 4 days.
+        active_4d_ids = set(
+            WorkoutAssignment.objects.filter(
+                organization=org,
+                scheduled_date__range=(four_days_ago, today),
+                status=WorkoutAssignment.Status.COMPLETED,
+            )
+            .values_list("athlete_id", flat=True)
+            .distinct()
+        )
+        all_athlete_ids = set(
+            Athlete.objects.filter(organization=org, is_active=True).values_list("pk", flat=True)
+        )
+        athletes_inactive_4d = len(all_athlete_ids - active_4d_ids)
+
+        # Unread InternalMessages addressed to the requesting user in this org.
+        unread_messages = InternalMessage.objects.filter(
+            organization=org,
+            recipient=request.user,
+            read_at__isnull=True,
+        ).count()
+
+        logger.info(
+            "coach_briefing_fetched",
+            extra={
+                "event": "coach_briefing_fetched",
+                "organization_id": org.id,
+                "user_id": request.user.id,
+                "outcome": "ok",
+            },
+        )
+        return Response({
+            "yesterday_date": yesterday.isoformat(),
+            "athletes_trained_yesterday": athletes_trained_yesterday,
+            "athletes_total": athletes_total,
+            "athletes_overloaded": athletes_overloaded,
+            "athletes_inactive_4d": athletes_inactive_4d,
+            "unread_messages": unread_messages,
+        })

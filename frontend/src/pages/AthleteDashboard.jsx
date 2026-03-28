@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box, Typography, Paper, Grid, CircularProgress, Chip,
-  List, ListItem, ListItemIcon, ListItemText, Button, Alert
+  List, ListItem, ListItemIcon, ListItemText, Button, Alert,
+  LinearProgress,
 } from '@mui/material';
 import {
   CheckCircle, RadioButtonUnchecked, DirectionsRun, WbSunny,
-  CreditCard, ArrowForward, DevicesOther
+  CreditCard, ArrowForward, DevicesOther, LocalFireDepartment,
 } from '@mui/icons-material';
 import AthleteLayout from '../components/AthleteLayout';
 import useWeather from '../hooks/useWeather';
@@ -263,6 +264,48 @@ const DeviceBanner = ({ deviceStatus, onDismiss }) => {
   );
 };
 
+// ─── Weekly Pulse (PR-148) ─────────────────────────────────────────────────────
+const WeeklyPulse = ({ weeklySummary, streak }) => {
+  if (!weeklySummary) return null;
+  const { sessions_completed, sessions_planned, total_km } = weeklySummary;
+  if (sessions_completed === 0 && total_km === 0) return null;
+
+  const pct = sessions_planned > 0
+    ? Math.min(Math.round((sessions_completed / sessions_planned) * 100), 150)
+    : 0;
+  const barColor =
+    pct >= 120 ? '#3B82F6'
+    : pct >= 100 ? '#22C55E'
+    : pct >= 70  ? '#F59E0B'
+    : '#EF4444';
+
+  return (
+    <Paper sx={{ p: 2.5, mt: 2, borderRadius: 2 }}>
+      {streak >= 3 && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1.5 }}>
+          <LocalFireDepartment sx={{ color: '#F97316', fontSize: 20 }} />
+          <Typography variant="body2" sx={{ color: '#F97316', fontWeight: 700 }}>
+            {streak} días consecutivos
+          </Typography>
+        </Box>
+      )}
+      <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 600, display: 'block', mb: 0.75 }}>
+        Esta semana: {sessions_completed}/{sessions_planned} sesiones
+        {total_km > 0 ? ` · ${total_km} km` : ''}
+      </Typography>
+      <LinearProgress
+        variant="determinate"
+        value={Math.min(pct, 100)}
+        sx={{
+          height: 8, borderRadius: 4,
+          bgcolor: 'rgba(0,0,0,0.08)',
+          '& .MuiLinearProgress-bar': { bgcolor: barColor, borderRadius: 4 },
+        }}
+      />
+    </Paper>
+  );
+};
+
 // ─── Main component ────────────────────────────────────────────────────────────
 const AthleteDashboard = ({ user }) => {
   const { temp, description: weatherDesc, city, loading: weatherLoading } = useWeather();
@@ -380,6 +423,12 @@ const AthleteDashboard = ({ user }) => {
           {/* ── Today's workout card ── */}
           <Box sx={{ mb: 3 }}>
             <WorkoutCard workout={workout} loading={todayLoading} />
+            {!todayLoading && (
+              <WeeklyPulse
+                weeklySummary={todayData?.weekly_summary}
+                streak={todayData?.consecutive_days_active ?? 0}
+              />
+            )}
           </Box>
 
           {/* ── Onboarding checklist ── */}

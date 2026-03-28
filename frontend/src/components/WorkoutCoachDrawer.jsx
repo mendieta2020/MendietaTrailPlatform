@@ -192,9 +192,17 @@ export default function WorkoutCoachDrawer({
   })();
 
   // ── Coach comment state ────────────────────────────────────────────────────
-  // Initialized from props; drawer is remounted via key={event?.id} in Calendar
+  // Reset when switching assignments (Plantilla reuses same instance; Calendar
+  // remounts via key — this derived-state pattern covers both without useEffect).
+  const [prevAssignmentId, setPrevAssignmentId] = useState(assignment?.id);
   const [commentText, setCommentText] = useState(assignment?.coach_comment ?? '');
   const [commentStatus, setCommentStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
+
+  if (assignment?.id !== prevAssignmentId) {
+    setPrevAssignmentId(assignment?.id);
+    setCommentText(assignment?.coach_comment ?? '');
+    setCommentStatus(null);
+  }
 
   const handleSendComment = async () => {
     if (!orgId || !assignment?.id) return;

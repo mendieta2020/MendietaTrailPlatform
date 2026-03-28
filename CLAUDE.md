@@ -32,8 +32,11 @@ PR queue:
 - PR-132 ✅ MERGED — Billing views: status, subscribe, cancel
 - PR-133 ✅ MERGED — CoachPricingPlan + AthleteSubscription models
 - PR-134 ✅ MERGED — Coach connects MercadoPago account (MP OAuth via OrgOAuthCredential)
-- PR-135 ⏳ NEXT — Athlete invitation + MP preapproval creation flow
-- PR-136 ⏳ — AthleteSubscription webhook handler (payment status sync)
+- PR-135 ✅ MERGED — Athlete invitation + MP preapproval creation flow
+- PR-136 ✅ MERGED — AthleteSubscription webhook handler (payment status sync)
+- PR-147 ✅ MERGED — Smart Alerts + Internal Messaging
+- PR-148 ✅ DONE — Real compliance (actual/planned), bulk query, sessions_per_day, streak, weekly pulse, coach briefing
+- PR-149 ⏳ NEXT
 
 ## After each PR
 Update .claude/agent-memory-local/cto/project_roadmap_state.md and commit it with the PR.

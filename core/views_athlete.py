@@ -6,8 +6,10 @@ Athlete-facing API views. All endpoints are athlete-only (role-gated).
 Tenancy: Membership is required; organization is resolved from membership.
 Law 6: no PII or secrets in logs.
 """
+import datetime
 import logging
 
+from django.db.models import Sum
 from django.utils import timezone
 
 from rest_framework.permissions import IsAuthenticated
@@ -107,8 +109,63 @@ class AthleteTodayView(APIView):
             },
         )
 
+        # ── Weekly summary (PR-148) ──────────────────────────────────────────────
+        week_start = today - datetime.timedelta(days=today.weekday())
+        _EXCLUDED = [WorkoutAssignment.Status.CANCELED, WorkoutAssignment.Status.SKIPPED]
+
+        week_qs = WorkoutAssignment.objects.filter(
+            organization=org,
+            athlete__user=request.user,
+            scheduled_date__range=(week_start, today),
+        ).exclude(status__in=_EXCLUDED)
+
+        sessions_planned = week_qs.count()
+        completed_qs = week_qs.filter(status=WorkoutAssignment.Status.COMPLETED)
+        sessions_completed = completed_qs.count()
+
+        totals = completed_qs.aggregate(
+            total_distance=Sum("actual_distance_meters"),
+            total_duration=Sum("actual_duration_seconds"),
+        )
+        total_km = round((totals["total_distance"] or 0) / 1000, 1)
+        total_duration_min = int((totals["total_duration"] or 0) / 60)
+
+        weekly_summary = {
+            "sessions_completed": sessions_completed,
+            "sessions_planned": sessions_planned,
+            "total_km": total_km,
+            "total_duration_min": total_duration_min,
+        }
+
+        # ── Consecutive days active / streak (PR-148) ────────────────────────
+        yesterday = today - datetime.timedelta(days=1)
+        completed_dates = list(
+            WorkoutAssignment.objects.filter(
+                organization=org,
+                athlete__user=request.user,
+                status=WorkoutAssignment.Status.COMPLETED,
+                scheduled_date__lte=yesterday,
+            )
+            .values_list("scheduled_date", flat=True)
+            .distinct()
+            .order_by("-scheduled_date")[:366]
+        )
+
+        streak = 0
+        check = yesterday
+        for d in completed_dates:
+            if d == check:
+                streak += 1
+                check = d - datetime.timedelta(days=1)
+            else:
+                break
+
         if not has_workout:
-            return Response({"has_workout": False})
+            return Response({
+                "has_workout": False,
+                "weekly_summary": weekly_summary,
+                "consecutive_days_active": streak,
+            })
 
         pw = assignment.planned_workout
         return Response(
@@ -119,6 +176,8 @@ class AthleteTodayView(APIView):
                     "description": assignment.coach_notes or pw.description,
                     "date": str(assignment.scheduled_date),
                 },
+                "weekly_summary": weekly_summary,
+                "consecutive_days_active": streak,
             }
         )
 
