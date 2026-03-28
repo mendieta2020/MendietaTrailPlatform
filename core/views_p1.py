@@ -976,6 +976,8 @@ class WorkoutAssignmentViewSet(
                 recipient_id=assignment.athlete.user_id,
                 content=f"📋 Comentario en '{workout_name}': {comment}",
                 alert_type="session_comment",
+                reference_id=assignment.pk,
+                reference_date=assignment.scheduled_date,
             )
 
         return Response({

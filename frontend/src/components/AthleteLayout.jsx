@@ -80,6 +80,13 @@ const AthleteLayout = ({ children, user }) => {
     window.location.href = '/';
   };
 
+  // Athlete clicks "Ver sesión" link inside a session_comment message from coach
+  const handleAthleteSessionClick = (referenceId, referenceDate) => {
+    sessionStorage.setItem('openAssignmentId', String(referenceId));
+    if (referenceDate) sessionStorage.setItem('openAssignmentDate', referenceDate);
+    navigate('/athlete/training');
+  };
+
   const initials = user?.first_name && user?.last_name
     ? `${user.first_name[0]}${user.last_name[0]}`.toUpperCase()
     : (user?.username?.[0] ?? '?').toUpperCase();
@@ -222,6 +229,7 @@ const AthleteLayout = ({ children, user }) => {
         orgId={orgId}
         currentUserId={user?.id}
         onMessageSent={fetchMessages}
+        onSessionClick={handleAthleteSessionClick}
       />
     </Box>
   );

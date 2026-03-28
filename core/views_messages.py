@@ -55,6 +55,8 @@ def _message_to_dict(msg):
         "whatsapp_sent": msg.whatsapp_sent,
         "read_at": msg.read_at.isoformat() if msg.read_at else None,
         "created_at": msg.created_at.isoformat(),
+        "reference_id": msg.reference_id,
+        "reference_date": msg.reference_date.isoformat() if msg.reference_date else None,
     }
 
 

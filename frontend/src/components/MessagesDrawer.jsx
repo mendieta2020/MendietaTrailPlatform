@@ -1,5 +1,5 @@
 /**
- * MessagesDrawer.jsx — PR-147 (v4 — polish)
+ * MessagesDrawer.jsx — PR-147 (v5 — session deep-link)
  *
  * Two-panel WhatsApp-style messaging:
  *
@@ -13,6 +13,8 @@
  *   - Full chronological exchange with ONE person
  *   - Date separators: "Hoy", "Ayer", "Lunes 24 mar"
  *   - Read receipts: ✓ sent · ✓✓ orange = read (only on own messages)
+ *   - Session deep-link: messages with alert_type="session_comment" show a
+ *     "Ver sesión →" chip; tapping calls onSessionClick(reference_id, reference_date)
  *   - Auto-marks conversation as read on thread open
  *   - Reply box pinned at bottom (Enter to send, Shift+Enter = newline)
  */
@@ -48,6 +50,7 @@ import {
   ArrowBack as ArrowBackIcon,
   Done as DoneIcon,
   DoneAll as DoneAllIcon,
+  OpenInNew as OpenInNewIcon,
 } from '@mui/icons-material';
 import { sendMessage, markMessageRead } from '../api/messages';
 
@@ -110,6 +113,7 @@ const MessagesDrawer = ({
   orgId,
   currentUserId,
   onMessageSent,
+  onSessionClick,     // (referenceId, referenceDate, contactId) → void
 }) => {
   const contactList = contacts.length > 0 ? contacts : (coaches ?? []);
 
@@ -465,6 +469,28 @@ const MessagesDrawer = ({
                       <Typography variant="body2" sx={{ fontSize: '0.84rem', lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                         {msg.content}
                       </Typography>
+
+                      {/* Session deep-link chip */}
+                      {msg.alert_type === 'session_comment' && msg.reference_id && onSessionClick && (
+                        <Box
+                          onClick={() => {
+                            onClose();
+                            onSessionClick(msg.reference_id, msg.reference_date, activeContactId);
+                          }}
+                          sx={{
+                            display: 'inline-flex', alignItems: 'center', gap: 0.4,
+                            mt: 0.75, cursor: 'pointer',
+                            bgcolor: isFromMe ? 'rgba(255,255,255,0.2)' : '#F1F5F9',
+                            borderRadius: '8px', px: 1, py: 0.3,
+                            '&:hover': { bgcolor: isFromMe ? 'rgba(255,255,255,0.3)' : '#E2E8F0' },
+                          }}
+                        >
+                          <OpenInNewIcon sx={{ fontSize: '0.72rem', color: isFromMe ? 'rgba(255,255,255,0.9)' : '#F57C00' }} />
+                          <Typography variant="caption" sx={{ fontSize: '0.72rem', fontWeight: 600, color: isFromMe ? 'rgba(255,255,255,0.9)' : '#F57C00' }}>
+                            Ver sesión
+                          </Typography>
+                        </Box>
+                      )}
                     </Box>
 
                     {/* Timestamp + read receipt (only on sent messages) */}

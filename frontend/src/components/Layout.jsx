@@ -92,6 +92,7 @@ const Layout = ({ children }) => {
             .filter((a) => a.user_id)
             .map((a) => ({
               user_id: a.user_id,
+              athlete_id: a.id,   // Athlete model PK — used for calendarSelectedTarget
               name: `${a.first_name ?? ''} ${a.last_name ?? ''}`.trim() || a.email || 'Atleta',
             }))
         );
@@ -112,6 +113,18 @@ const Layout = ({ children }) => {
         })
         .catch(() => {});
     });
+  };
+
+  // Coach clicks "Ver sesión" link inside a session_comment message
+  const handleCoachSessionClick = (referenceId, referenceDate, contactUserId) => {
+    // Navigate calendar to the right athlete + auto-open that assignment's drawer
+    const athlete = athletes.find((a) => a.user_id === contactUserId);
+    if (athlete) {
+      sessionStorage.setItem('calendarSelectedTarget', `a:${athlete.athlete_id}`);
+    }
+    sessionStorage.setItem('calendarOpenAssignment', String(referenceId));
+    if (referenceDate) sessionStorage.setItem('calendarOpenAssignmentDate', referenceDate);
+    navigate('/calendar');
   };
 
   const isAdminOrOwner = userRole === 'owner' || userRole === 'admin';
@@ -255,6 +268,7 @@ const Layout = ({ children }) => {
         orgId={orgId}
         currentUserId={userInfo?.id}
         onMessageSent={fetchCoachMessages}
+        onSessionClick={handleCoachSessionClick}
       />
 
       {/* MENÚ LATERAL (DRAWER) */}

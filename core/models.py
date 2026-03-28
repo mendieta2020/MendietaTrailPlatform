@@ -3321,6 +3321,9 @@ class InternalMessage(models.Model):
     alert_type = models.CharField(max_length=30, blank=True, default='')
     whatsapp_sent = models.BooleanField(default=False)
     read_at = models.DateTimeField(null=True, blank=True)
+    # PR-147b: session deep-link — WorkoutAssignment PK and its scheduled date
+    reference_id = models.PositiveIntegerField(null=True, blank=True)
+    reference_date = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -491,6 +491,30 @@ export default function CalendarPage() {
       );
   }, [orgId, selectedTarget, dateFrom, dateTo]);
 
+  // Deep-link from MessagesDrawer:
+  // Step 1 (mount-only) — navigate to the right month so the correct events are fetched.
+  // Step 2 (data-watch) — once events load, find and open the target assignment drawer.
+  // Both setState calls are conditional one-shots driven by sessionStorage flags;
+  // they cannot loop. The rule suppression is intentional and safe here.
+  useEffect(() => {
+    const assignmentDate = sessionStorage.getItem('calendarOpenAssignmentDate');
+    if (!assignmentDate) return;
+    const targetDate = new Date(assignmentDate + 'T00:00:00');
+    sessionStorage.removeItem('calendarOpenAssignmentDate');
+    setCurrentDate(targetDate); // eslint-disable-line react-hooks/set-state-in-effect
+  }, []); // intentionally mount-only
+
+  useEffect(() => {
+    const assignmentId = sessionStorage.getItem('calendarOpenAssignment');
+    if (!assignmentId || eventsState.loading || eventsState.data.length === 0) return;
+    const targetId = parseInt(assignmentId, 10);
+    const event = eventsState.data.find((e) => e.id === targetId);
+    if (event) {
+      sessionStorage.removeItem('calendarOpenAssignment');
+      setSelectedEvent(event); // eslint-disable-line react-hooks/set-state-in-effect
+    }
+  }, [eventsState.data, eventsState.loading]);
+
   // ── Drag handlers ─────────────────────────────────────────────────────────
 
   const handleDragStart = useCallback((workout) => {
