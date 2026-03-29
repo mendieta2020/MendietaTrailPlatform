@@ -68,3 +68,4 @@ sentry-sdk[django,celery]==2.54.0
 pytest==9.0.2
 pytest-django==4.12.0
 django-redis==5.4.0
+google-auth>=2.0.0

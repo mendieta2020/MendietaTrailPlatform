@@ -511,14 +511,29 @@ class InvitationDetailView(APIView):
         if invitation.status == AthleteInvitation.Status.EXPIRED:
             return Response({"status": "expired"})
 
-        return Response({
+        data = {
             "status": "pending",
             "organization_name": invitation.organization.name,
-            "plan_name": invitation.coach_plan.name,
-            "price": str(invitation.coach_plan.price_ars),
             "currency": "ARS",
             "expires_at": invitation.expires_at.isoformat(),
-        })
+        }
+
+        if invitation.coach_plan:
+            # Pre-assigned plan (backward compatible)
+            data["plan_name"] = invitation.coach_plan.name
+            data["price"] = str(invitation.coach_plan.price_ars)
+        else:
+            # No plan pre-assigned — return all active plans for athlete selection
+            from core.models import CoachPricingPlan
+            plans = CoachPricingPlan.objects.filter(
+                organization=invitation.organization, is_active=True,
+            ).order_by("price_ars")
+            data["plans"] = [
+                {"id": p.pk, "name": p.name, "price": str(p.price_ars)}
+                for p in plans
+            ]
+
+        return Response(data)
 
 
 class InvitationAcceptView(APIView):

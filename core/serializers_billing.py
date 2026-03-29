@@ -51,9 +51,11 @@ class AthleteInvitationCreateSerializer(serializers.Serializer):
     """
     Input for POST /api/billing/invitations/
     Coach creates an invitation for an athlete.
+    coach_plan is optional — if omitted, athlete selects plan during onboarding.
     """
     coach_plan = serializers.PrimaryKeyRelatedField(
-        queryset=lambda: __import__('core.models', fromlist=['CoachPricingPlan']).CoachPricingPlan.objects.all()
+        queryset=lambda: __import__('core.models', fromlist=['CoachPricingPlan']).CoachPricingPlan.objects.all(),
+        required=False, allow_null=True,
     )
     email = serializers.EmailField()
 

@@ -61,6 +61,21 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    // PR-149: Login with pre-obtained JWT tokens (post-registration)
+    const loginWithTokens = async ({ access, refresh }) => {
+        tokenStore.setTokens({ access, refresh });
+        try {
+            const { data } = await fetchSession();
+            setUser(data);
+        } catch {
+            // Session endpoint may not return full data for a brand-new user.
+            // Set minimal user object so auth guards pass; InvitePage controls
+            // the flow and does not depend on memberships at this point.
+            setUser({ username: 'NewAthlete', memberships: [] });
+        }
+        return { success: true };
+    };
+
     const logout = () => {
         logoutSession();
         setUser(null);
@@ -69,7 +84,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, login, logout, loading }}>
+        <AuthContext.Provider value={{ user, login, loginWithTokens, logout, loading }}>
             {!loading && children}
         </AuthContext.Provider>
     );

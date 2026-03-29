@@ -1576,6 +1576,75 @@ class AthleteProfile(models.Model):
     )
 
     # ------------------------------------------------------------------
+    # PR-149: Extended personal & athletic data (onboarding)
+    # ------------------------------------------------------------------
+    class BloodType(models.TextChoices):
+        A_POS = "A+", "A+"
+        A_NEG = "A-", "A-"
+        B_POS = "B+", "B+"
+        B_NEG = "B-", "B-"
+        AB_POS = "AB+", "AB+"
+        AB_NEG = "AB-", "AB-"
+        O_POS = "O+", "O+"
+        O_NEG = "O-", "O-"
+
+    class TrainingTime(models.TextChoices):
+        MORNING = "morning", "Mañana"
+        AFTERNOON = "afternoon", "Tarde"
+        EVENING = "evening", "Noche"
+
+    class ClothingSize(models.TextChoices):
+        XS = "XS", "XS"
+        S = "S", "S"
+        M = "M", "M"
+        L = "L", "L"
+        XL = "XL", "XL"
+        XXL = "XXL", "XXL"
+
+    blood_type = models.CharField(
+        max_length=5, choices=BloodType.choices, blank=True, default="",
+    )
+    clothing_size = models.CharField(
+        max_length=5, choices=ClothingSize.choices, blank=True, default="",
+    )
+    instagram_handle = models.CharField(max_length=50, blank=True, default="")
+    profession = models.CharField(max_length=100, blank=True, default="")
+    emergency_contact_name = models.CharField(max_length=100, blank=True, default="")
+    emergency_contact_phone = models.CharField(max_length=20, blank=True, default="")
+
+    # Athletic onboarding data
+    pace_1000m_seconds = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Best 1000m series pace in seconds.",
+    )
+    weekly_available_hours = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Weekly hours available for training.",
+    )
+    preferred_training_time = models.CharField(
+        max_length=20, choices=TrainingTime.choices, blank=True, default="",
+    )
+    best_10k_minutes = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Personal best 10K time in minutes.",
+    )
+    best_21k_minutes = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Personal best 21K (half marathon) time in minutes.",
+    )
+    best_42k_minutes = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Personal best 42K (marathon) time in minutes.",
+    )
+
+    # Female health (optional, conditional on gender)
+    menstrual_tracking_enabled = models.BooleanField(default=False)
+    menstrual_cycle_days = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Average menstrual cycle length in days.",
+    )
+
+    # ------------------------------------------------------------------
     # Freeform notes + audit
     # ------------------------------------------------------------------
     notes = models.TextField(blank=True, default="")
@@ -1610,6 +1679,92 @@ class AthleteProfile(models.Model):
 
     def __str__(self):
         return f"Profile: Athlete:{self.athlete_id} @ Org:{self.organization_id}"
+
+
+# ==============================================================================
+# PR-149: AthleteAvailability — weekly training availability per athlete
+# ==============================================================================
+
+class AthleteAvailability(models.Model):
+    """
+    Weekly training availability for an Athlete.
+
+    Stores per-day availability with optional reason (when unavailable)
+    and preferred training time. Populated during onboarding and editable
+    by both athlete and coach.
+
+    Used by the coach to auto-block days in the planning calendar where
+    the athlete is not available.
+
+    Multi-tenant: organization FK is non-nullable.
+    """
+
+    class DayOfWeek(models.IntegerChoices):
+        MONDAY = 0, "Lunes"
+        TUESDAY = 1, "Martes"
+        WEDNESDAY = 2, "Miércoles"
+        THURSDAY = 3, "Jueves"
+        FRIDAY = 4, "Viernes"
+        SATURDAY = 5, "Sábado"
+        SUNDAY = 6, "Domingo"
+
+    athlete = models.ForeignKey(
+        "Athlete",
+        on_delete=models.CASCADE,
+        related_name="availability",
+        db_index=True,
+    )
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="athlete_availabilities",
+        db_index=True,
+    )
+    day_of_week = models.PositiveSmallIntegerField(
+        choices=DayOfWeek.choices,
+    )
+    is_available = models.BooleanField(default=True)
+    reason = models.CharField(
+        max_length=100, blank=True, default="",
+        help_text="Reason for unavailability (e.g. 'Trabajo', 'Estudios').",
+    )
+    preferred_time = models.CharField(
+        max_length=20,
+        choices=AthleteProfile.TrainingTime.choices,
+        blank=True, default="",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["athlete", "organization", "day_of_week"],
+                name="uniq_athlete_availability_day",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["organization", "athlete"]),
+        ]
+        ordering = ["day_of_week"]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if (
+            self.athlete_id is not None
+            and self.organization_id is not None
+            and self.athlete.organization_id != self.organization_id
+        ):
+            raise ValidationError(
+                "AthleteAvailability.organization must match athlete.organization."
+            )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        day = self.get_day_of_week_display()
+        status = "available" if self.is_available else "unavailable"
+        return f"Athlete:{self.athlete_id} {day}={status}"
 
 
 # ==============================================================================
@@ -3164,6 +3319,8 @@ class AthleteInvitation(models.Model):
         "CoachPricingPlan",
         on_delete=models.PROTECT,
         related_name="invitations",
+        null=True, blank=True,
+        help_text="If null, athlete selects plan during onboarding.",
     )
     email        = models.EmailField()
     status       = models.CharField(
