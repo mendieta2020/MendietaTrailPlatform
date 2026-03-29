@@ -80,6 +80,11 @@ from core.views_messages import (  # PR-147
     InternalMessageMarkReadView,
     AthleteAlertsView,
 )
+from core.views_onboarding import (  # PR-149
+    RegisterView,
+    GoogleAuthView,
+    OnboardingCompleteView,
+)
 
 # Creamos el router para la API REST estándar
 router = DefaultRouter()
@@ -611,6 +616,11 @@ urlpatterns = [
         CoachBriefingView.as_view(),
         name='p1-coach-briefing',
     ),
+
+    # PR-149: Athlete registration + onboarding
+    path('auth/register/', RegisterView.as_view(), name='auth-register'),
+    path('auth/google/', GoogleAuthView.as_view(), name='auth-google'),
+    path('onboarding/complete/', OnboardingCompleteView.as_view(), name='onboarding-complete'),
 
     # PR-147: Internal Messages & Smart Alerts
     # URL: /api/p1/orgs/<org_id>/messages/

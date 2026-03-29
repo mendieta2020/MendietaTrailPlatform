@@ -97,6 +97,9 @@ STRAVA_CLIENT_SECRET = get_env_variable("STRAVA_CLIENT_SECRET", default="", requ
 SUUNTO_CLIENT_ID = get_env_variable("SUUNTO_CLIENT_ID", default="", required=False)
 SUUNTO_CLIENT_SECRET = get_env_variable("SUUNTO_CLIENT_SECRET", default="", required=False)
 SUUNTO_SUBSCRIPTION_KEY = get_env_variable("SUUNTO_SUBSCRIPTION_KEY", default="", required=False)
+# PR-149: Google OAuth (ID-token verification for SPA sign-in)
+GOOGLE_CLIENT_ID = get_env_variable("GOOGLE_CLIENT_ID", default="", required=False)
+
 STRAVA_WEBHOOK_VERIFY_TOKEN = get_env_variable(
     "STRAVA_WEBHOOK_VERIFY_TOKEN",
     default="",

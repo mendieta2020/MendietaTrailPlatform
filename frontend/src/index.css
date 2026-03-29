@@ -5,6 +5,7 @@
  * con MUI CssBaseline. Esto activa flex, grid, gap, text, bg, etc.
  * sin sobreescribir los estilos base de Material UI.
  */
+@import "tailwindcss/theme" layer(theme);
 @import "tailwindcss/utilities";
 
 /*

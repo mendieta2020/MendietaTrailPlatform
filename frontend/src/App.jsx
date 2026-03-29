@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 
 // 1. Importamos el ADN Visual (Tema Corporativo)
 import theme from './theme/theme';
@@ -68,7 +69,10 @@ const ProtectedRoute = ({ children }) => {
 };
 
 function App() {
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+
   return (
+    <GoogleOAuthProvider clientId={googleClientId}>
     <ThemeProvider theme={theme}>
       {/* CssBaseline: Reset CSS estándar para consistencia visual */}
       <CssBaseline />
@@ -258,6 +262,7 @@ function App() {
         </Routes>
       </BrowserRouter>
     </ThemeProvider>
+    </GoogleOAuthProvider>
   );
 }
 

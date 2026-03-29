@@ -314,7 +314,7 @@ const AthleteDashboard = ({ user }) => {
   const [hasDevice, setHasDevice] = useState(false);
   const [billing, setBilling] = useState(null);
   const [billingLoading, setBillingLoading] = useState(true);
-  const [orgName, setOrgName] = useState('');
+  const orgName = user?.memberships?.[0]?.org_name || '';
   const [deviceStatus, setDeviceStatus] = useState(null);
   const [pendingNotifications, setPendingNotifications] = useState([]);
 
@@ -360,12 +360,7 @@ const AthleteDashboard = ({ user }) => {
       .catch(() => setBilling(null))
       .finally(() => setBillingLoading(false));
 
-    // Fetch org name from /api/me
-    client.get('/api/me')
-      .then(res => {
-        if (res.data?.org_name) setOrgName(res.data.org_name);
-      })
-      .catch(() => {});
+    // Org name already initialized from user.memberships in useState
   }, []);
 
   const handleDismissBanner = async () => {
