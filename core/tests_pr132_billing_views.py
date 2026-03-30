@@ -108,14 +108,15 @@ def test_status_unauthenticated_returns_401():
 
 
 @pytest.mark.django_db
-def test_status_no_subscription_returns_404():
+def test_status_no_subscription_returns_minimal():
+    """PR-150: When no OrganizationSubscription exists, return minimal free status instead of 404."""
     org, user = make_org_with_coach("u_status_4")
-    # The signal auto-creates a subscription; delete it to test the 404 path.
     OrganizationSubscription.objects.filter(organization=org).delete()
     req = authenticated_request("GET", user, org)
     view = BillingStatusView.as_view()
     response = view(req)
-    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["plan"] == "free"
 
 
 # ---------------------------------------------------------------------------

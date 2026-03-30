@@ -93,8 +93,8 @@ def _post(view_class, url_kwargs, data, user, org):
 
 
 @pytest.mark.django_db
-def test_get_pricing_plans_coach_403():
-    """Coach member cannot list pricing plans — must be owner/admin."""
+def test_get_pricing_plans_coach_allowed():
+    """PR-150: Coach can list pricing plans (BillingOrgMixin includes coach role)."""
     from core.views_billing import CoachPricingPlanListCreateView
 
     org = _org("org-rg-plans-get")
@@ -103,17 +103,17 @@ def test_get_pricing_plans_coach_403():
     _pro_subscription(org)
 
     resp = _get(CoachPricingPlanListCreateView, {}, user, org)
-    assert resp.status_code == 403
+    assert resp.status_code == 200
 
 
 # ---------------------------------------------------------------------------
-# POST /billing/plans/ — coach → 403
+# POST /billing/plans/ — coach → allowed (PR-150)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_post_pricing_plans_coach_403():
-    """Coach member cannot create pricing plans — must be owner/admin."""
+def test_post_pricing_plans_coach_allowed():
+    """PR-150: Coach can create pricing plans (BillingOrgMixin includes coach role)."""
     from core.views_billing import CoachPricingPlanListCreateView
 
     org = _org("org-rg-plans-post")
@@ -122,8 +122,8 @@ def test_post_pricing_plans_coach_403():
     _pro_subscription(org)
 
     resp = _post(CoachPricingPlanListCreateView, {},
-                 {"name": "Intruder Plan", "price_ars": "999.00"}, user, org)
-    assert resp.status_code == 403
+                 {"name": "Coach Plan", "price_ars": "999.00"}, user, org)
+    assert resp.status_code == 201
 
 
 # ---------------------------------------------------------------------------
