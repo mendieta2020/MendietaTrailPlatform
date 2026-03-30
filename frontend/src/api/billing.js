@@ -40,3 +40,28 @@ export function getInvitation(token) {
 export function acceptInvitation(token) {
   return client.post(`/api/billing/invitations/${token}/accept/`);
 }
+
+// PR-150: MP Connect + Universal invite link + Athlete subscription
+export function getMPConnectUrl() {
+  return client.get('/api/billing/mp/connect/');
+}
+
+export function disconnectMP() {
+  return client.delete('/api/billing/mp/disconnect/');
+}
+
+export function getInviteLink() {
+  return client.get('/api/billing/invite-link/');
+}
+
+export function regenerateInviteLink() {
+  return client.post('/api/billing/invite-link/regenerate/');
+}
+
+export function getJoinDetail(slug) {
+  return client.get(`/api/billing/join/${slug}/`);
+}
+
+export function getMySubscription() {
+  return client.get('/api/athlete/subscription/');
+}

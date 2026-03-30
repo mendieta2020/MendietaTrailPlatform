@@ -29,6 +29,7 @@ import TermsPage from './pages/public/TermsPage';
 import SecurityPage from './pages/public/SecurityPage';
 import VendorPage from './pages/public/VendorPage';
 import InvitePage from './pages/InvitePage';
+import JoinPage from './pages/JoinPage';
 import AthleteDashboard from './pages/AthleteDashboard';
 import AthleteMyTraining from './pages/AthleteMyTraining';
 import AthleteProgress from './pages/AthleteProgress';
@@ -89,6 +90,7 @@ function App() {
           <Route path="/vendor" element={<VendorPage />} />
           <Route path="/vendor/:doc" element={<VendorPage />} />
           <Route path="/invite/:token" element={<InvitePage />} />
+          <Route path="/join/:slug" element={<JoinPage />} />
 
           {/* --- RUTAS PRIVADAS (ÁREA SEGURA) --- */}
 

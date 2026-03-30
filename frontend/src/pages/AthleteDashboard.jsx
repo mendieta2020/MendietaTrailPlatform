@@ -11,7 +11,7 @@ import {
 import AthleteLayout from '../components/AthleteLayout';
 import useWeather from '../hooks/useWeather';
 import client from '../api/client';
-import { getBillingStatus } from '../api/billing';
+import { getBillingStatus, getMySubscription } from '../api/billing';
 import {
   getDeviceStatus,
   dismissDevicePreference,
@@ -317,6 +317,7 @@ const AthleteDashboard = ({ user }) => {
   const orgName = user?.memberships?.[0]?.org_name || '';
   const [deviceStatus, setDeviceStatus] = useState(null);
   const [pendingNotifications, setPendingNotifications] = useState([]);
+  const [mySub, setMySub] = useState(null);
 
   const greeting = getGreeting();
   const displayName = user?.first_name || user?.username || 'Atleta';
@@ -361,6 +362,11 @@ const AthleteDashboard = ({ user }) => {
       .finally(() => setBillingLoading(false));
 
     // Org name already initialized from user.memberships in useState
+
+    // PR-150: Fetch athlete's coach subscription
+    getMySubscription()
+      .then(res => setMySub(res.data))
+      .catch(() => setMySub(null));
   }, []);
 
   const handleDismissBanner = async () => {
@@ -433,6 +439,43 @@ const AthleteDashboard = ({ user }) => {
         <Grid size={{ xs: 12, md: 4 }}>
           {/* ── Subscription card ── */}
           <SubscriptionCard billing={billing} loading={billingLoading} />
+
+          {/* ── PR-150: Coach plan subscription widget ── */}
+          {mySub?.has_subscription && (
+            <Paper sx={{ p: 2.5, borderRadius: 2, mt: 2, borderLeft: `4px solid ${mySub.status === 'active' ? '#10B981' : mySub.status === 'overdue' ? '#EF4444' : '#F59E0B'}` }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <CreditCard sx={{ color: mySub.status === 'active' ? '#10B981' : '#F59E0B', fontSize: 20 }} />
+                <Typography variant="body2" sx={{ fontWeight: 700, color: '#1E293B' }}>
+                  Mi suscripción
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography variant="body2" sx={{ fontWeight: 600, color: '#334155' }}>
+                    {mySub.plan_name}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: '#64748B' }}>
+                    {mySub.next_payment_at ? `Próximo cobro: ${new Date(mySub.next_payment_at).toLocaleDateString('es-AR')}` : ''}
+                  </Typography>
+                </Box>
+                <Box sx={{ textAlign: 'right' }}>
+                  <Typography variant="body2" sx={{ fontWeight: 700, color: '#1E293B' }}>
+                    ${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(mySub.price_ars)}
+                    <Typography component="span" variant="caption" sx={{ color: '#94A3B8' }}>/mes</Typography>
+                  </Typography>
+                  <Chip
+                    label={mySub.status === 'active' ? 'Al día' : mySub.status === 'overdue' ? 'Vencido' : 'Pendiente'}
+                    size="small"
+                    sx={{
+                      bgcolor: mySub.status === 'active' ? '#DCFCE7' : mySub.status === 'overdue' ? '#FEE2E2' : '#FEF3C7',
+                      color: mySub.status === 'active' ? '#166534' : mySub.status === 'overdue' ? '#991B1B' : '#92400E',
+                      fontWeight: 600, height: 20, fontSize: '0.7rem',
+                    }}
+                  />
+                </Box>
+              </Box>
+            </Paper>
+          )}
         </Grid>
       </Grid>
     </AthleteLayout>

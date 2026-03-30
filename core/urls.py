@@ -17,7 +17,7 @@ from .integration_callback_views import IntegrationCallbackView
 from .identity_views import UserIdentityView
 from .connection_views import ProviderConnectionStatusView  # PR11
 from core.webhooks import StravaWebhookView, StravaDiagnosticsView  # PR-WebhookRoute
-from core.views_billing import (  # PR-131 / PR-132 / PR-134 / PR-135 / PR-136 / PR-137
+from core.views_billing import (  # PR-131 / PR-132 / PR-134 / PR-135 / PR-136 / PR-137 / PR-150
     mercadopago_webhook,
     AthleteSubscriptionWebhookView,
     BillingStatusView,
@@ -34,6 +34,10 @@ from core.views_billing import (  # PR-131 / PR-132 / PR-134 / PR-135 / PR-136 /
     CoachPricingPlanListCreateView,
     AthleteSubscriptionListView,
     AthleteSubscriptionActivateView,
+    InviteLinkView,
+    InviteLinkRegenerateView,
+    JoinDetailView,
+    AthleteMySubscriptionView,
 )
 from core.views_p1 import (  # PR-115/116/117/119/128/X4/149/PR-128-real-pmc/PR-129
     AthleteAdherenceViewSet,
@@ -616,6 +620,12 @@ urlpatterns = [
         CoachBriefingView.as_view(),
         name='p1-coach-briefing',
     ),
+
+    # PR-150: Universal invite link + athlete subscription
+    path('billing/invite-link/', InviteLinkView.as_view(), name='billing-invite-link'),
+    path('billing/invite-link/regenerate/', InviteLinkRegenerateView.as_view(), name='billing-invite-link-regenerate'),
+    path('billing/join/<str:slug>/', JoinDetailView.as_view(), name='billing-join-detail'),
+    path('athlete/subscription/', AthleteMySubscriptionView.as_view(), name='athlete-subscription'),
 
     # PR-149: Athlete registration + onboarding
     path('auth/register/', RegisterView.as_view(), name='auth-register'),

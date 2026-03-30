@@ -88,8 +88,9 @@ class OnboardingCompleteSerializer(serializers.Serializer):
     Organization is derived from the invitation token (never from client).
     """
 
-    # Invitation context
-    invitation_token = serializers.UUIDField()
+    # Invitation context (one of these is required)
+    invitation_token = serializers.UUIDField(required=False, allow_null=True)
+    join_slug = serializers.CharField(max_length=100, required=False, allow_blank=True)
     coach_plan_id = serializers.IntegerField(required=False, allow_null=True)
 
     # Required personal data
@@ -195,11 +196,44 @@ class OnboardingCompleteSerializer(serializers.Serializer):
         return value
 
     def validate(self, attrs):
-        """Cross-field: if invitation has no coach_plan, coach_plan_id is required."""
-        from core.models import CoachPricingPlan
+        """
+        Cross-field validation:
+        - Either invitation_token OR join_slug must be provided
+        - If no coach_plan on invitation/join, coach_plan_id is required
+        """
+        from core.models import CoachPricingPlan, OrganizationInviteLink
 
+        has_token = attrs.get("invitation_token")
+        has_slug = attrs.get("join_slug")
+
+        if not has_token and not has_slug:
+            raise serializers.ValidationError(
+                "Se requiere invitation_token o join_slug."
+            )
+
+        # If join_slug, resolve organization from invite link
+        if has_slug and not self.context.get("invitation"):
+            try:
+                link = OrganizationInviteLink.objects.select_related(
+                    "organization",
+                ).get(slug=has_slug, is_active=True)
+            except OrganizationInviteLink.DoesNotExist:
+                raise serializers.ValidationError({
+                    "join_slug": "Link no válido.",
+                })
+            self.context["join_link"] = link
+            self.context["join_organization"] = link.organization
+
+        # Determine the organization
         invitation = self.context.get("invitation")
-        if invitation and not invitation.coach_plan_id:
+        org = (
+            invitation.organization if invitation
+            else self.context.get("join_organization")
+        )
+
+        # Resolve plan
+        coach_plan = invitation.coach_plan if invitation else None
+        if not coach_plan:
             plan_id = attrs.get("coach_plan_id")
             if not plan_id:
                 raise serializers.ValidationError({
@@ -208,7 +242,7 @@ class OnboardingCompleteSerializer(serializers.Serializer):
             try:
                 plan = CoachPricingPlan.objects.get(
                     pk=plan_id,
-                    organization=invitation.organization,
+                    organization=org,
                     is_active=True,
                 )
             except CoachPricingPlan.DoesNotExist:
