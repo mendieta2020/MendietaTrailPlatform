@@ -12,6 +12,15 @@ export function createCoachPricingPlan(data) {
   return client.post('/api/billing/plans/', data);
 }
 
+// PR-151: Plan CRUD
+export function updateCoachPricingPlan(planId, data) {
+  return client.put(`/api/billing/plans/${planId}/`, data);
+}
+
+export function deleteCoachPricingPlan(planId) {
+  return client.delete(`/api/billing/plans/${planId}/`);
+}
+
 export function createInvitation(coachPlanId, email) {
   return client.post('/api/billing/invitations/', { coach_plan: coachPlanId, email });
 }

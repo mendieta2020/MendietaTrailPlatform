@@ -51,9 +51,15 @@ class UserIdentityView(APIView):
 
         # --- P1 Membership check (takes precedence over legacy Alumno) ---
         try:
-            membership = Membership.objects.get(user=user, is_active=True)
+            membership = Membership.objects.select_related(
+                "organization",
+            ).get(user=user, is_active=True)
             p1_role = membership.role  # 'owner' | 'coach' | 'athlete' | 'staff'
             identity["role"] = p1_role
+
+            # PR-151: Include org context so all pages can resolve organization
+            identity["org_id"] = membership.organization_id
+            identity["org_name"] = membership.organization.name
 
             # For non-athlete P1 roles we are done — no Alumno lookup needed.
             if p1_role != Membership.Role.ATHLETE:

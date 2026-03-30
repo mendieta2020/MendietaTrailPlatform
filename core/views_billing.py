@@ -907,6 +907,78 @@ class CoachPricingPlanListCreateView(BillingOrgMixin, APIView):
         )
 
 
+class CoachPricingPlanDetailView(BillingOrgMixin, APIView):
+    """
+    PR-151: PUT/PATCH/DELETE /api/billing/plans/<pk>/
+    Edit or soft-delete a pricing plan.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def _get_plan(self, request, pk):
+        from core.models import CoachPricingPlan
+        org = self.get_org(request)
+        if org is None:
+            return None, None, Response(
+                {"detail": "No organization context."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            plan = CoachPricingPlan.objects.get(pk=pk, organization=org)
+        except CoachPricingPlan.DoesNotExist:
+            return None, None, Response(
+                {"detail": "Plan no encontrado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return org, plan, None
+
+    def put(self, request, pk):
+        org, plan, error = self._get_plan(request, pk)
+        if error:
+            return error
+
+        name = request.data.get("name", plan.name).strip()
+        price_ars = request.data.get("price_ars", plan.price_ars)
+        description = request.data.get("description", plan.description)
+        is_active = request.data.get("is_active", plan.is_active)
+
+        plan.name = name
+        plan.price_ars = price_ars
+        plan.description = description
+        plan.is_active = is_active
+        plan.save(update_fields=["name", "price_ars", "description", "is_active", "updated_at"])
+
+        logger.info(
+            "coach_plan.updated",
+            extra={"organization_id": org.pk, "plan_id": plan.pk, "outcome": "updated"},
+        )
+
+        return Response({
+            "id": plan.pk,
+            "name": plan.name,
+            "description": plan.description,
+            "price_ars": str(plan.price_ars),
+            "is_active": plan.is_active,
+        })
+
+    patch = put  # PATCH behaves same as PUT (partial update)
+
+    def delete(self, request, pk):
+        org, plan, error = self._get_plan(request, pk)
+        if error:
+            return error
+
+        # Soft-delete: deactivate instead of removing (preserves subscription references)
+        plan.is_active = False
+        plan.save(update_fields=["is_active", "updated_at"])
+
+        logger.info(
+            "coach_plan.deactivated",
+            extra={"organization_id": org.pk, "plan_id": plan.pk, "outcome": "deactivated"},
+        )
+
+        return Response({"id": plan.pk, "deactivated": True})
+
+
 class AthleteSubscriptionListView(BillingOrgMixin, APIView):
     """
     GET /api/billing/athlete-subscriptions/
