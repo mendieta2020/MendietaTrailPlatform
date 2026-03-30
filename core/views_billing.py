@@ -15,6 +15,32 @@ from core.billing import require_plan  # plan gate decorator
 logger = logging.getLogger(__name__)
 
 
+class BillingOrgMixin:
+    """
+    PR-150: Resolves the authenticated user's organization from Membership.
+
+    Replaces the broken `getattr(request, "auth_organization", None)` pattern
+    which was never populated by any middleware in production.
+    Owner and admin roles can access billing features.
+    """
+
+    def get_org(self, request):
+        from core.models import Membership
+        try:
+            m = Membership.objects.select_related("organization").filter(
+                user=request.user,
+                is_active=True,
+                role__in=["owner", "admin", "coach"],
+            ).first()
+            if m:
+                # Also set on request for backward compat with require_plan
+                request.auth_organization = m.organization
+                return m.organization
+        except Exception:
+            pass
+        return None
+
+
 @csrf_exempt
 @require_POST
 def mercadopago_webhook(request):
@@ -29,7 +55,7 @@ def mercadopago_webhook(request):
     return HttpResponse(status=200)
 
 
-class BillingStatusView(APIView):
+class BillingStatusView(BillingOrgMixin, APIView):
     """
     GET /api/billing/status/
     Returns the subscription state for the request's organization.
@@ -39,8 +65,8 @@ class BillingStatusView(APIView):
 
     def get(self, request):
         from core.serializers_billing import BillingStatusSerializer
-        from core.models import OrganizationSubscription
-        org = getattr(request, "auth_organization", None)
+        from core.models import OrganizationSubscription, OrgOAuthCredential
+        org = self.get_org(request)
         if org is None:
             return Response(
                 {"detail": "No organization context."},
@@ -49,15 +75,26 @@ class BillingStatusView(APIView):
         try:
             subscription = OrganizationSubscription.objects.get(organization=org)
         except OrganizationSubscription.DoesNotExist:
-            return Response(
-                {"detail": "No subscription found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            # Return a minimal status instead of 404 — org exists but no B2B subscription
+            mp_connected = OrgOAuthCredential.objects.filter(
+                organization=org, provider="mercadopago",
+            ).exists()
+            return Response({
+                "plan": "free",
+                "plan_display": "Free",
+                "is_active": True,
+                "mp_connected": mp_connected,
+            })
         serializer = BillingStatusSerializer(subscription)
-        return Response(serializer.data)
+        data = serializer.data
+        # Add MP connection status
+        data["mp_connected"] = OrgOAuthCredential.objects.filter(
+            organization=org, provider="mercadopago",
+        ).exists()
+        return Response(data)
 
 
-class BillingSubscribeView(APIView):
+class BillingSubscribeView(BillingOrgMixin, APIView):
     """
     POST /api/billing/subscribe/
     Body: {"plan_id": <SubscriptionPlan pk>}
@@ -68,7 +105,7 @@ class BillingSubscribeView(APIView):
 
     def post(self, request):
         from core.models import SubscriptionPlan, OrganizationSubscription
-        org = getattr(request, "auth_organization", None)
+        org = self.get_org(request)
         if org is None:
             return Response(
                 {"detail": "No organization context."},
@@ -145,7 +182,7 @@ class BillingSubscribeView(APIView):
         )
 
 
-class BillingCancelView(APIView):
+class BillingCancelView(BillingOrgMixin, APIView):
     """
     POST /api/billing/cancel/
     Cancels the organization's active MP subscription and marks it as inactive locally.
@@ -155,7 +192,7 @@ class BillingCancelView(APIView):
 
     def post(self, request):
         from core.models import OrganizationSubscription
-        org = getattr(request, "auth_organization", None)
+        org = self.get_org(request)
         if org is None:
             return Response(
                 {"detail": "No organization context."},
@@ -214,21 +251,21 @@ class BillingCancelView(APIView):
 # ==============================================================================
 
 
-class MPConnectView(APIView):
+class MPConnectView(BillingOrgMixin, APIView):
     """
     GET /api/billing/mp/connect/
     Returns the MercadoPago authorization URL. The frontend redirects the coach
     there to grant Quantoryn access to their MP account.
-    Requires: authenticated user, pro plan.
+    Requires: authenticated user (owner/admin/coach).
+    PR-150: Removed require_plan("pro") — MP connect must be available before plan creation.
     """
 
     permission_classes = [IsAuthenticated]
 
-    @require_plan("pro")
     def get(self, request):
         from integrations.mercadopago.oauth import mp_get_authorization_url  # lazy — Law 4
 
-        org = getattr(request, "auth_organization", None)
+        org = self.get_org(request)
         if org is None:
             return Response(
                 {"detail": "No organization context."},
@@ -341,10 +378,10 @@ class MPCallbackView(APIView):
         )
 
         frontend_url = getattr(django_settings, "FRONTEND_URL", "http://localhost:3000")
-        return django_redirect(f"{frontend_url}/settings/billing?mp_connected=true")
+        return django_redirect(f"{frontend_url}/finance?mp_connected=true")
 
 
-class MPDisconnectView(APIView):
+class MPDisconnectView(BillingOrgMixin, APIView):
     """
     DELETE /api/billing/mp/disconnect/
     Removes the coach's MP OAuth credential for this organization.
@@ -357,7 +394,7 @@ class MPDisconnectView(APIView):
     def delete(self, request):
         from core.models import OrgOAuthCredential
 
-        org = getattr(request, "auth_organization", None)
+        org = self.get_org(request)
         if org is None:
             return Response(
                 {"detail": "No organization context."},
@@ -377,7 +414,7 @@ class MPDisconnectView(APIView):
 # ==============================================================================
 
 
-class InvitationCreateView(APIView):
+class InvitationCreateView(BillingOrgMixin, APIView):
     """
     GET  /api/billing/invitations/ — List invitations for the org (owner/admin).
     POST /api/billing/invitations/ — Create invitation link (owner/admin + pro plan).
@@ -386,7 +423,7 @@ class InvitationCreateView(APIView):
 
     def get(self, request):
         from core.models import AthleteInvitation, Membership
-        org = getattr(request, "auth_organization", None)
+        org = self.get_org(request)
         if org is None:
             return Response({"detail": "No organization context."}, status=status.HTTP_403_FORBIDDEN)
         try:
@@ -409,7 +446,7 @@ class InvitationCreateView(APIView):
                 "email": inv.email,
                 "status": inv.status,
                 "coach_plan_id": inv.coach_plan_id,
-                "coach_plan_name": inv.coach_plan.name,
+                "coach_plan_name": inv.coach_plan.name if inv.coach_plan else "Sin plan (atleta elige)",
                 "expires_at": inv.expires_at.isoformat() if inv.expires_at else None,
                 "created_at": inv.created_at.isoformat(),
             }
@@ -425,7 +462,7 @@ class InvitationCreateView(APIView):
         from datetime import timedelta
         from django.conf import settings as django_settings
 
-        org = getattr(request, "auth_organization", None)
+        org = self.get_org(request)
         if org is None:
             return Response(
                 {"detail": "No organization context."},
@@ -735,7 +772,7 @@ class AthleteSubscriptionWebhookView(View):
         return JsonResponse(result, status=200)
 
 
-class InvitationResendView(APIView):
+class InvitationResendView(BillingOrgMixin, APIView):
     """
     POST /api/billing/invitations/<token>/resend/
     Coach regenerates token and extends expiry.
@@ -751,7 +788,7 @@ class InvitationResendView(APIView):
         from datetime import timedelta
         from django.conf import settings as django_settings
 
-        org = getattr(request, "auth_organization", None)
+        org = self.get_org(request)
         if org is None:
             return Response(
                 {"detail": "No organization context."},
@@ -806,7 +843,7 @@ class InvitationResendView(APIView):
 # ==============================================================================
 
 
-class CoachPricingPlanListCreateView(APIView):
+class CoachPricingPlanListCreateView(BillingOrgMixin, APIView):
     """
     GET  /api/billing/plans/ — List CoachPricingPlans for the org.
     POST /api/billing/plans/ — Create a new plan (owner/admin + pro).
@@ -814,16 +851,10 @@ class CoachPricingPlanListCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        from core.models import CoachPricingPlan, Membership
-        org = getattr(request, "auth_organization", None)
+        from core.models import CoachPricingPlan
+        org = self.get_org(request)
         if org is None:
             return Response({"detail": "No organization context."}, status=status.HTTP_403_FORBIDDEN)
-        try:
-            membership = Membership.objects.get(user=request.user, organization=org)
-        except Membership.DoesNotExist:
-            return Response({"detail": "Sin acceso."}, status=status.HTTP_403_FORBIDDEN)
-        if membership.role not in ("owner", "admin"):
-            return Response({"detail": "Solo owner o admin."}, status=status.HTTP_403_FORBIDDEN)
         plans = CoachPricingPlan.objects.filter(organization=org).order_by("price_ars")
         data = [
             {
@@ -839,18 +870,11 @@ class CoachPricingPlanListCreateView(APIView):
         ]
         return Response(data)
 
-    @require_plan("pro")
     def post(self, request):
-        from core.models import CoachPricingPlan, Membership
-        org = getattr(request, "auth_organization", None)
+        from core.models import CoachPricingPlan
+        org = self.get_org(request)
         if org is None:
             return Response({"detail": "No organization context."}, status=status.HTTP_403_FORBIDDEN)
-        try:
-            membership = Membership.objects.get(user=request.user, organization=org)
-        except Membership.DoesNotExist:
-            return Response({"detail": "No tienes membresía."}, status=status.HTTP_403_FORBIDDEN)
-        if membership.role not in ("owner", "admin"):
-            return Response({"detail": "Solo owner o admin pueden crear planes."}, status=status.HTTP_403_FORBIDDEN)
 
         name = request.data.get("name", "").strip()
         price_ars = request.data.get("price_ars")
@@ -883,7 +907,7 @@ class CoachPricingPlanListCreateView(APIView):
         )
 
 
-class AthleteSubscriptionListView(APIView):
+class AthleteSubscriptionListView(BillingOrgMixin, APIView):
     """
     GET /api/billing/athlete-subscriptions/
     List AthleteSubscriptions for the org with athlete data.
@@ -893,7 +917,7 @@ class AthleteSubscriptionListView(APIView):
 
     def get(self, request):
         from core.models import AthleteSubscription, Membership
-        org = getattr(request, "auth_organization", None)
+        org = self.get_org(request)
         if org is None:
             return Response({"detail": "No organization context."}, status=status.HTTP_403_FORBIDDEN)
         try:
@@ -930,7 +954,7 @@ class AthleteSubscriptionListView(APIView):
         return Response(data)
 
 
-class AthleteSubscriptionActivateView(APIView):
+class AthleteSubscriptionActivateView(BillingOrgMixin, APIView):
     """
     POST /api/billing/athlete-subscriptions/<pk>/activate/
     Manual activation (cash/transfer, no MP). Owner/admin only + pro plan.
@@ -940,7 +964,7 @@ class AthleteSubscriptionActivateView(APIView):
     @require_plan("pro")
     def post(self, request, pk):
         from core.models import AthleteSubscription, Membership
-        org = getattr(request, "auth_organization", None)
+        org = self.get_org(request)
         if org is None:
             return Response({"detail": "No organization context."}, status=status.HTTP_403_FORBIDDEN)
         try:
@@ -972,3 +996,151 @@ class AthleteSubscriptionActivateView(APIView):
             },
         )
         return Response({"id": sub.pk, "status": sub.status})
+
+
+# ==============================================================================
+# PR-150: Universal invite link + Athlete subscription self-service
+# ==============================================================================
+
+
+class InviteLinkView(BillingOrgMixin, APIView):
+    """
+    GET /api/billing/invite-link/
+    Returns (or creates) the organization's universal invite link.
+    Owner/admin/coach only.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from core.models import OrganizationInviteLink
+        from django.conf import settings as django_settings
+
+        org = self.get_org(request)
+        if org is None:
+            return Response(
+                {"detail": "No organization context."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        link, created = OrganizationInviteLink.objects.get_or_create(
+            organization=org,
+        )
+
+        frontend_url = getattr(
+            django_settings, "FRONTEND_BASE_URL",
+            getattr(django_settings, "FRONTEND_URL", "http://localhost:5173"),
+        )
+
+        return Response({
+            "slug": link.slug,
+            "url": f"{frontend_url}/join/{link.slug}",
+            "is_active": link.is_active,
+        })
+
+
+class InviteLinkRegenerateView(BillingOrgMixin, APIView):
+    """
+    POST /api/billing/invite-link/regenerate/
+    Regenerates the slug (old link becomes invalid).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        import uuid as _uuid
+        from core.models import OrganizationInviteLink
+        from django.conf import settings as django_settings
+
+        org = self.get_org(request)
+        if org is None:
+            return Response(
+                {"detail": "No organization context."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        link, _ = OrganizationInviteLink.objects.get_or_create(
+            organization=org,
+        )
+        link.slug = _uuid.uuid4().hex[:12]
+        link.save(update_fields=["slug", "updated_at"])
+
+        frontend_url = getattr(
+            django_settings, "FRONTEND_BASE_URL",
+            getattr(django_settings, "FRONTEND_URL", "http://localhost:5173"),
+        )
+
+        logger.info(
+            "invite_link.regenerated",
+            extra={"organization_id": org.pk, "outcome": "regenerated"},
+        )
+
+        return Response({
+            "slug": link.slug,
+            "url": f"{frontend_url}/join/{link.slug}",
+            "is_active": link.is_active,
+        })
+
+
+class JoinDetailView(APIView):
+    """
+    GET /api/billing/join/<slug>/
+    Public — returns org name + active plans for the universal invite link.
+    Used by JoinPage.jsx to show plan selector.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request, slug):
+        from core.models import OrganizationInviteLink, CoachPricingPlan
+
+        try:
+            link = OrganizationInviteLink.objects.select_related(
+                "organization",
+            ).get(slug=slug, is_active=True)
+        except OrganizationInviteLink.DoesNotExist:
+            return Response(
+                {"detail": "Link no válido."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        plans = CoachPricingPlan.objects.filter(
+            organization=link.organization, is_active=True,
+        ).order_by("price_ars")
+
+        return Response({
+            "organization_name": link.organization.name,
+            "plans": [
+                {"id": p.pk, "name": p.name, "price": str(p.price_ars)}
+                for p in plans
+            ],
+            "currency": "ARS",
+        })
+
+
+class AthleteMySubscriptionView(APIView):
+    """
+    GET /api/athlete/subscription/
+    Returns the authenticated athlete's subscription status.
+    Used by AthleteDashboard to show payment status widget.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from core.models import AthleteSubscription
+
+        sub = AthleteSubscription.objects.filter(
+            athlete__user=request.user,
+        ).select_related("coach_plan").first()
+
+        if sub is None:
+            return Response({
+                "has_subscription": False,
+            })
+
+        return Response({
+            "has_subscription": True,
+            "plan_name": sub.coach_plan.name if sub.coach_plan else "",
+            "price_ars": str(sub.coach_plan.price_ars) if sub.coach_plan else "0",
+            "status": sub.status,
+            "next_payment_at": sub.next_payment_at.isoformat() if sub.next_payment_at else None,
+            "last_payment_at": sub.last_payment_at.isoformat() if sub.last_payment_at else None,
+        })

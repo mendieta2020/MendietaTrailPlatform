@@ -212,12 +212,15 @@ class OnboardingCompleteView(APIView):
         serializer = OnboardingCompleteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        invitation = serializer.context["invitation"]
-        org = invitation.organization
+        invitation = serializer.context.get("invitation")
+        org = invitation.organization if invitation else serializer.context.get("join_organization")
         user = request.user
 
         # Resolve plan: from invitation (pre-assigned) or athlete selection
-        coach_plan = invitation.coach_plan or serializer.context.get("selected_plan")
+        coach_plan = (
+            (invitation.coach_plan if invitation else None)
+            or serializer.context.get("selected_plan")
+        )
 
         # Check idempotency (Law 5)
         already_member = Membership.objects.filter(
@@ -328,10 +331,21 @@ class OnboardingCompleteView(APIView):
                     created_by=user,
                 )
 
-            # Mark invitation accepted
-            invitation.status = AthleteInvitation.Status.ACCEPTED
-            invitation.accepted_at = timezone.now()
-            invitation.save(update_fields=["status", "accepted_at"])
+            # Mark invitation accepted (or create one for join-link tracking)
+            if invitation:
+                invitation.status = AthleteInvitation.Status.ACCEPTED
+                invitation.accepted_at = timezone.now()
+                invitation.save(update_fields=["status", "accepted_at"])
+            else:
+                # Join link: create internal invitation record for tracking
+                invitation = AthleteInvitation.objects.create(
+                    organization=org,
+                    coach_plan=coach_plan,
+                    email=user.email or "",
+                    status=AthleteInvitation.Status.ACCEPTED,
+                    accepted_at=timezone.now(),
+                    expires_at=timezone.now(),
+                )
 
         # Outside transaction: MP preapproval (external HTTP)
         mp_data, error_response = _create_mp_preapproval(

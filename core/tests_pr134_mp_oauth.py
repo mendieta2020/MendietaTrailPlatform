@@ -114,17 +114,18 @@ def test_connect_returns_authorization_url():
 
 
 @pytest.mark.django_db
-def test_connect_requires_pro_plan():
-    """Free-plan org is blocked with 402 Payment Required."""
+def test_connect_available_for_any_plan():
+    """PR-150: MP connect no longer requires pro plan — available to all authenticated owners."""
     org = _org("org-134-c2")
     user = _user("coach-134-c2")
     _membership(user, org)
-    fresh_org = _free_subscription(org)  # returns fresh org without cached subscription
+    _free_subscription(org)
 
-    req = _authenticated_get("/api/billing/mp/connect/", user, fresh_org)
+    req = _authenticated_get("/api/billing/mp/connect/", user, org)
     response = MPConnectView.as_view()(req)
 
-    assert response.status_code == status.HTTP_402_PAYMENT_REQUIRED
+    # Should return authorization URL, not 402
+    assert response.status_code == status.HTTP_200_OK
 
 
 @pytest.mark.django_db

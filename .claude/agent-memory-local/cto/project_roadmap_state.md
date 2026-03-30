@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-03-28 · PR-148 merged — next: PR-149 athlete self-registration_
+_Last updated: 2026-03-29 · PR-149 done — next: PR-150 coach invitation UI + bulk invite_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -14,6 +14,8 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - ~70% Garmin, ~90% Strava connected
 - Many do double/triple sessions per day
 - Athletes do NOT have accounts yet — onboarding is the bottleneck
+- Plans: Classic $38K ARS (up to 21K), Short $48K ARS (up to 42K), Ultra $60K ARS (60K+) — monthly
+- MercadoPago handles automatic recurring charges
 
 ## Completed PRs (P2)
 
@@ -41,18 +43,30 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 | PR-145h | — | Plantilla semanal (compliance semanal, dots por día, badge praise, overload alert base) | ✅ 2026-03-27 |
 | PR-147 | pr-147-smart-alerts | Smart Alerts Engine: InternalMessage, bell notification, MessagesDrawer, coach comment auto-message | ✅ 2026-03-28 |
 | PR-148 | pr-148-real-compliance | Real compliance (actual/planned), bulk query, sessions_per_day, streak, weekly pulse, coach briefing, AlertModal WhatsApp | ✅ 2026-03-28 |
+| PR-149 | — | Athlete Registration + Onboarding + Google OAuth + Plan Selector | ✅ 2026-03-29 |
 
 ## Prioritized PR Queue (aligned to 3-month launch plan)
 
 ### Immediate (Mes 1 gate — onboarding 100 athletes)
 
-**PR-149 — Athlete Self-Registration via Invitation** — NEXT
-- Backend: POST /api/auth/register-from-invite/ (token + name + email + password)
-- Frontend: InvitePage.jsx inline registration form (no redirect to /login)
-- Blocker: 100 athletes have no accounts, can't enter the platform
-- Estimated: <300 LOC
+**PR-150 — Coach Invitation UI + Universal Reusable Link** — NEXT
+- Coach-facing UI for creating invitations (currently API-only)
+- Universal reusable invite link for bulk onboarding (1 link for 200+ athletes)
+- Current limitation: 1 token = 1 athlete — unscalable for 100 athletes
+- Coach can choose: invite with specific plan OR without plan (athlete selects)
+- Blocker: Fernando needs to onboard 100 athletes NOW, can't create invitations via API
 
-**PR-150 — PWA** (service worker, manifest, installability, push notifications)
+**PR-151 — Staff/Coach/Nutritionist Invitation Flow**
+- Different from athlete invitation: no payment, different role assignment
+- Org hierarchy: Owner > Coach/Staff/Nutritionist > Athlete
+- Needed before Mes 2 (bringing in external coaches)
+
+**PR-152 — Pre-Expiry Notification (3 days before renewal)**
+- Smart Alert triggered 3 days before MercadoPago subscription renewal
+- Uses existing InternalMessage + Smart Alerts infrastructure (PR-147)
+- Prevents athlete surprise charges
+
+**PR-153 — PWA** (service worker, manifest, installability, push notifications)
 - Gate for daily athlete engagement — athletes won't open a browser
 
 ### Before Mes 2 (10 external coaches)
@@ -60,7 +74,7 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 **PR-128b — PMC Frontend chart** (AthleteProgress reads DailyLoad)
 - Coach needs visual analytics to demonstrate value
 
-**PR-151 — Periodización & Plan Anual**
+**PR-151 — Periodizacion & Plan Anual**
 - Macro/mesocycle planning differentiates Quantoryn from "another calendar with Strava"
 
 ### Before Mes 3 (general market launch)
@@ -70,6 +84,25 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 
 **PR-129 — Historical backfill pipeline**
 - New coaches migrating athletes who already have Strava history
+
+## PR-149 Architecture Summary
+
+### Onboarding Flow
+- Athletes register via Google OAuth or email/password
+- Onboarding wizard collects: personal data, athletic data, availability (7 days), goals
+- Coach invite can include specific plan OR leave plan selection to athlete
+- AthleteAvailability model stores weekly training availability per day (7 rows per athlete per org)
+
+### New Models / Schema (PR-149)
+- `AthleteAvailability`: organization, user, day_of_week (0-6), is_available, preferred_time, notes
+- `AthleteProfile` +14 fields: blood_type, clothing_size, instagram_handle, profession, emergency_contact_name, emergency_contact_phone, pace_1000m_seconds, best_5k_minutes, best_10k_minutes, best_21k_minutes, best_42k_minutes, best_ultra_km, tracks_menstrual_cycle, menstrual_cycle_notes
+
+### Frontend Changes (PR-149)
+- Google OAuth integration (Google Cloud Console configured for Quantoryn)
+- Onboarding wizard components in `frontend/src/components/onboarding/`
+- Tailwind theme layer added for consistent styling
+- Dashboard org name fix: reads from memberships instead of /api/me
+- Plan selector component for athlete self-selection
 
 ## Billing Architecture Summary
 
@@ -122,13 +155,15 @@ Coach B2C:     Athlete pays Coach via MercadoPago (AthleteSubscription)
 - Migration 0083 uses atomic=False (standard pattern for PostgreSQL FK+DDL)
 - PR-132 was merged directly to main (no feature branch) — process gap corrected
 - PR-134: OrgOAuthCredential uses fresh org instance in tests to avoid cached reverse OneToOne from post_save signal
-- CLAUDE.md PR queue is stale — update after PR-149
+- CLAUDE.md PR queue is stale — update after PR-150
 
 ## Key Technical Decisions
 - atomic=False: standard for any migration combining DDL + DML on FK tables
 - Lazy imports: Law 4 compliance for integrations/ imports in core/
 - PASO 0 mandatory: all future prompts must start with branch creation
 - transaction=True on IntegrityError tests: PostgreSQL aborts tx on violations
+- Google OAuth: configured via Google Cloud Console for Quantoryn project (PR-149)
+- Onboarding pattern: multi-step wizard with backend serializers per step (PR-149)
 
 ### Frontend billing surfaces (PR-137)
 - `Finanzas.jsx` — owner/admin-only: KPIs, plans management, subscription table + manual activation, invitations + copy-link
@@ -136,9 +171,9 @@ Coach B2C:     Athlete pays Coach via MercadoPago (AthleteSubscription)
 - `Layout.jsx` — Finanzas locked for coach/member role (tooltip: "Solo para administradores")
 - `billing.js` — 7 API service functions aligned to backend endpoints
 
-### Frontend invite flow (PR-138)
+### Frontend invite flow (PR-138 + PR-149)
 - `InvitePage.jsx` — public route `/invite/:token`; states: loading, invalid, expired, already_used, pending
-- **Current gap:** if athlete has no account, redirects to `/login?next=/invite/:token` — dead end for new athletes
+- PR-149 resolved the dead-end gap: athletes can now register inline (Google OAuth or email/password)
 - `App.jsx` — public route `/invite/:token` (no ProtectedRoute)
 - `billing.js` — added `getInvitation(token)` + `acceptInvitation(token)`
 

@@ -3345,6 +3345,44 @@ class AthleteInvitation(models.Model):
 
 
 # ==============================================================================
+# PR-150: OrganizationInviteLink — universal reusable invite link per org
+# ==============================================================================
+
+class OrganizationInviteLink(models.Model):
+    """
+    Universal reusable invite link for an Organization.
+
+    One link per org (OneToOneField). The coach shares this link in WhatsApp
+    or any channel. Any athlete who opens it can register, select a plan,
+    and join the organization.
+
+    The slug is auto-generated (UUID hex) and can be regenerated.
+    No expiration — the link is valid as long as is_active=True.
+    """
+
+    organization = models.OneToOneField(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="invite_link",
+    )
+    slug = models.CharField(
+        max_length=100, unique=True, db_index=True,
+        help_text="URL-safe identifier for the invite link.",
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = uuid.uuid4().hex[:12]
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"InviteLink({self.slug}) → {self.organization.name}"
+
+
+# ==============================================================================
 # PR-141: AthleteDevicePreference — athlete's opt-out from device connection prompt
 # ==============================================================================
 

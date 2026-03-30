@@ -5,14 +5,19 @@ import {
 } from '@mui/material';
 import {
   TrendingUp, Users, AlertTriangle, Plus, Copy, Check,
-  DollarSign, RefreshCw, UserPlus, X,
+  DollarSign, RefreshCw, UserPlus, X, Link2, Shield, ExternalLink,
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import { useOrg } from '../context/OrgContext';
+import { useSearchParams } from 'react-router-dom';
 import {
   getBillingStatus,
   getCoachPricingPlans,
   createCoachPricingPlan,
+  getMPConnectUrl,
+  disconnectMP,
+  getInviteLink,
+  regenerateInviteLink,
   createInvitation,
   getInvitations,
   getAthleteSubscriptions,
@@ -317,11 +322,13 @@ function ActivateManualModal({ open, subscription, onClose, onActivated }) {
 
 const Finanzas = () => {
   const { activeOrg, orgLoading } = useOrg();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [billingStatus, setBillingStatus] = useState(null);
   const [plans, setPlans] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]);
   const [invitations, setInvitations] = useState([]);
+  const [inviteLink, setInviteLink] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
@@ -332,23 +339,36 @@ const Finanzas = () => {
 
   const [subFilter, setSubFilter] = useState('all');
   const [resendingToken, setResendingToken] = useState(null);
+  const [mpConnecting, setMpConnecting] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
 
   const showToast = (message, severity = 'success') => setToast({ open: true, message, severity });
+
+  // PR-150: Check for MP callback success
+  useEffect(() => {
+    if (searchParams.get('mp_connected') === 'true') {
+      showToast('MercadoPago conectado exitosamente.');
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const loadData = useCallback(async () => {
     if (!activeOrg) return;
     setLoading(true); setError('');
     try {
-      const [statusRes, plansRes, subsRes, invRes] = await Promise.all([
-        getBillingStatus(),
-        getCoachPricingPlans(),
-        getAthleteSubscriptions(),
-        getInvitations(),
+      const [statusRes, plansRes, subsRes, invRes, linkRes] = await Promise.all([
+        getBillingStatus().catch(() => ({ data: null })),
+        getCoachPricingPlans().catch(() => ({ data: [] })),
+        getAthleteSubscriptions().catch(() => ({ data: [] })),
+        getInvitations().catch(() => ({ data: [] })),
+        getInviteLink().catch(() => ({ data: null })),
       ]);
-      setBillingStatus(statusRes.data);
-      setPlans(plansRes.data);
-      setSubscriptions(subsRes.data);
-      setInvitations(invRes.data);
+      if (statusRes.data) setBillingStatus(statusRes.data);
+      setPlans(Array.isArray(plansRes.data) ? plansRes.data : []);
+      setSubscriptions(Array.isArray(subsRes.data) ? subsRes.data : []);
+      setInvitations(Array.isArray(invRes.data) ? invRes.data : []);
+      if (linkRes.data) setInviteLink(linkRes.data);
     } catch {
       setError('No se pudieron cargar los datos de facturación.');
     } finally {
@@ -357,6 +377,54 @@ const Finanzas = () => {
   }, [activeOrg]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // PR-150: MP Connect handler
+  const handleMPConnect = async () => {
+    setMpConnecting(true);
+    try {
+      const { data } = await getMPConnectUrl();
+      if (data.authorization_url) {
+        window.location.href = data.authorization_url;
+      }
+    } catch {
+      showToast('Error al conectar MercadoPago.', 'error');
+      setMpConnecting(false);
+    }
+  };
+
+  // PR-150: MP Disconnect handler
+  const handleMPDisconnect = async () => {
+    try {
+      await disconnectMP();
+      setBillingStatus(prev => prev ? { ...prev, mp_connected: false } : prev);
+      showToast('MercadoPago desconectado.');
+    } catch {
+      showToast('Error al desconectar.', 'error');
+    }
+  };
+
+  // PR-150: Copy invite link
+  const handleCopyLink = () => {
+    if (inviteLink?.url) {
+      navigator.clipboard.writeText(inviteLink.url);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    }
+  };
+
+  // PR-150: Regenerate invite link
+  const handleRegenerateLink = async () => {
+    setRegenerating(true);
+    try {
+      const { data } = await regenerateInviteLink();
+      setInviteLink(data);
+      showToast('Link regenerado. El anterior ya no funciona.');
+    } catch {
+      showToast('Error al regenerar el link.', 'error');
+    } finally {
+      setRegenerating(false);
+    }
+  };
 
   // ── KPI calculations ──────────────────────────────────────────────────────
   const activeSubscriptions = subscriptions.filter(s => s.status === 'active');
@@ -457,6 +525,107 @@ const Finanzas = () => {
         </div>
       ) : (
         <div className="space-y-8">
+
+          {/* ── PR-150: MP Connect Banner ───────────────────────────────── */}
+          {billingStatus && !billingStatus.mp_connected && (
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-5 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-amber-100 rounded-xl">
+                  <Shield className="w-6 h-6 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-amber-900">Conectá tu MercadoPago</h3>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    Para cobrar a tus atletas, necesitás conectar tu cuenta de MercadoPago.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleMPConnect}
+                disabled={mpConnecting}
+                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-60 shrink-0"
+              >
+                {mpConnecting ? <CircularProgress size={16} sx={{ color: 'white' }} /> : <ExternalLink className="w-4 h-4" />}
+                Conectar MercadoPago
+              </button>
+            </div>
+          )}
+
+          {billingStatus?.mp_connected && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span className="text-sm font-medium text-emerald-800">MercadoPago conectado</span>
+              </div>
+              <button
+                onClick={handleMPDisconnect}
+                className="text-xs text-slate-500 hover:text-red-600 transition-colors"
+              >
+                Desconectar
+              </button>
+            </div>
+          )}
+
+          {/* ── PR-150: Link de Equipo ──────────────────────────────────── */}
+          {inviteLink && (
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <Link2 className="w-5 h-5 text-indigo-500" />
+                  <div>
+                    <h2 className="text-base font-semibold text-slate-900">Link de equipo</h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Compartí este link en WhatsApp para que tus atletas se registren
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="px-6 py-4 flex items-center gap-3">
+                <div className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                  <p className="text-sm text-slate-700 font-mono break-all">{inviteLink.url}</p>
+                </div>
+                <button
+                  onClick={handleCopyLink}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors shrink-0"
+                >
+                  {linkCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  {linkCopied ? 'Copiado' : 'Copiar'}
+                </button>
+                <button
+                  onClick={handleRegenerateLink}
+                  disabled={regenerating}
+                  className="flex items-center gap-2 px-3 py-2.5 text-sm text-slate-500 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors shrink-0 disabled:opacity-60"
+                >
+                  <RefreshCw className={`w-4 h-4 ${regenerating ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── PR-150: Atención Requerida (overdue) ───────────────────── */}
+          {overdueSubscriptions.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-5">
+              <div className="flex items-center gap-3 mb-3">
+                <AlertTriangle className="w-5 h-5 text-red-500" />
+                <h3 className="text-sm font-bold text-red-900">
+                  Atención requerida — {overdueSubscriptions.length} pago{overdueSubscriptions.length > 1 ? 's' : ''} atrasado{overdueSubscriptions.length > 1 ? 's' : ''}
+                </h3>
+              </div>
+              <div className="space-y-2">
+                {overdueSubscriptions.slice(0, 5).map(sub => (
+                  <div key={sub.id} className="flex items-center justify-between bg-white rounded-lg px-4 py-2 border border-red-100">
+                    <span className="text-sm font-medium text-slate-900">
+                      {sub.athlete_first_name} {sub.athlete_last_name}
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-slate-500">{sub.coach_plan_name}</span>
+                      <span className="text-sm font-bold text-red-600">{formatARS(sub.price_ars)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* ── SECCIÓN 1: KPIs ─────────────────────────────────────────── */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
