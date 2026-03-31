@@ -6,6 +6,7 @@ import {
 import {
   TrendingUp, Users, AlertTriangle, Plus, Copy, Check,
   DollarSign, RefreshCw, UserPlus, X, Link2, Shield, ExternalLink,
+  Pencil, Trash2,
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import { useOrg } from '../context/OrgContext';
@@ -14,6 +15,8 @@ import {
   getBillingStatus,
   getCoachPricingPlans,
   createCoachPricingPlan,
+  updateCoachPricingPlan,
+  deleteCoachPricingPlan,
   getMPConnectUrl,
   disconnectMP,
   getInviteLink,
@@ -339,6 +342,7 @@ const Finanzas = () => {
 
   const [subFilter, setSubFilter] = useState('all');
   const [resendingToken, setResendingToken] = useState(null);
+  const [editingPlan, setEditingPlan] = useState(null);
   const [mpConnecting, setMpConnecting] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
@@ -423,6 +427,29 @@ const Finanzas = () => {
       showToast('Error al regenerar el link.', 'error');
     } finally {
       setRegenerating(false);
+    }
+  };
+
+  // PR-151: Plan edit/delete handlers
+  const handleUpdatePlan = async (plan) => {
+    try {
+      const { data } = await updateCoachPricingPlan(plan.id, plan);
+      setPlans(prev => prev.map(p => p.id === data.id ? { ...p, ...data } : p));
+      setEditingPlan(null);
+      showToast('Plan actualizado.');
+    } catch {
+      showToast('Error al actualizar el plan.', 'error');
+    }
+  };
+
+  const handleDeletePlan = async (planId) => {
+    if (!window.confirm('¿Desactivar este plan? Los atletas suscritos no se verán afectados.')) return;
+    try {
+      await deleteCoachPricingPlan(planId);
+      setPlans(prev => prev.filter(p => p.id !== planId));
+      showToast('Plan desactivado.');
+    } catch {
+      showToast('Error al desactivar el plan.', 'error');
     }
   };
 
@@ -690,6 +717,12 @@ const Finanzas = () => {
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${plan.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                         {plan.is_active ? 'Activo' : 'Inactivo'}
                       </span>
+                      <button onClick={() => setEditingPlan(plan)} className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition-colors">
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => handleDeletePlan(plan.id)} className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -877,6 +910,36 @@ const Finanzas = () => {
           onClose={() => setActivateTarget(null)}
           onActivated={handleActivated}
         />
+      )}
+
+      {/* PR-151: Edit Plan Modal */}
+      {editingPlan && (
+        <Dialog open={Boolean(editingPlan)} onClose={() => setEditingPlan(null)} maxWidth="sm" fullWidth PaperProps={{ className: 'rounded-2xl shadow-xl' }}>
+          <DialogTitle><span className="text-lg font-semibold text-slate-900">Editar plan</span></DialogTitle>
+          <DialogContent>
+            <div className="flex flex-col gap-4 pt-2">
+              <div>
+                <label className="text-xs font-medium uppercase tracking-wide text-slate-500 mb-1 block">Nombre del plan *</label>
+                <input type="text" value={editingPlan.name} onChange={e => setEditingPlan({ ...editingPlan, name: e.target.value })}
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+              </div>
+              <div>
+                <label className="text-xs font-medium uppercase tracking-wide text-slate-500 mb-1 block">Precio mensual (ARS) *</label>
+                <input type="number" value={editingPlan.price_ars} onChange={e => setEditingPlan({ ...editingPlan, price_ars: e.target.value })}
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+              </div>
+              <div>
+                <label className="text-xs font-medium uppercase tracking-wide text-slate-500 mb-1 block">Descripción</label>
+                <textarea value={editingPlan.description || ''} onChange={e => setEditingPlan({ ...editingPlan, description: e.target.value })} rows={2}
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none" />
+              </div>
+            </div>
+          </DialogContent>
+          <DialogActions className="px-6 pb-5 gap-2">
+            <button onClick={() => setEditingPlan(null)} className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">Cancelar</button>
+            <button onClick={() => handleUpdatePlan(editingPlan)} className="px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors">Guardar</button>
+          </DialogActions>
+        </Dialog>
       )}
 
       {/* Toast */}

@@ -88,74 +88,95 @@ const WorkoutCard = ({ workout, loading }) => {
 };
 
 // ─── Onboarding checklist ──────────────────────────────────────────────────────
-const OnboardingChecklist = ({ hasDevice, orgName }) => {
+// PR-151: Welcome Flow — BLOCKING personalized onboarding experience
+// Shows as full-screen overlay BEFORE the dashboard until athlete dismisses or connects device
+const WelcomeFlow = ({ hasDevice, orgName, firstName, onDismiss }) => {
   const navigate = useNavigate();
 
-  const steps = [
-    {
-      label: `Te uniste a ${orgName || 'la organización'}`,
-      done: true,
-    },
-    {
-      label: 'Tu suscripción está activa',
-      done: true,
-    },
-    {
-      label: 'Conectá tu dispositivo',
-      done: hasDevice,
-      action: { label: 'Conectar', path: '/connections' },
-    },
-    {
-      label: 'Completá tu perfil',
-      done: false,
-      action: { label: 'Completar', path: '/athlete/profile' },
-    },
-  ];
+  // All done: show success screen
+  if (hasDevice) {
+    return (
+        <Paper sx={{ p: 5, borderRadius: 4, maxWidth: 480, width: '100%', textAlign: 'center', background: 'linear-gradient(135deg, #ECFDF5 0%, #F0FDF4 100%)', border: '1px solid #A7F3D0', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+          <Typography variant="h5" sx={{ fontWeight: 700, color: '#065F46', mb: 2 }}>
+            ¡Todo listo, {firstName}! 🚀
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 3, alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CheckCircle sx={{ color: '#10B981', fontSize: 22 }} />
+              <Typography variant="body2" sx={{ color: '#334155', fontWeight: 500 }}>Perfil completado</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CheckCircle sx={{ color: '#10B981', fontSize: 22 }} />
+              <Typography variant="body2" sx={{ color: '#334155', fontWeight: 500 }}>Dispositivo conectado</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CheckCircle sx={{ color: '#10B981', fontSize: 22 }} />
+              <Typography variant="body2" sx={{ color: '#334155', fontWeight: 500 }}>Listo para entrenar</Typography>
+            </Box>
+          </Box>
+          <Typography variant="body2" sx={{ color: '#047857', mb: 3 }}>
+            Tu coach ya puede ver tu perfil y asignarte entrenamientos.
+          </Typography>
+          <Button variant="contained" fullWidth onClick={onDismiss}
+            sx={{ bgcolor: '#10B981', '&:hover': { bgcolor: '#059669' }, borderRadius: 3, textTransform: 'none', fontWeight: 700, py: 1.5, fontSize: '1rem' }}>
+            ¡Empezar a entrenar! →
+          </Button>
+        </Paper>
+    );
+  }
 
-  const allDone = steps.every(s => s.done);
-  if (allDone) return null;
-
+  // Not done: show setup wizard
   return (
-    <Paper sx={{ p: 3, borderRadius: 2, mb: 3 }}>
-      <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1E293B', mb: 2 }}>
-        Para empezar, completá estos pasos:
-      </Typography>
-      <List dense disablePadding>
-        {steps.map((step) => (
-          <ListItem
-            key={step.label}
-            disablePadding
-            sx={{ mb: 0.5 }}
-            secondaryAction={
-              !step.done && step.action ? (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={() => navigate(step.action.path)}
-                  sx={{ fontSize: '0.75rem', py: 0.25 }}
-                >
-                  {step.action.label} →
-                </Button>
-              ) : null
-            }
-          >
-            <ListItemIcon sx={{ minWidth: 32 }}>
-              {step.done
-                ? <CheckCircle sx={{ color: '#10B981', fontSize: 20 }} />
-                : <RadioButtonUnchecked sx={{ color: '#CBD5E1', fontSize: 20 }} />}
-            </ListItemIcon>
-            <ListItemText
-              primary={step.label}
-              primaryTypographyProps={{
-                fontSize: '0.875rem',
-                color: step.done ? '#64748B' : '#1E293B',
-                fontWeight: step.done ? 400 : 500,
-              }}
-            />
-          </ListItem>
-        ))}
-      </List>
-    </Paper>
+      <Paper sx={{ p: 5, borderRadius: 4, maxWidth: 480, width: '100%', background: 'linear-gradient(135deg, #EEF2FF 0%, #F5F3FF 100%)', border: '1px solid #C7D2FE', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+        <Typography variant="h5" sx={{ fontWeight: 700, color: '#312E81', mb: 0.5 }}>
+          ¡Bienvenido {firstName} a {orgName || 'tu equipo'}! 🎉
+        </Typography>
+        <Typography variant="body2" sx={{ color: '#6366F1', mb: 3 }}>
+          Completá estos pasos para empezar a entrenar
+        </Typography>
+
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {/* Step 1: Profile ✅ */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: 2, bgcolor: 'white', borderRadius: 3, border: '1px solid #E0E7FF' }}>
+            <CheckCircle sx={{ color: '#10B981', fontSize: 24 }} />
+            <Typography variant="body1" sx={{ fontWeight: 500, color: '#64748B' }}>
+              Perfil completado
+            </Typography>
+          </Box>
+
+          {/* Step 2: Connect device */}
+          <Box sx={{ p: 2, bgcolor: 'white', borderRadius: 3, border: '2px solid #6366F1' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <ArrowForward sx={{ color: '#6366F1', fontSize: 24 }} />
+                <Typography variant="body1" sx={{ fontWeight: 600, color: '#1E293B' }}>
+                  Conectá tu dispositivo
+                </Typography>
+              </Box>
+            </Box>
+            <Typography variant="caption" sx={{ color: '#6366F1', display: 'block', mt: 0.5, ml: 5 }}>
+              Strava, Garmin, Suunto, Polar, COROS...
+            </Typography>
+            <Button variant="contained" fullWidth onClick={() => navigate('/connections')}
+              sx={{ mt: 2, bgcolor: '#6366F1', '&:hover': { bgcolor: '#4F46E5' }, borderRadius: 2, textTransform: 'none', fontWeight: 600 }}>
+              Conectar dispositivo →
+            </Button>
+          </Box>
+
+          {/* Step 3: Ready (disabled) */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: 2, bgcolor: 'white', borderRadius: 3, border: '1px solid #E2E8F0', opacity: 0.4 }}>
+            <RadioButtonUnchecked sx={{ color: '#CBD5E1', fontSize: 24 }} />
+            <Typography variant="body1" sx={{ color: '#94A3B8' }}>
+              Listo para entrenar
+            </Typography>
+          </Box>
+        </Box>
+
+        <Button variant="text" fullWidth onClick={onDismiss}
+          sx={{ mt: 3, color: '#94A3B8', textTransform: 'none', fontWeight: 500, fontSize: '0.85rem' }}>
+          Continuar sin conectar →
+        </Button>
+      </Paper>
   );
 };
 
@@ -318,6 +339,9 @@ const AthleteDashboard = ({ user }) => {
   const [deviceStatus, setDeviceStatus] = useState(null);
   const [pendingNotifications, setPendingNotifications] = useState([]);
   const [mySub, setMySub] = useState(null);
+  const [welcomeDismissed, setWelcomeDismissed] = useState(
+    () => localStorage.getItem('quantoryn_welcome_done') === 'true'
+  );
 
   const greeting = getGreeting();
   const displayName = user?.first_name || user?.username || 'Atleta';
@@ -369,6 +393,12 @@ const AthleteDashboard = ({ user }) => {
       .catch(() => setMySub(null));
   }, []);
 
+  // PR-151: Welcome flow dismiss — stores in localStorage, shows only once
+  const handleWelcomeDismiss = () => {
+    localStorage.setItem('quantoryn_welcome_done', 'true');
+    setWelcomeDismissed(true);
+  };
+
   const handleDismissBanner = async () => {
     try {
       await dismissDevicePreference('no_device');
@@ -385,6 +415,23 @@ const AthleteDashboard = ({ user }) => {
 
   return (
     <AthleteLayout user={user}>
+      {/* PR-151: Welcome Flow OVERLAY — shows on top of dashboard, one time only */}
+      {!welcomeDismissed && (
+        <Box sx={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          bgcolor: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(8px)',
+          zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          p: 2,
+        }}>
+          <WelcomeFlow
+            hasDevice={hasDevice}
+            orgName={orgName}
+            firstName={user?.first_name || displayName}
+            onDismiss={handleWelcomeDismiss}
+          />
+        </Box>
+      )}
+
       {/* ── Header: greeting + weather ── */}
       <Box sx={{ mb: 4, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
         <Box>
@@ -432,8 +479,7 @@ const AthleteDashboard = ({ user }) => {
             )}
           </Box>
 
-          {/* ── Onboarding checklist ── */}
-          <OnboardingChecklist hasDevice={hasDevice} orgName={orgName} />
+          {/* Welcome flow moved to top-level blocking mode (PR-151) */}
         </Grid>
 
         <Grid size={{ xs: 12, md: 4 }}>

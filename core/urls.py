@@ -38,6 +38,7 @@ from core.views_billing import (  # PR-131 / PR-132 / PR-134 / PR-135 / PR-136 /
     InviteLinkRegenerateView,
     JoinDetailView,
     AthleteMySubscriptionView,
+    CoachPricingPlanDetailView,
 )
 from core.views_p1 import (  # PR-115/116/117/119/128/X4/149/PR-128-real-pmc/PR-129
     AthleteAdherenceViewSet,
@@ -144,8 +145,9 @@ urlpatterns = [
     path('billing/mp/callback/', MPCallbackView.as_view(), name='billing-mp-callback'),
     path('billing/mp/disconnect/', MPDisconnectView.as_view(), name='billing-mp-disconnect'),
 
-    # PR-137: Coach pricing plans
+    # PR-137 + PR-151: Coach pricing plans (CRUD)
     path('billing/plans/', CoachPricingPlanListCreateView.as_view(), name='billing-plans'),
+    path('billing/plans/<int:pk>/', CoachPricingPlanDetailView.as_view(), name='billing-plan-detail'),
 
     # PR-137: Athlete subscriptions list + manual activation
     path('billing/athlete-subscriptions/', AthleteSubscriptionListView.as_view(), name='billing-athlete-subscriptions'),

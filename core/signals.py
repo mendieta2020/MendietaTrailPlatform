@@ -410,6 +410,24 @@ def link_strava_on_oauth(sender, request, sociallogin, **kwargs):
             },
         )
         
+        # PR-151: Notify coach when athlete connects Strava
+        try:
+            from core.models import Athlete, InternalMessage
+            athlete_record = Athlete.objects.select_related("coach__user").filter(
+                user=user, is_active=True,
+            ).first()
+            if athlete_record and athlete_record.coach and athlete_record.coach.user:
+                athlete_name = f"{user.first_name} {user.last_name}".strip() or user.username
+                InternalMessage.objects.create(
+                    organization_id=athlete_record.organization_id,
+                    sender=user,
+                    recipient=athlete_record.coach.user,
+                    message_type="system",
+                    body=f"🟢 {athlete_name} conectó su Strava",
+                )
+        except Exception:
+            pass  # Best-effort notification
+
         # 4) Trigger backfill/drain of pending webhook events (async, fail-safe)
         try:
             transaction.on_commit(
