@@ -222,130 +222,148 @@ class OnboardingCompleteView(APIView):
             or serializer.context.get("selected_plan")
         )
 
-        # Check idempotency (Law 5)
+        # Check idempotency (Law 5) — any role counts as "already member"
         already_member = Membership.objects.filter(
-            user=user, organization=org, role="athlete",
+            user=user, organization=org,
         ).exists()
         if already_member:
             return Response(
                 {"redirect_url": "/dashboard", "already_member": True},
             )
 
-        with transaction.atomic():
-            # Update user profile
-            user.first_name = data["first_name"]
-            user.last_name = data["last_name"]
-            user.save(update_fields=["first_name", "last_name"])
+        try:
+            with transaction.atomic():
+                # Update user profile
+                user.first_name = data["first_name"]
+                user.last_name = data["last_name"]
+                user.save(update_fields=["first_name", "last_name"])
 
-            # Create Membership
-            Membership.objects.create(
-                user=user,
-                organization=org,
-                role="athlete",
-            )
-
-            # Create Athlete
-            athlete = Athlete.objects.create(
-                user=user,
-                organization=org,
-                phone_number=data["phone_number"],
-                location_city=data.get("city", ""),
-            )
-
-            # Calculate age from birth_date
-            today = timezone.now().date()
-            bd = data["birth_date"]
-            age = (
-                today.year - bd.year
-                - ((today.month, today.day) < (bd.month, bd.day))
-            )
-
-            # Create AthleteProfile
-            AthleteProfile.objects.create(
-                athlete=athlete,
-                organization=org,
-                birth_date=data["birth_date"],
-                age=age,
-                height_cm=data["height_cm"],
-                weight_kg=data["weight_kg"],
-                blood_type=data.get("blood_type", ""),
-                clothing_size=data.get("clothing_size", ""),
-                instagram_handle=data.get("instagram_handle", ""),
-                profession=data.get("profession", ""),
-                emergency_contact_name=data.get("emergency_contact_name", ""),
-                emergency_contact_phone=data.get("emergency_contact_phone", ""),
-                training_age_years=data.get("training_age_years"),
-                pace_1000m_seconds=data.get("pace_1000m_seconds"),
-                max_hr_bpm=data.get("max_hr_bpm"),
-                resting_hr_bpm=data.get("resting_hr_bpm"),
-                vo2max=data.get("vo2max"),
-                weekly_available_hours=data.get("weekly_available_hours"),
-                preferred_training_time=data.get("preferred_training_time", ""),
-                best_10k_minutes=data.get("best_10k_minutes"),
-                best_21k_minutes=data.get("best_21k_minutes"),
-                best_42k_minutes=data.get("best_42k_minutes"),
-                menstrual_tracking_enabled=data.get(
-                    "menstrual_tracking_enabled", False,
-                ),
-                menstrual_cycle_days=data.get("menstrual_cycle_days"),
-                dominant_discipline="trail",
-                updated_by=user,
-            )
-
-            # Create availability (7 entries)
-            availability_objs = [
-                AthleteAvailability(
-                    athlete=athlete,
+                # Create Membership (get_or_create for resilience)
+                Membership.objects.get_or_create(
+                    user=user,
                     organization=org,
-                    day_of_week=entry["day_of_week"],
-                    is_available=entry["is_available"],
-                    reason=entry.get("reason", ""),
-                    preferred_time=entry.get("preferred_time", ""),
+                    defaults={"role": "athlete"},
                 )
-                for entry in data["availability"]
-            ]
-            AthleteAvailability.objects.bulk_create(availability_objs)
 
-            # Create goal if provided
-            goal_data = data.get("goal")
-            if goal_data:
-                race_event, _ = RaceEvent.objects.get_or_create(
+                # Create Athlete (get_or_create for resilience)
+                athlete, _ = Athlete.objects.get_or_create(
+                    user=user,
                     organization=org,
-                    name=goal_data["race_name"],
-                    event_date=goal_data["race_date"],
                     defaults={
-                        "discipline": "trail",
-                        "distance_km": goal_data.get("distance_km"),
-                        "elevation_gain_m": goal_data.get("elevation_gain_m"),
-                        "created_by": user,
+                        "phone_number": data["phone_number"],
+                        "location_city": data.get("city", ""),
                     },
                 )
-                AthleteGoal.objects.create(
-                    organization=org,
-                    athlete=athlete,
-                    target_event=race_event,
-                    title=goal_data["race_name"],
-                    priority=goal_data.get("priority", "A"),
-                    status="active",
-                    target_date=goal_data["race_date"],
-                    created_by=user,
+
+                # Calculate age from birth_date
+                today = timezone.now().date()
+                bd = data["birth_date"]
+                age = (
+                    today.year - bd.year
+                    - ((today.month, today.day) < (bd.month, bd.day))
                 )
 
-            # Mark invitation accepted (or create one for join-link tracking)
-            if invitation:
-                invitation.status = AthleteInvitation.Status.ACCEPTED
-                invitation.accepted_at = timezone.now()
-                invitation.save(update_fields=["status", "accepted_at"])
-            else:
-                # Join link: create internal invitation record for tracking
-                invitation = AthleteInvitation.objects.create(
-                    organization=org,
-                    coach_plan=coach_plan,
-                    email=user.email or "",
-                    status=AthleteInvitation.Status.ACCEPTED,
-                    accepted_at=timezone.now(),
-                    expires_at=timezone.now(),
-                )
+                # Create AthleteProfile (skip if already exists)
+                if not AthleteProfile.objects.filter(athlete=athlete).exists():
+                    AthleteProfile.objects.create(
+                        athlete=athlete,
+                        organization=org,
+                        birth_date=data["birth_date"],
+                        age=age,
+                        height_cm=data["height_cm"],
+                        weight_kg=data["weight_kg"],
+                        blood_type=data.get("blood_type", ""),
+                        clothing_size=data.get("clothing_size", ""),
+                        instagram_handle=data.get("instagram_handle", ""),
+                        profession=data.get("profession", ""),
+                        emergency_contact_name=data.get("emergency_contact_name", ""),
+                        emergency_contact_phone=data.get("emergency_contact_phone", ""),
+                        training_age_years=data.get("training_age_years"),
+                        pace_1000m_seconds=data.get("pace_1000m_seconds"),
+                        max_hr_bpm=data.get("max_hr_bpm"),
+                        resting_hr_bpm=data.get("resting_hr_bpm"),
+                        vo2max=data.get("vo2max"),
+                        weekly_available_hours=data.get("weekly_available_hours"),
+                        preferred_training_time=data.get("preferred_training_time", ""),
+                        best_10k_minutes=data.get("best_10k_minutes"),
+                        best_21k_minutes=data.get("best_21k_minutes"),
+                        best_42k_minutes=data.get("best_42k_minutes"),
+                        menstrual_tracking_enabled=data.get(
+                            "menstrual_tracking_enabled", False,
+                        ),
+                        menstrual_cycle_days=data.get("menstrual_cycle_days"),
+                        dominant_discipline="trail",
+                        updated_by=user,
+                    )
+
+                # Create availability (7 entries, skip if already exist)
+                if not AthleteAvailability.objects.filter(athlete=athlete).exists():
+                    availability_objs = [
+                        AthleteAvailability(
+                            athlete=athlete,
+                            organization=org,
+                            day_of_week=entry["day_of_week"],
+                            is_available=entry["is_available"],
+                            reason=entry.get("reason", ""),
+                            preferred_time=entry.get("preferred_time", ""),
+                        )
+                        for entry in data["availability"]
+                    ]
+                    AthleteAvailability.objects.bulk_create(availability_objs)
+
+                # Create goal if provided
+                goal_data = data.get("goal")
+                if goal_data:
+                    race_event, _ = RaceEvent.objects.get_or_create(
+                        organization=org,
+                        name=goal_data["race_name"],
+                        event_date=goal_data["race_date"],
+                        defaults={
+                            "discipline": "trail",
+                            "distance_km": goal_data.get("distance_km"),
+                            "elevation_gain_m": goal_data.get("elevation_gain_m"),
+                            "created_by": user,
+                        },
+                    )
+                    AthleteGoal.objects.create(
+                        organization=org,
+                        athlete=athlete,
+                        target_event=race_event,
+                        title=goal_data["race_name"],
+                        priority=goal_data.get("priority", "A"),
+                        status="active",
+                        target_date=goal_data["race_date"],
+                        created_by=user,
+                    )
+
+                # Mark invitation accepted (or create one for join-link tracking)
+                if invitation:
+                    invitation.status = AthleteInvitation.Status.ACCEPTED
+                    invitation.accepted_at = timezone.now()
+                    invitation.save(update_fields=["status", "accepted_at"])
+                else:
+                    invitation = AthleteInvitation.objects.create(
+                        organization=org,
+                        coach_plan=coach_plan,
+                        email=user.email or "",
+                        status=AthleteInvitation.Status.ACCEPTED,
+                        accepted_at=timezone.now(),
+                        expires_at=timezone.now(),
+                    )
+
+        except Exception as exc:
+            logger.error(
+                "onboarding.transaction_error",
+                extra={
+                    "user_id": user.pk,
+                    "error_type": type(exc).__name__,
+                    "outcome": "error",
+                },
+            )
+            return Response(
+                {"detail": f"Error al completar el registro: {type(exc).__name__}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         # Outside transaction: MP preapproval (external HTTP)
         mp_data, error_response = _create_mp_preapproval(
