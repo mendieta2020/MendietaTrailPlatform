@@ -49,6 +49,10 @@ export function getAvailability(orgId, athleteId) {
   return client.get(`/api/p1/orgs/${orgId}/athletes/${athleteId}/availability/`);
 }
 
+export function updateAvailability(orgId, athleteId, data) {
+  return client.put(`/api/p1/orgs/${orgId}/athletes/${athleteId}/availability/`, data);
+}
+
 export function getGoals(orgId) {
   return client.get(`/api/p1/orgs/${orgId}/goals/`);
 }

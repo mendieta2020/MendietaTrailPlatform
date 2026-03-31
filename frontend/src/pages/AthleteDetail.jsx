@@ -36,6 +36,9 @@ const AthleteDetail = () => {
   const [athleteAvailability, setAthleteAvailability] = useState([]);
   const [athleteGoals, setAthleteGoals] = useState([]);
   const [showProfile, setShowProfile] = useState(false);
+  // Sections collapsed by default to keep the page focused
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
 
   // Estado para la Librería Lateral
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
@@ -166,31 +169,54 @@ const AthleteDetail = () => {
         )}
       </Paper>
 
-      {/* --- SECCIÓN DE ANALYTICS (BLINDADA) --- */}
-      <Box sx={{ mb: 4 }}>
-        {/* El ErrorBoundary atrapa cualquier crash dentro del gráfico y evita la pantalla blanca */}
-        <ErrorBoundary height={550}>
-          <StudentPerformanceChart alumnoId={id} />
-        </ErrorBoundary>
-      </Box>
+      {/* --- SECCIÓN DE ANALYTICS (colapsable) --- */}
+      <Paper sx={{ p: 3, borderRadius: 3, mb: 3, background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+        <Box
+          sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+          onClick={() => setShowAnalytics(v => !v)}
+        >
+          <Typography variant="h6" sx={{ fontWeight: 700, color: '#0F172A' }}>
+            Rendimiento
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#6366F1', fontWeight: 600 }}>
+            {showAnalytics ? 'Ocultar ▲' : 'Ver gráfico ▼'}
+          </Typography>
+        </Box>
+        {showAnalytics && (
+          <Box sx={{ mt: 2 }}>
+            <ErrorBoundary height={550}>
+              <StudentPerformanceChart alumnoId={id} />
+            </ErrorBoundary>
+          </Box>
+        )}
+      </Paper>
 
-      {/* SECCIÓN AGENDA - CALENDARIO SEMANAL */}
-      <Box sx={{ mb: 4 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+      {/* --- SECCIÓN AGENDA - CALENDARIO SEMANAL (colapsable) --- */}
+      <Paper sx={{ p: 3, borderRadius: 3, mb: 3, background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+        <Box
+          sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+          onClick={() => setShowCalendar(v => !v)}
+        >
           <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: '#0F172A' }}>
             <CalendarMonth color="primary" /> Agenda de Entrenamientos
           </Typography>
+          <Typography variant="body2" sx={{ color: '#6366F1', fontWeight: 600 }}>
+            {showCalendar ? 'Ocultar ▲' : 'Ver agenda ▼'}
+          </Typography>
         </Box>
-
-        {trainings.length === 0 && (
-          <Paper sx={{ p: 3, textAlign: 'center', border: '2px dashed #e2e8f0', bgcolor: '#f8fafc', borderRadius: 3, mb: 2 }}>
-            <FitnessCenter sx={{ fontSize: 40, color: '#cbd5e1', mb: 1 }} />
-            <Typography color="textSecondary" sx={{ fontWeight: 500 }}>No hay entrenamientos asignados aún.</Typography>
-            <Typography variant="caption" color="textSecondary">Arrastra una plantilla al calendario para empezar.</Typography>
-          </Paper>
+        {showCalendar && (
+          <Box sx={{ mt: 2 }}>
+            {trainings.length === 0 && (
+              <Paper sx={{ p: 3, textAlign: 'center', border: '2px dashed #e2e8f0', bgcolor: '#f8fafc', borderRadius: 3, mb: 2 }}>
+                <FitnessCenter sx={{ fontSize: 40, color: '#cbd5e1', mb: 1 }} />
+                <Typography color="textSecondary" sx={{ fontWeight: 500 }}>No hay entrenamientos asignados aún.</Typography>
+                <Typography variant="caption" color="textSecondary">Arrastra una plantilla al calendario para empezar.</Typography>
+              </Paper>
+            )}
+            <WeeklyCalendar trainings={trainings} athleteId={id} onTrainingCreated={handleTrainingCreated} />
+          </Box>
         )}
-        <WeeklyCalendar trainings={trainings} athleteId={id} onTrainingCreated={handleTrainingCreated} />
-      </Box>
+      </Paper>
 
       {/* --- HERRAMIENTAS FLOTANTES (LIBRERÍA) --- */}
       <Fab

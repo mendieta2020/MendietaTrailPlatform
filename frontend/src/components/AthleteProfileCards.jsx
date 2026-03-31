@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Box, Typography, Paper, Button, TextField, MenuItem, Chip, Switch, FormControlLabel,
 } from '@mui/material';
@@ -25,6 +25,59 @@ const TRAINING_TIME_OPTIONS = [
 const BLOOD_TYPE_OPTIONS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 const CLOTHING_SIZE_OPTIONS = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 
+const INJURY_TYPES = [
+  { value: 'muscular', label: 'Muscular' },
+  { value: 'articular', label: 'Articular' },
+  { value: 'tendinosa', label: 'Tendinosa' },
+  { value: 'ligamentosa', label: 'Ligamentosa' },
+  { value: 'osea', label: 'Ósea' },
+  { value: 'otra', label: 'Otra' },
+];
+
+const BODY_ZONES = [
+  { value: 'cabeza', label: 'Cabeza' },
+  { value: 'cuello', label: 'Cuello' },
+  { value: 'hombro', label: 'Hombro' },
+  { value: 'brazo', label: 'Brazo' },
+  { value: 'codo', label: 'Codo' },
+  { value: 'muneca', label: 'Muñeca' },
+  { value: 'mano', label: 'Mano' },
+  { value: 'pecho', label: 'Pecho' },
+  { value: 'espalda_alta', label: 'Espalda alta' },
+  { value: 'espalda_baja', label: 'Espalda baja' },
+  { value: 'cadera', label: 'Cadera' },
+  { value: 'muslo', label: 'Muslo' },
+  { value: 'rodilla', label: 'Rodilla' },
+  { value: 'pantorrilla', label: 'Pantorrilla' },
+  { value: 'tobillo', label: 'Tobillo' },
+  { value: 'pie', label: 'Pie' },
+];
+
+const SIDES = [
+  { value: 'izquierdo', label: 'Izquierdo' },
+  { value: 'derecho', label: 'Derecho' },
+  { value: 'ambos', label: 'Ambos' },
+  { value: 'central', label: 'Central' },
+];
+
+const SEVERITIES = [
+  { value: 'leve', label: 'Leve' },
+  { value: 'moderada', label: 'Moderada' },
+  { value: 'severa', label: 'Severa' },
+];
+
+const INJURY_STATUSES = [
+  { value: 'activa', label: 'Activa' },
+  { value: 'en_recuperacion', label: 'En recuperación' },
+  { value: 'resuelta', label: 'Resuelta' },
+];
+
+const PRIORITY_OPTIONS = [
+  { value: 'A', label: 'A — Objetivo principal' },
+  { value: 'B', label: 'B — Objetivo secundario' },
+  { value: 'C', label: 'C — Desarrollo' },
+];
+
 const SEVERITY_COLORS = {
   leve: { bg: '#FEF3C7', text: '#92400E' },
   moderada: { bg: '#FED7AA', text: '#9A3412' },
@@ -37,6 +90,18 @@ const STATUS_LABELS = {
   resuelta: '🟢 Resuelta',
 };
 
+const EMPTY_INJURY = {
+  injury_type: '',
+  body_zone: '',
+  side: '',
+  severity: '',
+  description: '',
+  date_occurred: new Date().toISOString().split('T')[0],
+  status: 'activa',
+};
+
+const EMPTY_GOAL = { title: '', target_date: '', priority: 'A' };
+
 function getMenstrualPhase(lastPeriodDate, cycleDays) {
   if (!lastPeriodDate || !cycleDays) return null;
   const today = new Date();
@@ -47,6 +112,18 @@ function getMenstrualPhase(lastPeriodDate, cycleDays) {
   if (dayInCycle <= 13) return { name: 'Folicular', emoji: '🟢', color: '#10B981', tip: 'Momento ideal para alta intensidad y fuerza.' };
   if (dayInCycle <= 15) return { name: 'Ovulación', emoji: '🟡', color: '#F59E0B', tip: 'Pico de energía. Aprovechá para sesiones exigentes.' };
   return { name: 'Lútea', emoji: '🟠', color: '#F97316', tip: 'Reducí intensidad. Priorizá trabajo aeróbico y recuperación.' };
+}
+
+// Initialise 7-day availability draft from existing data or defaults
+function buildAvailDraft(availability) {
+  const byDay = {};
+  (availability || []).forEach((a) => { byDay[a.day_of_week] = a; });
+  return Array.from({ length: 7 }, (_, i) => ({
+    day_of_week: i,
+    is_available: byDay[i]?.is_available ?? true,
+    reason: byDay[i]?.reason ?? '',
+    preferred_time: byDay[i]?.preferred_time ?? '',
+  }));
 }
 
 function CardHeader({ icon, title, cardName, editingCard, readOnly, onEditCard, onSaveCard, onCancelEdit }) {
@@ -83,6 +160,9 @@ function CardHeader({ icon, title, cardName, editingCard, readOnly, onEditCard, 
 /**
  * Shared profile cards component.
  * Used by AthleteProfile (editable) and AthleteDetail coach view (readOnly).
+ *
+ * Cards 1, 2, 6 use external editingCard/editDraft state (PATCH profile endpoint).
+ * Cards 3, 4, 5 manage their own local form state (separate API endpoints).
  */
 export function AthleteProfileCards({
   profile,
@@ -91,13 +171,20 @@ export function AthleteProfileCards({
   goals = [],
   userName = '',
   readOnly = false,
+  // External state for Cards 1, 2, 6 (profile PATCH)
   editingCard = null,
   editDraft = {},
   onEditCard,
   onSaveCard,
   onCancelEdit,
   onDraftChange,
-  onAddInjury,
+  // Card 3: availability bulk PUT
+  onSaveAvailability,
+  // Card 4: goals
+  onAddGoal,
+  onDeleteGoal,
+  // Card 5: injuries
+  onSaveInjury,
   onDeleteInjury,
 }) {
   const phase = profile?.menstrual_tracking_enabled
@@ -106,6 +193,82 @@ export function AthleteProfileCards({
 
   const isEditing = (cardName) => !readOnly && editingCard === cardName;
   const d = editDraft || {};
+
+  // ── Card 3: Availability local state ────────────────────────────────────────
+  const [editingAvailability, setEditingAvailability] = useState(false);
+  const [availDraft, setAvailDraft] = useState([]);
+
+  const handleEditAvailability = () => {
+    setAvailDraft(buildAvailDraft(availability));
+    setEditingAvailability(true);
+  };
+  const handleCancelAvailability = () => setEditingAvailability(false);
+  const handleToggleDay = (dayIndex) => {
+    setAvailDraft((prev) =>
+      prev.map((a) => a.day_of_week === dayIndex ? { ...a, is_available: !a.is_available } : a)
+    );
+  };
+  const handleSaveAvailabilityLocal = async () => {
+    await onSaveAvailability(availDraft);
+    setEditingAvailability(false);
+  };
+
+  // ── Card 4: Goals local state ────────────────────────────────────────────────
+  const [showGoalForm, setShowGoalForm] = useState(false);
+  const [goalForm, setGoalForm] = useState(EMPTY_GOAL);
+  const [goalSaving, setGoalSaving] = useState(false);
+
+  const handleGoalChange = (field, value) => setGoalForm((p) => ({ ...p, [field]: value }));
+  const handleAddGoalSubmit = async () => {
+    if (!goalForm.title || !goalForm.target_date) return;
+    setGoalSaving(true);
+    try {
+      await onAddGoal({ ...goalForm, status: 'active' });
+      setGoalForm(EMPTY_GOAL);
+      setShowGoalForm(false);
+    } finally {
+      setGoalSaving(false);
+    }
+  };
+
+  // ── Card 5: Injuries local state ────────────────────────────────────────────
+  const [showInjuryForm, setShowInjuryForm] = useState(false);
+  const [injuryFormId, setInjuryFormId] = useState(null); // null = new, id = edit
+  const [injuryForm, setInjuryForm] = useState(EMPTY_INJURY);
+  const [injurySaving, setInjurySaving] = useState(false);
+
+  const handleInjuryChange = (field, value) => setInjuryForm((p) => ({ ...p, [field]: value }));
+
+  const openNewInjuryForm = () => {
+    setInjuryForm(EMPTY_INJURY);
+    setInjuryFormId(null);
+    setShowInjuryForm(true);
+  };
+  const openEditInjuryForm = (inj) => {
+    setInjuryForm({
+      injury_type: inj.injury_type,
+      body_zone: inj.body_zone,
+      side: inj.side,
+      severity: inj.severity,
+      description: inj.description || '',
+      date_occurred: inj.date_occurred,
+      status: inj.status,
+    });
+    setInjuryFormId(inj.id);
+    setShowInjuryForm(true);
+  };
+  const handleCancelInjuryForm = () => { setShowInjuryForm(false); setInjuryFormId(null); };
+  const handleInjuryFormSubmit = async () => {
+    if (!injuryForm.injury_type || !injuryForm.body_zone || !injuryForm.side || !injuryForm.severity) return;
+    setInjurySaving(true);
+    try {
+      await onSaveInjury(injuryForm, injuryFormId);
+      setShowInjuryForm(false);
+      setInjuryFormId(null);
+    } finally {
+      setInjurySaving(false);
+    }
+  };
 
   return (
     <>
@@ -229,28 +392,105 @@ export function AthleteProfileCards({
 
       {/* Card 3: Disponibilidad Semanal */}
       <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-          <Calendar className="w-5 h-5" style={{ color: '#F59E0B' }} />
-          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Disponibilidad Semanal</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Calendar className="w-5 h-5" style={{ color: '#F59E0B' }} />
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Disponibilidad Semanal</Typography>
+          </Box>
+          {!readOnly && !editingAvailability && (
+            <Button size="small" startIcon={<Edit2 size={12} />} onClick={handleEditAvailability}
+              sx={{ textTransform: 'none', color: '#6366F1', fontSize: '0.8rem' }}>
+              Editar
+            </Button>
+          )}
+          {!readOnly && editingAvailability && (
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button size="small" variant="contained" onClick={handleSaveAvailabilityLocal}
+                startIcon={<Save size={12} />}
+                sx={{ textTransform: 'none', bgcolor: '#6366F1', fontSize: '0.8rem', '&:hover': { bgcolor: '#4F46E5' } }}>
+                Guardar
+              </Button>
+              <Button size="small" onClick={handleCancelAvailability}
+                sx={{ textTransform: 'none', color: '#64748B', fontSize: '0.8rem' }}>
+                Cancelar
+              </Button>
+            </Box>
+          )}
         </Box>
-        <div className="flex gap-2 flex-wrap">
-          {availability.length > 0 ? availability.map((a) => (
-            <div key={a.day_of_week}
-              className={`flex flex-col items-center p-2 rounded-lg border ${a.is_available ? 'border-emerald-200 bg-emerald-50' : 'border-red-200 bg-red-50'}`}>
-              <span className="text-xs font-bold">{DAYS[a.day_of_week]}</span>
-              {a.is_available ? <Check className="w-4 h-4 text-emerald-600" /> : <X className="w-4 h-4 text-red-500" />}
-              {!a.is_available && a.reason && <span className="text-xs text-red-600 mt-0.5">{a.reason}</span>}
-            </div>
-          )) : <span className="text-sm text-slate-400">Sin datos de disponibilidad</span>}
-        </div>
+
+        {editingAvailability && !readOnly ? (
+          <div className="flex gap-3 flex-wrap">
+            {availDraft.map((a) => (
+              <div key={a.day_of_week}
+                onClick={() => handleToggleDay(a.day_of_week)}
+                className={`flex flex-col items-center p-3 rounded-xl border-2 cursor-pointer transition-all
+                  ${a.is_available
+                    ? 'border-emerald-400 bg-emerald-50'
+                    : 'border-slate-200 bg-slate-50 opacity-60'}`}>
+                <span className="text-xs font-bold text-slate-700 mb-1">{DAYS[a.day_of_week]}</span>
+                {a.is_available
+                  ? <Check className="w-5 h-5 text-emerald-600" />
+                  : <X className="w-5 h-5 text-slate-400" />}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex gap-2 flex-wrap">
+            {availability.length > 0 ? availability.map((a) => (
+              <div key={a.day_of_week}
+                className={`flex flex-col items-center p-2 rounded-lg border ${a.is_available ? 'border-emerald-200 bg-emerald-50' : 'border-red-200 bg-red-50'}`}>
+                <span className="text-xs font-bold">{DAYS[a.day_of_week]}</span>
+                {a.is_available ? <Check className="w-4 h-4 text-emerald-600" /> : <X className="w-4 h-4 text-red-500" />}
+                {!a.is_available && a.reason && <span className="text-xs text-red-600 mt-0.5">{a.reason}</span>}
+              </div>
+            )) : <span className="text-sm text-slate-400">Sin datos de disponibilidad</span>}
+          </div>
+        )}
       </Paper>
 
       {/* Card 4: Objetivos de Carrera */}
       <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-          <Target className="w-5 h-5" style={{ color: '#8B5CF6' }} />
-          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Objetivos de Carrera</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Target className="w-5 h-5" style={{ color: '#8B5CF6' }} />
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Objetivos de Carrera</Typography>
+          </Box>
+          {!readOnly && !showGoalForm && (
+            <Button size="small" startIcon={<Plus className="w-4 h-4" />} onClick={() => setShowGoalForm(true)}
+              sx={{ textTransform: 'none', color: '#6366F1' }}>
+              Agregar carrera
+            </Button>
+          )}
         </Box>
+
+        {!readOnly && showGoalForm && (
+          <Box sx={{ mb: 2, p: 2, bgcolor: '#F8FAFC', borderRadius: 2, border: '1px solid #E2E8F0' }}>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+              <TextField size="small" label="Nombre del objetivo *" value={goalForm.title}
+                onChange={(e) => handleGoalChange('title', e.target.value)}
+                sx={{ gridColumn: 'span 2' }} />
+              <TextField select size="small" label="Prioridad" value={goalForm.priority}
+                onChange={(e) => handleGoalChange('priority', e.target.value)}>
+                {PRIORITY_OPTIONS.map((o) => <MenuItem key={o.value} value={o.value}>{o.value} — {o.value === 'A' ? 'Principal' : o.value === 'B' ? 'Secundario' : 'Desarrollo'}</MenuItem>)}
+              </TextField>
+              <TextField size="small" type="date" label="Fecha objetivo *"
+                value={goalForm.target_date}
+                onChange={(e) => handleGoalChange('target_date', e.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }} />
+            </div>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button size="small" variant="contained" onClick={handleAddGoalSubmit} disabled={goalSaving}
+                sx={{ textTransform: 'none', bgcolor: '#6366F1', '&:hover': { bgcolor: '#4F46E5' } }}>
+                {goalSaving ? 'Guardando…' : 'Guardar'}
+              </Button>
+              <Button size="small" onClick={() => { setShowGoalForm(false); setGoalForm(EMPTY_GOAL); }}
+                sx={{ textTransform: 'none', color: '#64748B' }}>
+                Cancelar
+              </Button>
+            </Box>
+          </Box>
+        )}
+
         {goals.length > 0 ? (
           <div className="space-y-2">
             {goals.map((g) => (
@@ -271,6 +511,11 @@ export function AthleteProfileCards({
                     {g.target_event?.elevation_gain_m ? ` — D+${g.target_event.elevation_gain_m}m` : ''}
                   </span>
                 </div>
+                {!readOnly && (
+                  <button onClick={() => onDeleteGoal(g.id)} className="text-slate-400 hover:text-red-500 p-1">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -286,18 +531,66 @@ export function AthleteProfileCards({
             <AlertTriangle className="w-5 h-5" style={{ color: '#EF4444' }} />
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Lesiones</Typography>
           </Box>
-          {!readOnly && (
-            <Button size="small" startIcon={<Plus className="w-4 h-4" />} onClick={onAddInjury}
+          {!readOnly && !showInjuryForm && (
+            <Button size="small" startIcon={<Plus className="w-4 h-4" />} onClick={openNewInjuryForm}
               sx={{ textTransform: 'none', color: '#6366F1' }}>
               Agregar lesión
             </Button>
           )}
         </Box>
+
+        {!readOnly && showInjuryForm && (
+          <Box sx={{ mb: 2, p: 2, bgcolor: '#FFF5F5', borderRadius: 2, border: '1px solid #FEE2E2' }}>
+            <Typography variant="caption" sx={{ fontWeight: 600, color: '#991B1B', mb: 1, display: 'block' }}>
+              {injuryFormId ? 'Editar lesión' : 'Nueva lesión'}
+            </Typography>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+              <TextField select size="small" label="Tipo *" value={injuryForm.injury_type}
+                onChange={(e) => handleInjuryChange('injury_type', e.target.value)}>
+                {INJURY_TYPES.map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
+              </TextField>
+              <TextField select size="small" label="Zona del cuerpo *" value={injuryForm.body_zone}
+                onChange={(e) => handleInjuryChange('body_zone', e.target.value)}>
+                {BODY_ZONES.map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
+              </TextField>
+              <TextField select size="small" label="Lado *" value={injuryForm.side}
+                onChange={(e) => handleInjuryChange('side', e.target.value)}>
+                {SIDES.map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
+              </TextField>
+              <TextField select size="small" label="Severidad *" value={injuryForm.severity}
+                onChange={(e) => handleInjuryChange('severity', e.target.value)}>
+                {SEVERITIES.map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
+              </TextField>
+              <TextField select size="small" label="Estado" value={injuryForm.status}
+                onChange={(e) => handleInjuryChange('status', e.target.value)}>
+                {INJURY_STATUSES.map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
+              </TextField>
+              <TextField size="small" type="date" label="Fecha"
+                value={injuryForm.date_occurred}
+                onChange={(e) => handleInjuryChange('date_occurred', e.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }} />
+              <TextField size="small" label="Descripción" value={injuryForm.description}
+                onChange={(e) => handleInjuryChange('description', e.target.value)}
+                sx={{ gridColumn: { sm: 'span 3' } }} />
+            </div>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button size="small" variant="contained" onClick={handleInjuryFormSubmit} disabled={injurySaving}
+                sx={{ textTransform: 'none', bgcolor: '#EF4444', '&:hover': { bgcolor: '#DC2626' } }}>
+                {injurySaving ? 'Guardando…' : injuryFormId ? 'Actualizar' : 'Guardar lesión'}
+              </Button>
+              <Button size="small" onClick={handleCancelInjuryForm}
+                sx={{ textTransform: 'none', color: '#64748B' }}>
+                Cancelar
+              </Button>
+            </Box>
+          </Box>
+        )}
+
         {injuries.length > 0 ? (
           <div className="space-y-2">
             {injuries.map((inj) => (
               <div key={inj.id} className="bg-slate-50 rounded-lg p-3 flex items-start justify-between">
-                <div>
+                <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <Chip label={inj.body_zone?.replace('_', ' ')} size="small"
                       sx={{ bgcolor: SEVERITY_COLORS[inj.severity]?.bg, color: SEVERITY_COLORS[inj.severity]?.text, fontWeight: 600, fontSize: '0.7rem' }} />
@@ -308,9 +601,14 @@ export function AthleteProfileCards({
                   <span className="text-xs text-slate-400">Desde: {inj.date_occurred}</span>
                 </div>
                 {!readOnly && (
-                  <button onClick={() => onDeleteInjury(inj.id)} className="text-slate-400 hover:text-red-500 p-1">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex gap-1 ml-2">
+                    <button onClick={() => openEditInjuryForm(inj)} className="text-slate-400 hover:text-indigo-500 p-1">
+                      <Edit2 size={14} />
+                    </button>
+                    <button onClick={() => onDeleteInjury(inj.id)} className="text-slate-400 hover:text-red-500 p-1">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 )}
               </div>
             ))}

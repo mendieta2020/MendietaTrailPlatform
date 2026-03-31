@@ -472,7 +472,7 @@ urlpatterns = [
     ),
     path(
         'p1/orgs/<int:org_id>/athletes/<int:athlete_id>/availability/',
-        AthleteAvailabilityListView.as_view({'get': 'list'}),
+        AthleteAvailabilityListView.as_view({'get': 'list', 'put': 'bulk_update'}),
         name='p1-athlete-availability',
     ),
 

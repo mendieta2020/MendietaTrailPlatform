@@ -9,7 +9,8 @@ import { AthleteProfileCards } from '../components/AthleteProfileCards';
 import { useAuth } from '../context/AuthContext';
 import {
   getAthleteProfile, updateAthleteProfile, getInjuries, createInjury,
-  deleteInjury, getAvailability, getGoals,
+  updateInjury, deleteInjury, getAvailability, updateAvailability,
+  getGoals, createGoal, deleteGoal,
 } from '../api/athlete';
 import client from '../api/client';
 
@@ -41,7 +42,7 @@ const AthleteProfile = () => {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState('');
 
-  // Inline editing state
+  // Inline editing state for Cards 1, 2, 6 (profile PATCH)
   const [editingCard, setEditingCard] = useState(null);
   const [editDraft, setEditDraft] = useState({});
 
@@ -75,8 +76,10 @@ const AthleteProfile = () => {
 
   const showToast = (msg) => {
     setToast(msg);
-    setTimeout(() => setToast(''), 2000);
+    setTimeout(() => setToast(''), 2500);
   };
+
+  // ── Cards 1, 2, 6: profile PATCH ────────────────────────────────────────────
 
   const handleEditCard = (cardName) => {
     setEditDraft({ ...profile });
@@ -110,21 +113,62 @@ const AthleteProfile = () => {
     setEditDraft(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleAddInjury = async () => {
+  // ── Card 3: Availability bulk PUT ────────────────────────────────────────────
+
+  const handleSaveAvailability = async (availData) => {
     if (!orgId || !athleteId) return;
     try {
-      const { data } = await createInjury(orgId, athleteId, {
-        injury_type: 'muscular',
-        body_zone: 'rodilla',
-        side: 'derecho',
-        severity: 'leve',
-        description: '',
-        date_occurred: new Date().toISOString().split('T')[0],
-        status: 'activa',
-      });
-      setInjuries(prev => [data, ...prev]);
+      const { data } = await updateAvailability(orgId, athleteId, availData);
+      setAvailability(Array.isArray(data) ? data : data?.results ?? []);
+      showToast('Disponibilidad guardada');
     } catch {
-      showToast('Error al agregar lesión');
+      showToast('Error al guardar disponibilidad');
+      throw new Error('availability_save_failed');
+    }
+  };
+
+  // ── Card 4: Goals create / delete ────────────────────────────────────────────
+
+  const handleAddGoal = async (goalData) => {
+    if (!orgId || !athleteId) return;
+    try {
+      const { data } = await createGoal(orgId, { ...goalData, athlete_id: athleteId });
+      setGoals(prev => [...prev, data]);
+      showToast('Objetivo agregado');
+    } catch {
+      showToast('Error al agregar objetivo');
+      throw new Error('goal_add_failed');
+    }
+  };
+
+  const handleDeleteGoal = async (goalId) => {
+    if (!orgId) return;
+    try {
+      await deleteGoal(orgId, goalId);
+      setGoals(prev => prev.filter(g => g.id !== goalId));
+      showToast('Objetivo eliminado');
+    } catch {
+      showToast('Error al eliminar objetivo');
+    }
+  };
+
+  // ── Card 5: Injuries CRUD ────────────────────────────────────────────────────
+
+  const handleSaveInjury = async (data, injuryId) => {
+    if (!orgId || !athleteId) return;
+    try {
+      if (injuryId) {
+        const { data: updated } = await updateInjury(orgId, athleteId, injuryId, data);
+        setInjuries(prev => prev.map(i => i.id === injuryId ? updated : i));
+        showToast('Lesión actualizada');
+      } else {
+        const { data: created } = await createInjury(orgId, athleteId, data);
+        setInjuries(prev => [created, ...prev]);
+        showToast('Lesión registrada');
+      }
+    } catch {
+      showToast('Error al guardar lesión');
+      throw new Error('injury_save_failed');
     }
   };
 
@@ -133,6 +177,7 @@ const AthleteProfile = () => {
     try {
       await deleteInjury(orgId, athleteId, id);
       setInjuries(prev => prev.filter(i => i.id !== id));
+      showToast('Lesión eliminada');
     } catch {
       showToast('Error al eliminar');
     }
@@ -158,7 +203,7 @@ const AthleteProfile = () => {
         </Typography>
 
         {toast && (
-          <Alert severity={toast === 'Guardado' ? 'success' : 'error'} sx={{ mb: 2, borderRadius: 2 }}>
+          <Alert severity={toast.startsWith('Error') ? 'error' : 'success'} sx={{ mb: 2, borderRadius: 2 }}>
             {toast}
           </Alert>
         )}
@@ -176,7 +221,10 @@ const AthleteProfile = () => {
           onSaveCard={handleSaveCard}
           onCancelEdit={handleCancelEdit}
           onDraftChange={handleDraftChange}
-          onAddInjury={handleAddInjury}
+          onSaveAvailability={handleSaveAvailability}
+          onAddGoal={handleAddGoal}
+          onDeleteGoal={handleDeleteGoal}
+          onSaveInjury={handleSaveInjury}
           onDeleteInjury={handleDeleteInjury}
         />
 

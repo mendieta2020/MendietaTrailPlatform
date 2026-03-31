@@ -1802,6 +1802,7 @@ class AthleteInjuryViewSet(OrgTenantMixin, viewsets.ModelViewSet):
     """
     CRUD /api/p1/orgs/<org_id>/athletes/<athlete_id>/injuries/
     Athletes can manage their own injuries. Coaches can view all.
+    Membership is resolved once in initial() and cached on self.organization.
     """
     serializer_class = None
 
@@ -1809,27 +1810,35 @@ class AthleteInjuryViewSet(OrgTenantMixin, viewsets.ModelViewSet):
         from core.serializers_p1 import AthleteInjurySerializer
         return AthleteInjurySerializer
 
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        self.resolve_membership(self.kwargs["org_id"])  # caches self.organization
+
     def get_queryset(self):
         from core.models import AthleteInjury
-        org = self.resolve_membership(self.kwargs["org_id"]).organization
-        athlete_id = self.kwargs["athlete_id"]
         return AthleteInjury.objects.filter(
-            organization=org, athlete_id=athlete_id,
+            organization=self.organization, athlete_id=self.kwargs["athlete_id"],
         )
 
     def perform_create(self, serializer):
         from core.models import Athlete
-        org = self.resolve_membership(self.kwargs["org_id"]).organization
         athlete = Athlete.objects.get(
-            pk=self.kwargs["athlete_id"], organization=org,
+            pk=self.kwargs["athlete_id"], organization=self.organization,
         )
-        serializer.save(athlete=athlete, organization=org)
+        serializer.save(athlete=athlete, organization=self.organization)
+
+
+import logging as _logging
+_avail_logger = _logging.getLogger(__name__)
 
 
 class AthleteAvailabilityListView(OrgTenantMixin, viewsets.ModelViewSet):
     """
-    GET/PUT /api/p1/orgs/<org_id>/athletes/<athlete_id>/availability/
-    Returns 7-day availability for the athlete.
+    GET /api/p1/orgs/<org_id>/athletes/<athlete_id>/availability/
+        Returns 7-day availability for the athlete.
+    PUT /api/p1/orgs/<org_id>/athletes/<athlete_id>/availability/
+        Replaces all availability records atomically (delete-all + create).
+        Accepts list of {day_of_week, is_available, reason, preferred_time}.
     """
     serializer_class = None
 
@@ -1844,3 +1853,50 @@ class AthleteAvailabilityListView(OrgTenantMixin, viewsets.ModelViewSet):
         return AthleteAvailability.objects.filter(
             organization=org, athlete_id=athlete_id,
         ).order_by("day_of_week")
+
+    def bulk_update(self, request, *args, **kwargs):
+        """
+        PUT: replace all 7-day availability records for this athlete.
+        Runs inside a single transaction: delete existing → create new.
+        Tenancy: org derived from authenticated membership, never from body.
+        """
+        from django.db import transaction
+        from core.models import AthleteAvailability, Athlete
+
+        membership = self.resolve_membership(self.kwargs["org_id"])
+        org = membership.organization
+        athlete = get_object_or_404(
+            Athlete, pk=self.kwargs["athlete_id"], organization=org
+        )
+
+        serializer_cls = self.get_serializer_class()
+        serializer = serializer_cls(data=request.data, many=True)
+        serializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            AthleteAvailability.objects.filter(
+                athlete=athlete, organization=org
+            ).delete()
+            for item in serializer.validated_data:
+                AthleteAvailability.objects.create(
+                    athlete=athlete,
+                    organization=org,
+                    **item,
+                )
+
+        _avail_logger.info(
+            "athlete_availability.bulk_updated",
+            extra={
+                "event_name": "athlete_availability.bulk_updated",
+                "organization_id": org.id,
+                "actor_id": request.user.id,
+                "athlete_id": athlete.id,
+                "outcome": "success",
+            },
+        )
+
+        result_qs = AthleteAvailability.objects.filter(
+            athlete=athlete, organization=org
+        ).order_by("day_of_week")
+        out = serializer_cls(result_qs, many=True)
+        return Response(out.data)

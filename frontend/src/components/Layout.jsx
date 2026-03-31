@@ -218,11 +218,27 @@ const Layout = ({ children }) => {
     </div>
   );
 
-  // Wait for role resolution before rendering any layout — prevents flash of wrong panel
+  // Wait for role resolution before rendering any layout — prevents flash of wrong panel.
+  // Show sidebar-shaped skeleton so the layout shift is invisible to the user.
   if (userRole === null) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#F1F5F9' }}>
-        <CircularProgress />
+      <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+        <Box sx={{
+          width: { sm: 260 },
+          flexShrink: { sm: 0 },
+          bgcolor: '#1A2027',
+          display: { xs: 'none', sm: 'block' },
+        }} />
+        <Box sx={{
+          flexGrow: 1,
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          bgcolor: '#F1F5F9',
+          minHeight: '100vh',
+        }}>
+          <CircularProgress />
+        </Box>
       </Box>
     );
   }
