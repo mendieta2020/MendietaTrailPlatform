@@ -80,13 +80,11 @@ export default function OnboardingForm({ invitationToken, joinSlug, invite, sele
   const [menstrualTracking, setMenstrualTracking] = useState(false);
   const [cycleDays, setCycleDays] = useState('');
 
-  // Goal
-  const [hasGoal, setHasGoal] = useState(false);
-  const [raceName, setRaceName] = useState('');
-  const [raceDate, setRaceDate] = useState('');
-  const [distanceKm, setDistanceKm] = useState('');
-  const [elevationM, setElevationM] = useState('');
-  const [priority, setPriority] = useState('A');
+  // PR-152: Multiple goals
+  const [goals, setGoals] = useState([]);
+  const addGoal = () => setGoals([...goals, { race_name: '', race_date: '', distance_km: '', elevation_gain_m: '', priority: goals.length === 0 ? 'A' : goals.length === 1 ? 'B' : 'C' }]);
+  const removeGoal = (idx) => setGoals(goals.filter((_, i) => i !== idx));
+  const updateGoal = (idx, field, val) => setGoals(goals.map((g, i) => i === idx ? { ...g, [field]: val } : g));
 
   const intOrNull = (v) => (v === '' || v === null ? null : parseInt(v, 10));
   const floatOrNull = (v) => (v === '' || v === null ? null : parseFloat(v));
@@ -147,14 +145,16 @@ export default function OnboardingForm({ invitationToken, joinSlug, invite, sele
       payload.coach_plan_id = selectedPlanId;
     }
 
-    if (hasGoal && raceName && raceDate) {
-      payload.goal = {
-        race_name: raceName,
-        race_date: raceDate,
-        distance_km: floatOrNull(distanceKm),
-        elevation_gain_m: floatOrNull(elevationM),
-        priority,
-      };
+    // PR-152: Multiple goals
+    const validGoals = goals.filter(g => g.race_name && g.race_date);
+    if (validGoals.length > 0) {
+      payload.goals = validGoals.map(g => ({
+        race_name: g.race_name,
+        race_date: g.race_date,
+        distance_km: floatOrNull(g.distance_km),
+        elevation_gain_m: floatOrNull(g.elevation_gain_m),
+        priority: g.priority,
+      }));
     }
 
     try {
@@ -345,36 +345,43 @@ export default function OnboardingForm({ invitationToken, joinSlug, invite, sele
           </Accordion>
         )}
 
-        {/* Objetivo de carrera */}
+        {/* PR-152: Multiple race goals */}
         <Accordion disableGutters elevation={0} sx={{ border: '1px solid #e2e8f0', borderRadius: '12px !important', '&:before': { display: 'none' }, overflow: 'hidden' }}>
           <AccordionSummary expandIcon={<ChevronDown className="w-4 h-4" />}>
             <div className="flex items-center gap-2">
               <Target className="w-4 h-4 text-indigo-500" />
-              <span className="text-sm font-medium text-slate-700">Objetivo de carrera (opcional)</span>
+              <span className="text-sm font-medium text-slate-700">
+                Objetivos de carrera ({goals.length}) (opcional)
+              </span>
             </div>
           </AccordionSummary>
           <AccordionDetails>
             <div className="space-y-3">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={hasGoal}
-                  onChange={(e) => setHasGoal(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                />
-                <span className="text-sm text-slate-700">Tengo una carrera objetivo</span>
-              </label>
-              {hasGoal && (
-                <div className="grid grid-cols-2 gap-3">
-                  <TextField size="small" label="Nombre de la carrera" required={hasGoal} value={raceName} onChange={(e) => setRaceName(e.target.value)} fullWidth />
-                  <TextField size="small" label="Fecha" type="date" required={hasGoal} value={raceDate} onChange={(e) => setRaceDate(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} fullWidth />
-                  <TextField size="small" label="Distancia (km)" type="number" value={distanceKm} onChange={(e) => setDistanceKm(e.target.value)} fullWidth />
-                  <TextField size="small" label="Desnivel+ (m)" type="number" value={elevationM} onChange={(e) => setElevationM(e.target.value)} fullWidth />
-                  <TextField size="small" select label="Prioridad" value={priority} onChange={(e) => setPriority(e.target.value)} fullWidth>
-                    {PRIORITIES.map((p) => <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>)}
-                  </TextField>
+              {goals.map((g, idx) => (
+                <div key={idx} className="bg-slate-50 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-500 uppercase">
+                      Carrera {idx + 1} — Prioridad {g.priority}
+                    </span>
+                    <button type="button" onClick={() => removeGoal(idx)} className="text-xs text-red-500 hover:text-red-700">
+                      Eliminar
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <TextField size="small" label="Nombre de la carrera" value={g.race_name} onChange={(e) => updateGoal(idx, 'race_name', e.target.value)} fullWidth />
+                    <TextField size="small" label="Fecha" type="date" value={g.race_date} onChange={(e) => updateGoal(idx, 'race_date', e.target.value)} slotProps={{ inputLabel: { shrink: true } }} fullWidth />
+                    <TextField size="small" label="Distancia (km)" type="number" value={g.distance_km} onChange={(e) => updateGoal(idx, 'distance_km', e.target.value)} fullWidth />
+                    <TextField size="small" label="Desnivel+ (m)" type="number" value={g.elevation_gain_m} onChange={(e) => updateGoal(idx, 'elevation_gain_m', e.target.value)} fullWidth />
+                    <TextField size="small" select label="Prioridad" value={g.priority} onChange={(e) => updateGoal(idx, 'priority', e.target.value)} fullWidth>
+                      {PRIORITIES.map((p) => <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>)}
+                    </TextField>
+                  </div>
                 </div>
-              )}
+              ))}
+              <button type="button" onClick={addGoal}
+                className="w-full flex items-center justify-center gap-2 py-2 text-sm font-medium text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg border border-dashed border-indigo-300 transition-colors">
+                + Agregar carrera objetivo
+              </button>
             </div>
           </AccordionDetails>
         </Accordion>
