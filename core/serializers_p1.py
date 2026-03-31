@@ -182,6 +182,7 @@ class AthleteProfileSerializer(serializers.ModelSerializer):
             "best_42k_minutes",
             "menstrual_tracking_enabled",
             "menstrual_cycle_days",
+            "last_period_date",
             # Audit / notes
             "notes",
             "updated_by_id",
@@ -200,6 +201,33 @@ class AthleteProfileSerializer(serializers.ModelSerializer):
         if self.instance is not None:
             self.fields["athlete_id"].read_only = True
             self.fields["athlete_id"].required = False
+
+
+# ==============================================================================
+# PR-153: AthleteInjury serializer
+# ==============================================================================
+
+from core.models import AthleteInjury, AthleteAvailability
+
+
+class AthleteInjurySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AthleteInjury
+        fields = [
+            "id", "injury_type", "body_zone", "side", "severity",
+            "description", "date_occurred", "status", "resolved_at",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class AthleteAvailabilitySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AthleteAvailability
+        fields = [
+            "id", "day_of_week", "is_available", "reason", "preferred_time",
+        ]
+        read_only_fields = ["id"]
 
 
 # ==============================================================================

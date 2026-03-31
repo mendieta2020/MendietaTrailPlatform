@@ -39,6 +39,7 @@ from core.views_billing import (  # PR-131 / PR-132 / PR-134 / PR-135 / PR-136 /
     JoinDetailView,
     AthleteMySubscriptionView,
     CoachPricingPlanDetailView,
+    AthletePaymentLinkView,
 )
 from core.views_p1 import (  # PR-115/116/117/119/128/X4/149/PR-128-real-pmc/PR-129
     AthleteAdherenceViewSet,
@@ -54,6 +55,8 @@ from core.views_p1 import (  # PR-115/116/117/119/128/X4/149/PR-128-real-pmc/PR-
     WorkoutAssignmentViewSet,
     WorkoutBlockViewSet,
     WorkoutIntervalViewSet,
+    AthleteInjuryViewSet,
+    AthleteAvailabilityListView,
     WorkoutLibraryViewSet,
 )
 from core.views_pmc import (  # PR-128a / PR-145a
@@ -454,6 +457,25 @@ urlpatterns = [
         name='p1-athlete-adherence',
     ),
 
+    # PR-153: Athlete injuries + availability
+    path(
+        'p1/orgs/<int:org_id>/athletes/<int:athlete_id>/injuries/',
+        AthleteInjuryViewSet.as_view({'get': 'list', 'post': 'create'}),
+        name='p1-athlete-injuries-list',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/athletes/<int:athlete_id>/injuries/<int:pk>/',
+        AthleteInjuryViewSet.as_view({
+            'get': 'retrieve', 'put': 'update', 'patch': 'partial_update', 'delete': 'destroy',
+        }),
+        name='p1-athlete-injuries-detail',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/athletes/<int:athlete_id>/availability/',
+        AthleteAvailabilityListView.as_view({'get': 'list', 'put': 'bulk_update'}),
+        name='p1-athlete-availability',
+    ),
+
     # ==============================================================================
     # PR-128: Real-side PMC (CTL/ATL/TSB) from CompletedActivity
     # URL: /api/p1/orgs/<org_id>/athletes/<athlete_id>/pmc/real/
@@ -628,6 +650,7 @@ urlpatterns = [
     path('billing/invite-link/regenerate/', InviteLinkRegenerateView.as_view(), name='billing-invite-link-regenerate'),
     path('billing/join/<str:slug>/', JoinDetailView.as_view(), name='billing-join-detail'),
     path('athlete/subscription/', AthleteMySubscriptionView.as_view(), name='athlete-subscription'),
+    path('athlete/payment-link/', AthletePaymentLinkView.as_view(), name='athlete-payment-link'),
 
     # PR-149: Athlete registration + onboarding
     path('auth/register/', RegisterView.as_view(), name='auth-register'),

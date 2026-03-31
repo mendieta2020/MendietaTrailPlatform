@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box, Drawer, AppBar, Toolbar, List, Typography, Divider, IconButton,
-  ListItem, ListItemButton, ListItemIcon, ListItemText, Avatar, Tooltip, Badge
+  ListItem, ListItemButton, ListItemIcon, ListItemText, Avatar, Tooltip, Badge, CircularProgress
 } from '@mui/material';
 import AthleteLayout from './AthleteLayout';
 import MessagesDrawer from './MessagesDrawer';
@@ -32,7 +32,7 @@ const drawerWidth = 260;
 
 const Layout = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [userRole, setUserRole] = useState('coach'); // Default to coach
+  const [userRole, setUserRole] = useState(null); // null until /api/me resolves
   const [userInfo, setUserInfo] = useState(null);
   const [openMessages, setOpenMessages] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -217,6 +217,31 @@ const Layout = ({ children }) => {
       </List>
     </div>
   );
+
+  // Wait for role resolution before rendering any layout — prevents flash of wrong panel.
+  // Show sidebar-shaped skeleton so the layout shift is invisible to the user.
+  if (userRole === null) {
+    return (
+      <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+        <Box sx={{
+          width: { sm: 260 },
+          flexShrink: { sm: 0 },
+          bgcolor: '#1A2027',
+          display: { xs: 'none', sm: 'block' },
+        }} />
+        <Box sx={{
+          flexGrow: 1,
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          bgcolor: '#F1F5F9',
+          minHeight: '100vh',
+        }}>
+          <CircularProgress />
+        </Box>
+      </Box>
+    );
+  }
 
   // Delegate to athlete layout ONLY for role=athlete (case-insensitive safety)
   if (userRole?.toLowerCase() === 'athlete') {
