@@ -9,8 +9,10 @@ import {
   LibraryBooks
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
+import { AthleteProfileCards } from '../components/AthleteProfileCards';
 import client from '../api/client';
 import { getAthlete } from '../api/p1';
+import { getAthleteProfile, getInjuries, getAvailability, getGoals } from '../api/athlete';
 import { useOrg } from '../context/OrgContext';
 import WeeklyCalendar from '../components/WeeklyCalendar';
 import StudentPerformanceChart from '../components/widgets/StudentPerformanceChart';
@@ -27,6 +29,13 @@ const AthleteDetail = () => {
   const [trainings, setTrainings] = useState([]);
   const [injuryRisk] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Athlete profile data for coach read-only view
+  const [athleteProfile, setAthleteProfile] = useState(null);
+  const [athleteInjuries, setAthleteInjuries] = useState([]);
+  const [athleteAvailability, setAthleteAvailability] = useState([]);
+  const [athleteGoals, setAthleteGoals] = useState([]);
+  const [showProfile, setShowProfile] = useState(false);
 
   // Estado para la Librería Lateral
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
@@ -55,8 +64,27 @@ const AthleteDetail = () => {
         } catch {
           setTrainings([]);
         }
+
+        // 3. Athlete profile data (for coach read-only view)
+        try {
+          const [profRes, injRes, availRes, goalRes] = await Promise.all([
+            getAthleteProfile(activeOrg.org_id, id).catch(() => ({ data: null })),
+            getInjuries(activeOrg.org_id, id).catch(() => ({ data: [] })),
+            getAvailability(activeOrg.org_id, id).catch(() => ({ data: [] })),
+            getGoals(activeOrg.org_id).catch(() => ({ data: [] })),
+          ]);
+          if (profRes.data) setAthleteProfile(profRes.data);
+          setAthleteInjuries(Array.isArray(injRes.data) ? injRes.data : injRes.data?.results ?? []);
+          setAthleteAvailability(Array.isArray(availRes.data) ? availRes.data : availRes.data?.results ?? []);
+          const allGoals = Array.isArray(goalRes.data) ? goalRes.data : goalRes.data?.results ?? [];
+          setAthleteGoals(allGoals.filter(g => g.status === 'active'));
+        } catch {
+          // Profile section silently hidden on error
+        }
       } catch (err) {
-        console.error("Error cargando perfil:", err);
+        if (import.meta.env.DEV) {
+          console.error("Error cargando perfil:", err);
+        }
       } finally {
         setLoading(false);
       }
@@ -112,6 +140,31 @@ const AthleteDetail = () => {
 
       {/* COACH DECISION LAYER (v1) */}
       <CoachDecisionsPanel athleteId={id} />
+
+      {/* PERFIL DEL ATLETA (read-only) */}
+      <Paper sx={{ p: 3, borderRadius: 3, mb: 4, background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+        <Box
+          sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', mb: showProfile ? 2 : 0 }}
+          onClick={() => setShowProfile(v => !v)}
+        >
+          <Typography variant="h6" sx={{ fontWeight: 700, color: '#0F172A' }}>
+            Perfil del Atleta
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#6366F1', fontWeight: 600 }}>
+            {showProfile ? 'Ocultar ▲' : 'Ver perfil ▼'}
+          </Typography>
+        </Box>
+        {showProfile && (
+          <AthleteProfileCards
+            profile={athleteProfile}
+            injuries={athleteInjuries}
+            availability={athleteAvailability}
+            goals={athleteGoals}
+            userName={`${athlete?.first_name || ''} ${athlete?.last_name || ''}`.trim()}
+            readOnly
+          />
+        )}
+      </Paper>
 
       {/* --- SECCIÓN DE ANALYTICS (BLINDADA) --- */}
       <Box sx={{ mb: 4 }}>

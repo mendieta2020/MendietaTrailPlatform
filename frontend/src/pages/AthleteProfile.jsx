@@ -1,56 +1,50 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Paper, Button, CircularProgress, Alert, TextField,
+  Box, Typography, Paper, Button, CircularProgress, Alert,
 } from '@mui/material';
-import { DevicesOther, CheckCircle, LocationOn } from '@mui/icons-material';
+import { MapPin } from 'lucide-react';
 import AthleteLayout from '../components/AthleteLayout';
+import { AthleteProfileCards } from '../components/AthleteProfileCards';
 import { useAuth } from '../context/AuthContext';
-import { getDeviceStatus, reactivateDevicePreference } from '../api/athlete';
+import {
+  getAthleteProfile, updateAthleteProfile, getInjuries, createInjury,
+  deleteInjury, getAvailability, getGoals,
+} from '../api/athlete';
 import client from '../api/client';
 
-const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
+const PERSONAL_FIELDS = [
+  'instagram_handle', 'profession', 'blood_type', 'clothing_size',
+  'emergency_contact_name', 'emergency_contact_phone',
+];
 
-async function geocodeCity(cityName) {
-  try {
-    const res = await fetch(
-      `${NOMINATIM_URL}?q=${encodeURIComponent(cityName)}&format=json&limit=1`,
-      { headers: { 'Accept-Language': 'es' } }
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!data.length) return null;
-    return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
-  } catch {
-    return null;
-  }
-}
+const PHYSICAL_FIELDS = [
+  'weight_kg', 'height_cm', 'max_hr_bpm', 'resting_hr_bpm', 'vo2max',
+  'training_age_years', 'weekly_available_hours', 'preferred_training_time',
+  'pace_1000m_seconds', 'best_10k_minutes', 'best_21k_minutes', 'best_42k_minutes',
+];
+
+const HEALTH_FIELDS = ['menstrual_tracking_enabled', 'menstrual_cycle_days', 'last_period_date'];
+
+const CARD_FIELDS = { personal: PERSONAL_FIELDS, physical: PHYSICAL_FIELDS, health: HEALTH_FIELDS };
 
 const AthleteProfile = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const orgId = user?.memberships?.[0]?.org_id;
 
-  const [deviceStatus, setDeviceStatus] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [reactivating, setReactivating] = useState(false);
-  const [reactivateSuccess, setReactivateSuccess] = useState(false);
-
-  // Location state
-  const [locationCity, setLocationCity] = useState('');
+  const [profile, setProfile] = useState(null);
+  const [injuries, setInjuries] = useState([]);
+  const [availability, setAvailability] = useState([]);
+  const [goals, setGoals] = useState([]);
   const [athleteId, setAthleteId] = useState(null);
-  const [locationSaving, setLocationSaving] = useState(false);
-  const [locationSuccess, setLocationSuccess] = useState(false);
-  const [locationError, setLocationError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState('');
 
-  useEffect(() => {
-    getDeviceStatus()
-      .then(res => setDeviceStatus(res.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  // Inline editing state
+  const [editingCard, setEditingCard] = useState(null);
+  const [editDraft, setEditDraft] = useState({});
 
-  // Load athlete's current location from roster endpoint
   useEffect(() => {
     if (!orgId) return;
     client.get(`/api/p1/orgs/${orgId}/roster/athletes/`)
@@ -58,171 +52,143 @@ const AthleteProfile = () => {
         const data = res.data?.results ?? res.data ?? [];
         const athletes = Array.isArray(data) ? data : [];
         if (athletes.length > 0) {
-          setAthleteId(athletes[0].id);
-          setLocationCity(athletes[0].location_city ?? '');
+          const ath = athletes[0];
+          setAthleteId(ath.id);
+          Promise.all([
+            getAthleteProfile(orgId, ath.id).catch(() => ({ data: null })),
+            getInjuries(orgId, ath.id).catch(() => ({ data: [] })),
+            getAvailability(orgId, ath.id).catch(() => ({ data: [] })),
+            getGoals(orgId).catch(() => ({ data: [] })),
+          ]).then(([profRes, injRes, availRes, goalRes]) => {
+            if (profRes.data) setProfile(profRes.data);
+            setInjuries(Array.isArray(injRes.data) ? injRes.data : injRes.data?.results ?? []);
+            setAvailability(Array.isArray(availRes.data) ? availRes.data : availRes.data?.results ?? []);
+            const allGoals = Array.isArray(goalRes.data) ? goalRes.data : goalRes.data?.results ?? [];
+            setGoals(allGoals.filter(g => g.status === 'active'));
+          }).finally(() => setLoading(false));
+        } else {
+          setLoading(false);
         }
       })
-      .catch(() => {});
+      .catch(() => setLoading(false));
   }, [orgId]);
 
-  const handleReactivate = async () => {
-    setReactivating(true);
-    try {
-      await reactivateDevicePreference();
-      setDeviceStatus(prev => prev ? { ...prev, dismissed: false, show_prompt: true } : prev);
-      setReactivateSuccess(true);
-    } catch {
-      // no-op
-    } finally {
-      setReactivating(false);
-    }
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(''), 2000);
   };
 
-  const handleSaveLocation = async () => {
+  const handleEditCard = (cardName) => {
+    setEditDraft({ ...profile });
+    setEditingCard(cardName);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCard(null);
+    setEditDraft({});
+  };
+
+  const handleSaveCard = async (cardName) => {
     if (!orgId || !athleteId) return;
-    setLocationSaving(true);
-    setLocationError('');
-    setLocationSuccess(false);
+    const fields = CARD_FIELDS[cardName] || [];
+    const patch = {};
+    fields.forEach(f => {
+      if (editDraft[f] !== undefined) patch[f] = editDraft[f] === '' ? null : editDraft[f];
+    });
     try {
-      const payload = { location_city: locationCity };
-
-      // Geocode via Nominatim (free, no key needed)
-      if (locationCity.trim()) {
-        const coords = await geocodeCity(locationCity.trim());
-        if (coords) {
-          payload.location_lat = coords.lat;
-          payload.location_lon = coords.lon;
-        }
-      } else {
-        payload.location_lat = null;
-        payload.location_lon = null;
-      }
-
-      await client.patch(`/api/p1/orgs/${orgId}/roster/athletes/${athleteId}/`, payload);
-      setLocationSuccess(true);
+      await updateAthleteProfile(orgId, athleteId, patch);
+      setProfile(prev => ({ ...prev, ...patch }));
+      setEditingCard(null);
+      setEditDraft({});
+      showToast('Guardado');
     } catch {
-      setLocationError('Error al guardar la ubicación. Intenta de nuevo.');
-    } finally {
-      setLocationSaving(false);
+      showToast('Error al guardar');
     }
   };
+
+  const handleDraftChange = (field, value) => {
+    setEditDraft(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleAddInjury = async () => {
+    if (!orgId || !athleteId) return;
+    try {
+      const { data } = await createInjury(orgId, athleteId, {
+        injury_type: 'muscular',
+        body_zone: 'rodilla',
+        side: 'derecho',
+        severity: 'leve',
+        description: '',
+        date_occurred: new Date().toISOString().split('T')[0],
+        status: 'activa',
+      });
+      setInjuries(prev => [data, ...prev]);
+    } catch {
+      showToast('Error al agregar lesión');
+    }
+  };
+
+  const handleDeleteInjury = async (id) => {
+    if (!orgId || !athleteId) return;
+    try {
+      await deleteInjury(orgId, athleteId, id);
+      setInjuries(prev => prev.filter(i => i.id !== id));
+    } catch {
+      showToast('Error al eliminar');
+    }
+  };
+
+  if (loading) {
+    return (
+      <AthleteLayout user={user}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+          <CircularProgress />
+        </Box>
+      </AthleteLayout>
+    );
+  }
+
+  const userName = `${user?.first_name || ''} ${user?.last_name || ''}`.trim();
 
   return (
     <AthleteLayout user={user}>
-      <Box sx={{ maxWidth: 640, mx: 'auto' }}>
-        <Typography variant="h5" sx={{ fontWeight: 700, color: '#0F172A', mb: 4 }}>
+      <Box sx={{ maxWidth: 800, mx: 'auto' }}>
+        <Typography variant="h5" sx={{ fontWeight: 700, color: '#0F172A', mb: 3 }}>
           Mi Perfil
         </Typography>
 
-        {/* ── Location section ── */}
-        <Paper sx={{ p: 3, borderRadius: 2, mb: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-            <LocationOn sx={{ color: '#f97316' }} />
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#0F172A' }}>
-              Ubicación de entrenamiento
-            </Typography>
-          </Box>
-          <Typography variant="body2" sx={{ color: '#64748B', mb: 2 }}>
-            Indicá tu ciudad o lugar habitual de entrenamiento para ver el pronóstico del clima en tus sesiones.
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-            <TextField
-              label="Ciudad o lugar de entrenamiento habitual"
-              placeholder="ej: Mendoza, Argentina"
-              size="small"
-              fullWidth
-              value={locationCity}
-              onChange={(e) => { setLocationCity(e.target.value); setLocationSuccess(false); }}
-              helperText="Lo usamos para mostrarte el pronóstico del clima en tus sesiones"
-            />
-            <Button
-              variant="contained"
-              size="small"
-              disabled={locationSaving}
-              onClick={handleSaveLocation}
-              sx={{
-                bgcolor: '#f97316', '&:hover': { bgcolor: '#ea6c0a' },
-                textTransform: 'none', flexShrink: 0, mt: 0.25,
-              }}
-              endIcon={locationSaving ? <CircularProgress size={12} color="inherit" /> : null}
-            >
-              Guardar
-            </Button>
-          </Box>
-          {locationSuccess && (
-            <Alert severity="success" sx={{ mt: 1.5, py: 0 }}>
-              Ubicación guardada correctamente.
-            </Alert>
-          )}
-          {locationError && (
-            <Alert severity="error" sx={{ mt: 1.5, py: 0 }}>
-              {locationError}
-            </Alert>
-          )}
-        </Paper>
+        {toast && (
+          <Alert severity={toast === 'Guardado' ? 'success' : 'error'} sx={{ mb: 2, borderRadius: 2 }}>
+            {toast}
+          </Alert>
+        )}
 
-        {/* ── Device connection section ── */}
-        <Paper sx={{ p: 3, borderRadius: 2, mb: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-            <DevicesOther sx={{ color: '#0EA5E9' }} />
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#0F172A' }}>
-              Conexión de dispositivo
-            </Typography>
-          </Box>
+        <AthleteProfileCards
+          profile={profile}
+          injuries={injuries}
+          availability={availability}
+          goals={goals}
+          userName={userName}
+          readOnly={false}
+          editingCard={editingCard}
+          editDraft={editDraft}
+          onEditCard={handleEditCard}
+          onSaveCard={handleSaveCard}
+          onCancelEdit={handleCancelEdit}
+          onDraftChange={handleDraftChange}
+          onAddInjury={handleAddInjury}
+          onDeleteInjury={handleDeleteInjury}
+        />
 
-          {loading ? (
-            <CircularProgress size={20} />
-          ) : deviceStatus?.dismissed ? (
-            <Box>
-              <Alert severity="info" sx={{ mb: 2 }}>
-                Has indicado que no tienes dispositivo de entrenamiento.
-              </Alert>
-              {reactivateSuccess ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#10B981' }}>
-                  <CheckCircle />
-                  <Typography variant="body2">Puedes conectar tu dispositivo desde Conexiones.</Typography>
-                </Box>
-              ) : (
-                <Button
-                  variant="outlined"
-                  size="small"
-                  disabled={reactivating}
-                  onClick={handleReactivate}
-                  sx={{ textTransform: 'none' }}
-                >
-                  {reactivating ? 'Reactivando...' : 'Reactivar conexión de dispositivo'}
-                </Button>
-              )}
-            </Box>
-          ) : deviceStatus?.has_device ? (
-            <Box>
-              <Alert severity="success" sx={{ mb: 2 }}>
-                Tu dispositivo está conectado.
-              </Alert>
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={() => navigate('/connections')}
-                sx={{ textTransform: 'none' }}
-              >
-                Gestionar conexiones
-              </Button>
-            </Box>
-          ) : (
-            <Box>
-              <Typography variant="body2" sx={{ color: '#475569', mb: 2 }}>
-                Ve a Conexiones para vincular tu dispositivo de entrenamiento.
-              </Typography>
-              <Button
-                variant="contained"
-                size="small"
-                onClick={() => navigate('/connections')}
-                sx={{ bgcolor: '#0EA5E9', textTransform: 'none', '&:hover': { bgcolor: '#0284C7' } }}
-              >
-                Ir a Conexiones
-              </Button>
-            </Box>
-          )}
+        {/* Device + Location */}
+        <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <MapPin className="w-5 h-5" style={{ color: '#F97316' }} />
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Conexiones & Ubicación</Typography>
+          </Box>
+          <Button variant="outlined" size="small" onClick={() => navigate('/connections')} sx={{ textTransform: 'none' }}>
+            Gestionar conexiones de dispositivo
+          </Button>
         </Paper>
       </Box>
     </AthleteLayout>

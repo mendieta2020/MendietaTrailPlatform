@@ -1643,6 +1643,11 @@ class AthleteProfile(models.Model):
         null=True, blank=True,
         help_text="Average menstrual cycle length in days.",
     )
+    # PR-153: Last period start date for phase calculation
+    last_period_date = models.DateField(
+        null=True, blank=True,
+        help_text="Start date of the last menstrual period. Used to calculate current phase.",
+    )
 
     # ------------------------------------------------------------------
     # Freeform notes + audit
@@ -1765,6 +1770,121 @@ class AthleteAvailability(models.Model):
         day = self.get_day_of_week_display()
         status = "available" if self.is_available else "unavailable"
         return f"Athlete:{self.athlete_id} {day}={status}"
+
+
+# ==============================================================================
+# PR-153: AthleteInjury — injury tracking per athlete
+# ==============================================================================
+
+class AthleteInjury(models.Model):
+    """
+    Injury record for an Athlete. Supports active + historical tracking.
+
+    The coach sees all injuries in the athlete's profile. The athlete can
+    self-report injuries which the coach reviews. Multiple concurrent
+    injuries are supported (e.g., ankle + knee).
+
+    Multi-tenant: organization FK is non-nullable.
+    """
+
+    class InjuryType(models.TextChoices):
+        MUSCULAR = "muscular", "Muscular"
+        ARTICULAR = "articular", "Articular"
+        TENDINOSA = "tendinosa", "Tendinosa"
+        LIGAMENTOSA = "ligamentosa", "Ligamentosa"
+        OSEA = "osea", "Ósea"
+        OTRA = "otra", "Otra"
+
+    class BodyZone(models.TextChoices):
+        CABEZA = "cabeza", "Cabeza"
+        CUELLO = "cuello", "Cuello"
+        HOMBRO = "hombro", "Hombro"
+        BRAZO = "brazo", "Brazo"
+        CODO = "codo", "Codo"
+        MUNECA = "muneca", "Muñeca"
+        MANO = "mano", "Mano"
+        PECHO = "pecho", "Pecho"
+        ESPALDA_ALTA = "espalda_alta", "Espalda alta"
+        ESPALDA_BAJA = "espalda_baja", "Espalda baja"
+        CADERA = "cadera", "Cadera"
+        MUSLO = "muslo", "Muslo"
+        RODILLA = "rodilla", "Rodilla"
+        PANTORRILLA = "pantorrilla", "Pantorrilla"
+        TOBILLO = "tobillo", "Tobillo"
+        PIE = "pie", "Pie"
+
+    class Side(models.TextChoices):
+        IZQUIERDO = "izquierdo", "Izquierdo"
+        DERECHO = "derecho", "Derecho"
+        AMBOS = "ambos", "Ambos"
+        CENTRAL = "central", "Central"
+
+    class Severity(models.TextChoices):
+        LEVE = "leve", "Leve"
+        MODERADA = "moderada", "Moderada"
+        SEVERA = "severa", "Severa"
+
+    class Status(models.TextChoices):
+        ACTIVA = "activa", "Activa"
+        EN_RECUPERACION = "en_recuperacion", "En recuperación"
+        RESUELTA = "resuelta", "Resuelta"
+
+    athlete = models.ForeignKey(
+        "Athlete",
+        on_delete=models.CASCADE,
+        related_name="injuries",
+        db_index=True,
+    )
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="athlete_injuries",
+        db_index=True,
+    )
+    injury_type = models.CharField(
+        max_length=20, choices=InjuryType.choices,
+    )
+    body_zone = models.CharField(
+        max_length=20, choices=BodyZone.choices,
+    )
+    side = models.CharField(
+        max_length=20, choices=Side.choices, default=Side.CENTRAL,
+    )
+    severity = models.CharField(
+        max_length=20, choices=Severity.choices, default=Severity.LEVE,
+    )
+    description = models.TextField(blank=True, default="")
+    date_occurred = models.DateField()
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.ACTIVA,
+    )
+    resolved_at = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-date_occurred"]
+        indexes = [
+            models.Index(fields=["organization", "athlete", "status"]),
+        ]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if (
+            self.athlete_id is not None
+            and self.organization_id is not None
+            and self.athlete.organization_id != self.organization_id
+        ):
+            raise ValidationError(
+                "AthleteInjury.organization must match athlete.organization."
+            )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.body_zone} ({self.severity}) — {self.status}"
 
 
 # ==============================================================================

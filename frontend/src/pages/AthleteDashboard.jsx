@@ -346,12 +346,18 @@ const TrialBanner = ({ mySub }) => {
           <Typography variant="body2" sx={{ fontWeight: 700, color: '#92400E' }}>
             ⏳ Tu periodo de prueba vence en {daysLeft} día{daysLeft !== 1 ? 's' : ''}
           </Typography>
-          <Typography variant="caption" sx={{ color: '#B45309', mr: 1, display: { xs: 'none', sm: 'inline' } }}>
-            Contactá a tu coach para activar
-          </Typography>
-          <Button variant="contained" size="small" href="/connections"
+          <Button variant="contained" size="small"
+            onClick={async () => {
+              try {
+                const { getPaymentLink } = await import('../api/athlete');
+                const { data } = await getPaymentLink();
+                if (data.init_point) window.location.href = data.init_point;
+              } catch {
+                window.alert('Contactá a tu coach para activar tu plan.');
+              }
+            }}
             sx={{ bgcolor: '#F59E0B', '&:hover': { bgcolor: '#D97706' }, borderRadius: 2, textTransform: 'none', fontWeight: 600, fontSize: '0.8rem' }}>
-            Conectar dispositivo →
+            Activar plan →
           </Button>
         </Box>
         <LinearProgress variant="determinate" value={progress}

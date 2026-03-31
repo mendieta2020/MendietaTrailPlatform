@@ -1229,3 +1229,62 @@ class AthleteMySubscriptionView(APIView):
             "trial_days_remaining": trial_days_remaining,
             "trial_ends_at": sub.trial_ends_at.isoformat() if sub.trial_ends_at else None,
         })
+
+
+class AthletePaymentLinkView(APIView):
+    """
+    GET /api/athlete/payment-link/
+    Returns the MercadoPago checkout URL for the athlete's subscription.
+    Recovers init_point from existing preapproval, or creates new one.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from core.models import AthleteSubscription
+        from integrations.mercadopago.subscriptions import get_subscription
+
+        sub = AthleteSubscription.objects.filter(
+            athlete__user=request.user,
+        ).select_related("coach_plan", "organization").first()
+
+        if sub is None:
+            return Response(
+                {"detail": "No subscription found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Try to recover init_point from existing preapproval
+        if sub.mp_preapproval_id:
+            try:
+                mp_data = get_subscription(sub.mp_preapproval_id)
+                init_point = mp_data.get("init_point")
+                if init_point:
+                    return Response({"init_point": init_point})
+            except Exception:
+                pass  # Fall through to create new
+
+        # No preapproval or failed to recover — try to create new
+        from core.views_onboarding import _create_mp_preapproval
+        from core.models import AthleteInvitation
+
+        # Find or create a dummy invitation for the helper
+        invitation = AthleteInvitation.objects.filter(
+            organization=sub.organization,
+            email=request.user.email,
+        ).first()
+
+        if invitation:
+            mp_data, error = _create_mp_preapproval(
+                invitation, request.user.email, coach_plan=sub.coach_plan,
+            )
+            if mp_data:
+                init_point = mp_data.get("init_point")
+                preapproval_id = mp_data.get("id")
+                sub.mp_preapproval_id = preapproval_id
+                sub.save(update_fields=["mp_preapproval_id"])
+                return Response({"init_point": init_point})
+
+        return Response(
+            {"detail": "No se pudo generar el link de pago. Contactá a tu coach."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )

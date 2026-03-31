@@ -1791,3 +1791,56 @@ class ExternalIdentityViewSet(OrgTenantMixin, viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         self._require_write_role()
         instance.delete()
+
+
+# ==============================================================================
+# PR-153: AthleteInjury + Availability ViewSets
+# ==============================================================================
+
+
+class AthleteInjuryViewSet(OrgTenantMixin, viewsets.ModelViewSet):
+    """
+    CRUD /api/p1/orgs/<org_id>/athletes/<athlete_id>/injuries/
+    Athletes can manage their own injuries. Coaches can view all.
+    """
+    serializer_class = None
+
+    def get_serializer_class(self):
+        from core.serializers_p1 import AthleteInjurySerializer
+        return AthleteInjurySerializer
+
+    def get_queryset(self):
+        from core.models import AthleteInjury
+        org = self.resolve_membership(self.kwargs["org_id"]).organization
+        athlete_id = self.kwargs["athlete_id"]
+        return AthleteInjury.objects.filter(
+            organization=org, athlete_id=athlete_id,
+        )
+
+    def perform_create(self, serializer):
+        from core.models import Athlete
+        org = self.resolve_membership(self.kwargs["org_id"]).organization
+        athlete = Athlete.objects.get(
+            pk=self.kwargs["athlete_id"], organization=org,
+        )
+        serializer.save(athlete=athlete, organization=org)
+
+
+class AthleteAvailabilityListView(OrgTenantMixin, viewsets.ModelViewSet):
+    """
+    GET/PUT /api/p1/orgs/<org_id>/athletes/<athlete_id>/availability/
+    Returns 7-day availability for the athlete.
+    """
+    serializer_class = None
+
+    def get_serializer_class(self):
+        from core.serializers_p1 import AthleteAvailabilitySerializer
+        return AthleteAvailabilitySerializer
+
+    def get_queryset(self):
+        from core.models import AthleteAvailability
+        org = self.resolve_membership(self.kwargs["org_id"]).organization
+        athlete_id = self.kwargs["athlete_id"]
+        return AthleteAvailability.objects.filter(
+            organization=org, athlete_id=athlete_id,
+        ).order_by("day_of_week")

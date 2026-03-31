@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box, Drawer, AppBar, Toolbar, List, Typography, Divider, IconButton,
-  ListItem, ListItemButton, ListItemIcon, ListItemText, Avatar, Tooltip, Badge
+  ListItem, ListItemButton, ListItemIcon, ListItemText, Avatar, Tooltip, Badge, CircularProgress
 } from '@mui/material';
 import AthleteLayout from './AthleteLayout';
 import MessagesDrawer from './MessagesDrawer';
@@ -32,7 +32,7 @@ const drawerWidth = 260;
 
 const Layout = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [userRole, setUserRole] = useState('coach'); // Default to coach
+  const [userRole, setUserRole] = useState(null); // null until /api/me resolves
   const [userInfo, setUserInfo] = useState(null);
   const [openMessages, setOpenMessages] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -217,6 +217,15 @@ const Layout = ({ children }) => {
       </List>
     </div>
   );
+
+  // Wait for role resolution before rendering any layout — prevents flash of wrong panel
+  if (userRole === null) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#F1F5F9' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   // Delegate to athlete layout ONLY for role=athlete (case-insensitive safety)
   if (userRole?.toLowerCase() === 'athlete') {
