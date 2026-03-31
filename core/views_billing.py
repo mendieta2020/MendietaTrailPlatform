@@ -1208,6 +1208,16 @@ class AthleteMySubscriptionView(APIView):
                 "has_subscription": False,
             })
 
+        # PR-152: Calculate trial info
+        from django.utils import timezone as tz
+        trial_active = False
+        trial_days_remaining = 0
+        if sub.trial_ends_at:
+            remaining = (sub.trial_ends_at - tz.now()).total_seconds()
+            if remaining > 0:
+                trial_active = True
+                trial_days_remaining = max(0, int(remaining / 86400))
+
         return Response({
             "has_subscription": True,
             "plan_name": sub.coach_plan.name if sub.coach_plan else "",
@@ -1215,4 +1225,7 @@ class AthleteMySubscriptionView(APIView):
             "status": sub.status,
             "next_payment_at": sub.next_payment_at.isoformat() if sub.next_payment_at else None,
             "last_payment_at": sub.last_payment_at.isoformat() if sub.last_payment_at else None,
+            "trial_active": trial_active,
+            "trial_days_remaining": trial_days_remaining,
+            "trial_ends_at": sub.trial_ends_at.isoformat() if sub.trial_ends_at else None,
         })

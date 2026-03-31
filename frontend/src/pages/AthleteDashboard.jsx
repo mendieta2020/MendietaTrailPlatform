@@ -327,6 +327,73 @@ const WeeklyPulse = ({ weeklySummary, streak }) => {
   );
 };
 
+// ─── PR-152: Trial Banner ───────────────────────────────────────────────────────
+const TrialBanner = ({ mySub }) => {
+  if (!mySub?.has_subscription) return null;
+  if (mySub.status === 'active') return null; // Already paid
+
+  const trialActive = mySub.trial_active;
+  const daysLeft = mySub.trial_days_remaining ?? 0;
+  const planName = mySub.plan_name;
+  const price = mySub.price_ars;
+
+  if (trialActive) {
+    // Trial active: show countdown
+    const progress = ((7 - daysLeft) / 7) * 100;
+    return (
+      <Paper sx={{ p: 2.5, borderRadius: 3, mb: 3, background: 'linear-gradient(135deg, #FEF3C7 0%, #FFFBEB 100%)', border: '1px solid #FCD34D' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+          <Typography variant="body2" sx={{ fontWeight: 700, color: '#92400E' }}>
+            ⏳ Tu periodo de prueba vence en {daysLeft} día{daysLeft !== 1 ? 's' : ''}
+          </Typography>
+          <Typography variant="caption" sx={{ color: '#B45309', mr: 1, display: { xs: 'none', sm: 'inline' } }}>
+            Contactá a tu coach para activar
+          </Typography>
+          <Button variant="contained" size="small" href="/connections"
+            sx={{ bgcolor: '#F59E0B', '&:hover': { bgcolor: '#D97706' }, borderRadius: 2, textTransform: 'none', fontWeight: 600, fontSize: '0.8rem' }}>
+            Conectar dispositivo →
+          </Button>
+        </Box>
+        <LinearProgress variant="determinate" value={progress}
+          sx={{ height: 6, borderRadius: 3, bgcolor: '#FDE68A', '& .MuiLinearProgress-bar': { bgcolor: '#F59E0B', borderRadius: 3 } }}
+        />
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
+          <Typography variant="caption" sx={{ color: '#B45309' }}>Día 1</Typography>
+          <Typography variant="caption" sx={{ color: '#B45309' }}>Día 7</Typography>
+        </Box>
+      </Paper>
+    );
+  }
+
+  // Trial expired: show lock screen
+  return (
+    <Box sx={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      bgcolor: 'rgba(15, 23, 42, 0.8)', backdropFilter: 'blur(8px)',
+      zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center', p: 2,
+    }}>
+      <Paper sx={{ p: 5, borderRadius: 4, maxWidth: 440, width: '100%', textAlign: 'center' }}>
+        <Typography variant="h5" sx={{ fontWeight: 700, color: '#1E293B', mb: 1 }}>
+          🔒 Tu periodo de prueba finalizó
+        </Typography>
+        <Typography variant="body2" sx={{ color: '#64748B', mb: 3 }}>
+          Para seguir viendo tus entrenamientos, calendario y progreso, activá tu plan.
+        </Typography>
+        <Paper sx={{ p: 2, borderRadius: 2, bgcolor: '#F8FAFC', mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="body2" sx={{ fontWeight: 600, color: '#334155' }}>{planName}</Typography>
+          <Typography variant="body1" sx={{ fontWeight: 700, color: '#6366F1' }}>
+            ${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(price)}/mes
+          </Typography>
+        </Paper>
+        <Button variant="contained" fullWidth href="/athlete/profile"
+          sx={{ bgcolor: '#6366F1', '&:hover': { bgcolor: '#4F46E5' }, borderRadius: 3, textTransform: 'none', fontWeight: 700, py: 1.5, fontSize: '1rem' }}>
+          Activar mi plan →
+        </Button>
+      </Paper>
+    </Box>
+  );
+};
+
 // ─── Main component ────────────────────────────────────────────────────────────
 const AthleteDashboard = ({ user }) => {
   const { temp, description: weatherDesc, city, loading: weatherLoading } = useWeather();
@@ -431,6 +498,9 @@ const AthleteDashboard = ({ user }) => {
           />
         </Box>
       )}
+
+      {/* ── PR-152: Trial Banner ── */}
+      <TrialBanner mySub={mySub} />
 
       {/* ── Header: greeting + weather ── */}
       <Box sx={{ mb: 4, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>

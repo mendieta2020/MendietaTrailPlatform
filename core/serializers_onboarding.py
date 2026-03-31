@@ -168,8 +168,9 @@ class OnboardingCompleteSerializer(serializers.Serializer):
         min_value=0, required=False, allow_null=True,
     )
 
-    # Optional goal
-    goal = GoalSerializer(required=False, allow_null=True)
+    # Optional goals (multiple races with A/B/C priority)
+    goal = GoalSerializer(required=False, allow_null=True)  # backward compat: single goal
+    goals = GoalSerializer(many=True, required=False)  # PR-152: multiple goals
 
     def validate_invitation_token(self, value):
         from django.utils import timezone

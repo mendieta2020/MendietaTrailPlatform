@@ -311,9 +311,13 @@ class OnboardingCompleteView(APIView):
                     ]
                     AthleteAvailability.objects.bulk_create(availability_objs)
 
-                # Create goal if provided
-                goal_data = data.get("goal")
-                if goal_data:
+                # Create goals — supports both single `goal` and array `goals`
+                all_goals = data.get("goals", [])
+                single_goal = data.get("goal")
+                if single_goal and not all_goals:
+                    all_goals = [single_goal]
+
+                for goal_data in all_goals:
                     race_event, _ = RaceEvent.objects.get_or_create(
                         organization=org,
                         name=goal_data["race_name"],
@@ -325,15 +329,17 @@ class OnboardingCompleteView(APIView):
                             "created_by": user,
                         },
                     )
-                    AthleteGoal.objects.create(
+                    AthleteGoal.objects.get_or_create(
                         organization=org,
                         athlete=athlete,
-                        target_event=race_event,
-                        title=goal_data["race_name"],
                         priority=goal_data.get("priority", "A"),
                         status="active",
-                        target_date=goal_data["race_date"],
-                        created_by=user,
+                        defaults={
+                            "target_event": race_event,
+                            "title": goal_data["race_name"],
+                            "target_date": goal_data["race_date"],
+                            "created_by": user,
+                        },
                     )
 
                 # Mark invitation accepted (or create one for join-link tracking)
@@ -381,6 +387,47 @@ class OnboardingCompleteView(APIView):
                     "outcome": "deferred",
                 },
             )
+            # PR-152: Create subscription with 7-day trial (even if MP fails)
+            from datetime import timedelta
+            trial_end = timezone.now() + timedelta(days=7)
+
+            AthleteSubscription.objects.get_or_create(
+                athlete=athlete,
+                coach_plan=coach_plan,
+                defaults={
+                    "organization": org,
+                    "status": AthleteSubscription.Status.PENDING,
+                    "trial_ends_at": trial_end,
+                },
+            )
+
+            # PR-152: Notify coach about new athlete registration
+            try:
+                from core.models import Coach, InternalMessage
+                coach_record = Coach.objects.filter(
+                    organization=org,
+                ).select_related("user").first()
+                if coach_record and coach_record.user:
+                    athlete_name = f"{user.first_name} {user.last_name}".strip() or user.username
+                    plan_name = coach_plan.name if coach_plan else "Sin plan"
+                    InternalMessage.objects.create(
+                        organization=org,
+                        sender=user,
+                        recipient=coach_record.user,
+                        content=f"🆕 {athlete_name} se unió a tu equipo (Plan {plan_name})",
+                        alert_type="athlete_registered",
+                    )
+                    # Welcome message TO the athlete
+                    InternalMessage.objects.create(
+                        organization=org,
+                        sender=coach_record.user,
+                        recipient=user,
+                        content=f"🎉 ¡Bienvenido a {org.name}! Tu coach ya puede verte y asignarte entrenamientos.",
+                        alert_type="athlete_welcome",
+                    )
+            except Exception:
+                pass  # Best-effort notification
+
             return Response({
                 "redirect_url": "/dashboard",
                 "payment_pending": True,
@@ -389,17 +436,50 @@ class OnboardingCompleteView(APIView):
         preapproval_id = mp_data.get("id")
         init_point = mp_data.get("init_point")
 
-        # Create AthleteSubscription
+        # Create AthleteSubscription with trial
+        from datetime import timedelta
+        trial_end = timezone.now() + timedelta(days=7)
+
         invitation.mp_preapproval_id = preapproval_id
         invitation.save(update_fields=["mp_preapproval_id"])
 
-        AthleteSubscription.objects.create(
+        AthleteSubscription.objects.get_or_create(
             athlete=athlete,
-            organization=org,
             coach_plan=coach_plan,
-            status=AthleteSubscription.Status.PENDING,
-            mp_preapproval_id=preapproval_id,
+            defaults={
+                "organization": org,
+                "status": AthleteSubscription.Status.PENDING,
+                "mp_preapproval_id": preapproval_id,
+                "trial_ends_at": trial_end,
+            },
         )
+
+        # PR-152: Notify coach about new athlete registration
+        try:
+            from core.models import Coach, InternalMessage
+            coach_record = Coach.objects.filter(
+                organization=org,
+            ).select_related("user").first()
+            if coach_record and coach_record.user:
+                athlete_name = f"{user.first_name} {user.last_name}".strip() or user.username
+                plan_name = coach_plan.name if coach_plan else "Sin plan"
+                InternalMessage.objects.create(
+                    organization=org,
+                    sender=user,
+                    recipient=coach_record.user,
+                    content=f"🆕 {athlete_name} se unió a tu equipo (Plan {plan_name})",
+                    alert_type="athlete_registered",
+                )
+                # Welcome message TO the athlete
+                InternalMessage.objects.create(
+                    organization=org,
+                    sender=coach_record.user,
+                    recipient=user,
+                    content=f"🎉 ¡Bienvenido a {org.name}! Tu coach ya puede verte y asignarte entrenamientos.",
+                    alert_type="athlete_welcome",
+                )
+        except Exception:
+            pass  # Best-effort notification
 
         logger.info(
             "onboarding_complete",
@@ -407,7 +487,7 @@ class OnboardingCompleteView(APIView):
                 "organization_id": org.pk,
                 "athlete_id": athlete.pk,
                 "user_id": user.pk,
-                "plan": invitation.coach_plan.name,
+                "plan": coach_plan.name if coach_plan else "none",
                 "outcome": "success",
             },
         )

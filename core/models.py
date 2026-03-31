@@ -3225,6 +3225,11 @@ class AthleteSubscription(models.Model):
     )
     last_payment_at = models.DateTimeField(null=True, blank=True)
     next_payment_at = models.DateTimeField(null=True, blank=True)
+    # PR-152: 7-day grace period for new athletes
+    trial_ends_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="End of 7-day trial period. After this, athlete must pay to access content.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
