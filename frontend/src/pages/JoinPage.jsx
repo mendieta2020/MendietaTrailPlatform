@@ -41,13 +41,11 @@ export default function JoinPage() {
 
   const handleOnboardingComplete = (redirectUrl) => {
     if (redirectUrl) {
-      if (redirectUrl.startsWith('http')) {
-        window.location.href = redirectUrl;
-      } else {
-        navigate(redirectUrl, { replace: true });
-      }
+      // Force full page reload so AuthContext + OrgContext pick up
+      // the new Membership created during onboarding
+      window.location.href = redirectUrl;
     } else {
-      navigate('/dashboard', { replace: true });
+      window.location.href = '/dashboard';
     }
   };
 

@@ -163,8 +163,13 @@ export default function OnboardingForm({ invitationToken, joinSlug, invite, onCo
         if (data.redirect_url.startsWith('http')) {
           window.location.href = data.redirect_url;
         } else {
-          onComplete(data.redirect_url);
+          // Force full page reload so AuthContext + OrgContext pick up
+          // the new Membership created during onboarding
+          window.location.href = data.redirect_url;
         }
+      } else {
+        // Default: reload to dashboard with fresh session
+        window.location.href = '/dashboard';
       }
     } catch (err) {
       const detail = err?.response?.data;
