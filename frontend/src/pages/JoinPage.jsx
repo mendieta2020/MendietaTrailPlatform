@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { CircularProgress } from '@mui/material';
 import { Users, AlertTriangle, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -10,7 +10,6 @@ import PlanSelector from '../components/onboarding/PlanSelector';
 
 export default function JoinPage() {
   const { slug } = useParams();
-  const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
 
   const [state, setState] = useState('loading'); // loading | invalid | ready

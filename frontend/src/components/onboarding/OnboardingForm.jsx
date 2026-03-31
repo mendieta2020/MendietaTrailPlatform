@@ -39,7 +39,7 @@ const DEFAULT_AVAILABILITY = Array.from({ length: 7 }, (_, i) => ({
   preferred_time: '',
 }));
 
-export default function OnboardingForm({ invitationToken, joinSlug, invite, onComplete, selectedPlanId, selectedPlanInfo }) {
+export default function OnboardingForm({ invitationToken, joinSlug, invite, selectedPlanId, selectedPlanInfo }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 

@@ -28,8 +28,15 @@ export const AuthProvider = ({ children }) => {
 
             const token = tokenStore.getAccessToken();
             if (token) {
-                // Si hay token, asumimos que el usuario es válido (el interceptor lo borrará si no)
-                setUser({ username: 'Coach' });
+                // PR-151 fix: fetch real session data (with memberships) instead of fake user
+                try {
+                    const { data } = await fetchSession();
+                    setUser(data);
+                } catch {
+                    // Token expired or invalid — clear and set null
+                    tokenStore.clear();
+                    setUser(null);
+                }
             }
             setLoading(false);
         };
