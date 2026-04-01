@@ -17,8 +17,8 @@ const SEVERITY_FILL = {
   moderada: '#F97316',
   severa:   '#EF4444',
 };
-const ZONE_FILL_DEFAULT = '#E2E8F0';
-const ZONE_FILL_HOVER   = '#C7D2FE';
+const ZONE_FILL_DEFAULT = '#CBD5E1';
+const ZONE_FILL_HOVER   = '#A5B4FC';
 
 function buildZoneMap(injuries) {
   const map = {};
@@ -40,7 +40,7 @@ function Zone({ isCircle, d, cx, cy, r, fill, label, onClick, readOnly }) {
   const sharedProps = {
     fill: color,
     stroke: '#94A3B8',
-    strokeWidth: 0.8,
+    strokeWidth: 0.6,
     style: { cursor: readOnly ? 'default' : 'pointer', transition: 'fill 0.15s' },
     onClick: readOnly ? undefined : onClick,
     onMouseEnter: () => setHovered(true),
@@ -57,84 +57,206 @@ function Zone({ isCircle, d, cx, cy, r, fill, label, onClick, readOnly }) {
 }
 
 // ── Front-view zone definitions ──────────────────────────────────────────────
-// Organic shapes at viewBox "0 0 110 270"
+// Organic humanized shapes — viewBox "0 0 120 290"
+// Origin: top-center. Head center ~(60,18).
 const FRONT_ZONES = [
-  // Head
-  { zone: 'cabeza',      isCircle: true, cx: 55, cy: 20, r: 14,  display: 'Cabeza' },
-  // Neck
-  { zone: 'cuello',      d: 'M49,34 Q46,38 47,43 L63,43 Q64,38 61,34 Z', display: 'Cuello' },
-  // Shoulders (bilateral — both click same zone)
-  { zone: 'hombro',      d: 'M22,44 Q17,47 15,57 L15,71 Q20,74 28,72 L30,54 Q27,49 22,44 Z', display: 'Hombro' },
-  { zone: 'hombro',      d: 'M88,44 Q93,47 95,57 L95,71 Q90,74 82,72 L80,54 Q83,49 88,44 Z', display: 'Hombro' },
-  // Chest
-  { zone: 'pecho',       d: 'M30,44 Q26,56 27,72 L27,79 L83,79 L83,72 Q84,56 80,44 Q68,41 55,41 Q42,41 30,44 Z', display: 'Pecho' },
-  // Upper arms
-  { zone: 'brazo',       d: 'M14,71 Q9,76 9,92 L12,109 Q15,111 22,110 L23,73 Z', display: 'Brazo' },
-  { zone: 'brazo',       d: 'M96,71 Q101,76 101,92 L98,109 Q95,111 88,110 L87,73 Z', display: 'Brazo' },
-  // Elbows
-  { zone: 'codo',        isCircle: true, cx: 14, cy: 112, r: 6, display: 'Codo' },
-  { zone: 'codo',        isCircle: true, cx: 96, cy: 112, r: 6, display: 'Codo' },
-  // Wrists
-  { zone: 'muneca',      d: 'M10,119 L24,119 L24,127 L10,127 Z', display: 'Muñeca' },
-  { zone: 'muneca',      d: 'M86,119 L100,119 L100,127 L86,127 Z', display: 'Muñeca' },
+  // Head — slightly oval
+  { zone: 'cabeza',
+    d: 'M60,4 C72,4 80,10 80,20 C80,32 72,36 60,36 C48,36 40,32 40,20 C40,10 48,4 60,4 Z',
+    display: 'Cabeza' },
+
+  // Neck — narrow trapezoid with gentle curves
+  { zone: 'cuello',
+    d: 'M53,36 C51,38 50,41 51,45 L69,45 C70,41 69,38 67,36 Z',
+    display: 'Cuello' },
+
+  // Left shoulder (viewer's right) — rounded bump
+  { zone: 'hombro',
+    d: 'M51,45 C44,44 34,44 26,50 C20,55 18,63 20,72 C24,74 30,73 34,71 L36,58 C40,52 46,47 51,45 Z',
+    display: 'Hombro' },
+
+  // Right shoulder (viewer's left)
+  { zone: 'hombro',
+    d: 'M69,45 C76,44 86,44 94,50 C100,55 102,63 100,72 C96,74 90,73 86,71 L84,58 C80,52 74,47 69,45 Z',
+    display: 'Hombro' },
+
+  // Chest / torso — with gentle waist taper
+  { zone: 'pecho',
+    d: 'M34,50 C32,58 31,68 32,78 C33,86 35,92 36,100 C40,101 50,102 60,102 C70,102 80,101 84,100 C85,92 87,86 88,78 C89,68 88,58 86,50 C78,46 70,44 60,44 C50,44 42,46 34,50 Z',
+    display: 'Pecho' },
+
+  // Left upper arm
+  { zone: 'brazo',
+    d: 'M20,72 C15,78 12,88 12,100 L15,116 C18,118 24,117 27,115 L27,73 C25,72 22,72 20,72 Z',
+    display: 'Brazo' },
+
+  // Right upper arm
+  { zone: 'brazo',
+    d: 'M100,72 C105,78 108,88 108,100 L105,116 C102,118 96,117 93,115 L93,73 C95,72 98,72 100,72 Z',
+    display: 'Brazo' },
+
+  // Left elbow
+  { zone: 'codo', isCircle: true, cx: 16, cy: 119, r: 6, display: 'Codo' },
+  // Right elbow
+  { zone: 'codo', isCircle: true, cx: 104, cy: 119, r: 6, display: 'Codo' },
+
+  // Left forearm / wrist zone (combined for readability)
+  { zone: 'muneca',
+    d: 'M11,125 C10,128 10,133 11,137 L23,137 C24,133 24,128 23,125 Z',
+    display: 'Muñeca' },
+  { zone: 'muneca',
+    d: 'M97,125 C96,128 96,133 97,137 L109,137 C110,133 110,128 109,125 Z',
+    display: 'Muñeca' },
+
   // Hands
-  { zone: 'mano',        d: 'M9,127 L25,127 L25,141 L9,141 Z', display: 'Mano' },
-  { zone: 'mano',        d: 'M85,127 L101,127 L101,141 L85,141 Z', display: 'Mano' },
-  // Core / hip
-  { zone: 'cadera',      d: 'M27,79 Q24,91 27,108 L33,119 L77,119 L83,108 Q86,91 83,79 Z', display: 'Cadera' },
-  // Quadriceps (front thigh)
-  { zone: 'muslo',       d: 'M33,119 Q27,127 27,145 L28,172 Q33,179 43,178 L44,121 Q39,119 33,119 Z', display: 'Muslo/Cuádr.' },
-  { zone: 'muslo',       d: 'M77,119 Q83,127 83,145 L82,172 Q77,179 67,178 L66,121 Q71,119 77,119 Z', display: 'Muslo/Cuádr.' },
-  // Knees
-  { zone: 'rodilla',     isCircle: true, cx: 38, cy: 181, r: 8, display: 'Rodilla' },
-  { zone: 'rodilla',     isCircle: true, cx: 72, cy: 181, r: 8, display: 'Rodilla' },
-  // Shins (espinilla — front of lower leg)
-  { zone: 'espinilla',   d: 'M29,189 L47,189 L46,224 L30,224 Z', display: 'Espinilla' },
-  { zone: 'espinilla',   d: 'M63,189 L81,189 L80,224 L64,224 Z', display: 'Espinilla' },
-  // Ankles
-  { zone: 'tobillo',     d: 'M28,224 L48,224 L48,234 L28,234 Z', display: 'Tobillo' },
-  { zone: 'tobillo',     d: 'M62,224 L82,224 L82,234 L62,234 Z', display: 'Tobillo' },
-  // Feet (top)
-  { zone: 'pie',         d: 'M24,234 L48,234 L52,249 L20,249 Z', display: 'Pie' },
-  { zone: 'pie',         d: 'M62,234 L86,234 L90,249 L58,249 Z', display: 'Pie' },
+  { zone: 'mano',
+    d: 'M10,137 C8,140 8,148 10,152 L24,152 C26,148 26,140 24,137 Z',
+    display: 'Mano' },
+  { zone: 'mano',
+    d: 'M96,137 C94,140 94,148 96,152 L110,152 C112,148 112,140 110,137 Z',
+    display: 'Mano' },
+
+  // Abdomen / hip — wider hips taper from waist
+  { zone: 'cadera',
+    d: 'M36,100 C33,112 32,124 34,134 L38,142 L82,142 L86,134 C88,124 87,112 84,100 C76,103 68,104 60,104 C52,104 44,103 36,100 Z',
+    display: 'Cadera' },
+
+  // Left quad (front thigh)
+  { zone: 'muslo',
+    d: 'M38,142 C33,150 31,162 32,176 L34,190 C38,194 46,194 50,191 L50,143 C46,142 42,142 38,142 Z',
+    display: 'Muslo/Cuádr.' },
+  // Right quad
+  { zone: 'muslo',
+    d: 'M82,142 C87,150 89,162 88,176 L86,190 C82,194 74,194 70,191 L70,143 C74,142 78,142 82,142 Z',
+    display: 'Muslo/Cuádr.' },
+
+  // Left knee
+  { zone: 'rodilla', isCircle: true, cx: 41, cy: 194, r: 9, display: 'Rodilla' },
+  // Right knee
+  { zone: 'rodilla', isCircle: true, cx: 79, cy: 194, r: 9, display: 'Rodilla' },
+
+  // Left shin (espinilla — front lower leg)
+  { zone: 'espinilla',
+    d: 'M34,203 C32,212 32,224 34,236 L49,236 C50,224 50,212 48,203 Z',
+    display: 'Espinilla' },
+  // Right shin
+  { zone: 'espinilla',
+    d: 'M72,203 C70,212 70,224 72,236 L87,236 C88,224 88,212 86,203 Z',
+    display: 'Espinilla' },
+
+  // Left ankle
+  { zone: 'tobillo',
+    d: 'M33,236 C32,240 32,245 34,248 L50,248 C51,245 51,240 50,236 Z',
+    display: 'Tobillo' },
+  // Right ankle
+  { zone: 'tobillo',
+    d: 'M71,236 C70,240 70,245 72,248 L88,248 C89,245 89,240 88,236 Z',
+    display: 'Tobillo' },
+
+  // Left foot (top view)
+  { zone: 'pie',
+    d: 'M30,248 C26,250 22,256 24,262 L52,262 C54,256 53,250 50,248 Z',
+    display: 'Pie' },
+  // Right foot
+  { zone: 'pie',
+    d: 'M70,248 C68,250 67,256 69,262 L97,262 C99,256 95,250 91,248 Z',
+    display: 'Pie' },
 ];
 
 // ── Back-view zone definitions ───────────────────────────────────────────────
 const BACK_ZONES = [
-  { zone: 'cabeza',        isCircle: true, cx: 55, cy: 20, r: 14, display: 'Cabeza' },
-  { zone: 'cuello',        d: 'M49,34 Q46,38 47,43 L63,43 Q64,38 61,34 Z', display: 'Cuello' },
+  // Head
+  { zone: 'cabeza',
+    d: 'M60,4 C72,4 80,10 80,20 C80,32 72,36 60,36 C48,36 40,32 40,20 C40,10 48,4 60,4 Z',
+    display: 'Cabeza' },
+
+  // Neck
+  { zone: 'cuello',
+    d: 'M53,36 C51,38 50,41 51,45 L69,45 C70,41 69,38 67,36 Z',
+    display: 'Cuello' },
+
   // Shoulders
-  { zone: 'hombro',        d: 'M22,44 Q17,47 15,57 L15,71 Q20,74 28,72 L30,54 Q27,49 22,44 Z', display: 'Hombro' },
-  { zone: 'hombro',        d: 'M88,44 Q93,47 95,57 L95,71 Q90,74 82,72 L80,54 Q83,49 88,44 Z', display: 'Hombro' },
-  // Upper back (same outer shape as chest)
-  { zone: 'espalda_alta',  d: 'M30,44 Q26,56 27,72 L27,79 L83,79 L83,72 Q84,56 80,44 Q68,41 55,41 Q42,41 30,44 Z', display: 'Espalda alta' },
-  // Lower back
-  { zone: 'espalda_baja',  d: 'M27,79 Q24,88 26,100 L27,110 L83,110 L84,100 Q86,88 83,79 Z', display: 'Espalda baja' },
-  // Arms
-  { zone: 'brazo',         d: 'M14,71 Q9,76 9,92 L12,109 Q15,111 22,110 L23,73 Z', display: 'Brazo' },
-  { zone: 'brazo',         d: 'M96,71 Q101,76 101,92 L98,109 Q95,111 88,110 L87,73 Z', display: 'Brazo' },
-  { zone: 'codo',          isCircle: true, cx: 14, cy: 112, r: 6, display: 'Codo' },
-  { zone: 'codo',          isCircle: true, cx: 96, cy: 112, r: 6, display: 'Codo' },
-  { zone: 'muneca',        d: 'M10,119 L24,119 L24,127 L10,127 Z', display: 'Muñeca' },
-  { zone: 'muneca',        d: 'M86,119 L100,119 L100,127 L86,127 Z', display: 'Muñeca' },
-  { zone: 'mano',          d: 'M9,127 L25,127 L25,141 L9,141 Z', display: 'Mano' },
-  { zone: 'mano',          d: 'M85,127 L101,127 L101,141 L85,141 Z', display: 'Mano' },
-  // Glutes
-  { zone: 'gluteo',        d: 'M27,110 Q22,114 22,124 Q22,134 29,141 Q37,148 55,148 Q73,148 81,141 Q88,134 88,124 Q88,114 83,110 Z', display: 'Glúteos' },
+  { zone: 'hombro',
+    d: 'M51,45 C44,44 34,44 26,50 C20,55 18,63 20,72 C24,74 30,73 34,71 L36,58 C40,52 46,47 51,45 Z',
+    display: 'Hombro' },
+  { zone: 'hombro',
+    d: 'M69,45 C76,44 86,44 94,50 C100,55 102,63 100,72 C96,74 90,73 86,71 L84,58 C80,52 74,47 69,45 Z',
+    display: 'Hombro' },
+
+  // Upper back (trapezius / upper back muscles)
+  { zone: 'espalda_alta',
+    d: 'M34,50 C32,60 31,70 32,80 C40,82 50,83 60,83 C70,83 80,82 88,80 C89,70 88,60 86,50 C78,46 70,44 60,44 C50,44 42,46 34,50 Z',
+    display: 'Espalda alta' },
+
+  // Lower back (lumbar)
+  { zone: 'espalda_baja',
+    d: 'M32,80 C31,90 32,102 34,112 L86,112 C88,102 89,90 88,80 C80,82 70,83 60,83 C50,83 40,82 32,80 Z',
+    display: 'Espalda baja' },
+
+  // Arms (same as front)
+  { zone: 'brazo',
+    d: 'M20,72 C15,78 12,88 12,100 L15,116 C18,118 24,117 27,115 L27,73 C25,72 22,72 20,72 Z',
+    display: 'Brazo' },
+  { zone: 'brazo',
+    d: 'M100,72 C105,78 108,88 108,100 L105,116 C102,118 96,117 93,115 L93,73 C95,72 98,72 100,72 Z',
+    display: 'Brazo' },
+
+  { zone: 'codo', isCircle: true, cx: 16, cy: 119, r: 6, display: 'Codo' },
+  { zone: 'codo', isCircle: true, cx: 104, cy: 119, r: 6, display: 'Codo' },
+
+  { zone: 'muneca',
+    d: 'M11,125 C10,128 10,133 11,137 L23,137 C24,133 24,128 23,125 Z',
+    display: 'Muñeca' },
+  { zone: 'muneca',
+    d: 'M97,125 C96,128 96,133 97,137 L109,137 C110,133 110,128 109,125 Z',
+    display: 'Muñeca' },
+
+  { zone: 'mano',
+    d: 'M10,137 C8,140 8,148 10,152 L24,152 C26,148 26,140 24,137 Z',
+    display: 'Mano' },
+  { zone: 'mano',
+    d: 'M96,137 C94,140 94,148 96,152 L110,152 C112,148 112,140 110,137 Z',
+    display: 'Mano' },
+
+  // Glutes — wide, rounded
+  { zone: 'gluteo',
+    d: 'M34,112 C28,116 24,124 26,134 C28,144 38,152 60,152 C82,152 92,144 94,134 C96,124 92,116 86,112 Z',
+    display: 'Glúteos' },
+
   // Hamstrings
-  { zone: 'isquiotibial',  d: 'M29,141 Q23,150 23,165 L26,172 Q32,179 43,178 L44,143 Q37,140 29,141 Z', display: 'Isquiotibial' },
-  { zone: 'isquiotibial',  d: 'M81,141 Q87,150 87,165 L84,172 Q78,179 67,178 L66,143 Q73,140 81,141 Z', display: 'Isquiotibial' },
-  { zone: 'rodilla',       isCircle: true, cx: 38, cy: 181, r: 8, display: 'Rodilla' },
-  { zone: 'rodilla',       isCircle: true, cx: 72, cy: 181, r: 8, display: 'Rodilla' },
-  // Calves (back of lower leg)
-  { zone: 'pantorrilla',   d: 'M29,189 L47,189 L46,224 L30,224 Z', display: 'Pantorrilla' },
-  { zone: 'pantorrilla',   d: 'M63,189 L81,189 L80,224 L64,224 Z', display: 'Pantorrilla' },
+  { zone: 'isquiotibial',
+    d: 'M34,152 C29,160 27,172 28,186 L32,196 C36,200 44,200 48,197 L50,153 C44,152 38,152 34,152 Z',
+    display: 'Isquiotibial' },
+  { zone: 'isquiotibial',
+    d: 'M86,152 C91,160 93,172 92,186 L88,196 C84,200 76,200 72,197 L70,153 C76,152 82,152 86,152 Z',
+    display: 'Isquiotibial' },
+
+  { zone: 'rodilla', isCircle: true, cx: 41, cy: 200, r: 9, display: 'Rodilla' },
+  { zone: 'rodilla', isCircle: true, cx: 79, cy: 200, r: 9, display: 'Rodilla' },
+
+  // Calves
+  { zone: 'pantorrilla',
+    d: 'M34,209 C31,220 31,232 34,242 L50,242 C52,232 52,220 49,209 Z',
+    display: 'Pantorrilla' },
+  { zone: 'pantorrilla',
+    d: 'M72,209 C70,220 70,232 72,242 L88,242 C90,232 90,220 87,209 Z',
+    display: 'Pantorrilla' },
+
   // Heels
-  { zone: 'talon',         d: 'M28,224 L48,224 L48,234 L28,234 Z', display: 'Talón' },
-  { zone: 'talon',         d: 'M62,224 L82,224 L82,234 L62,234 Z', display: 'Talón' },
+  { zone: 'talon',
+    d: 'M33,242 C31,246 31,252 34,255 L50,255 C52,252 52,246 50,242 Z',
+    display: 'Talón' },
+  { zone: 'talon',
+    d: 'M71,242 C70,246 70,252 72,255 L88,255 C90,252 90,246 88,242 Z',
+    display: 'Talón' },
+
   // Soles
-  { zone: 'planta_del_pie', d: 'M24,234 L48,234 L52,249 L20,249 Z', display: 'Planta del pie' },
-  { zone: 'planta_del_pie', d: 'M62,234 L86,234 L90,249 L58,249 Z', display: 'Planta del pie' },
+  { zone: 'planta_del_pie',
+    d: 'M30,255 C26,257 22,262 24,268 L52,268 C54,262 53,257 50,255 Z',
+    display: 'Planta del pie' },
+  { zone: 'planta_del_pie',
+    d: 'M70,255 C68,257 67,262 69,268 L97,268 C99,262 95,257 91,255 Z',
+    display: 'Planta del pie' },
 ];
 
 export function BodyMap({ injuries = [], onZoneClick, readOnly = false }) {
@@ -172,9 +294,9 @@ export function BodyMap({ injuries = [], onZoneClick, readOnly = false }) {
       </ToggleButtonGroup>
 
       <svg
-        viewBox="0 0 110 270"
-        width="110"
-        height="270"
+        viewBox="0 0 120 280"
+        width="120"
+        height="280"
         xmlns="http://www.w3.org/2000/svg"
         aria-label={`Mapa corporal — vista ${view === 'front' ? 'frontal' : 'trasera'}`}
       >

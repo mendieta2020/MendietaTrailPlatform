@@ -92,6 +92,8 @@ class AthleteGoalSerializer(serializers.ModelSerializer):
             "target_date",
             "target_event_id",
             "coach_notes",
+            "target_distance_km",
+            "target_elevation_gain_m",
             "created_at",
             "updated_at",
         ]

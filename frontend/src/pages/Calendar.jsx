@@ -726,19 +726,24 @@ export default function CalendarPage() {
     const scheduledDate = format(start, 'yyyy-MM-dd');
     setSaving(true);
     setSaveError(null);
+    const refetch = () => {
+      const params = target.type === 't'
+        ? { teamId: target.id, dateFrom, dateTo }
+        : { athleteId: target.id, dateFrom, dateTo };
+      listAssignments(orgId, params)
+        .then((res) => {
+          const data = res.data?.results ?? res.data ?? [];
+          eventsDispatch({ type: 'FETCH_SUCCESS', data: toEvents(data) });
+        })
+        .catch(() => {});
+    };
     if (target.type === 't') {
       bulkAssignTeam(orgId, {
         planned_workout_id: workout.id,
         team_id: target.id,
         scheduled_date: scheduledDate,
       })
-        .then((res) => {
-          const assignments = res.data?.assignments ?? [];
-          assignments.forEach((a) => {
-            const day = parseISO(a.effective_date ?? a.scheduled_date);
-            eventsDispatch({ type: 'ADD_EVENT', event: { id: a.id, title: a.planned_workout_title ?? workout.name, start: day, end: day, allDay: true, compliance_color: a.compliance_color, actual_duration_seconds: a.actual_duration_seconds, actual_distance_meters: a.actual_distance_meters, rpe: a.rpe, planned_workout: a.planned_workout, resource: a } });
-          });
-        })
+        .then(() => refetch())
         .catch(() => setSaveError('Error al asignar el entrenamiento al grupo.'))
         .finally(() => setSaving(false));
     } else {
@@ -747,15 +752,11 @@ export default function CalendarPage() {
         athlete_id: target.id,
         scheduled_date: scheduledDate,
       })
-        .then((res) => {
-          const a = res.data;
-          const day = parseISO(a.effective_date ?? a.scheduled_date);
-          eventsDispatch({ type: 'ADD_EVENT', event: { id: a.id, title: a.planned_workout_title ?? workout.name, start: day, end: day, allDay: true, compliance_color: a.compliance_color, actual_duration_seconds: a.actual_duration_seconds, actual_distance_meters: a.actual_distance_meters, rpe: a.rpe, planned_workout: a.planned_workout, resource: a } });
-        })
+        .then(() => refetch())
         .catch(() => setSaveError('Error al asignar el entrenamiento.'))
         .finally(() => setSaving(false));
     }
-  }, [blockedDropPending, orgId]);
+  }, [blockedDropPending, orgId, dateFrom, dateTo]);
 
   // ── PR-145f: Drag existing events (move) ──────────────────────────────────
 

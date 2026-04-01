@@ -177,7 +177,7 @@ class AthleteGoalViewSet(OrgTenantMixin, viewsets.ModelViewSet):
     CRUD for organization-scoped AthleteGoal records.
 
     Coaches can read all goals in the org and write any.
-    Athletes can only read their own goals; they cannot write.
+    Athletes can read and write their own goals only.
     """
 
     serializer_class = AthleteGoalSerializer
@@ -203,24 +203,48 @@ class AthleteGoalViewSet(OrgTenantMixin, viewsets.ModelViewSet):
             ctx["organization"] = self.organization
         return ctx
 
-    def _require_write_role(self):
-        if self.membership.role not in _WRITE_ROLES:
-            raise PermissionDenied("Only coaches and owners can modify athlete goals.")
+    def _get_athlete_for_self(self):
+        """Return the Athlete record for the authenticated athlete user, or raise."""
+        athlete = Athlete.objects.filter(
+            organization=self.organization, user=self.request.user
+        ).first()
+        if not athlete:
+            raise PermissionDenied("No athlete profile found.")
+        return athlete
 
     def perform_create(self, serializer):
-        self._require_write_role()
-        serializer.save(
-            organization=self.organization,
-            created_by=self.request.user,
-        )
+        if self.membership.role == "athlete":
+            athlete = self._get_athlete_for_self()
+            serializer.save(
+                organization=self.organization,
+                created_by=self.request.user,
+                athlete=athlete,
+            )
+        else:
+            if self.membership.role not in _WRITE_ROLES:
+                raise PermissionDenied("Only coaches and owners can modify athlete goals.")
+            serializer.save(
+                organization=self.organization,
+                created_by=self.request.user,
+            )
 
     def perform_update(self, serializer):
-        self._require_write_role()
-        serializer.save()
+        if self.membership.role == "athlete":
+            # Athletes can only update their own goals (queryset already filters to theirs)
+            serializer.save()
+        else:
+            if self.membership.role not in _WRITE_ROLES:
+                raise PermissionDenied("Only coaches and owners can modify athlete goals.")
+            serializer.save()
 
     def perform_destroy(self, instance):
-        self._require_write_role()
-        instance.delete()
+        if self.membership.role == "athlete":
+            # Athletes can only delete their own goals (queryset already filters to theirs)
+            instance.delete()
+        else:
+            if self.membership.role not in _WRITE_ROLES:
+                raise PermissionDenied("Only coaches and owners can modify athlete goals.")
+            instance.delete()
 
 
 class AthleteProfileViewSet(

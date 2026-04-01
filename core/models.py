@@ -2136,6 +2136,14 @@ class AthleteGoal(models.Model):
         db_index=True,
     )
     coach_notes = models.TextField(blank=True, default="")
+    target_distance_km = models.FloatField(
+        null=True, blank=True,
+        help_text="Target race distance in kilometers.",
+    )
+    target_elevation_gain_m = models.IntegerField(
+        null=True, blank=True,
+        help_text="Target elevation gain in meters (trail/MTB goals).",
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

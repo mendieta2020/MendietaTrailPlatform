@@ -401,7 +401,7 @@ class AthleteGoalAPITests(TestCase):
         self.assertEqual(response.status_code, 204)
         self.assertFalse(AthleteGoal.objects.filter(pk=self.goal.pk).exists())
 
-    # --- Athlete read-only ---
+    # --- Athlete CRUD (own goals only) ---
 
     def test_athlete_can_list_own_goals_only(self):
         self.client.force_authenticate(user=self.athlete_user)
@@ -421,24 +421,42 @@ class AthleteGoalAPITests(TestCase):
         response = self.client.get(self.detail2_url)
         self.assertEqual(response.status_code, 404)
 
-    def test_athlete_cannot_create_goal(self):
+    def test_athlete_can_create_own_goal(self):
+        """Athlete can create a goal; athlete FK is auto-set to their profile."""
         self.client.force_authenticate(user=self.athlete_user)
-        response = self.client.post(
-            self.list_url, self._create_payload(priority="C"), format="json"
+        payload = {
+            "title": "Athlete Self Goal",
+            "athlete_id": self.athlete.pk,
+            "priority": "C",
+            "goal_type": "finish",
+            "status": "planned",
+        }
+        response = self.client.post(self.list_url, payload, format="json")
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(
+            AthleteGoal.objects.filter(
+                title="Athlete Self Goal",
+                athlete=self.athlete,
+                organization=self.org,
+            ).exists()
         )
-        self.assertEqual(response.status_code, 403)
 
-    def test_athlete_cannot_update_goal(self):
+    def test_athlete_can_update_own_goal(self):
+        """Athlete can patch their own goal."""
         self.client.force_authenticate(user=self.athlete_user)
         response = self.client.patch(
-            self.detail_url, {"coach_notes": "Hacked"}, format="json"
+            self.detail_url, {"title": "Updated by Athlete"}, format="json"
         )
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 200)
+        self.goal.refresh_from_db()
+        self.assertEqual(self.goal.title, "Updated by Athlete")
 
-    def test_athlete_cannot_delete_goal(self):
+    def test_athlete_can_delete_own_goal(self):
+        """Athlete can delete their own goal."""
         self.client.force_authenticate(user=self.athlete_user)
         response = self.client.delete(self.detail_url)
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(AthleteGoal.objects.filter(pk=self.goal.pk).exists())
 
     # --- Cross-org FK validation ---
 

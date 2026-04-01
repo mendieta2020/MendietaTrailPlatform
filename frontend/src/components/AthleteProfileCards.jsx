@@ -101,7 +101,7 @@ const EMPTY_INJURY = {
   status: 'activa',
 };
 
-const EMPTY_GOAL = { title: '', target_date: '', priority: 'A' };
+const EMPTY_GOAL = { title: '', target_date: '', priority: 'A', target_distance_km: '', target_elevation_gain_m: '' };
 
 function getMenstrualPhase(lastPeriodDate, cycleDays) {
   if (!lastPeriodDate || !cycleDays) return null;
@@ -224,7 +224,13 @@ export function AthleteProfileCards({
     if (!goalForm.title || !goalForm.target_date) return;
     setGoalSaving(true);
     try {
-      await onAddGoal({ ...goalForm, status: 'active' });
+      const payload = {
+        ...goalForm,
+        status: 'active',
+        target_distance_km: goalForm.target_distance_km !== '' ? Number(goalForm.target_distance_km) : null,
+        target_elevation_gain_m: goalForm.target_elevation_gain_m !== '' ? Number(goalForm.target_elevation_gain_m) : null,
+      };
+      await onAddGoal(payload);
       setGoalForm(EMPTY_GOAL);
       setShowGoalForm(false);
     } finally {
@@ -510,6 +516,14 @@ export function AthleteProfileCards({
                 value={goalForm.target_date}
                 onChange={(e) => handleGoalChange('target_date', e.target.value)}
                 slotProps={{ inputLabel: { shrink: true } }} />
+              <TextField size="small" type="number" label="Distancia (km)"
+                value={goalForm.target_distance_km}
+                onChange={(e) => handleGoalChange('target_distance_km', e.target.value)}
+                inputProps={{ min: 0, step: 0.1 }} />
+              <TextField size="small" type="number" label="Desnivel (m)"
+                value={goalForm.target_elevation_gain_m}
+                onChange={(e) => handleGoalChange('target_elevation_gain_m', e.target.value)}
+                inputProps={{ min: 0, step: 10 }} />
             </div>
             <Box sx={{ display: 'flex', gap: 1 }}>
               <Button size="small" variant="contained" onClick={handleAddGoalSubmit} disabled={goalSaving}
