@@ -3882,3 +3882,88 @@ class DailyLoad(models.Model):
 
     def __str__(self):
         return f"DailyLoad(org={self.organization_id}, athlete={self.athlete_id}, date={self.date}, tsb={self.tsb})"
+
+
+# PR-155: TrainingWeek — coach-assigned macro periodization phase per athlete per week
+class TrainingWeek(models.Model):
+    """
+    Macro periodization label for an athlete for a given calendar week.
+
+    The coach assigns a phase (carga/descarga/carrera/descanso/lesion) to
+    each athlete per week. This is the digital replacement for the coach's
+    Google Sheets "machete" — a macro view of training phases across 100+
+    athletes.
+
+    Invariants:
+    - week_start is always a Monday (enforced by clean()).
+    - (athlete, week_start) is unique — one phase per athlete per week.
+    - organization must match athlete.organization (fail-closed tenancy).
+
+    Multi-tenant: organization FK is non-nullable.
+    """
+
+    class Phase(models.TextChoices):
+        CARGA = "carga", "Carga"
+        DESCARGA = "descarga", "Descarga"
+        CARRERA = "carrera", "Carrera"
+        DESCANSO = "descanso", "Descanso"
+        LESION = "lesion", "Lesión"
+
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="training_weeks",
+        db_index=True,
+    )
+    athlete = models.ForeignKey(
+        "Athlete",
+        on_delete=models.CASCADE,
+        related_name="training_weeks",
+        db_index=True,
+    )
+    week_start = models.DateField(
+        help_text="Monday of the target week.",
+        db_index=True,
+    )
+    phase = models.CharField(
+        max_length=20,
+        choices=Phase.choices,
+        db_index=True,
+    )
+    notes = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-week_start"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["athlete", "week_start"],
+                name="unique_training_week_athlete_week",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["organization", "week_start"]),
+        ]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.week_start and self.week_start.weekday() != 0:
+            raise ValidationError(
+                "TrainingWeek.week_start must be a Monday."
+            )
+        if (
+            self.athlete_id is not None
+            and self.organization_id is not None
+            and self.athlete.organization_id != self.organization_id
+        ):
+            raise ValidationError(
+                "TrainingWeek.organization must match athlete.organization."
+            )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"TrainingWeek(athlete={self.athlete_id}, week={self.week_start}, phase={self.phase})"

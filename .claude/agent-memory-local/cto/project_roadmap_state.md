@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-03-31 · PR-154 done — Body Map SVG + Calendar Blocked Days + Wellness Check-in + Menstrual Cycle_
+_Last updated: 2026-04-01 · PR-155 done — Vista Macro + Wellness Coach View + Ciclo Menstrual en Calendario_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -45,6 +45,7 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 | PR-148 | pr-148-real-compliance | Real compliance (actual/planned), bulk query, sessions_per_day, streak, weekly pulse, coach briefing, AlertModal WhatsApp | ✅ 2026-03-28 |
 | PR-149 | — | Athlete Registration + Onboarding + Google OAuth + Plan Selector | ✅ 2026-03-29 |
 | PR-154 | pr-154-body-map-wellness-calendar | Body Map SVG + Calendar Blocked Days + Wellness Check-in + Menstrual Cycle Calendar | ✅ 2026-03-31 |
+| PR-155 | pr-155-macro-view-wellness-coach | Vista Macro (TrainingWeek model + coach table + phases), Wellness Card 7 (recharts), Menstrual cycle overlay in AthleteMyTraining | ✅ 2026-04-01 |
 
 ## Prioritized PR Queue (aligned to 3-month launch plan)
 

@@ -16,7 +16,7 @@ import { MiniWorkoutProfile } from '../components/MiniWorkoutProfile';
 import { weatherChip } from '../hooks/useWeatherIcon';
 import { useAuth } from '../context/AuthContext';
 import { listAssignments, updateAssignment } from '../api/assignments';
-import { listAthletes } from '../api/p1';
+import { listAthletes, getAthleteProfile } from '../api/p1';
 import { getAvailability } from '../api/athlete';
 import client from '../api/client';
 
@@ -335,6 +335,25 @@ function buildCalendarWeeks(currentDate) {
 
 const DAY_HEADERS = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'];
 
+// PR-155: Menstrual cycle phase helpers (same algorithm as Calendar.jsx)
+const MENSTRUAL_PHASES = [
+  { name: 'Menstrual',  color: '#EF4444', tip: 'Fase menstrual — escuchá a tu cuerpo' },
+  { name: 'Folicular',  color: '#10B981', tip: 'Fase folicular — ideal para alta intensidad' },
+  { name: 'Ovulación',  color: '#F59E0B', tip: 'Ovulación — pico de energía' },
+  { name: 'Lútea',      color: '#F97316', tip: 'Fase lútea — considerá reducir intensidad' },
+];
+
+function getMenstrualPhaseForDate(dateObj, lastPeriodDate, cycleDays) {
+  if (!lastPeriodDate || !cycleDays) return null;
+  const last = new Date(lastPeriodDate);
+  const daysSince = Math.floor((dateObj - last) / 86400000);
+  const dayInCycle = ((daysSince % cycleDays) + cycleDays) % cycleDays;
+  if (dayInCycle <= 4)  return MENSTRUAL_PHASES[0];
+  if (dayInCycle <= 12) return MENSTRUAL_PHASES[1];
+  if (dayInCycle <= 14) return MENSTRUAL_PHASES[2];
+  return MENSTRUAL_PHASES[3];
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 const AthleteMyTraining = () => {
@@ -351,6 +370,8 @@ const AthleteMyTraining = () => {
   const [completeTarget, setCompleteTarget] = useState(null);
   // availability: array of { day_of_week, is_available, reason }
   const [availability, setAvailability] = useState([]);
+  // PR-155: athlete profile for menstrual cycle overlay
+  const [athleteProfile, setAthleteProfile] = useState(null);
 
   const fetchData = useCallback(async () => {
     if (!orgId) { setLoading(false); return; }
@@ -370,29 +391,31 @@ const AthleteMyTraining = () => {
     }
   }, [orgId, currentDate]);
 
-  // Fetch athlete availability once on mount (blocked days don't change per month)
+  // Fetch athlete availability + profile once on mount
   useEffect(() => {
     if (!orgId || !user?.id) return;
     listAthletes(orgId)
       .then((res) => {
         const athletes = res.data?.results ?? res.data ?? [];
-        // Match by user_id (guard string/int mismatch)
         const me = athletes.find((a) => String(a.user_id) === String(user.id));
-        if (!me && athletes.length > 0) {
-          // Fallback: if user_id doesn't match, try first athlete (single-athlete roster)
-          return getAvailability(orgId, athletes[0].id);
-        }
-        if (me) return getAvailability(orgId, me.id);
-        return null;
+        const target = me || (athletes.length > 0 ? athletes[0] : null);
+        if (!target) return null;
+        return Promise.all([
+          getAvailability(orgId, target.id),
+          getAthleteProfile(orgId, target.id).catch(() => ({ data: null })),
+        ]);
       })
-      .then((res) => {
-        if (res?.data) {
-          const avail = Array.isArray(res.data) ? res.data : res.data?.results ?? [];
+      .then((results) => {
+        if (!results) return;
+        const [availRes, profileRes] = results;
+        if (availRes?.data) {
+          const avail = Array.isArray(availRes.data) ? availRes.data : availRes.data?.results ?? [];
           setAvailability(avail);
         }
+        if (profileRes?.data) setAthleteProfile(profileRes.data);
       })
       .catch((err) => {
-        console.warn('[AthleteMyTraining] availability fetch failed:', err);
+        console.warn('[AthleteMyTraining] availability/profile fetch failed:', err);
       });
   }, [orgId, user?.id]);
 
@@ -550,6 +573,14 @@ const AthleteMyTraining = () => {
                     const inMonth = isSameMonth(day, currentDate);
                     const availIdx = jsWeekdayToAvailIndex(day.getDay());
                     const blocked = inMonth ? blockedDayMap[availIdx] : null;
+                    // PR-155: menstrual cycle overlay
+                    const menstrualPhase = inMonth && athleteProfile?.menstrual_tracking_enabled
+                      ? getMenstrualPhaseForDate(
+                          day,
+                          athleteProfile.last_period_date,
+                          athleteProfile.menstrual_cycle_days,
+                        )
+                      : null;
 
                     return (
                       <Box
@@ -562,6 +593,17 @@ const AthleteMyTraining = () => {
                           position: 'relative',
                         }}
                       >
+                        {/* PR-155: menstrual phase stripe */}
+                        {menstrualPhase && (
+                          <Box
+                            title={menstrualPhase.tip}
+                            sx={{
+                              position: 'absolute', top: 0, left: 0, right: 0,
+                              height: 3, bgcolor: menstrualPhase.color,
+                              borderRadius: '2px 2px 0 0', zIndex: 1,
+                            }}
+                          />
+                        )}
                         {/* Day number */}
                         <Box
                           sx={{

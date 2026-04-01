@@ -231,6 +231,8 @@ const AthleteProfile = () => {
           onDeleteGoal={handleDeleteGoal}
           onSaveInjury={handleSaveInjury}
           onDeleteInjury={handleDeleteInjury}
+          orgId={orgId}
+          athleteId={athleteId}
         />
 
         {/* Device + Location */}

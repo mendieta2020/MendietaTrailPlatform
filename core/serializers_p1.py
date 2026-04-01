@@ -22,6 +22,7 @@ from core.models import (
     ExternalIdentity,
     PlannedWorkout,
     RaceEvent,
+    TrainingWeek,
     WellnessCheckIn,
     WorkoutAssignment,
     WorkoutBlock,
@@ -775,3 +776,48 @@ class WorkoutReconciliationSerializer(serializers.ModelSerializer):
         model = WorkoutReconciliation
         fields = _RECONCILIATION_FIELDS
         read_only_fields = _RECONCILIATION_FIELDS
+
+
+# ==============================================================================
+# PR-155: TrainingWeek serializer
+# ==============================================================================
+
+class TrainingWeekSerializer(serializers.ModelSerializer):
+    """
+    Serializer for TrainingWeek.
+
+    organization and athlete are injected by the ViewSet — never client-supplied.
+    week_start is validated as a Monday by the model's clean().
+    """
+
+    class Meta:
+        model = TrainingWeek
+        fields = [
+            "id",
+            "athlete",
+            "week_start",
+            "phase",
+            "notes",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "organization", "created_at", "updated_at"]
+
+
+class MacroRowSerializer(serializers.Serializer):
+    """
+    Read-only aggregated row for the MacroView table.
+
+    One row per athlete, containing the athlete's phase for the requested
+    week_start plus contextual data (goal A, injuries, wellness average).
+    """
+    athlete_id = serializers.IntegerField()
+    athlete_name = serializers.CharField()
+    phase = serializers.CharField(allow_null=True)
+    notes = serializers.CharField(allow_null=True)
+    training_week_id = serializers.IntegerField(allow_null=True)
+    goal_a_title = serializers.CharField(allow_null=True)
+    goal_a_date = serializers.DateField(allow_null=True)
+    days_until_race = serializers.IntegerField(allow_null=True)
+    has_active_injury = serializers.BooleanField()
+    wellness_avg = serializers.FloatField(allow_null=True)

@@ -165,6 +165,8 @@ const AthleteDetail = () => {
             goals={athleteGoals}
             userName={`${athlete?.first_name || ''} ${athlete?.last_name || ''}`.trim()}
             readOnly
+            orgId={activeOrg?.id}
+            athleteId={id}
           />
         )}
       </Paper>
