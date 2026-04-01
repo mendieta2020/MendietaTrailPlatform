@@ -395,10 +395,10 @@ def test_coach_briefing_endpoint():
 
     # 1 athlete overloaded (compliance_color="blue"): train this week with huge actual
     # The overloaded athlete is athlete[0] — also trained yesterday
-    # Use WEEK_START+1 to avoid collision when YESTERDAY == WEEK_START (Tuesday)
+    # Use WEEK_START+2 to guarantee no collision with YESTERDAY on any day of the week
     _assignment(
         org, athletes[0][1], workout_small,
-        date=WEEK_START + datetime.timedelta(days=1),
+        date=WEEK_START + datetime.timedelta(days=2),
         actual_duration_s=7200,  # 7200/60 = 120× → blue
     )
 
