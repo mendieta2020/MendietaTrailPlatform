@@ -376,13 +376,20 @@ const AthleteMyTraining = () => {
     listAthletes(orgId)
       .then((res) => {
         const athletes = res.data?.results ?? res.data ?? [];
-        // Use Number() to guard against string/int type mismatch in the serializer response
-        const me = athletes.find((a) => Number(a.user_id) === Number(user.id)) ?? athletes[0];
-        if (!me) return undefined;
-        return getAvailability(orgId, me.id);
+        // Match by user_id (guard string/int mismatch)
+        const me = athletes.find((a) => String(a.user_id) === String(user.id));
+        if (!me && athletes.length > 0) {
+          // Fallback: if user_id doesn't match, try first athlete (single-athlete roster)
+          return getAvailability(orgId, athletes[0].id);
+        }
+        if (me) return getAvailability(orgId, me.id);
+        return null;
       })
       .then((res) => {
-        if (res?.data) setAvailability(Array.isArray(res.data) ? res.data : []);
+        if (res?.data) {
+          const avail = Array.isArray(res.data) ? res.data : res.data?.results ?? [];
+          setAvailability(avail);
+        }
       })
       .catch((err) => {
         console.warn('[AthleteMyTraining] availability fetch failed:', err);

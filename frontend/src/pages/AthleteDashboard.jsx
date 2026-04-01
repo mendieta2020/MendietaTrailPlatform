@@ -410,7 +410,8 @@ const AthleteDashboard = ({ user }) => {
   const [billing, setBilling] = useState(null);
   const [billingLoading, setBillingLoading] = useState(true);
   const orgName = user?.memberships?.[0]?.org_name || '';
-  const wellnessOrgId = user?.memberships?.[0]?.org_id ?? null;
+  // Try memberships first, fallback to org_id from /api/me, then from OrgContext
+  const wellnessOrgId = user?.memberships?.[0]?.org_id || user?.org_id || null;
   const [deviceStatus, setDeviceStatus] = useState(null);
   const [pendingNotifications, setPendingNotifications] = useState([]);
   const [mySub, setMySub] = useState(null);
@@ -515,7 +516,7 @@ const AthleteDashboard = ({ user }) => {
       {/* PR-154: Wellness Check-In OVERLAY — once per day (localStorage gate).
            zIndex 1200 < welcome (1300): welcome appears on top for new users; wellness shows
            after welcome is dismissed or directly for returning users. */}
-      {wellnessVisible && wellnessOrgId && (
+      {wellnessVisible && (
         <Box sx={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           bgcolor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(6px)',
