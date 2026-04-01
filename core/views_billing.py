@@ -22,20 +22,61 @@ class BillingOrgMixin:
     Replaces the broken `getattr(request, "auth_organization", None)` pattern
     which was never populated by any middleware in production.
     Owner and admin roles can access billing features.
+
+    PR-149: Fixed non-deterministic org selection for multi-org users.
+    If the user holds coaching roles in more than one org, the caller must
+    supply ?org_id=<pk> (GET) or {"org_id": <pk>} (POST body) to disambiguate.
+    Returns None (→ 403) if the org cannot be resolved unambiguously.
     """
 
     def get_org(self, request):
         from core.models import Membership
         try:
-            m = Membership.objects.select_related("organization").filter(
-                user=request.user,
-                is_active=True,
-                role__in=["owner", "admin", "coach"],
-            ).first()
-            if m:
-                # Also set on request for backward compat with require_plan
-                request.auth_organization = m.organization
-                return m.organization
+            memberships = list(
+                Membership.objects.select_related("organization").filter(
+                    user=request.user,
+                    is_active=True,
+                    role__in=["owner", "admin", "coach"],
+                )
+            )
+            if not memberships:
+                return None
+
+            # Support both DRF Request (query_params) and raw Django WSGIRequest (GET)
+            query_params = getattr(request, "query_params", request.GET)
+            raw_org_id = query_params.get("org_id") or (
+                request.data.get("org_id") if hasattr(request, "data") else None
+            )
+
+            if raw_org_id is not None:
+                # Explicit org_id supplied: validate it against the user's memberships
+                try:
+                    org_id = int(raw_org_id)
+                except (TypeError, ValueError):
+                    return None
+                matched = [m for m in memberships if m.organization_id == org_id]
+                if len(matched) != 1:
+                    return None
+                m = matched[0]
+            elif len(memberships) == 1:
+                # Single membership and no org_id required — safe auto-resolution
+                m = memberships[0]
+            else:
+                # Multi-org user without org_id: deny to avoid non-deterministic selection
+                logger.warning(
+                    "billing.get_org.ambiguous",
+                    extra={
+                        "event_name": "billing.get_org.ambiguous",
+                        "user_id": request.user.pk,
+                        "org_count": len(memberships),
+                        "outcome": "denied",
+                    },
+                )
+                return None
+
+            # Also set on request for backward compat with require_plan
+            request.auth_organization = m.organization
+            return m.organization
         except Exception:
             pass
         return None

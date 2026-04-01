@@ -10,8 +10,9 @@ Endpoints:
     GET  /api/athlete/hr-profile/        — athlete reads own HR profile
     PUT  /api/athlete/hr-profile/        — athlete updates own HR profile
 
-Tenancy: organization is always resolved from the authenticated user's active
-Membership — never from request body or query params.
+Tenancy: organization is resolved from the authenticated user's active Membership.
+For users with a single org membership, resolution is automatic. For multi-org
+users, ?org_id=<pk> is required to avoid non-deterministic selection (PR-149).
 Law 6: no PII logged (user IDs only, no names/emails).
 """
 import logging
@@ -41,29 +42,49 @@ _TSB_ZONE_LABELS = {
 def _get_athlete_membership(request):
     """
     Resolve the requesting user's active athlete Membership.
-    Uses filter().first() to avoid MultipleObjectsReturned when a user
-    belongs to multiple organizations.
-    Returns the Membership instance or raises 403.
+
+    PR-149: Fixed non-deterministic org selection. If a user is an athlete in
+    multiple organizations, ?org_id=<pk> must be supplied to disambiguate.
+    Raises 400 (ValidationError) if ambiguous and org_id not provided.
+    Raises 403 (PermissionDenied) if no matching membership exists.
     """
-    membership = (
+    memberships = list(
         Membership.objects
         .select_related("organization")
         .filter(user=request.user, role=Membership.Role.ATHLETE, is_active=True)
-        .first()
     )
-    if not membership:
+    if not memberships:
         raise PermissionDenied("No active athlete membership found.")
-    return membership
+    if len(memberships) == 1:
+        return memberships[0]
+    # Multi-org athlete: require explicit org_id query param
+    # Use getattr to support both DRF Request (query_params) and raw WSGIRequest (GET)
+    query_params = getattr(request, "query_params", request.GET)
+    org_id = query_params.get("org_id")
+    if not org_id:
+        raise ValidationError(
+            {"org_id": "Multiple athlete memberships found. Provide ?org_id= to specify the organization."}
+        )
+    try:
+        org_id = int(org_id)
+    except (TypeError, ValueError):
+        raise ValidationError({"org_id": "Must be an integer."})
+    matched = [m for m in memberships if m.organization_id == org_id]
+    if not matched:
+        raise PermissionDenied("No active athlete membership found in the specified organization.")
+    return matched[0]
 
 
 def _get_coach_membership(request):
     """
-    Resolve the requesting user's active coach/owner/admin Membership.
-    Uses filter().first() to avoid MultipleObjectsReturned when a user
-    belongs to multiple organizations.
-    Returns the Membership instance or raises 403.
+    Resolve the requesting user's active coach/owner Membership.
+
+    PR-149: Fixed non-deterministic org selection. If a user holds coach/owner
+    roles in multiple organizations, ?org_id=<pk> must be supplied.
+    Raises 400 (ValidationError) if ambiguous and org_id not provided.
+    Raises 403 (PermissionDenied) if no matching membership exists.
     """
-    membership = (
+    memberships = list(
         Membership.objects
         .select_related("organization")
         .filter(
@@ -71,11 +92,27 @@ def _get_coach_membership(request):
             role__in=[Membership.Role.OWNER, Membership.Role.COACH],
             is_active=True,
         )
-        .first()
     )
-    if not membership:
+    if not memberships:
         raise PermissionDenied("No active coach or owner membership found.")
-    return membership
+    if len(memberships) == 1:
+        return memberships[0]
+    # Multi-org coach: require explicit org_id query param
+    # Use getattr to support both DRF Request (query_params) and raw WSGIRequest (GET)
+    query_params = getattr(request, "query_params", request.GET)
+    org_id = query_params.get("org_id")
+    if not org_id:
+        raise ValidationError(
+            {"org_id": "Multiple coach memberships found. Provide ?org_id= to specify the organization."}
+        )
+    try:
+        org_id = int(org_id)
+    except (TypeError, ValueError):
+        raise ValidationError({"org_id": "Must be an integer."})
+    matched = [m for m in memberships if m.organization_id == org_id]
+    if not matched:
+        raise PermissionDenied("No active coach membership found in the specified organization.")
+    return matched[0]
 
 
 def _tsb_zone(tsb: float) -> str:

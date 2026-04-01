@@ -147,6 +147,12 @@ class EquipoViewSet(TenantModelViewSet):
     Gestión de Grupos de Entrenamiento (Clusters).
     Ej: "Inicial Montaña", "Avanzado Calle".
     Permite ver qué alumnos pertenecen a cada equipo.
+
+    Tenancy note (PR-149): Equipo predates the Organization model and does not
+    carry an organization FK. Isolation is enforced at the coach-user level by
+    TenantModelViewSet (queryset filtered by entrenador=request.user). A coach
+    can only see and modify their own teams — cross-coach access is impossible.
+    Migration to Organization FK is tracked but not part of this PR.
     """
     queryset = Equipo.objects.all()
     serializer_class = EquipoSerializer
@@ -175,6 +181,11 @@ class AlumnoViewSet(TenantModelViewSet):
     """
     Gestión de Atletas.
     Permite buscar, filtrar por estado y ver detalles financieros.
+
+    Tenancy note (PR-149): Alumno predates the Organization model and does not
+    carry an organization FK. Isolation is at the coach-user level via
+    TenantModelViewSet (alumno__entrenador=request.user or usuario=request.user).
+    Cross-coach access is impossible by construction. See EquipoViewSet note.
     """
     serializer_class = AlumnoSerializer
     permission_classes = [permissions.IsAuthenticated] 
