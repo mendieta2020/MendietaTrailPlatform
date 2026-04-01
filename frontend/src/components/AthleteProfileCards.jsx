@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box, Typography, Paper, Button, TextField, MenuItem, Chip, Switch, FormControlLabel,
 } from '@mui/material';
@@ -7,7 +7,11 @@ import {
   Briefcase, Droplet, Shirt, AlertTriangle, Plus, Trash2, Check, X,
 } from 'lucide-react';
 import { Edit2, Save } from 'lucide-react';
+import {
+  LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Legend,
+} from 'recharts';
 import { BodyMap } from './BodyMap';
+import { getWellnessHistory } from '../api/p1';
 
 const DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
@@ -187,6 +191,9 @@ export function AthleteProfileCards({
   // Card 5: injuries
   onSaveInjury,
   onDeleteInjury,
+  // Card 7: wellness (PR-155)
+  orgId = null,
+  athleteId = null,
 }) {
   const phase = profile?.menstrual_tracking_enabled
     ? getMenstrualPhase(profile.last_period_date, profile.menstrual_cycle_days)
@@ -194,6 +201,42 @@ export function AthleteProfileCards({
 
   const isEditing = (cardName) => !readOnly && editingCard === cardName;
   const d = editDraft || {};
+
+  // ── Card 7: Wellness state (PR-155) ─────────────────────────────────────────
+  const [wellnessData, setWellnessData] = useState([]);
+
+  useEffect(() => {
+    if (!orgId || !athleteId) return;
+    getWellnessHistory(orgId, athleteId, 7).then((res) => {
+      const items = res.data || [];
+      // Reverse so chart goes oldest → newest left→right
+      setWellnessData([...items].reverse());
+    }).catch(() => {});
+  }, [orgId, athleteId]);
+
+  // Detect metric < 2 for 3+ consecutive days
+  const wellnessAlerts = (() => {
+    const metrics = ['sleep_quality', 'mood', 'energy', 'muscle_soreness', 'stress'];
+    const labels = { sleep_quality: 'Sueño', mood: 'Estado de ánimo', energy: 'Energía', muscle_soreness: 'Dolor muscular', stress: 'Estrés' };
+    const alerts = [];
+    if (wellnessData.length < 3) return alerts;
+    for (const m of metrics) {
+      const recent = wellnessData.slice(-3);
+      if (recent.every((d) => d[m] !== undefined && d[m] < 2)) {
+        alerts.push(`${labels[m]} bajo 3 días`);
+      }
+    }
+    return alerts;
+  })();
+
+  // Overall avg from latest 7 days
+  const wellnessAvg = (() => {
+    if (!wellnessData.length) return null;
+    const total = wellnessData.reduce((sum, d) => {
+      return sum + ((d.sleep_quality + d.mood + d.energy + d.muscle_soreness + d.stress) / 5);
+    }, 0);
+    return (total / wellnessData.length).toFixed(1);
+  })();
 
   // ── Card 3: Availability local state ────────────────────────────────────────
   const [editingAvailability, setEditingAvailability] = useState(false);
@@ -738,6 +781,54 @@ export function AthleteProfileCards({
             </>
           ) : (
             <span className="text-sm text-slate-400">Tracking menstrual no activado</span>
+          )}
+        </Paper>
+      )}
+
+      {/* Card 7: Wellness (PR-155) — visible to both athlete and coach */}
+      {orgId && athleteId && (
+        <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <Activity className="w-5 h-5" style={{ color: '#16a34a' }} />
+            <Typography variant="subtitle1" fontWeight={700}>Wellness</Typography>
+            {wellnessAvg !== null && (
+              <Box sx={{
+                ml: 'auto', px: 1.5, py: 0.5, borderRadius: 2,
+                bgcolor: parseFloat(wellnessAvg) >= 3.5 ? '#dcfce7' : parseFloat(wellnessAvg) >= 2.5 ? '#fef9c3' : '#fee2e2',
+                color: parseFloat(wellnessAvg) >= 3.5 ? '#16a34a' : parseFloat(wellnessAvg) >= 2.5 ? '#ca8a04' : '#dc2626',
+              }}>
+                <Typography variant="caption" fontWeight={700}>Promedio: {wellnessAvg}/5</Typography>
+              </Box>
+            )}
+          </Box>
+
+          {wellnessAlerts.length > 0 && (
+            <Box sx={{ mb: 2 }}>
+              {wellnessAlerts.map((alert) => (
+                <Box key={alert} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: '#dc2626', mb: 0.5 }}>
+                  <AlertTriangle size={14} />
+                  <Typography variant="caption">{alert}</Typography>
+                </Box>
+              ))}
+            </Box>
+          )}
+
+          {wellnessData.length === 0 ? (
+            <Typography variant="body2" sx={{ color: '#94a3b8' }}>Sin datos de wellness los últimos 7 días.</Typography>
+          ) : (
+            <ResponsiveContainer width="100%" height={180}>
+              <LineChart data={wellnessData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+                <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                <YAxis domain={[1, 5]} ticks={[1, 2, 3, 4, 5]} tick={{ fontSize: 10 }} width={20} />
+                <RechartsTooltip contentStyle={{ fontSize: 12 }} />
+                <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
+                <Line type="monotone" dataKey="sleep_quality"   name="Sueño"    stroke="#6366f1" dot={false} strokeWidth={1.5} />
+                <Line type="monotone" dataKey="mood"            name="Ánimo"    stroke="#f59e0b" dot={false} strokeWidth={1.5} />
+                <Line type="monotone" dataKey="energy"          name="Energía"  stroke="#10b981" dot={false} strokeWidth={1.5} />
+                <Line type="monotone" dataKey="muscle_soreness" name="Dolor"    stroke="#ef4444" dot={false} strokeWidth={1.5} />
+                <Line type="monotone" dataKey="stress"          name="Estrés"   stroke="#8b5cf6" dot={false} strokeWidth={1.5} />
+              </LineChart>
+            </ResponsiveContainer>
           )}
         </Paper>
       )}

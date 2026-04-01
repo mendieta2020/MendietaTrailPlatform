@@ -22,6 +22,7 @@ OrgTenantMixin contract:
 import datetime
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import models
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
@@ -37,12 +38,15 @@ from core.models import (
     Athlete,
     AthleteGoal,
     AthleteProfile,
+    AthleteInjury,
     CompletedActivity,
     ExternalIdentity,
     OAuthCredential,
     PlannedWorkout,
     RaceEvent,
     Team,
+    TrainingWeek,
+    WellnessCheckIn,
     WorkoutAssignment,
     WorkoutBlock,
     WorkoutDeliveryRecord,
@@ -54,9 +58,11 @@ from core.serializers_p1 import (
     AthleteGoalSerializer,
     AthleteProfileSerializer,
     ExternalIdentitySerializer,
+    MacroRowSerializer,
     PlannedWorkoutReadSerializer,
     PlannedWorkoutWriteSerializer,
     RaceEventSerializer,
+    TrainingWeekSerializer,
     WorkoutAssignmentAthleteSerializer,
     WorkoutAssignmentSerializer,
     WorkoutBlockReadSerializer,
@@ -195,6 +201,10 @@ class AthleteGoalViewSet(OrgTenantMixin, viewsets.ModelViewSet):
         qs = AthleteGoal.objects.filter(organization=self.organization)
         if self.membership.role == "athlete":
             qs = qs.filter(athlete__user=self.request.user)
+        else:
+            athlete_id = self.request.query_params.get("athlete_id")
+            if athlete_id:
+                qs = qs.filter(athlete_id=athlete_id)
         return qs
 
     def get_serializer_context(self):
@@ -673,6 +683,8 @@ class WorkoutAssignmentViewSet(
 
         athlete_ids = request.data.get("athlete_ids")
         planned_workout_id = request.data.get("planned_workout_id")
+        # Accept "dates" (list) or legacy "scheduled_date" (single string).
+        dates_raw = request.data.get("dates")
         scheduled_date_raw = request.data.get("scheduled_date")
 
         errors = {}
@@ -680,17 +692,19 @@ class WorkoutAssignmentViewSet(
             errors["athlete_ids"] = "Must be a non-empty list."
         if not planned_workout_id:
             errors["planned_workout_id"] = "This field is required."
-        if not scheduled_date_raw:
-            errors["scheduled_date"] = "This field is required."
+        if not dates_raw and not scheduled_date_raw:
+            errors["dates"] = "Provide 'dates' (list) or 'scheduled_date' (string)."
         if errors:
             raise DRFValidationError(errors)
 
+        # Normalize to a list of date objects.
+        raw_list = dates_raw if dates_raw else [scheduled_date_raw]
+        if not isinstance(raw_list, list) or not raw_list:
+            raise DRFValidationError({"dates": "Must be a non-empty list of YYYY-MM-DD strings."})
         try:
-            scheduled_date = datetime.date.fromisoformat(str(scheduled_date_raw))
+            scheduled_dates = [datetime.date.fromisoformat(str(d)) for d in raw_list]
         except ValueError:
-            raise DRFValidationError(
-                {"scheduled_date": "Invalid date format. Use YYYY-MM-DD."}
-            )
+            raise DRFValidationError({"dates": "Invalid date format. Use YYYY-MM-DD."})
 
         planned_workout = get_object_or_404(
             PlannedWorkout,
@@ -716,33 +730,34 @@ class WorkoutAssignmentViewSet(
         skipped = 0
 
         with transaction.atomic():
-            for athlete in athletes:
-                # Idempotency: skip if same athlete+workout+date already exists.
-                if WorkoutAssignment.objects.filter(
-                    organization=self.organization,
-                    athlete=athlete,
-                    planned_workout=planned_workout,
-                    scheduled_date=scheduled_date,
-                ).exists():
-                    skipped += 1
-                    continue
+            for scheduled_date in scheduled_dates:
+                for athlete in athletes:
+                    # Idempotency: skip if same athlete+workout+date already exists.
+                    if WorkoutAssignment.objects.filter(
+                        organization=self.organization,
+                        athlete=athlete,
+                        planned_workout=planned_workout,
+                        scheduled_date=scheduled_date,
+                    ).exists():
+                        skipped += 1
+                        continue
 
-                existing_count = WorkoutAssignment.objects.filter(
-                    organization=self.organization,
-                    athlete=athlete,
-                    scheduled_date=scheduled_date,
-                ).count()
+                    existing_count = WorkoutAssignment.objects.filter(
+                        organization=self.organization,
+                        athlete=athlete,
+                        scheduled_date=scheduled_date,
+                    ).count()
 
-                assignment = WorkoutAssignment.objects.create(
-                    organization=self.organization,
-                    athlete=athlete,
-                    planned_workout=planned_workout,
-                    scheduled_date=scheduled_date,
-                    assigned_by=request.user,
-                    snapshot_version=planned_workout.structure_version,
-                    day_order=existing_count + 1,
-                )
-                created_assignments.append(assignment)
+                    assignment = WorkoutAssignment.objects.create(
+                        organization=self.organization,
+                        athlete=athlete,
+                        planned_workout=planned_workout,
+                        scheduled_date=scheduled_date,
+                        assigned_by=request.user,
+                        snapshot_version=planned_workout.structure_version,
+                        day_order=existing_count + 1,
+                    )
+                    created_assignments.append(assignment)
 
         # Re-fetch with select_related for serialization.
         created_ids = [a.pk for a in created_assignments]
@@ -2057,3 +2072,235 @@ class WellnessDismissView(OrgTenantMixin, views.APIView):
             },
         )
         return Response({"dismissed": True})
+
+
+# ==============================================================================
+# PR-155: TrainingWeek — macro periodization phase per athlete per week
+# ==============================================================================
+
+import logging as _tw_logging
+_tw_logger = _tw_logging.getLogger(__name__)
+
+
+class TrainingWeekViewSet(OrgTenantMixin, viewsets.GenericViewSet):
+    """
+    GET  /api/p1/orgs/<org_id>/training-weeks/?week_start=2026-04-07
+        Returns one aggregated MacroRow per athlete in the org (or filtered
+        by team_id query param) for the requested week_start (Monday).
+        Includes: phase, goal A, days until race, active injury flag,
+        wellness 7-day average.
+
+    POST /api/p1/orgs/<org_id>/training-weeks/
+        Upsert a phase for one athlete for one week.
+        Body: { athlete_id, week_start, phase, notes? }
+        Idempotent: update_or_create on (athlete, week_start).
+
+    Coach/owner only for writes. Coach/owner/athlete for reads (athletes
+    see only their own row).
+    """
+    serializer_class = TrainingWeekSerializer
+    http_method_names = ["get", "post", "head", "options"]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        self.resolve_membership(self.kwargs["org_id"])
+
+    def list(self, request, org_id):
+        """
+        GET /api/p1/orgs/<org_id>/training-weeks/?week_start=YYYY-MM-DD
+        Returns aggregated MacroRow list.
+        """
+        # Parse week_start — default to current Monday
+        today = datetime.date.today()
+        default_monday = today - datetime.timedelta(days=today.weekday())
+        week_start_str = request.query_params.get("week_start", str(default_monday))
+        try:
+            week_start = datetime.date.fromisoformat(week_start_str)
+        except ValueError:
+            raise DRFValidationError({"week_start": "Must be YYYY-MM-DD."})
+        # Snap to Monday if not already
+        if week_start.weekday() != 0:
+            week_start = week_start - datetime.timedelta(days=week_start.weekday())
+
+        week_end = week_start + datetime.timedelta(days=6)
+
+        # Optional team filter
+        team_id = request.query_params.get("team_id")
+
+        # Fetch all active athletes in the org (role-gated: athletes see only self)
+        athletes_qs = Athlete.objects.filter(
+            organization=self.organization,
+            is_active=True,
+        ).select_related("user", "profile")
+        if team_id:
+            athletes_qs = athletes_qs.filter(team_id=team_id)
+        if self.membership.role == "athlete":
+            athletes_qs = athletes_qs.filter(user=request.user)
+
+        athlete_ids = list(athletes_qs.values_list("id", flat=True))
+
+        # Batch fetch training weeks for this week_start
+        tw_map = {
+            tw.athlete_id: tw
+            for tw in TrainingWeek.objects.filter(
+                organization=self.organization,
+                athlete_id__in=athlete_ids,
+                week_start=week_start,
+            )
+        }
+
+        # Batch fetch next goal (nearest date, any priority, active/planned)
+        all_goals_qs = list(
+            AthleteGoal.objects.filter(
+                organization=self.organization,
+                athlete_id__in=athlete_ids,
+                status__in=[AthleteGoal.Status.ACTIVE, AthleteGoal.Status.PLANNED],
+            ).select_related("target_event")
+        )
+
+        def _effective_date(g):
+            d = g.target_date or (g.target_event.event_date if g.target_event_id else None)
+            return d or datetime.date.max
+
+        all_goals_qs.sort(key=lambda g: (g.athlete_id, _effective_date(g)))
+        goal_map = {}
+        all_goals_map = {}
+        for g in all_goals_qs:
+            if g.athlete_id not in goal_map:
+                goal_map[g.athlete_id] = g
+            all_goals_map.setdefault(g.athlete_id, []).append(g)
+
+        # Batch fetch active injuries
+        injury_athlete_ids = set(
+            AthleteInjury.objects.filter(
+                organization=self.organization,
+                athlete_id__in=athlete_ids,
+                status=AthleteInjury.Status.ACTIVA,
+            ).values_list("athlete_id", flat=True)
+        )
+
+        # Batch fetch wellness 7-day average per athlete
+        cutoff = today - datetime.timedelta(days=6)
+        from django.db.models import Avg
+        wellness_avgs = dict(
+            WellnessCheckIn.objects.filter(
+                organization=self.organization,
+                athlete_id__in=athlete_ids,
+                date__gte=cutoff,
+            )
+            .values("athlete_id")
+            .annotate(
+                avg=Avg(
+                    (
+                        models.F("sleep_quality")
+                        + models.F("mood")
+                        + models.F("energy")
+                        + models.F("muscle_soreness")
+                        + models.F("stress")
+                    ) / 5.0
+                )
+            )
+            .values_list("athlete_id", "avg")
+        )
+
+        rows = []
+        for athlete in athletes_qs:
+            tw = tw_map.get(athlete.id)
+            goal = goal_map.get(athlete.id)
+            goal_date = None
+            if goal:
+                goal_date = goal.target_date or (
+                    goal.target_event.event_date if goal.target_event_id else None
+                )
+            days_until = None
+            if goal_date:
+                days_until = (goal_date - today).days
+
+            full_name = athlete.user.get_full_name() or athlete.user.username
+            all_goals_brief = [
+                {
+                    "title": g.title,
+                    "priority": g.priority,
+                    "days": (_effective_date(g) - today).days if _effective_date(g) != datetime.date.max else None,
+                }
+                for g in all_goals_map.get(athlete.id, [])
+            ]
+            rows.append({
+                "athlete_id": athlete.id,
+                "athlete_name": full_name,
+                "phase": tw.phase if tw else None,
+                "notes": tw.notes if tw else None,
+                "training_week_id": tw.id if tw else None,
+                "goal_a_title": goal.title if goal else None,
+                "goal_a_priority": goal.priority if goal else None,
+                "goal_a_date": goal_date,
+                "days_until_race": days_until,
+                "has_active_injury": athlete.id in injury_athlete_ids,
+                "wellness_avg": round(wellness_avgs.get(athlete.id, None) or 0, 2) if athlete.id in wellness_avgs else None,
+                "all_goals_brief": all_goals_brief,
+            })
+
+        serializer = MacroRowSerializer(rows, many=True)
+        return Response(serializer.data)
+
+    def create(self, request, org_id):
+        """
+        POST /api/p1/orgs/<org_id>/training-weeks/
+        Upsert training week phase for one athlete. Coach/owner only.
+        """
+        if self.membership.role not in _WRITE_ROLES:
+            raise PermissionDenied("Only coaches and owners can assign training phases.")
+
+        athlete_id = request.data.get("athlete_id")
+        week_start_str = request.data.get("week_start")
+        phase = request.data.get("phase")
+        notes = request.data.get("notes", "")
+
+        if not athlete_id or not week_start_str or not phase:
+            raise DRFValidationError({"detail": "athlete_id, week_start, and phase are required."})
+
+        try:
+            week_start = datetime.date.fromisoformat(str(week_start_str))
+        except ValueError:
+            raise DRFValidationError({"week_start": "Must be YYYY-MM-DD."})
+
+        athlete = get_object_or_404(
+            Athlete, pk=athlete_id, organization=self.organization
+        )
+
+        if phase not in TrainingWeek.Phase.values:
+            raise DRFValidationError({"phase": f"Must be one of: {TrainingWeek.Phase.values}"})
+
+        # Snap to Monday
+        if week_start.weekday() != 0:
+            week_start = week_start - datetime.timedelta(days=week_start.weekday())
+
+        tw, created = TrainingWeek.objects.update_or_create(
+            athlete=athlete,
+            week_start=week_start,
+            defaults={
+                "organization": self.organization,
+                "phase": phase,
+                "notes": notes,
+            },
+        )
+
+        _tw_logger.info(
+            "training_week.upserted",
+            extra={
+                "event_name": "training_week.upserted",
+                "organization_id": self.organization.id,
+                "actor_id": request.user.id,
+                "athlete_id": athlete.id,
+                "week_start": str(week_start),
+                "phase": phase,
+                "created": created,
+                "outcome": "success",
+            },
+        )
+
+        serializer = TrainingWeekSerializer(tw)
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )

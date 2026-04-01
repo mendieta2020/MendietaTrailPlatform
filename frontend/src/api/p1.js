@@ -132,6 +132,28 @@ export function dismissWellnessPrompt(orgId, athleteId) {
   return client.post(`${p1Base(orgId)}/athletes/${athleteId}/wellness/dismiss/`);
 }
 
+// ── TrainingWeek — Macro View (PR-155) ────────────────────────────────────────
+
+export function getTrainingWeeks(orgId, weekStart, teamId = null) {
+  const params = new URLSearchParams({ week_start: weekStart });
+  if (teamId) params.append('team_id', teamId);
+  return client.get(`${p1Base(orgId)}/training-weeks/?${params}`);
+}
+
+export function upsertTrainingWeek(orgId, data) {
+  return client.post(`${p1Base(orgId)}/training-weeks/`, data);
+}
+
+// Client-side phase suggestion based on recent weeks
+export function suggestPhase(recentPhases, hasRaceThisWeek, hasActiveInjury) {
+  if (hasActiveInjury) return 'lesion';
+  if (hasRaceThisWeek) return 'carrera';
+  const recent = (recentPhases || []).slice(-3);
+  const cargaCount = recent.filter((p) => p === 'carga').length;
+  if (cargaCount >= 2) return 'descarga';
+  return null;
+}
+
 // ── Athlete Profile (PR-116) ──────────────────────────────────────────────────
 
 export function getAthleteProfile(orgId, athleteId) {

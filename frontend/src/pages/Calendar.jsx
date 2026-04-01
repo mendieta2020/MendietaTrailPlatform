@@ -36,6 +36,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import MenuOpenIcon from '@mui/icons-material/MenuOpen';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -55,6 +57,7 @@ import DuplicateSessionModal from '../components/DuplicateSessionModal';
 import CopyWeekModal from '../components/CopyWeekModal';
 import DeleteWeekModal from '../components/DeleteWeekModal';
 import WorkoutCoachDrawer from '../components/WorkoutCoachDrawer';
+import MacroView from '../components/MacroView';
 
 const DnDCalendar = withDragAndDrop(Calendar);
 
@@ -449,6 +452,8 @@ export default function CalendarPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  // PR-155: calendar view: 'calendar' | 'macro'
+  const [calendarView, setCalendarView] = useState('calendar');
 
   // PR-145f: undo toast
   const [undoToast, setUndoToast] = useState(null);
@@ -1021,6 +1026,21 @@ export default function CalendarPage() {
             </Typography>
           </Box>
 
+          {/* PR-155: view toggle — Calendario / Macro */}
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={calendarView}
+            onChange={(_, v) => { if (v) setCalendarView(v); }}
+          >
+            <ToggleButton value="calendar" sx={{ px: 2, textTransform: 'none', fontWeight: 600 }}>
+              Calendario
+            </ToggleButton>
+            <ToggleButton value="macro" sx={{ px: 2, textTransform: 'none', fontWeight: 600 }}>
+              Planificador
+            </ToggleButton>
+          </ToggleButtonGroup>
+
           {saving && (
             <Tooltip title="Guardando asignación…">
               <CircularProgress size={20} sx={{ color: '#F57C00' }} />
@@ -1078,10 +1098,17 @@ export default function CalendarPage() {
           </Alert>
         )}
 
+        {/* PR-155: Macro View */}
+        {calendarView === 'macro' && orgId && (
+          <Box sx={{ mt: 1 }}>
+            <MacroView orgId={orgId} />
+          </Box>
+        )}
+
         {/* ── Body: sidebar + calendar ── */}
         <Box
           sx={{
-            display: 'flex',
+            display: calendarView === 'macro' ? 'none' : 'flex',
             gap: 2,
             height: 'calc(100vh - 220px)',
             minHeight: 560,

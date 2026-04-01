@@ -74,7 +74,7 @@ const AthleteDetail = () => {
             getAthleteProfile(activeOrg.org_id, id).catch(() => ({ data: null })),
             getInjuries(activeOrg.org_id, id).catch(() => ({ data: [] })),
             getAvailability(activeOrg.org_id, id).catch(() => ({ data: [] })),
-            getGoals(activeOrg.org_id).catch(() => ({ data: [] })),
+            getGoals(activeOrg.org_id, id).catch(() => ({ data: [] })),
           ]);
           if (profRes.data) setAthleteProfile(profRes.data);
           setAthleteInjuries(Array.isArray(injRes.data) ? injRes.data : injRes.data?.results ?? []);
@@ -165,6 +165,8 @@ const AthleteDetail = () => {
             goals={athleteGoals}
             userName={`${athlete?.first_name || ''} ${athlete?.last_name || ''}`.trim()}
             readOnly
+            orgId={activeOrg?.org_id}
+            athleteId={id}
           />
         )}
       </Paper>
