@@ -39,7 +39,7 @@ import FitnessCenterIcon from '@mui/icons-material/FitnessCenter';
 import { Users, BookOpen } from 'lucide-react';
 import Layout from '../components/Layout';
 import { useOrg } from '../context/OrgContext';
-import { listAthletes, listTeams, listLibraries, listPlannedWorkouts } from '../api/p1';
+import { listAthletes, listTeams, listLibraries, listPlannedWorkouts, getAthleteAvailability, getAthleteProfile } from '../api/p1';
 import {
   listAssignments, createAssignment, bulkAssignTeam,
   moveAssignment, deleteAssignment, cloneAssignmentWorkout,
@@ -50,6 +50,9 @@ import DuplicateSessionModal from '../components/DuplicateSessionModal';
 import CopyWeekModal from '../components/CopyWeekModal';
 import DeleteWeekModal from '../components/DeleteWeekModal';
 import WorkoutCoachDrawer from '../components/WorkoutCoachDrawer';
+import {
+  Dialog, DialogTitle, DialogContent, DialogActions,
+} from '@mui/material';
 
 const DnDCalendar = withDragAndDrop(Calendar);
 
@@ -63,6 +66,32 @@ const COMPLIANCE_HEX = {
   blue:   '#3B82F6',
   gray:   '#94A3B8',
 };
+
+// PR-154: Menstrual cycle phase helpers
+const MENSTRUAL_PHASES = [
+  { name: 'Menstrual',  color: '#EF4444', tip: 'Fase menstrual — escuchá a tu cuerpo' },
+  { name: 'Folicular',  color: '#10B981', tip: 'Fase folicular — ideal para alta intensidad' },
+  { name: 'Ovulación',  color: '#F59E0B', tip: 'Ovulación — pico de energía' },
+  { name: 'Lútea',      color: '#F97316', tip: 'Fase lútea — reducir intensidad' },
+];
+
+function getMenstrualPhaseForDate(dateObj, lastPeriodDate, cycleDays) {
+  if (!lastPeriodDate || !cycleDays) return null;
+  const last = new Date(lastPeriodDate);
+  const daysSince = Math.floor((dateObj - last) / 86400000);
+  const dayInCycle = ((daysSince % cycleDays) + cycleDays) % cycleDays;
+  if (dayInCycle <= 4)  return MENSTRUAL_PHASES[0];
+  if (dayInCycle <= 12) return MENSTRUAL_PHASES[1];
+  if (dayInCycle <= 14) return MENSTRUAL_PHASES[2];
+  return MENSTRUAL_PHASES[3];
+}
+
+// Convert day-of-week index (0=Mon…6=Sun, matching AthleteAvailability.day_of_week)
+// to JS getDay() (0=Sun…6=Sat)
+function jsWeekdayToAvailIndex(jsDay) {
+  // js: 0=Sun,1=Mon,...,6=Sat → avail: 0=Mon,...,6=Sun
+  return jsDay === 0 ? 6 : jsDay - 1;
+}
 const localizer = dateFnsLocalizer({
   format,
   parse,
@@ -430,6 +459,12 @@ export default function CalendarPage() {
   const [copyingWeek, setCopyingWeek] = useState(null);
   const [deletingWeek, setDeletingWeek] = useState(null);
 
+  // PR-154: Athlete availability + menstrual cycle
+  const [athleteAvailability, setAthleteAvailability] = useState([]); // AthleteAvailability[]
+  const [athleteProfile, setAthleteProfile] = useState(null);
+  // Blocked-day drop confirmation dialog
+  const [blockedDropPending, setBlockedDropPending] = useState(null); // { callback } | null
+
   const showUndo = useCallback((message, onUndo) => {
     setUndoToast({ message, onUndo });
   }, []);
@@ -450,6 +485,30 @@ export default function CalendarPage() {
         athleteDispatch({ type: 'FETCH_ERROR', error: 'No se pudieron cargar los atletas.' })
       );
   }, [orgId]);
+
+  // PR-154: Load availability + profile when an individual athlete is selected.
+  // setState is only called inside async callbacks or the cleanup function (not
+  // synchronously in the effect body) to avoid the react-hooks/set-state-in-effect rule.
+  useEffect(() => {
+    const target = parseTarget(selectedTarget);
+    if (!orgId || !target || target.type !== 'a') return;
+
+    let cancelled = false;
+    const athleteId = target.id;
+
+    getAthleteAvailability(orgId, athleteId)
+      .then((res) => { if (!cancelled) setAthleteAvailability(res.data?.results ?? res.data ?? []); })
+      .catch(() => { if (!cancelled) setAthleteAvailability([]); });
+    getAthleteProfile(orgId, athleteId)
+      .then((res) => { if (!cancelled) setAthleteProfile(res.data); })
+      .catch(() => { if (!cancelled) setAthleteProfile(null); });
+
+    return () => {
+      cancelled = true;
+      setAthleteAvailability([]);
+      setAthleteProfile(null);
+    };
+  }, [orgId, selectedTarget]);
 
   // ── Load teams ────────────────────────────────────────────────────────────
 
@@ -532,6 +591,16 @@ export default function CalendarPage() {
     return { title: w.name, allDay: true };
   }, []);
 
+  // PR-154: Check if a date is blocked for the currently selected individual athlete
+  const isDateBlocked = useCallback((dateObj) => {
+    const target = parseTarget(selectedTarget);
+    if (!target || target.type !== 'a') return null; // teams: no block
+    const dayIndex = jsWeekdayToAvailIndex(dateObj.getDay());
+    const avail = athleteAvailability.find((a) => a.day_of_week === dayIndex);
+    if (avail && !avail.is_available) return avail;
+    return null;
+  }, [selectedTarget, athleteAvailability]);
+
   // Called when a sidebar workout is dropped onto a calendar slot
   const handleDropFromOutside = useCallback(
     ({ start }) => {
@@ -542,6 +611,23 @@ export default function CalendarPage() {
       if (!target) {
         setSaveError('Seleccioná un atleta o grupo antes de arrastrar el entrenamiento.');
         setSaving(false);
+        return;
+      }
+
+      // PR-154: Blocked day intercept
+      const blockedAvail = isDateBlocked(start);
+      if (blockedAvail) {
+        const athleteObj = athleteState.data.find((a) => a.id === target.id);
+        const athleteName = athleteObj
+          ? `${athleteObj.first_name || ''} ${athleteObj.last_name || ''}`.trim()
+          : 'El atleta';
+        const dayName = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'][blockedAvail.day_of_week] ?? '';
+        setBlockedDropPending({
+          message: `⚠️ ${athleteName} no está disponible los ${dayName}${blockedAvail.reason ? ` (${blockedAvail.reason})` : ''}.`,
+          workout,
+          target,
+          start,
+        });
         return;
       }
 
@@ -627,8 +713,47 @@ export default function CalendarPage() {
           .finally(() => setSaving(false));
       }
     },
-    [orgId, selectedTarget]
+    [orgId, selectedTarget, isDateBlocked, athleteState.data]
   );
+
+  // PR-154: Confirm drop on blocked day
+  const handleConfirmBlockedDrop = useCallback(() => {
+    if (!blockedDropPending) return;
+    const { workout, target, start } = blockedDropPending;
+    setBlockedDropPending(null);
+    const scheduledDate = format(start, 'yyyy-MM-dd');
+    setSaving(true);
+    setSaveError(null);
+    if (target.type === 't') {
+      bulkAssignTeam(orgId, {
+        planned_workout_id: workout.id,
+        team_id: target.id,
+        scheduled_date: scheduledDate,
+      })
+        .then((res) => {
+          const assignments = res.data?.assignments ?? [];
+          assignments.forEach((a) => {
+            const day = parseISO(a.effective_date ?? a.scheduled_date);
+            eventsDispatch({ type: 'ADD_EVENT', event: { id: a.id, title: a.planned_workout_title ?? workout.name, start: day, end: day, allDay: true, compliance_color: a.compliance_color, actual_duration_seconds: a.actual_duration_seconds, actual_distance_meters: a.actual_distance_meters, rpe: a.rpe, planned_workout: a.planned_workout, resource: a } });
+          });
+        })
+        .catch(() => setSaveError('Error al asignar el entrenamiento al grupo.'))
+        .finally(() => setSaving(false));
+    } else {
+      createAssignment(orgId, {
+        planned_workout_id: workout.id,
+        athlete_id: target.id,
+        scheduled_date: scheduledDate,
+      })
+        .then((res) => {
+          const a = res.data;
+          const day = parseISO(a.effective_date ?? a.scheduled_date);
+          eventsDispatch({ type: 'ADD_EVENT', event: { id: a.id, title: a.planned_workout_title ?? workout.name, start: day, end: day, allDay: true, compliance_color: a.compliance_color, actual_duration_seconds: a.actual_duration_seconds, actual_distance_meters: a.actual_distance_meters, rpe: a.rpe, planned_workout: a.planned_workout, resource: a } });
+        })
+        .catch(() => setSaveError('Error al asignar el entrenamiento.'))
+        .finally(() => setSaving(false));
+    }
+  }, [blockedDropPending, orgId]);
 
   // ── PR-145f: Drag existing events (move) ──────────────────────────────────
 
@@ -1086,6 +1211,56 @@ export default function CalendarPage() {
                         onContextMenu={handleContextMenu}
                       />
                     ),
+                    dateCellWrapper: ({ value, children }) => {
+                      const dayIndex = jsWeekdayToAvailIndex(value.getDay());
+                      const avail = athleteAvailability.find((a) => a.day_of_week === dayIndex);
+                      const isBlocked = avail && !avail.is_available;
+                      const phase = athleteProfile?.menstrual_tracking_enabled
+                        ? getMenstrualPhaseForDate(
+                            value,
+                            athleteProfile.last_period_date,
+                            athleteProfile.menstrual_cycle_days,
+                          )
+                        : null;
+                      return (
+                        <Tooltip
+                          title={
+                            isBlocked
+                              ? `No disponible${avail.reason ? `: ${avail.reason}` : ''}${avail.preferred_time ? ` — ${avail.preferred_time}` : ''}`
+                              : phase
+                              ? phase.tip
+                              : ''
+                          }
+                          placement="top"
+                          disableHoverListener={!isBlocked && !phase}
+                        >
+                          <div style={{ position: 'relative', height: '100%', width: '100%' }}>
+                            {phase && (
+                              <div style={{
+                                position: 'absolute', top: 0, left: 0, right: 0,
+                                height: 3, background: phase.color, borderRadius: '2px 2px 0 0',
+                                zIndex: 1,
+                              }} />
+                            )}
+                            <div style={{
+                              height: '100%', width: '100%',
+                              background: isBlocked ? '#F1F5F9' : 'transparent',
+                            }}>
+                              {isBlocked && (
+                                <div style={{
+                                  position: 'absolute', bottom: 2, left: 4,
+                                  fontSize: '0.6rem', color: '#94A3B8', lineHeight: 1.2,
+                                }}>
+                                  {avail.reason || 'No disp.'}
+                                  {avail.preferred_time ? ` · ${avail.preferred_time}` : ''}
+                                </div>
+                              )}
+                              {children}
+                            </div>
+                          </div>
+                        </Tooltip>
+                      );
+                    },
                   }}
                   dragFromOutsideItem={dragFromOutsideItem}
                   onDropFromOutside={handleDropFromOutside}
@@ -1184,6 +1359,42 @@ export default function CalendarPage() {
           onClose={() => setDeletingWeek(null)}
           onSuccess={handleDeleteWeekSuccess}
         />
+
+        {/* PR-154: Blocked-day drop confirmation dialog */}
+        <Dialog
+          open={!!blockedDropPending}
+          onClose={() => setBlockedDropPending(null)}
+          maxWidth="xs"
+          fullWidth
+        >
+          <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>
+            Día bloqueado
+          </DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" sx={{ color: '#475569' }}>
+              {blockedDropPending?.message}
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#475569', mt: 1 }}>
+              ¿Planificar igual?
+            </Typography>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+            <Button
+              variant="text"
+              onClick={() => setBlockedDropPending(null)}
+              sx={{ textTransform: 'none', color: '#64748B' }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleConfirmBlockedDrop}
+              sx={{ textTransform: 'none', bgcolor: '#6366F1', '&:hover': { bgcolor: '#4F46E5' } }}
+            >
+              Planificar igual
+            </Button>
+          </DialogActions>
+        </Dialog>
       </>
     </Layout>
   );

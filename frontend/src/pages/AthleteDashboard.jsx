@@ -17,6 +17,8 @@ import {
   dismissDevicePreference,
   markNotificationRead,
 } from '../api/athlete';
+import { getWellnessHistory } from '../api/p1';
+import { WellnessCheckIn } from '../components/WellnessCheckIn';
 import { useNavigate } from 'react-router-dom';
 
 // ─── Greeting based on time of day ────────────────────────────────────────────
@@ -409,12 +411,17 @@ const AthleteDashboard = ({ user }) => {
   const [billing, setBilling] = useState(null);
   const [billingLoading, setBillingLoading] = useState(true);
   const orgName = user?.memberships?.[0]?.org_name || '';
+  const wellnessOrgId = user?.memberships?.[0]?.org_id ?? null;
+  const wellnessAthleteIdProp = user?.athlete_id ?? null;
   const [deviceStatus, setDeviceStatus] = useState(null);
   const [pendingNotifications, setPendingNotifications] = useState([]);
   const [mySub, setMySub] = useState(null);
   const [welcomeDismissed, setWelcomeDismissed] = useState(
     () => localStorage.getItem('quantoryn_welcome_done') === 'true'
   );
+  // PR-154: Wellness check-in overlay
+  const [wellnessVisible, setWellnessVisible] = useState(false);
+  const [wellnessAthleteId, setWellnessAthleteId] = useState(null);
 
   const greeting = getGreeting();
   const displayName = user?.first_name || user?.username || 'Atleta';
@@ -464,7 +471,22 @@ const AthleteDashboard = ({ user }) => {
     getMySubscription()
       .then(res => setMySub(res.data))
       .catch(() => setMySub(null));
-  }, []);
+
+    // PR-154: Wellness check-in — show if not answered today and not dismissed
+    if (wellnessOrgId && wellnessAthleteIdProp) {
+      getWellnessHistory(wellnessOrgId, wellnessAthleteIdProp, 1)
+        .then(res => {
+          const items = res.data?.results ?? res.data ?? [];
+          const todayStr = new Date().toISOString().split('T')[0];
+          const answeredToday = items.some(w => w.date === todayStr);
+          if (!answeredToday) {
+            setWellnessAthleteId(wellnessAthleteIdProp);
+            setWellnessVisible(true);
+          }
+        })
+        .catch(() => {}); // non-blocking
+    }
+  }, [wellnessOrgId, wellnessAthleteIdProp]);
 
   // PR-151: Welcome flow dismiss — stores in localStorage, shows only once
   const handleWelcomeDismiss = () => {
@@ -501,6 +523,23 @@ const AthleteDashboard = ({ user }) => {
             orgName={orgName}
             firstName={user?.first_name || displayName}
             onDismiss={handleWelcomeDismiss}
+          />
+        </Box>
+      )}
+
+      {/* PR-154: Wellness Check-In OVERLAY — once per day, only if welcome is done */}
+      {welcomeDismissed && wellnessVisible && wellnessAthleteId && user?.memberships?.[0]?.org_id && (
+        <Box sx={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          bgcolor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(6px)',
+          zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          p: 2,
+        }}>
+          <WellnessCheckIn
+            firstName={user?.first_name || displayName}
+            orgId={user.memberships[0].org_id}
+            athleteId={wellnessAthleteId}
+            onDismissSession={() => setWellnessVisible(false)}
           />
         </Box>
       )}

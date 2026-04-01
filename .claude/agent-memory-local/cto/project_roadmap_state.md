@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-03-29 · PR-149 done — next: PR-150 coach invitation UI + bulk invite_
+_Last updated: 2026-03-31 · PR-154 done — Body Map SVG + Calendar Blocked Days + Wellness Check-in + Menstrual Cycle_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -44,6 +44,7 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 | PR-147 | pr-147-smart-alerts | Smart Alerts Engine: InternalMessage, bell notification, MessagesDrawer, coach comment auto-message | ✅ 2026-03-28 |
 | PR-148 | pr-148-real-compliance | Real compliance (actual/planned), bulk query, sessions_per_day, streak, weekly pulse, coach briefing, AlertModal WhatsApp | ✅ 2026-03-28 |
 | PR-149 | — | Athlete Registration + Onboarding + Google OAuth + Plan Selector | ✅ 2026-03-29 |
+| PR-154 | pr-154-body-map-wellness-calendar | Body Map SVG + Calendar Blocked Days + Wellness Check-in + Menstrual Cycle Calendar | ✅ 2026-03-31 |
 
 ## Prioritized PR Queue (aligned to 3-month launch plan)
 
@@ -196,5 +197,28 @@ Coach B2C:     Athlete pays Coach via MercadoPago (AthleteSubscription)
 - WorkoutBuilder redesigned: zone selector, pace badge, estimated time badge, intensity bar, repeated blocks, step reordering
 - Saving API unchanged (createWorkoutBlock + createWorkoutInterval)
 
+## PR-154 Architecture Summary (2026-03-31)
+
+### Features shipped
+- **BodyMap.jsx**: Interactive SVG human figure (120×280 viewBox), 20 zones with bilateral support, colored by injury severity (leve=#FCD34D, moderada=#F97316, severa=#EF4444), hover effect, Tooltip from MUI, readOnly mode for coach view. Zones map to AthleteInjury.body_zone choices. Integrated into AthleteProfileCards Card 5 (Lesiones).
+- **Calendar Blocked Days**: Fetches AthleteAvailability for selected athlete; `dateCellWrapper` renders gray background on unavailable days with reason text; drag-and-drop onto blocked days triggers confirmation Dialog ("¿Planificar igual?") instead of proceeding.
+- **Menstrual Cycle Calendar**: Fetches AthleteProfile when athlete selected; calculates cycle phase per day (Menstrual/Folicular/Ovulación/Lútea); renders 3px colored border-top on each day cell with Tooltip.
+- **WellnessCheckIn**: Django model (5 Hooper-Index dimensions 1-5), UniqueConstraint(athlete+date), upsert POST, permanent dismiss via AthleteProfile.wellness_checkin_dismissed. React modal shown once/day on AthleteDashboard (after today's checkin check), with "No me preguntes más" confirmation phase.
+
+### New Models (migration 0102)
+- `WellnessCheckIn`: athlete FK, organization FK, date, sleep_quality/mood/energy/muscle_soreness/stress (1-5), notes, created_at. UniqueConstraint(athlete+date). Cross-org clean() validation.
+- `AthleteProfile.wellness_checkin_dismissed`: BooleanField(default=False)
+
+### New API endpoints
+- `GET/POST /p1/orgs/<org_id>/athletes/<athlete_id>/wellness/` — list + upsert checkin
+- `POST /p1/orgs/<org_id>/athletes/<athlete_id>/wellness/dismiss/` — permanent dismiss
+
+### New frontend API functions (api/p1.js)
+- `getAthleteAvailability`, `submitWellnessCheckIn`, `getWellnessHistory`, `dismissWellnessPrompt`, `getAthleteProfile`
+
+### Test coverage
+- `core/tests_pr154_wellness.py`: 10 tests (model clean, idempotency, cross-org isolation, dismiss, auth)
+- All PR-153 availability regression tests still passing (7/7)
+
 ## Test Baseline
-~1339+ tests | CI: backend ✅ frontend ✅
+~1349+ tests | CI: backend ✅ frontend ✅

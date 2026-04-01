@@ -7,6 +7,7 @@ import {
   Briefcase, Droplet, Shirt, AlertTriangle, Plus, Trash2, Check, X,
 } from 'lucide-react';
 import { Edit2, Save } from 'lucide-react';
+import { BodyMap } from './BodyMap';
 
 const DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
@@ -421,16 +422,35 @@ export function AthleteProfileCards({
         {editingAvailability && !readOnly ? (
           <div className="flex gap-3 flex-wrap">
             {availDraft.map((a) => (
-              <div key={a.day_of_week}
-                onClick={() => handleToggleDay(a.day_of_week)}
-                className={`flex flex-col items-center p-3 rounded-xl border-2 cursor-pointer transition-all
-                  ${a.is_available
-                    ? 'border-emerald-400 bg-emerald-50'
-                    : 'border-slate-200 bg-slate-50 opacity-60'}`}>
-                <span className="text-xs font-bold text-slate-700 mb-1">{DAYS[a.day_of_week]}</span>
-                {a.is_available
-                  ? <Check className="w-5 h-5 text-emerald-600" />
-                  : <X className="w-5 h-5 text-slate-400" />}
+              <div key={a.day_of_week} className="flex flex-col items-center gap-1">
+                <div
+                  onClick={() => handleToggleDay(a.day_of_week)}
+                  className={`flex flex-col items-center p-3 rounded-xl border-2 cursor-pointer transition-all
+                    ${a.is_available
+                      ? 'border-emerald-400 bg-emerald-50'
+                      : 'border-slate-200 bg-slate-50 opacity-60'}`}>
+                  <span className="text-xs font-bold text-slate-700 mb-1">{DAYS[a.day_of_week]}</span>
+                  {a.is_available
+                    ? <Check className="w-5 h-5 text-emerald-600" />
+                    : <X className="w-5 h-5 text-slate-400" />}
+                </div>
+                {!a.is_available && (
+                  <TextField
+                    select size="small" label="Horario"
+                    value={a.preferred_time ?? ''}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => setAvailDraft((prev) =>
+                      prev.map((d) => d.day_of_week === a.day_of_week
+                        ? { ...d, preferred_time: e.target.value }
+                        : d)
+                    )}
+                    sx={{ width: 80, '& .MuiInputBase-input': { fontSize: '0.72rem', py: 0.5 } }}>
+                    <MenuItem value="">—</MenuItem>
+                    {TRAINING_TIME_OPTIONS.map((o) => (
+                      <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+                    ))}
+                  </TextField>
+                )}
               </div>
             ))}
           </div>
@@ -585,6 +605,20 @@ export function AthleteProfileCards({
             </Box>
           </Box>
         )}
+
+        {/* Body Map — always visible; click opens injury form in edit mode */}
+        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+          <BodyMap
+            injuries={injuries}
+            readOnly={readOnly}
+            onZoneClick={(zone) => {
+              if (readOnly) return;
+              setInjuryForm({ ...EMPTY_INJURY, body_zone: zone });
+              setInjuryFormId(null);
+              setShowInjuryForm(true);
+            }}
+          />
+        </Box>
 
         {injuries.length > 0 ? (
           <div className="space-y-2">

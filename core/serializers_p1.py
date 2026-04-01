@@ -22,6 +22,7 @@ from core.models import (
     ExternalIdentity,
     PlannedWorkout,
     RaceEvent,
+    WellnessCheckIn,
     WorkoutAssignment,
     WorkoutBlock,
     WorkoutInterval,
@@ -228,6 +229,31 @@ class AthleteAvailabilitySerializer(serializers.ModelSerializer):
             "id", "day_of_week", "is_available", "reason", "preferred_time",
         ]
         read_only_fields = ["id"]
+
+
+class WellnessCheckInSerializer(serializers.ModelSerializer):
+    """
+    Serializer for WellnessCheckIn.
+
+    organization and athlete are injected by the ViewSet in perform_create.
+    They are never accepted from the client.
+    date defaults to today if not supplied; client may override for backfill.
+    """
+
+    class Meta:
+        model = WellnessCheckIn
+        fields = [
+            "id",
+            "date",
+            "sleep_quality",
+            "mood",
+            "energy",
+            "muscle_soreness",
+            "stress",
+            "notes",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
 
 
 # ==============================================================================
