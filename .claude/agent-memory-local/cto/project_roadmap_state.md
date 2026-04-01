@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-01 · PR-155 done — Vista Macro + Wellness Coach View + Ciclo Menstrual en Calendario_
+_Last updated: 2026-04-01 · Full audit completed — security sweep queued as PR-149_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -43,68 +43,89 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 | PR-145h | — | Plantilla semanal (compliance semanal, dots por día, badge praise, overload alert base) | ✅ 2026-03-27 |
 | PR-147 | pr-147-smart-alerts | Smart Alerts Engine: InternalMessage, bell notification, MessagesDrawer, coach comment auto-message | ✅ 2026-03-28 |
 | PR-148 | pr-148-real-compliance | Real compliance (actual/planned), bulk query, sessions_per_day, streak, weekly pulse, coach briefing, AlertModal WhatsApp | ✅ 2026-03-28 |
-| PR-149 | — | Athlete Registration + Onboarding + Google OAuth + Plan Selector | ✅ 2026-03-29 |
+| PR-149 (old) | — | Athlete Registration + Onboarding + Google OAuth + Plan Selector | ✅ 2026-03-29 |
+| PR-150 (old) | — | MP Connect UI + Universal Invite Link + BillingOrgMixin | ✅ 2026-03-30 |
+| PR-151 (old) | — | Welcome Flow + Plan CRUD + Org Fix + Strava Alert | ✅ 2026-03-30 |
+| PR-152 (old) | — | Trial 7 dias + Multiple Goals + Registration Alert | ✅ 2026-03-30 |
+| PR-153 (old) | — | Athlete Profile + Injuries + Menstrual Cycle + MP Checkout | ✅ 2026-03-31 |
 | PR-154 | pr-154-body-map-wellness-calendar | Body Map SVG + Calendar Blocked Days + Wellness Check-in + Menstrual Cycle Calendar | ✅ 2026-03-31 |
 | PR-155 | pr-155-macro-view-wellness-coach | Vista Macro (TrainingWeek model + coach table + phases), Wellness Card 7 (recharts), Menstrual cycle overlay in AthleteMyTraining | ✅ 2026-04-01 |
 
-## Prioritized PR Queue (aligned to 3-month launch plan)
+## Audit 2026-04-01 — Findings
 
-### Immediate (Mes 1 gate — onboarding 100 athletes)
+### CRITICAL
+- **Disk C full** — blocks CI, must be cleaned before any PR can run
 
-**PR-150 — Coach Invitation UI + Universal Reusable Link** — NEXT
-- Coach-facing UI for creating invitations (currently API-only)
-- Universal reusable invite link for bulk onboarding (1 link for 200+ athletes)
-- Current limitation: 1 token = 1 athlete — unscalable for 100 athletes
-- Coach can choose: invite with specific plan OR without plan (athlete selects)
-- Blocker: Fernando needs to onboard 100 athletes NOW, can't create invitations via API
+### HIGH — Security / Tenancy
+- 5 legacy ViewSets without org filter: Equipo, Alumno, Plantilla, Carrera, AlumnoViewSet
+- BillingOrgMixin.get_org() uses .first() — non-deterministic for multi-org coaches
+- views_pmc._get_athlete_membership() uses .first() without org scope
+- ALLOWED_HOSTS=['*'] when DEBUG=True
 
-**PR-151 — Staff/Coach/Nutritionist Invitation Flow**
-- Different from athlete invitation: no payment, different role assignment
-- Org hierarchy: Owner > Coach/Staff/Nutritionist > Athlete
-- Needed before Mes 2 (bringing in external coaches)
+### MEDIUM
+- Sentry scrubber partial (not all sensitive fields covered)
+- Strava webhook subscription ID silent discard (no error raised)
+- Ingestion ambiguity: unclear if all paths write to CompletedActivity vs legacy Actividad
 
-**PR-152 — Pre-Expiry Notification (3 days before renewal)**
-- Smart Alert triggered 3 days before MercadoPago subscription renewal
-- Uses existing InternalMessage + Smart Alerts infrastructure (PR-147)
-- Prevents athlete surprise charges
+### Frontend State (16/18 COMPLETE, 2 PARTIAL)
+- Dashboard.jsx: PMC section empty (endpoint exists but not connected)
+- Athletes.jsx: fitness column shows fake/hardcoded CTL value
 
-**PR-153 — PWA** (service worker, manifest, installability, push notifications)
-- Gate for daily athlete engagement — athletes won't open a browser
+### Schema State
+- **54 models total**, **105 migrations applied**
+- Latest migration: 0105_pr155_trainingweek.py
+- New models since last audit: WellnessCheckIn (PR-154, migration 0102), TrainingWeek (PR-155, migration 0105 — no API endpoint yet)
+
+## Prioritized PR Queue (post-audit, renumbered)
+
+### PR-149 — Security Sweep ✅ 2026-04-01
+- Fixed BillingOrgMixin.get_org() — deterministic multi-org resolution; requires org_id when ambiguous
+- Fixed _get_athlete_membership() and _get_coach_membership() — same disambiguation
+- Legacy ViewSets (Equipo, Alumno): models predate Organization FK; documented coach-user isolation; added cross-coach isolation tests
+- 12 new protective tests (billing + PMC + legacy ViewSet cross-coach isolation)
+- Housekeeping: deleted loose dev scripts (asignar_alumnos.py, simular_strava.py, etc.) and celerybeat artifacts
+- Risk: HIGH (tenancy, Constitution Law 1) — RESOLVED
+
+### PR-150 — Close Strava Ingestion Loop
+- Ensure ingestion always writes to CompletedActivity, never Actividad legacy, for P1+ athletes
+- Audit all ingestion code paths
+- Risk: HIGH (data integrity, idempotency)
+
+### PR-151 — Dashboard Real
+- Connect Dashboard.jsx to existing PMC endpoint (CTL/ATL/TSB chart)
+- Replace fake fitness column in Athletes.jsx with real CTL from DailyLoad
+- Risk: LOW (frontend only, endpoints already exist)
+
+### Mes 1 Gate (onboarding 100 athletes)
+- PR-152 — PWA + Push Notifications (service worker, manifest, installability)
+- PR-153 — Pre-Expiry Notification (3 days before MP renewal, uses InternalMessage)
 
 ### Before Mes 2 (10 external coaches)
-
-**PR-128b — PMC Frontend chart** (AthleteProgress reads DailyLoad)
-- Coach needs visual analytics to demonstrate value
-
-**PR-151 — Periodizacion & Plan Anual**
-- Macro/mesocycle planning differentiates Quantoryn from "another calendar with Strava"
+- PR-154 (new) — Staff/Coach/Nutritionist Invitation Flow
+- PR-155 (new) — Periodizacion Visual (Macro/Meso/Micro en una pantalla)
+- PR-156 — PMC Frontend chart (AthleteProgress reads DailyLoad)
 
 ### Before Mes 3 (general market launch)
+- PR-157 — Videos en ejercicios de fuerza
+- PR-158 — Historical backfill pipeline
+- PR-159 — Calendar "+2 more" fix + expand day view
 
-**PR-146 — Videos en ejercicios de fuerza**
-- Differentiator for trail coaches (functional strength)
+## Technical Debt
+- FINDING-X4-A: ExternalIdentityViewSet legacy scope (low priority)
+- Migration 0083 uses atomic=False (standard pattern for PostgreSQL FK+DDL)
+- PR-132 was merged directly to main (no feature branch) — process gap corrected
+- PR-134: OrgOAuthCredential uses fresh org instance in tests to avoid cached reverse OneToOne from post_save signal
+- CLAUDE.md PR queue is stale — update after PR-149 security sweep
+- ALLOWED_HOSTS=['*'] when DEBUG=True — acceptable for local dev but must never reach production
+- TrainingWeek model (PR-155) has no API endpoint yet — needs exposure before Periodizacion Visual
 
-**PR-129 — Historical backfill pipeline**
-- New coaches migrating athletes who already have Strava history
-
-## PR-149 Architecture Summary
-
-### Onboarding Flow
-- Athletes register via Google OAuth or email/password
-- Onboarding wizard collects: personal data, athletic data, availability (7 days), goals
-- Coach invite can include specific plan OR leave plan selection to athlete
-- AthleteAvailability model stores weekly training availability per day (7 rows per athlete per org)
-
-### New Models / Schema (PR-149)
-- `AthleteAvailability`: organization, user, day_of_week (0-6), is_available, preferred_time, notes
-- `AthleteProfile` +14 fields: blood_type, clothing_size, instagram_handle, profession, emergency_contact_name, emergency_contact_phone, pace_1000m_seconds, best_5k_minutes, best_10k_minutes, best_21k_minutes, best_42k_minutes, best_ultra_km, tracks_menstrual_cycle, menstrual_cycle_notes
-
-### Frontend Changes (PR-149)
-- Google OAuth integration (Google Cloud Console configured for Quantoryn)
-- Onboarding wizard components in `frontend/src/components/onboarding/`
-- Tailwind theme layer added for consistent styling
-- Dashboard org name fix: reads from memberships instead of /api/me
-- Plan selector component for athlete self-selection
+## Key Technical Decisions
+- atomic=False: standard for any migration combining DDL + DML on FK tables
+- Lazy imports: Law 4 compliance for integrations/ imports in core/
+- PASO 0 mandatory: all future prompts must start with branch creation
+- transaction=True on IntegrityError tests: PostgreSQL aborts tx on violations
+- Google OAuth: configured via Google Cloud Console for Quantoryn project
+- Onboarding pattern: multi-step wizard with backend serializers per step
 
 ## Billing Architecture Summary
 
@@ -123,9 +144,9 @@ Coach B2C:     Athlete pays Coach via MercadoPago (AthleteSubscription)
 
 ### Integrations built
 - `integrations/mercadopago/client.py` — mp_get/post/put
-- `integrations/mercadopago/subscriptions.py` — create/get/cancel + create_coach_athlete_preapproval (PR-135)
+- `integrations/mercadopago/subscriptions.py` — create/get/cancel + create_coach_athlete_preapproval
 - `integrations/mercadopago/webhook.py` — process_subscription_webhook (idempotent, B2B)
-- `integrations/mercadopago/athlete_webhook.py` — process_athlete_subscription_webhook (idempotent, coach->athlete, PR-136)
+- `integrations/mercadopago/athlete_webhook.py` — process_athlete_subscription_webhook (idempotent, coach->athlete)
 - `integrations/mercadopago/oauth.py` — mp_get_authorization_url + mp_exchange_code
 
 ## PMC Engine Architecture (PR-128a)
@@ -152,74 +173,12 @@ Coach B2C:     Athlete pays Coach via MercadoPago (AthleteSubscription)
 - coach briefing card: top-level team summary
 - AlertModal with WhatsApp deep link
 
-## Technical Debt
-- FINDING-X4-A: ExternalIdentityViewSet legacy scope (low priority)
-- Migration 0083 uses atomic=False (standard pattern for PostgreSQL FK+DDL)
-- PR-132 was merged directly to main (no feature branch) — process gap corrected
-- PR-134: OrgOAuthCredential uses fresh org instance in tests to avoid cached reverse OneToOne from post_save signal
-- CLAUDE.md PR queue is stale — update after PR-150
-
-## Key Technical Decisions
-- atomic=False: standard for any migration combining DDL + DML on FK tables
-- Lazy imports: Law 4 compliance for integrations/ imports in core/
-- PASO 0 mandatory: all future prompts must start with branch creation
-- transaction=True on IntegrityError tests: PostgreSQL aborts tx on violations
-- Google OAuth: configured via Google Cloud Console for Quantoryn project (PR-149)
-- Onboarding pattern: multi-step wizard with backend serializers per step (PR-149)
-
-### Frontend billing surfaces (PR-137)
-- `Finanzas.jsx` — owner/admin-only: KPIs, plans management, subscription table + manual activation, invitations + copy-link
-- `Athletes.jsx` — subscription status badge + filter tabs (no amounts for coaches)
-- `Layout.jsx` — Finanzas locked for coach/member role (tooltip: "Solo para administradores")
-- `billing.js` — 7 API service functions aligned to backend endpoints
-
-### Frontend invite flow (PR-138 + PR-149)
-- `InvitePage.jsx` — public route `/invite/:token`; states: loading, invalid, expired, already_used, pending
-- PR-149 resolved the dead-end gap: athletes can now register inline (Google OAuth or email/password)
-- `App.jsx` — public route `/invite/:token` (no ProtectedRoute)
-- `billing.js` — added `getInvitation(token)` + `acceptInvitation(token)`
-
-### Frontend athlete surfaces (PR-139)
-- `AthleteLayout.jsx` — separate sidebar for athlete role (Hoy, Mi Entrenamiento, Mi Progreso, Conexiones, Perfil)
-- `AthleteDashboard.jsx` — personalized home: greeting + weather, today's workout card, onboarding checklist, subscription card
-- `AthleteMyTraining.jsx` + `AthleteProgress.jsx` — premium placeholders
-- `useWeather.js` — geolocation + OpenWeatherMap hook (silent fallback)
-- `Layout.jsx` — delegates to AthleteLayout for role=athlete
-- `App.jsx` — DashboardRouter + /athlete/training + /athlete/progress routes
-
-### PR-139 backend changes
-- `GET /api/athlete/today/` — IsAuthenticated + role=athlete guard via Membership; queries WorkoutAssignment (planned/moved, today's date); structured log athlete_today_fetched
-- `core/views_athlete.py` — new file for athlete-only views
-- `core/tests_pr139_athlete_today.py` — 11 tests: 401, 403 (coach/owner/no-membership), no-workout, canceled/skipped ignored, correct fields, cross-org isolation
-
-### PR-145a — Workout Creator Pro (2026-03-24)
-- `GET /api/athlete/pace-zones/`: any active Membership (athlete OR coach), AthleteHRProfile.threshold_pace_s_km, fallback 300 s/km
-- Zone Z1-Z5 -> metric_type='hr_zone' + target_label='Z1'...'Z5' in WorkoutInterval
-- WorkoutBuilder redesigned: zone selector, pace badge, estimated time badge, intensity bar, repeated blocks, step reordering
-- Saving API unchanged (createWorkoutBlock + createWorkoutInterval)
-
 ## PR-154 Architecture Summary (2026-03-31)
-
-### Features shipped
-- **BodyMap.jsx**: Interactive SVG human figure (120×280 viewBox), 20 zones with bilateral support, colored by injury severity (leve=#FCD34D, moderada=#F97316, severa=#EF4444), hover effect, Tooltip from MUI, readOnly mode for coach view. Zones map to AthleteInjury.body_zone choices. Integrated into AthleteProfileCards Card 5 (Lesiones).
-- **Calendar Blocked Days**: Fetches AthleteAvailability for selected athlete; `dateCellWrapper` renders gray background on unavailable days with reason text; drag-and-drop onto blocked days triggers confirmation Dialog ("¿Planificar igual?") instead of proceeding.
-- **Menstrual Cycle Calendar**: Fetches AthleteProfile when athlete selected; calculates cycle phase per day (Menstrual/Folicular/Ovulación/Lútea); renders 3px colored border-top on each day cell with Tooltip.
-- **WellnessCheckIn**: Django model (5 Hooper-Index dimensions 1-5), UniqueConstraint(athlete+date), upsert POST, permanent dismiss via AthleteProfile.wellness_checkin_dismissed. React modal shown once/day on AthleteDashboard (after today's checkin check), with "No me preguntes más" confirmation phase.
-
-### New Models (migration 0102)
-- `WellnessCheckIn`: athlete FK, organization FK, date, sleep_quality/mood/energy/muscle_soreness/stress (1-5), notes, created_at. UniqueConstraint(athlete+date). Cross-org clean() validation.
-- `AthleteProfile.wellness_checkin_dismissed`: BooleanField(default=False)
-
-### New API endpoints
-- `GET/POST /p1/orgs/<org_id>/athletes/<athlete_id>/wellness/` — list + upsert checkin
-- `POST /p1/orgs/<org_id>/athletes/<athlete_id>/wellness/dismiss/` — permanent dismiss
-
-### New frontend API functions (api/p1.js)
-- `getAthleteAvailability`, `submitWellnessCheckIn`, `getWellnessHistory`, `dismissWellnessPrompt`, `getAthleteProfile`
-
-### Test coverage
-- `core/tests_pr154_wellness.py`: 10 tests (model clean, idempotency, cross-org isolation, dismiss, auth)
-- All PR-153 availability regression tests still passing (7/7)
+- **BodyMap.jsx**: Interactive SVG human figure, 20 zones, colored by severity
+- **Calendar Blocked Days**: AthleteAvailability overlay, drag confirmation dialog
+- **Menstrual Cycle Calendar**: cycle phase per day, colored border-top with Tooltip
+- **WellnessCheckIn**: 5 Hooper-Index dimensions, UniqueConstraint(athlete+date), upsert, permanent dismiss
+- New models: WellnessCheckIn (migration 0102), AthleteProfile.wellness_checkin_dismissed
 
 ## Test Baseline
-~1349+ tests | CI: backend ✅ frontend ✅
+~1349+ tests | CI: backend ✅ frontend ✅ (pending disk space fix)
