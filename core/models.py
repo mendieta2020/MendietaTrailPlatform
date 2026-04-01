@@ -1816,8 +1816,13 @@ class AthleteInjury(models.Model):
         MUSLO = "muslo", "Muslo"
         RODILLA = "rodilla", "Rodilla"
         PANTORRILLA = "pantorrilla", "Pantorrilla"
+        ESPINILLA = "espinilla", "Espinilla"
         TOBILLO = "tobillo", "Tobillo"
         PIE = "pie", "Pie"
+        GLUTEO = "gluteo", "Glúteo"
+        ISQUIOTIBIAL = "isquiotibial", "Isquiotibial"
+        TALON = "talon", "Talón"
+        PLANTA_DEL_PIE = "planta_del_pie", "Planta del pie"
 
     class Side(models.TextChoices):
         IZQUIERDO = "izquierdo", "Izquierdo"

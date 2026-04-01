@@ -27,10 +27,15 @@ import {
   CircularProgress,
   Alert,
   IconButton,
+  Button,
   Accordion,
   AccordionSummary,
   AccordionDetails,
   Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import MenuOpenIcon from '@mui/icons-material/MenuOpen';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -50,9 +55,6 @@ import DuplicateSessionModal from '../components/DuplicateSessionModal';
 import CopyWeekModal from '../components/CopyWeekModal';
 import DeleteWeekModal from '../components/DeleteWeekModal';
 import WorkoutCoachDrawer from '../components/WorkoutCoachDrawer';
-import {
-  Dialog, DialogTitle, DialogContent, DialogActions,
-} from '@mui/material';
 
 const DnDCalendar = withDragAndDrop(Calendar);
 

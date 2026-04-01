@@ -435,21 +435,34 @@ export function AthleteProfileCards({
                     : <X className="w-5 h-5 text-slate-400" />}
                 </div>
                 {!a.is_available && (
-                  <TextField
-                    select size="small" label="Horario"
-                    value={a.preferred_time ?? ''}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => setAvailDraft((prev) =>
-                      prev.map((d) => d.day_of_week === a.day_of_week
-                        ? { ...d, preferred_time: e.target.value }
-                        : d)
-                    )}
-                    sx={{ width: 80, '& .MuiInputBase-input': { fontSize: '0.72rem', py: 0.5 } }}>
-                    <MenuItem value="">—</MenuItem>
-                    {TRAINING_TIME_OPTIONS.map((o) => (
-                      <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
-                    ))}
-                  </TextField>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 0.5 }}>
+                    <TextField
+                      select size="small" label="Horario"
+                      value={a.preferred_time ?? ''}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => setAvailDraft((prev) =>
+                        prev.map((d) => d.day_of_week === a.day_of_week
+                          ? { ...d, preferred_time: e.target.value }
+                          : d)
+                      )}
+                      sx={{ width: 80, '& .MuiInputBase-input': { fontSize: '0.72rem', py: 0.5 } }}>
+                      <MenuItem value="">—</MenuItem>
+                      {TRAINING_TIME_OPTIONS.map((o) => (
+                        <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+                      ))}
+                    </TextField>
+                    <TextField
+                      size="small" label="Motivo"
+                      value={a.reason ?? ''}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => setAvailDraft((prev) =>
+                        prev.map((d) => d.day_of_week === a.day_of_week
+                          ? { ...d, reason: e.target.value }
+                          : d)
+                      )}
+                      sx={{ width: 80, '& .MuiInputBase-input': { fontSize: '0.72rem', py: 0.5 } }}
+                    />
+                  </Box>
                 )}
               </div>
             ))}
