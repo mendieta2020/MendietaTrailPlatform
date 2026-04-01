@@ -156,7 +156,7 @@ function BulkAssignModal({ open, onClose, orgId, weekStart, athletes }) {
   const [libraries, setLibraries] = useState([]);
   const [selectedLib, setSelectedLib] = useState('');
   const [workouts, setWorkouts] = useState([]);
-  const [selectedWorkout, setSelectedWorkout] = useState('');
+  const [selectedWorkouts, setSelectedWorkouts] = useState([]);
   const [selectedDays, setSelectedDays] = useState([0, 2, 4]); // Mon, Wed, Fri
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -180,8 +180,14 @@ function BulkAssignModal({ open, onClose, orgId, weekStart, athletes }) {
     );
   }
 
+  function toggleWorkout(id) {
+    setSelectedWorkouts((prev) =>
+      prev.includes(id) ? prev.filter((w) => w !== id) : [...prev, id]
+    );
+  }
+
   async function handleAssign() {
-    if (!selectedWorkout || selectedDays.length === 0) return;
+    if (selectedWorkouts.length === 0 || selectedDays.length === 0) return;
     setSaving(true);
     setError(null);
     try {
@@ -192,11 +198,15 @@ function BulkAssignModal({ open, onClose, orgId, weekStart, athletes }) {
         return formatDate(dt);
       });
       const athleteIds = athletes.map((a) => a.athlete_id);
-      await bulkCreateAssignments(orgId, {
-        planned_workout_id: selectedWorkout,
-        athlete_ids: athleteIds,
-        dates,
-      });
+      await Promise.all(
+        selectedWorkouts.map((wId) =>
+          bulkCreateAssignments(orgId, {
+            planned_workout_id: wId,
+            athlete_ids: athleteIds,
+            dates,
+          })
+        )
+      );
       setSuccess(true);
       setTimeout(() => { setSuccess(false); onClose(); }, 1200);
     } catch {
@@ -217,21 +227,35 @@ function BulkAssignModal({ open, onClose, orgId, weekStart, athletes }) {
 
         <FormControl fullWidth size="small" sx={{ mb: 2, mt: 1 }}>
           <InputLabel>Librería</InputLabel>
-          <Select value={selectedLib} label="Librería" onChange={(e) => { setSelectedLib(e.target.value); setSelectedWorkout(''); }}>
+          <Select value={selectedLib} label="Librería" onChange={(e) => { setSelectedLib(e.target.value); setSelectedWorkouts([]); }}>
             {libraries.map((l) => (
               <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>
             ))}
           </Select>
         </FormControl>
 
-        <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-          <InputLabel>Entrenamiento</InputLabel>
-          <Select value={selectedWorkout} label="Entrenamiento" onChange={(e) => setSelectedWorkout(e.target.value)} disabled={!selectedLib}>
-            {workouts.map((w) => (
-              <MenuItem key={w.id} value={w.id}>{w.title || w.name}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+        <Typography variant="caption" sx={{ color: '#6b7280', mb: 1, display: 'block' }}>
+          Entrenamientos (seleccioná uno o más):
+        </Typography>
+        <FormGroup sx={{ mb: 2, pl: 1 }}>
+          {workouts.map((w) => (
+            <FormControlLabel
+              key={w.id}
+              control={
+                <Checkbox
+                  size="small"
+                  checked={selectedWorkouts.includes(w.id)}
+                  onChange={() => toggleWorkout(w.id)}
+                  disabled={!selectedLib}
+                />
+              }
+              label={<Typography variant="caption">{w.title || w.name}</Typography>}
+            />
+          ))}
+          {selectedLib && workouts.length === 0 && (
+            <Typography variant="caption" sx={{ color: '#94a3b8' }}>Sin entrenamientos en esta librería.</Typography>
+          )}
+        </FormGroup>
 
         <Typography variant="caption" sx={{ color: '#6b7280', mb: 1, display: 'block' }}>
           Días de la semana (respeta días bloqueados de cada atleta):
@@ -253,6 +277,7 @@ function BulkAssignModal({ open, onClose, orgId, weekStart, athletes }) {
         </FormGroup>
 
         <Typography variant="caption" sx={{ color: '#94a3b8', mt: 1, display: 'block' }}>
+          {selectedWorkouts.length > 0 ? `${selectedWorkouts.length} entrenamiento(s) · ` : ''}
           Se asignará a {athletes.length} atleta{athletes.length !== 1 ? 's' : ''}.
           Podés personalizar 1×1 desde la vista Mes.
         </Typography>
@@ -262,7 +287,7 @@ function BulkAssignModal({ open, onClose, orgId, weekStart, athletes }) {
         <Button
           variant="contained"
           onClick={handleAssign}
-          disabled={!selectedWorkout || selectedDays.length === 0 || saving}
+          disabled={selectedWorkouts.length === 0 || selectedDays.length === 0 || saving}
           sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' } }}
         >
           {saving ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : 'Asignar'}
@@ -376,7 +401,7 @@ export default function MacroView({ orgId }) {
                 <TableCell sx={{ fontWeight: 700 }}>Atleta</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Sem. actual ({thisMonday})</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Sem. siguiente ({nextMonday})</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Carrera A</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Próximo Objetivo</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Faltan</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Lesión</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Wellness</TableCell>
@@ -431,12 +456,18 @@ export default function MacroView({ orgId }) {
                       />
                     </TableCell>
 
-                    {/* Goal A */}
+                    {/* Next goal (nearest date, any priority) */}
                     <TableCell>
                       {row.goal_a_title ? (
-                        <Tooltip title={row.goal_a_date ? `Fecha: ${row.goal_a_date}` : ''}>
+                        <Tooltip
+                          title={
+                            (row.all_goals_brief || []).length > 1
+                              ? (row.all_goals_brief || []).map((g) => `${g.title} (${g.priority})${g.days != null ? ` — ${g.days}d` : ''}`).join(' · ')
+                              : (row.goal_a_date ? `Fecha: ${row.goal_a_date}` : '')
+                          }
+                        >
                           <Typography variant="caption" sx={{ maxWidth: 160, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {row.goal_a_title}
+                            {row.goal_a_title}{row.goal_a_priority ? ` (${row.goal_a_priority})` : ''}
                           </Typography>
                         </Tooltip>
                       ) : (

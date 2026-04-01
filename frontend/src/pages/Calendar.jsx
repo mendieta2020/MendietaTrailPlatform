@@ -1037,7 +1037,7 @@ export default function CalendarPage() {
               Calendario
             </ToggleButton>
             <ToggleButton value="macro" sx={{ px: 2, textTransform: 'none', fontWeight: 600 }}>
-              Macro
+              Planificador
             </ToggleButton>
           </ToggleButtonGroup>
 

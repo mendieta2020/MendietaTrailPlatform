@@ -201,6 +201,10 @@ class AthleteGoalViewSet(OrgTenantMixin, viewsets.ModelViewSet):
         qs = AthleteGoal.objects.filter(organization=self.organization)
         if self.membership.role == "athlete":
             qs = qs.filter(athlete__user=self.request.user)
+        else:
+            athlete_id = self.request.query_params.get("athlete_id")
+            if athlete_id:
+                qs = qs.filter(athlete_id=athlete_id)
         return qs
 
     def get_serializer_context(self):
@@ -679,6 +683,8 @@ class WorkoutAssignmentViewSet(
 
         athlete_ids = request.data.get("athlete_ids")
         planned_workout_id = request.data.get("planned_workout_id")
+        # Accept "dates" (list) or legacy "scheduled_date" (single string).
+        dates_raw = request.data.get("dates")
         scheduled_date_raw = request.data.get("scheduled_date")
 
         errors = {}
@@ -686,17 +692,19 @@ class WorkoutAssignmentViewSet(
             errors["athlete_ids"] = "Must be a non-empty list."
         if not planned_workout_id:
             errors["planned_workout_id"] = "This field is required."
-        if not scheduled_date_raw:
-            errors["scheduled_date"] = "This field is required."
+        if not dates_raw and not scheduled_date_raw:
+            errors["dates"] = "Provide 'dates' (list) or 'scheduled_date' (string)."
         if errors:
             raise DRFValidationError(errors)
 
+        # Normalize to a list of date objects.
+        raw_list = dates_raw if dates_raw else [scheduled_date_raw]
+        if not isinstance(raw_list, list) or not raw_list:
+            raise DRFValidationError({"dates": "Must be a non-empty list of YYYY-MM-DD strings."})
         try:
-            scheduled_date = datetime.date.fromisoformat(str(scheduled_date_raw))
+            scheduled_dates = [datetime.date.fromisoformat(str(d)) for d in raw_list]
         except ValueError:
-            raise DRFValidationError(
-                {"scheduled_date": "Invalid date format. Use YYYY-MM-DD."}
-            )
+            raise DRFValidationError({"dates": "Invalid date format. Use YYYY-MM-DD."})
 
         planned_workout = get_object_or_404(
             PlannedWorkout,
@@ -722,33 +730,34 @@ class WorkoutAssignmentViewSet(
         skipped = 0
 
         with transaction.atomic():
-            for athlete in athletes:
-                # Idempotency: skip if same athlete+workout+date already exists.
-                if WorkoutAssignment.objects.filter(
-                    organization=self.organization,
-                    athlete=athlete,
-                    planned_workout=planned_workout,
-                    scheduled_date=scheduled_date,
-                ).exists():
-                    skipped += 1
-                    continue
+            for scheduled_date in scheduled_dates:
+                for athlete in athletes:
+                    # Idempotency: skip if same athlete+workout+date already exists.
+                    if WorkoutAssignment.objects.filter(
+                        organization=self.organization,
+                        athlete=athlete,
+                        planned_workout=planned_workout,
+                        scheduled_date=scheduled_date,
+                    ).exists():
+                        skipped += 1
+                        continue
 
-                existing_count = WorkoutAssignment.objects.filter(
-                    organization=self.organization,
-                    athlete=athlete,
-                    scheduled_date=scheduled_date,
-                ).count()
+                    existing_count = WorkoutAssignment.objects.filter(
+                        organization=self.organization,
+                        athlete=athlete,
+                        scheduled_date=scheduled_date,
+                    ).count()
 
-                assignment = WorkoutAssignment.objects.create(
-                    organization=self.organization,
-                    athlete=athlete,
-                    planned_workout=planned_workout,
-                    scheduled_date=scheduled_date,
-                    assigned_by=request.user,
-                    snapshot_version=planned_workout.structure_version,
-                    day_order=existing_count + 1,
-                )
-                created_assignments.append(assignment)
+                    assignment = WorkoutAssignment.objects.create(
+                        organization=self.organization,
+                        athlete=athlete,
+                        planned_workout=planned_workout,
+                        scheduled_date=scheduled_date,
+                        assigned_by=request.user,
+                        snapshot_version=planned_workout.structure_version,
+                        day_order=existing_count + 1,
+                    )
+                    created_assignments.append(assignment)
 
         # Re-fetch with select_related for serialization.
         created_ids = [a.pk for a in created_assignments]
@@ -2140,21 +2149,26 @@ class TrainingWeekViewSet(OrgTenantMixin, viewsets.GenericViewSet):
             )
         }
 
-        # Batch fetch goal A (priority=A, active/planned, soonest date)
-        from django.db.models import Q
-        goals_qs = (
+        # Batch fetch next goal (nearest date, any priority, active/planned)
+        all_goals_qs = list(
             AthleteGoal.objects.filter(
                 organization=self.organization,
                 athlete_id__in=athlete_ids,
-                priority=AthleteGoal.Priority.A,
                 status__in=[AthleteGoal.Status.ACTIVE, AthleteGoal.Status.PLANNED],
-            )
-            .order_by("athlete_id", "target_date")
+            ).select_related("target_event")
         )
+
+        def _effective_date(g):
+            d = g.target_date or (g.target_event.event_date if g.target_event_id else None)
+            return d or datetime.date.max
+
+        all_goals_qs.sort(key=lambda g: (g.athlete_id, _effective_date(g)))
         goal_map = {}
-        for g in goals_qs:
+        all_goals_map = {}
+        for g in all_goals_qs:
             if g.athlete_id not in goal_map:
                 goal_map[g.athlete_id] = g
+            all_goals_map.setdefault(g.athlete_id, []).append(g)
 
         # Batch fetch active injuries
         injury_athlete_ids = set(
@@ -2203,6 +2217,14 @@ class TrainingWeekViewSet(OrgTenantMixin, viewsets.GenericViewSet):
                 days_until = (goal_date - today).days
 
             full_name = athlete.user.get_full_name() or athlete.user.username
+            all_goals_brief = [
+                {
+                    "title": g.title,
+                    "priority": g.priority,
+                    "days": (_effective_date(g) - today).days if _effective_date(g) != datetime.date.max else None,
+                }
+                for g in all_goals_map.get(athlete.id, [])
+            ]
             rows.append({
                 "athlete_id": athlete.id,
                 "athlete_name": full_name,
@@ -2210,10 +2232,12 @@ class TrainingWeekViewSet(OrgTenantMixin, viewsets.GenericViewSet):
                 "notes": tw.notes if tw else None,
                 "training_week_id": tw.id if tw else None,
                 "goal_a_title": goal.title if goal else None,
+                "goal_a_priority": goal.priority if goal else None,
                 "goal_a_date": goal_date,
                 "days_until_race": days_until,
                 "has_active_injury": athlete.id in injury_athlete_ids,
                 "wellness_avg": round(wellness_avgs.get(athlete.id, None) or 0, 2) if athlete.id in wellness_avgs else None,
+                "all_goals_brief": all_goals_brief,
             })
 
         serializer = MacroRowSerializer(rows, many=True)

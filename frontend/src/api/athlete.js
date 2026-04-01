@@ -53,8 +53,9 @@ export function updateAvailability(orgId, athleteId, data) {
   return client.put(`/api/p1/orgs/${orgId}/athletes/${athleteId}/availability/`, data);
 }
 
-export function getGoals(orgId) {
-  return client.get(`/api/p1/orgs/${orgId}/goals/`);
+export function getGoals(orgId, athleteId) {
+  const params = athleteId ? `?athlete_id=${athleteId}` : '';
+  return client.get(`/api/p1/orgs/${orgId}/goals/${params}`);
 }
 
 export function createGoal(orgId, data) {
