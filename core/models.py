@@ -1649,6 +1649,12 @@ class AthleteProfile(models.Model):
         help_text="Start date of the last menstrual period. Used to calculate current phase.",
     )
 
+    # PR-154: Wellness check-in preference
+    wellness_checkin_dismissed = models.BooleanField(
+        default=False,
+        help_text="If True, athlete has opted out of daily wellness check-ins permanently.",
+    )
+
     # ------------------------------------------------------------------
     # Freeform notes + audit
     # ------------------------------------------------------------------
@@ -1810,8 +1816,13 @@ class AthleteInjury(models.Model):
         MUSLO = "muslo", "Muslo"
         RODILLA = "rodilla", "Rodilla"
         PANTORRILLA = "pantorrilla", "Pantorrilla"
+        ESPINILLA = "espinilla", "Espinilla"
         TOBILLO = "tobillo", "Tobillo"
         PIE = "pie", "Pie"
+        GLUTEO = "gluteo", "Glúteo"
+        ISQUIOTIBIAL = "isquiotibial", "Isquiotibial"
+        TALON = "talon", "Talón"
+        PLANTA_DEL_PIE = "planta_del_pie", "Planta del pie"
 
     class Side(models.TextChoices):
         IZQUIERDO = "izquierdo", "Izquierdo"
@@ -1885,6 +1896,88 @@ class AthleteInjury(models.Model):
 
     def __str__(self):
         return f"{self.body_zone} ({self.severity}) — {self.status}"
+
+
+# ==============================================================================
+# PR-154: WellnessCheckIn — daily subjective wellness monitoring
+# ==============================================================================
+
+class WellnessCheckIn(models.Model):
+    """
+    Daily subjective wellness report from an athlete.
+
+    5 dimensions (1–5 scale) align with the UEFA / Hooper Index standard for
+    injury prevention and training load monitoring.
+
+    Multi-tenant: organization FK is non-nullable.
+    Unique constraint on (athlete, date): one check-in per day.
+    """
+
+    athlete = models.ForeignKey(
+        "Athlete",
+        on_delete=models.CASCADE,
+        related_name="wellness_checkins",
+        db_index=True,
+    )
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="wellness_checkins",
+        db_index=True,
+    )
+    date = models.DateField(help_text="Date of the check-in. One per athlete per day.")
+    sleep_quality = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        help_text="Perceived sleep quality: 1=very poor, 5=excellent.",
+    )
+    mood = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        help_text="Mood/motivation: 1=very low, 5=excellent.",
+    )
+    energy = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        help_text="Energy level: 1=very low, 5=high.",
+    )
+    muscle_soreness = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        help_text="Muscle soreness: 1=very sore, 5=no soreness.",
+    )
+    stress = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        help_text="Perceived stress: 1=very stressed, 5=very relaxed.",
+    )
+    notes = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-date"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["athlete", "date"],
+                name="unique_wellness_athlete_date",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["organization", "athlete", "date"]),
+        ]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if (
+            self.athlete_id is not None
+            and self.organization_id is not None
+            and self.athlete.organization_id != self.organization_id
+        ):
+            raise ValidationError(
+                "WellnessCheckIn.organization must match athlete.organization."
+            )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Wellness:{self.athlete_id} {self.date}"
 
 
 # ==============================================================================
@@ -2043,6 +2136,14 @@ class AthleteGoal(models.Model):
         db_index=True,
     )
     coach_notes = models.TextField(blank=True, default="")
+    target_distance_km = models.FloatField(
+        null=True, blank=True,
+        help_text="Target race distance in kilometers.",
+    )
+    target_elevation_gain_m = models.IntegerField(
+        null=True, blank=True,
+        help_text="Target elevation gain in meters (trail/MTB goals).",
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

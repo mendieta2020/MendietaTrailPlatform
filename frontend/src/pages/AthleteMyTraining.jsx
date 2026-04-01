@@ -16,7 +16,12 @@ import { MiniWorkoutProfile } from '../components/MiniWorkoutProfile';
 import { weatherChip } from '../hooks/useWeatherIcon';
 import { useAuth } from '../context/AuthContext';
 import { listAssignments, updateAssignment } from '../api/assignments';
+import { listAthletes } from '../api/p1';
+import { getAvailability } from '../api/athlete';
 import client from '../api/client';
+
+// day_of_week: 0=Mon…6=Sun  ↔  JS getDay(): 0=Sun,1=Mon…6=Sat
+function jsWeekdayToAvailIndex(jsDay) { return (jsDay + 6) % 7; }
 
 // ── Sport colors ──────────────────────────────────────────────────────────────
 
@@ -344,6 +349,8 @@ const AthleteMyTraining = () => {
   const [selectedAssignment, setSelectedAssignment] = useState(null);
   const [completeModalOpen, setCompleteModalOpen] = useState(false);
   const [completeTarget, setCompleteTarget] = useState(null);
+  // availability: array of { day_of_week, is_available, reason }
+  const [availability, setAvailability] = useState([]);
 
   const fetchData = useCallback(async () => {
     if (!orgId) { setLoading(false); return; }
@@ -362,6 +369,32 @@ const AthleteMyTraining = () => {
       setLoading(false);
     }
   }, [orgId, currentDate]);
+
+  // Fetch athlete availability once on mount (blocked days don't change per month)
+  useEffect(() => {
+    if (!orgId || !user?.id) return;
+    listAthletes(orgId)
+      .then((res) => {
+        const athletes = res.data?.results ?? res.data ?? [];
+        // Match by user_id (guard string/int mismatch)
+        const me = athletes.find((a) => String(a.user_id) === String(user.id));
+        if (!me && athletes.length > 0) {
+          // Fallback: if user_id doesn't match, try first athlete (single-athlete roster)
+          return getAvailability(orgId, athletes[0].id);
+        }
+        if (me) return getAvailability(orgId, me.id);
+        return null;
+      })
+      .then((res) => {
+        if (res?.data) {
+          const avail = Array.isArray(res.data) ? res.data : res.data?.results ?? [];
+          setAvailability(avail);
+        }
+      })
+      .catch((err) => {
+        console.warn('[AthleteMyTraining] availability fetch failed:', err);
+      });
+  }, [orgId, user?.id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -430,6 +463,12 @@ const AthleteMyTraining = () => {
   }
 
   const weeks = buildCalendarWeeks(currentDate);
+
+  // Build map: availIndex (0=Mon…6=Sun) → availability record
+  const blockedDayMap = {};
+  for (const av of availability) {
+    if (!av.is_available) blockedDayMap[av.day_of_week] = av;
+  }
 
   const assignmentsByDate = {};
   for (const a of assignments) {
@@ -509,6 +548,8 @@ const AthleteMyTraining = () => {
                     const dayAssignments = assignmentsByDate[dateKey] ?? [];
                     const isToday = isSameDay(day, new Date());
                     const inMonth = isSameMonth(day, currentDate);
+                    const availIdx = jsWeekdayToAvailIndex(day.getDay());
+                    const blocked = inMonth ? blockedDayMap[availIdx] : null;
 
                     return (
                       <Box
@@ -517,7 +558,7 @@ const AthleteMyTraining = () => {
                           minHeight: 80,
                           p: 0.75,
                           borderRight: dIdx < 6 ? '1px solid #e2e8f0' : 'none',
-                          bgcolor: inMonth ? 'white' : '#f8fafc',
+                          bgcolor: blocked ? '#f1f5f9' : inMonth ? 'white' : '#f8fafc',
                           position: 'relative',
                         }}
                       >
@@ -542,6 +583,23 @@ const AthleteMyTraining = () => {
                             {format(day, 'd')}
                           </Typography>
                         </Box>
+
+                        {/* Blocked day indicator */}
+                        {blocked && (
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              display: 'block',
+                              fontSize: '0.58rem',
+                              color: '#94a3b8',
+                              fontStyle: 'italic',
+                              mb: 0.25,
+                              lineHeight: 1.2,
+                            }}
+                          >
+                            {blocked.reason || 'No disponible'}
+                          </Typography>
+                        )}
 
                         {/* Assignment cards */}
                         {dayAssignments.map((a) => (

@@ -7,6 +7,7 @@ import {
   Briefcase, Droplet, Shirt, AlertTriangle, Plus, Trash2, Check, X,
 } from 'lucide-react';
 import { Edit2, Save } from 'lucide-react';
+import { BodyMap } from './BodyMap';
 
 const DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
@@ -100,7 +101,7 @@ const EMPTY_INJURY = {
   status: 'activa',
 };
 
-const EMPTY_GOAL = { title: '', target_date: '', priority: 'A' };
+const EMPTY_GOAL = { title: '', target_date: '', priority: 'A', target_distance_km: '', target_elevation_gain_m: '' };
 
 function getMenstrualPhase(lastPeriodDate, cycleDays) {
   if (!lastPeriodDate || !cycleDays) return null;
@@ -217,15 +218,25 @@ export function AthleteProfileCards({
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [goalForm, setGoalForm] = useState(EMPTY_GOAL);
   const [goalSaving, setGoalSaving] = useState(false);
+  const [goalError, setGoalError] = useState('');
 
   const handleGoalChange = (field, value) => setGoalForm((p) => ({ ...p, [field]: value }));
   const handleAddGoalSubmit = async () => {
     if (!goalForm.title || !goalForm.target_date) return;
     setGoalSaving(true);
+    setGoalError('');
     try {
-      await onAddGoal({ ...goalForm, status: 'active' });
+      const payload = {
+        ...goalForm,
+        status: 'active',
+        target_distance_km: goalForm.target_distance_km !== '' ? Number(goalForm.target_distance_km) : null,
+        target_elevation_gain_m: goalForm.target_elevation_gain_m !== '' ? Number(goalForm.target_elevation_gain_m) : null,
+      };
+      await onAddGoal(payload);
       setGoalForm(EMPTY_GOAL);
       setShowGoalForm(false);
+    } catch {
+      setGoalError('No se pudo guardar el objetivo. Intentá de nuevo.');
     } finally {
       setGoalSaving(false);
     }
@@ -421,16 +432,48 @@ export function AthleteProfileCards({
         {editingAvailability && !readOnly ? (
           <div className="flex gap-3 flex-wrap">
             {availDraft.map((a) => (
-              <div key={a.day_of_week}
-                onClick={() => handleToggleDay(a.day_of_week)}
-                className={`flex flex-col items-center p-3 rounded-xl border-2 cursor-pointer transition-all
-                  ${a.is_available
-                    ? 'border-emerald-400 bg-emerald-50'
-                    : 'border-slate-200 bg-slate-50 opacity-60'}`}>
-                <span className="text-xs font-bold text-slate-700 mb-1">{DAYS[a.day_of_week]}</span>
-                {a.is_available
-                  ? <Check className="w-5 h-5 text-emerald-600" />
-                  : <X className="w-5 h-5 text-slate-400" />}
+              <div key={a.day_of_week} className="flex flex-col items-center gap-1">
+                <div
+                  onClick={() => handleToggleDay(a.day_of_week)}
+                  className={`flex flex-col items-center p-3 rounded-xl border-2 cursor-pointer transition-all
+                    ${a.is_available
+                      ? 'border-emerald-400 bg-emerald-50'
+                      : 'border-slate-200 bg-slate-50 opacity-60'}`}>
+                  <span className="text-xs font-bold text-slate-700 mb-1">{DAYS[a.day_of_week]}</span>
+                  {a.is_available
+                    ? <Check className="w-5 h-5 text-emerald-600" />
+                    : <X className="w-5 h-5 text-slate-400" />}
+                </div>
+                {!a.is_available && (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 0.5 }}>
+                    <TextField
+                      select size="small" label="Horario"
+                      value={a.preferred_time ?? ''}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => setAvailDraft((prev) =>
+                        prev.map((d) => d.day_of_week === a.day_of_week
+                          ? { ...d, preferred_time: e.target.value }
+                          : d)
+                      )}
+                      sx={{ width: 80, '& .MuiInputBase-input': { fontSize: '0.72rem', py: 0.5 } }}>
+                      <MenuItem value="">—</MenuItem>
+                      {TRAINING_TIME_OPTIONS.map((o) => (
+                        <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+                      ))}
+                    </TextField>
+                    <TextField
+                      size="small" label="Motivo"
+                      value={a.reason ?? ''}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => setAvailDraft((prev) =>
+                        prev.map((d) => d.day_of_week === a.day_of_week
+                          ? { ...d, reason: e.target.value }
+                          : d)
+                      )}
+                      sx={{ width: 80, '& .MuiInputBase-input': { fontSize: '0.72rem', py: 0.5 } }}
+                    />
+                  </Box>
+                )}
               </div>
             ))}
           </div>
@@ -477,13 +520,26 @@ export function AthleteProfileCards({
                 value={goalForm.target_date}
                 onChange={(e) => handleGoalChange('target_date', e.target.value)}
                 slotProps={{ inputLabel: { shrink: true } }} />
+              <TextField size="small" type="number" label="Distancia (km)"
+                value={goalForm.target_distance_km}
+                onChange={(e) => handleGoalChange('target_distance_km', e.target.value)}
+                inputProps={{ min: 0, step: 0.1 }} />
+              <TextField size="small" type="number" label="Desnivel (m)"
+                value={goalForm.target_elevation_gain_m}
+                onChange={(e) => handleGoalChange('target_elevation_gain_m', e.target.value)}
+                inputProps={{ min: 0, step: 10 }} />
             </div>
+            {goalError && (
+              <Typography variant="caption" sx={{ color: '#DC2626', display: 'block', mb: 0.5 }}>
+                {goalError}
+              </Typography>
+            )}
             <Box sx={{ display: 'flex', gap: 1 }}>
               <Button size="small" variant="contained" onClick={handleAddGoalSubmit} disabled={goalSaving}
                 sx={{ textTransform: 'none', bgcolor: '#6366F1', '&:hover': { bgcolor: '#4F46E5' } }}>
                 {goalSaving ? 'Guardando…' : 'Guardar'}
               </Button>
-              <Button size="small" onClick={() => { setShowGoalForm(false); setGoalForm(EMPTY_GOAL); }}
+              <Button size="small" onClick={() => { setShowGoalForm(false); setGoalForm(EMPTY_GOAL); setGoalError(''); }}
                 sx={{ textTransform: 'none', color: '#64748B' }}>
                 Cancelar
               </Button>
@@ -585,6 +641,20 @@ export function AthleteProfileCards({
             </Box>
           </Box>
         )}
+
+        {/* Body Map — always visible; click opens injury form in edit mode */}
+        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+          <BodyMap
+            injuries={injuries}
+            readOnly={readOnly}
+            onZoneClick={(zone) => {
+              if (readOnly) return;
+              setInjuryForm({ ...EMPTY_INJURY, body_zone: zone });
+              setInjuryFormId(null);
+              setShowInjuryForm(true);
+            }}
+          />
+        </Box>
 
         {injuries.length > 0 ? (
           <div className="space-y-2">

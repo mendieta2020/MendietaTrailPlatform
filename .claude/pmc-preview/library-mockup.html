@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Librería — Mockup Opción 2</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #f8fafc; display: flex; height: 100vh; overflow: hidden; }
+
+  /* SIDEBAR */
+  .sidebar { width: 220px; background: #0f1621; color: #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; }
+  .sidebar-logo { padding: 18px 16px; font-size: 13px; font-weight: 700; letter-spacing: 0.5px; border-bottom: 1px solid #1e2a3a; color: #f59e0b; }
+  .sidebar-logo span { color: #94a3b8; font-weight: 400; }
+  .sidebar-nav { flex: 1; padding: 8px 0; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 16px; font-size: 13px; color: #94a3b8; cursor: pointer; border-radius: 0; transition: all 0.15s; }
+  .nav-item:hover { background: #1e2a3a; color: #e2e8f0; }
+  .nav-item.active { background: #1e2a3a; color: #f59e0b; border-left: 3px solid #f59e0b; }
+  .nav-icon { width: 16px; text-align: center; font-size: 14px; }
+
+  /* MAIN LAYOUT */
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .topbar { background: white; border-bottom: 1px solid #e2e8f0; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .topbar-title { font-size: 15px; font-weight: 600; color: #0f172a; }
+  .topbar-sub { font-size: 12px; color: #94a3b8; margin-top: 1px; }
+  .avatar { width: 32px; height: 32px; border-radius: 50%; background: #f59e0b; color: white; font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center; }
+
+  /* CONTENT */
+  .content { flex: 1; display: flex; overflow: hidden; }
+
+  /* LEFT PANEL — Folders */
+  .folders-panel { width: 240px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; }
+  .panel-header { padding: 16px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; }
+  .panel-header-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #94a3b8; }
+  .btn-new-folder { background: #f59e0b; color: white; border: none; border-radius: 8px; padding: 5px 10px; font-size: 11px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+  .folders-list { flex: 1; overflow-y: auto; padding: 8px; }
+  .folder-item { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 8px; cursor: pointer; transition: all 0.15s; }
+  .folder-item:hover { background: #f8fafc; }
+  .folder-item.selected { background: #fff7ed; border: 1px solid #fed7aa; }
+  .folder-icon { font-size: 15px; }
+  .folder-info { flex: 1; min-width: 0; }
+  .folder-name { font-size: 13px; font-weight: 500; color: #1e293b; }
+  .folder-count { font-size: 11px; color: #94a3b8; margin-top: 1px; }
+  .folder-badge { background: #f1f5f9; color: #64748b; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 10px; }
+  .folder-item.selected .folder-badge { background: #fed7aa; color: #92400e; }
+
+  /* RIGHT PANEL — Workouts */
+  .workouts-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* TOOLBAR */
+  .workouts-toolbar { padding: 14px 20px; background: white; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .folder-breadcrumb { font-size: 13px; font-weight: 600; color: #0f172a; display: flex; align-items: center; gap: 6px; margin-right: 8px; }
+  .folder-breadcrumb .bc-count { font-size: 11px; color: #94a3b8; font-weight: 400; }
+
+  /* SEARCH */
+  .search-box { display: flex; align-items: center; gap-8px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 12px; flex: 1; max-width: 280px; gap: 6px; }
+  .search-box input { border: none; background: transparent; font-size: 13px; color: #1e293b; outline: none; width: 100%; }
+  .search-box input::placeholder { color: #94a3b8; }
+  .search-icon { color: #94a3b8; font-size: 13px; }
+
+  /* FILTER PILLS */
+  .filter-pills { display: flex; gap: 6px; align-items: center; }
+  .pill { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid #e2e8f0; background: white; color: #64748b; transition: all 0.15s; }
+  .pill:hover { border-color: #f59e0b; color: #f59e0b; }
+  .pill.active { background: #fff7ed; border-color: #f59e0b; color: #f59e0b; font-weight: 600; }
+  .pill-trail { color: #16a34a; border-color: #bbf7d0; background: #f0fdf4; }
+  .pill-run { color: #2563eb; border-color: #bfdbfe; background: #eff6ff; }
+  .pill-bike { color: #9333ea; border-color: #e9d5ff; background: #faf5ff; }
+
+  /* SORT + VIEW TOGGLE */
+  .toolbar-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .sort-select { background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 5px 10px; font-size: 12px; color: #64748b; cursor: pointer; outline: none; }
+  .view-toggle { display: flex; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
+  .view-btn { padding: 5px 10px; font-size: 13px; background: white; border: none; cursor: pointer; color: #94a3b8; transition: all 0.15s; }
+  .view-btn.active { background: #f59e0b; color: white; }
+  .btn-new-workout { background: #f59e0b; color: white; border: none; border-radius: 8px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+
+  /* TABLE */
+  .table-wrap { flex: 1; overflow-y: auto; padding: 0 20px 20px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+  thead th { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: #94a3b8; padding: 8px 10px; text-align: left; border-bottom: 1px solid #e2e8f0; background: white; position: sticky; top: 0; }
+  tbody tr { transition: background 0.1s; cursor: pointer; }
+  tbody tr:hover { background: #f8fafc; }
+  tbody td { padding: 12px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+
+  /* WORKOUT ROW CONTENT */
+  .workout-name-cell { display: flex; align-items: flex-start; gap: 10px; }
+  .sport-icon-badge { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+  .sport-trail { background: #dcfce7; }
+  .sport-run { background: #dbeafe; }
+  .sport-bike { background: #ede9fe; }
+  .sport-strength { background: #fef3c7; }
+  .workout-name { font-size: 13px; font-weight: 600; color: #1e293b; }
+  .workout-meta { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+
+  /* ZONE PREVIEW BAR */
+  .zone-bar { display: flex; border-radius: 4px; overflow: hidden; height: 6px; width: 100px; gap: 1px; }
+  .z1 { background: #3b82f6; }
+  .z2 { background: #22c55e; }
+  .z3 { background: #f59e0b; }
+  .z4 { background: #f97316; }
+  .z5 { background: #ef4444; }
+
+  /* DIFFICULTY CHIP */
+  .chip { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+  .chip-easy { background: #dcfce7; color: #16a34a; }
+  .chip-moderate { background: #fef3c7; color: #b45309; }
+  .chip-hard { background: #fee2e2; color: #dc2626; }
+  .chip-vhard { background: #ede9fe; color: #7c3aed; }
+
+  /* TSS BADGE */
+  .tss-val { font-size: 13px; font-weight: 700; color: #0f172a; }
+  .tss-lbl { font-size: 10px; color: #94a3b8; }
+
+  /* ROW ACTIONS */
+  .row-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s; }
+  tbody tr:hover .row-actions { opacity: 1; }
+  .row-actions button { border: none; background: #f1f5f9; border-radius: 6px; width: 28px; height: 28px; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; transition: background 0.15s; }
+  .row-actions button:hover { background: #e2e8f0; }
+  .btn-assign { background: #fff7ed !important; color: #f59e0b !important; font-size: 10px !important; width: auto !important; padding: 0 8px !important; font-weight: 600 !important; border: 1px solid #fed7aa !important; }
+  .btn-assign:hover { background: #f59e0b !important; color: white !important; }
+
+  /* CARD VIEW */
+  .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; padding: 16px 20px; overflow-y: auto; flex: 1; }
+  .workout-card { background: white; border-radius: 12px; border: 1px solid #e2e8f0; padding: 16px; cursor: pointer; transition: all 0.15s; }
+  .workout-card:hover { border-color: #f59e0b; box-shadow: 0 4px 12px rgba(245,158,11,0.1); transform: translateY(-1px); }
+  .card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .card-body { }
+  .card-name { font-size: 13px; font-weight: 600; color: #1e293b; }
+  .card-meta { font-size: 11px; color: #94a3b8; margin-top: 3px; }
+  .card-histogram { display: flex; align-items: flex-end; gap: 3px; height: 40px; margin: 12px 0 8px; }
+  .hist-bar { border-radius: 3px 3px 0 0; flex: 1; transition: opacity 0.15s; }
+  .card-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+  .card-stats { display: flex; gap: 12px; }
+  .stat { text-align: center; }
+  .stat-val { font-size: 13px; font-weight: 700; color: #0f172a; }
+  .stat-lbl { font-size: 10px; color: #94a3b8; }
+
+  /* ZONE LEGEND */
+  .zone-legend { display: flex; gap: 8px; align-items: center; padding: 0 20px 10px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #64748b; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="sidebar-logo">SENDERO <span>MENDIETA</span></div>
+  <nav class="sidebar-nav">
+    <div class="nav-item">🏠 <span>Inicio</span></div>
+    <div class="nav-item">🏢 <span>Mi Organización</span></div>
+    <div class="nav-item active">📚 <span>Librería</span></div>
+    <div class="nav-item">📅 <span>Calendario</span></div>
+    <div class="nav-item">👥 <span>Grupos</span></div>
+    <div class="nav-item">🏃 <span>Alumnos</span></div>
+    <div class="nav-item">📊 <span>Analytics</span></div>
+    <div class="nav-item">💳 <span>Finanzas</span></div>
+    <div class="nav-item">🔗 <span>Conexiones</span></div>
+  </nav>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div>
+      <div class="topbar-title">Librería de Entrenamientos</div>
+      <div class="topbar-sub">Mendieta Trail Training · Diseñá y organizá tus rutinas estructuradas</div>
+    </div>
+    <div class="avatar">FM</div>
+  </div>
+
+  <div class="content">
+    <!-- FOLDERS PANEL -->
+    <div class="folders-panel">
+      <div class="panel-header">
+        <span class="panel-header-label">Carpetas</span>
+        <button class="btn-new-folder">＋ Nueva</button>
+      </div>
+      <div class="folders-list">
+        <div class="folder-item">
+          <span class="folder-icon">📁</span>
+          <div class="folder-info">
+            <div class="folder-name">fartlek</div>
+            <div class="folder-count">3 entrenamientos</div>
+          </div>
+          <span class="folder-badge">3</span>
+        </div>
+        <div class="folder-item selected">
+          <span class="folder-icon">📂</span>
+          <div class="folder-info">
+            <div class="folder-name">fondo</div>
+            <div class="folder-count">5 entrenamientos</div>
+          </div>
+          <span class="folder-badge">5</span>
+        </div>
+        <div class="folder-item">
+          <span class="folder-icon">📁</span>
+          <div class="folder-info">
+            <div class="folder-name">series</div>
+            <div class="folder-count">4 entrenamientos</div>
+          </div>
+          <span class="folder-badge">4</span>
+        </div>
+        <div class="folder-item">
+          <span class="folder-icon">📁</span>
+          <div class="folder-info">
+            <div class="folder-name">umbrales</div>
+            <div class="folder-count">2 entrenamientos</div>
+          </div>
+          <span class="folder-badge">2</span>
+        </div>
+        <div class="folder-item">
+          <span class="folder-icon">📁</span>
+          <div class="folder-info">
+            <div class="folder-name">fuerza</div>
+            <div class="folder-count">6 entrenamientos</div>
+          </div>
+          <span class="folder-badge">6</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- WORKOUTS PANEL -->
+    <div class="workouts-panel">
+      <!-- TOOLBAR -->
+      <div class="workouts-toolbar">
+        <div class="folder-breadcrumb">
+          📂 fondo <span class="bc-count">· 5 entrenamientos</span>
+        </div>
+
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" placeholder="Buscar entrenamientos…" />
+        </div>
+
+        <div class="filter-pills">
+          <span class="pill active">Todos</span>
+          <span class="pill pill-trail">🏔 Trail</span>
+          <span class="pill pill-run">🏃 Run</span>
+          <span class="pill pill-bike">🚴 Bici</span>
+          <span class="pill">💪 Fuerza</span>
+        </div>
+
+        <div class="toolbar-right">
+          <select class="sort-select">
+            <option>Recientes</option>
+            <option>A–Z</option>
+            <option>Duración</option>
+            <option>Carga (TSS)</option>
+          </select>
+          <div class="view-toggle">
+            <button class="view-btn active" title="Lista">☰</button>
+            <button class="view-btn" title="Tarjetas">⊞</button>
+          </div>
+          <button class="btn-new-workout">＋ Nuevo entrenamiento</button>
+        </div>
+      </div>
+
+      <!-- ZONE LEGEND -->
+      <div class="zone-legend">
+        <span style="font-size:11px;color:#64748b;font-weight:600;">Zonas:</span>
+        <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div>Z1 Recup.</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div>Z2 Aeróbico</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div>Z3 Tempo</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f97316"></div>Z4 Umbral</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div>Z5 VO2max</div>
+      </div>
+
+      <!-- TABLE VIEW -->
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:32%">ENTRENAMIENTO</th>
+              <th style="width:18%">ZONAS (preview)</th>
+              <th style="width:10%">DIFICULTAD</th>
+              <th style="width:8%">DURACIÓN</th>
+              <th style="width:8%">DIST.</th>
+              <th style="width:8%; text-align:right;">TSS ~</th>
+              <th style="width:16%; text-align:right;"></th>
+            </tr>
+          </thead>
+          <tbody>
+
+            <!-- Row 1 -->
+            <tr>
+              <td>
+                <div class="workout-name-cell">
+                  <div class="sport-icon-badge sport-trail">🏔</div>
+                  <div>
+                    <div class="workout-name">Fondo Largo Z2 Serranías</div>
+                    <div class="workout-meta">6 pasos · Trail · 3 bloques</div>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="zone-bar">
+                  <div class="z1" style="flex:1"></div>
+                  <div class="z2" style="flex:5"></div>
+                  <div class="z3" style="flex:1"></div>
+                </div>
+              </td>
+              <td><span class="chip chip-easy">Fácil</span></td>
+              <td><div class="tss-val">1h 40m</div></td>
+              <td><div class="tss-val">18 km</div></td>
+              <td style="text-align:right"><div class="tss-val">72</div><div class="tss-lbl">IF 0.74</div></td>
+              <td style="text-align:right">
+                <div class="row-actions">
+                  <button class="btn-assign">Asignar</button>
+                  <button title="Editar">✏️</button>
+                  <button title="Duplicar">⧉</button>
+                  <button title="Eliminar">🗑</button>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Row 2 -->
+            <tr>
+              <td>
+                <div class="workout-name-cell">
+                  <div class="sport-icon-badge sport-trail">🏔</div>
+                  <div>
+                    <div class="workout-name">Series 4×8min Umbral</div>
+                    <div class="workout-meta">8 pasos · Trail · 2 bloques repetidos</div>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="zone-bar">
+                  <div class="z1" style="flex:1"></div>
+                  <div class="z2" style="flex:2"></div>
+                  <div class="z4" style="flex:4"></div>
+                  <div class="z5" style="flex:1"></div>
+                </div>
+              </td>
+              <td><span class="chip chip-hard">Difícil</span></td>
+              <td><div class="tss-val">55 min</div></td>
+              <td><div class="tss-val">11 km</div></td>
+              <td style="text-align:right"><div class="tss-val">94</div><div class="tss-lbl">IF 0.97</div></td>
+              <td style="text-align:right">
+                <div class="row-actions">
+                  <button class="btn-assign">Asignar</button>
+                  <button>✏️</button>
+                  <button>⧉</button>
+                  <button>🗑</button>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Row 3 -->
+            <tr>
+              <td>
+                <div class="workout-name-cell">
+                  <div class="sport-icon-badge sport-run">🏃</div>
+                  <div>
+                    <div class="workout-name">Rodaje Regenerativo</div>
+                    <div class="workout-meta">3 pasos · Running · 1 bloque</div>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="zone-bar">
+                  <div class="z1" style="flex:7"></div>
+                  <div class="z2" style="flex:1"></div>
+                </div>
+              </td>
+              <td><span class="chip chip-easy">Fácil</span></td>
+              <td><div class="tss-val">40 min</div></td>
+              <td><div class="tss-val">7 km</div></td>
+              <td style="text-align:right"><div class="tss-val">28</div><div class="tss-lbl">IF 0.63</div></td>
+              <td style="text-align:right">
+                <div class="row-actions">
+                  <button class="btn-assign">Asignar</button>
+                  <button>✏️</button>
+                  <button>⧉</button>
+                  <button>🗑</button>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Row 4 -->
+            <tr>
+              <td>
+                <div class="workout-name-cell">
+                  <div class="sport-icon-badge sport-trail">🏔</div>
+                  <div>
+                    <div class="workout-name">Fartlek Progresivo Cerro Negro</div>
+                    <div class="workout-meta">7 pasos · Trail · aceleración gradual</div>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="zone-bar">
+                  <div class="z1" style="flex:1"></div>
+                  <div class="z2" style="flex:2"></div>
+                  <div class="z3" style="flex:2"></div>
+                  <div class="z4" style="flex:2"></div>
+                  <div class="z5" style="flex:1"></div>
+                </div>
+              </td>
+              <td><span class="chip chip-moderate">Moderado</span></td>
+              <td><div class="tss-val">1h 05m</div></td>
+              <td><div class="tss-val">13 km</div></td>
+              <td style="text-align:right"><div class="tss-val">81</div><div class="tss-lbl">IF 0.86</div></td>
+              <td style="text-align:right">
+                <div class="row-actions">
+                  <button class="btn-assign">Asignar</button>
+                  <button>✏️</button>
+                  <button>⧉</button>
+                  <button>🗑</button>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Row 5 -->
+            <tr>
+              <td>
+                <div class="workout-name-cell">
+                  <div class="sport-icon-badge sport-bike">🚴</div>
+                  <div>
+                    <div class="workout-name">VO2max 5×5min</div>
+                    <div class="workout-meta">5 pasos · Ciclismo · 1 bloque repetido</div>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="zone-bar">
+                  <div class="z1" style="flex:2"></div>
+                  <div class="z2" style="flex:1"></div>
+                  <div class="z5" style="flex:5"></div>
+                </div>
+              </td>
+              <td><span class="chip chip-vhard">Muy Difícil</span></td>
+              <td><div class="tss-val">45 min</div></td>
+              <td><div class="tss-val">—</div></td>
+              <td style="text-align:right"><div class="tss-val">108</div><div class="tss-lbl">IF 1.10</div></td>
+              <td style="text-align:right">
+                <div class="row-actions">
+                  <button class="btn-assign">Asignar</button>
+                  <button>✏️</button>
+                  <button>⧉</button>
+                  <button>🗑</button>
+                </div>
+              </td>
+            </tr>
+
+          </tbody>
+        </table>
+      </div>
+
+    </div><!-- /workouts-panel -->
+  </div><!-- /content -->
+</div><!-- /main -->
+
+</body>
+</html>

@@ -177,7 +177,7 @@ class AthleteGoalViewSet(OrgTenantMixin, viewsets.ModelViewSet):
     CRUD for organization-scoped AthleteGoal records.
 
     Coaches can read all goals in the org and write any.
-    Athletes can only read their own goals; they cannot write.
+    Athletes can read and write their own goals only.
     """
 
     serializer_class = AthleteGoalSerializer
@@ -203,24 +203,48 @@ class AthleteGoalViewSet(OrgTenantMixin, viewsets.ModelViewSet):
             ctx["organization"] = self.organization
         return ctx
 
-    def _require_write_role(self):
-        if self.membership.role not in _WRITE_ROLES:
-            raise PermissionDenied("Only coaches and owners can modify athlete goals.")
+    def _get_athlete_for_self(self):
+        """Return the Athlete record for the authenticated athlete user, or raise."""
+        athlete = Athlete.objects.filter(
+            organization=self.organization, user=self.request.user
+        ).first()
+        if not athlete:
+            raise PermissionDenied("No athlete profile found.")
+        return athlete
 
     def perform_create(self, serializer):
-        self._require_write_role()
-        serializer.save(
-            organization=self.organization,
-            created_by=self.request.user,
-        )
+        if self.membership.role == "athlete":
+            athlete = self._get_athlete_for_self()
+            serializer.save(
+                organization=self.organization,
+                created_by=self.request.user,
+                athlete=athlete,
+            )
+        else:
+            if self.membership.role not in _WRITE_ROLES:
+                raise PermissionDenied("Only coaches and owners can modify athlete goals.")
+            serializer.save(
+                organization=self.organization,
+                created_by=self.request.user,
+            )
 
     def perform_update(self, serializer):
-        self._require_write_role()
-        serializer.save()
+        if self.membership.role == "athlete":
+            # Athletes can only update their own goals (queryset already filters to theirs)
+            serializer.save()
+        else:
+            if self.membership.role not in _WRITE_ROLES:
+                raise PermissionDenied("Only coaches and owners can modify athlete goals.")
+            serializer.save()
 
     def perform_destroy(self, instance):
-        self._require_write_role()
-        instance.delete()
+        if self.membership.role == "athlete":
+            # Athletes can only delete their own goals (queryset already filters to theirs)
+            instance.delete()
+        else:
+            if self.membership.role not in _WRITE_ROLES:
+                raise PermissionDenied("Only coaches and owners can modify athlete goals.")
+            instance.delete()
 
 
 class AthleteProfileViewSet(
@@ -1900,3 +1924,136 @@ class AthleteAvailabilityListView(OrgTenantMixin, viewsets.ModelViewSet):
         ).order_by("day_of_week")
         out = serializer_cls(result_qs, many=True)
         return Response(out.data)
+
+
+# ==============================================================================
+# PR-154: WellnessCheckIn ViewSets
+# ==============================================================================
+
+import logging as _wellness_logging
+_wellness_logger = _wellness_logging.getLogger(__name__)
+
+
+class WellnessCheckInViewSet(OrgTenantMixin, viewsets.ModelViewSet):
+    """
+    POST   /api/p1/orgs/<org_id>/athletes/<athlete_id>/wellness/
+        Create today's check-in for the athlete. Idempotent: returns 200 if
+        a check-in for today already exists.
+    GET    /api/p1/orgs/<org_id>/athletes/<athlete_id>/wellness/?days=7
+        Return last N days of check-ins (default 7, max 90).
+
+    Athlete: may only manage their own check-in.
+    Coach/owner: read-only access to any athlete's check-ins.
+    """
+    serializer_class = None
+    http_method_names = ["get", "post", "head", "options"]
+
+    def get_serializer_class(self):
+        from core.serializers_p1 import WellnessCheckInSerializer
+        return WellnessCheckInSerializer
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        self.resolve_membership(self.kwargs["org_id"])
+
+    def get_queryset(self):
+        from core.models import WellnessCheckIn
+        import datetime
+        qs = WellnessCheckIn.objects.filter(
+            organization=self.organization,
+            athlete_id=self.kwargs["athlete_id"],
+        )
+        try:
+            days = min(int(self.request.query_params.get("days", 7)), 90)
+        except (TypeError, ValueError):
+            days = 7
+        cutoff = datetime.date.today() - datetime.timedelta(days=days - 1)
+        return qs.filter(date__gte=cutoff).order_by("-date")
+
+    def create(self, request, *args, **kwargs):
+        import datetime
+        from core.models import Athlete, WellnessCheckIn
+        from core.serializers_p1 import WellnessCheckInSerializer
+
+        athlete = get_object_or_404(
+            Athlete,
+            pk=self.kwargs["athlete_id"],
+            organization=self.organization,
+        )
+        # Enforce: athletes can only submit their own check-in
+        if self.membership.role == "athlete" and athlete.user != request.user:
+            raise PermissionDenied("Athletes can only submit their own wellness check-in.")
+
+        today = datetime.date.today()
+        # Merge today's date into the payload if not provided by the client
+        data = {**request.data, "date": request.data.get("date", str(today))}
+        try:
+            parsed_date = datetime.date.fromisoformat(str(data["date"]))
+        except (ValueError, TypeError):
+            parsed_date = today
+            data["date"] = str(today)
+
+        existing = WellnessCheckIn.objects.filter(
+            athlete=athlete, organization=self.organization, date=parsed_date
+        ).first()
+        if existing:
+            # Upsert: update and return 200
+            serializer = WellnessCheckInSerializer(existing, data=data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        serializer = WellnessCheckInSerializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        obj = serializer.save(athlete=athlete, organization=self.organization)
+        _wellness_logger.info(
+            "wellness.created",
+            extra={
+                "event_name": "wellness.created",
+                "organization_id": self.organization.id,
+                "actor_id": request.user.id,
+                "athlete_id": athlete.id,
+                "date": str(parsed_date),
+                "outcome": "success",
+            },
+        )
+        return Response(WellnessCheckInSerializer(obj).data, status=status.HTTP_201_CREATED)
+
+
+class WellnessDismissView(OrgTenantMixin, views.APIView):
+    """
+    POST /api/p1/orgs/<org_id>/athletes/<athlete_id>/wellness/dismiss/
+    Permanently opt the athlete out of the daily wellness check-in prompt.
+    Athletes can only dismiss their own. Coaches can dismiss on behalf of athlete.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, org_id, athlete_id):
+        from core.models import Athlete, AthleteProfile
+
+        self.resolve_membership(org_id)
+        athlete = get_object_or_404(
+            Athlete, pk=athlete_id, organization=self.organization
+        )
+
+        if self.membership.role == "athlete" and athlete.user != request.user:
+            raise PermissionDenied("Athletes can only dismiss their own wellness prompt.")
+
+        profile, _ = AthleteProfile.objects.get_or_create(
+            athlete=athlete,
+            defaults={"organization": self.organization},
+        )
+        profile.wellness_checkin_dismissed = True
+        profile.save(update_fields=["wellness_checkin_dismissed"])
+
+        _wellness_logger.info(
+            "wellness.dismissed",
+            extra={
+                "event_name": "wellness.dismissed",
+                "organization_id": self.organization.id,
+                "actor_id": request.user.id,
+                "athlete_id": athlete.id,
+                "outcome": "success",
+            },
+        )
+        return Response({"dismissed": True})

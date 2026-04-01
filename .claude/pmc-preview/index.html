@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Quantoryn — PMC Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0f;
+    color: #e2e8f0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    min-height: 100vh;
+  }
+  .topbar {
+    background: #0f0f1a;
+    border-bottom: 1px solid #1e1e2e;
+    padding: 14px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .logo { font-size: 18px; font-weight: 700; letter-spacing: 0.05em; color: #fff; }
+  .logo span { color: #6366f1; }
+  .badge {
+    font-size: 10px;
+    background: #1e1e3a;
+    color: #6366f1;
+    border: 1px solid #3730a3;
+    padding: 3px 10px;
+    border-radius: 999px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .container { max-width: 1280px; margin: 0 auto; padding: 32px; }
+  .page-header { margin-bottom: 28px; }
+  .page-header h1 { font-size: 22px; font-weight: 600; color: #f1f5f9; }
+  .page-header p { font-size: 13px; color: #64748b; margin-top: 4px; }
+  .athlete-selector {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 28px;
+    flex-wrap: wrap;
+  }
+  .athlete-pill {
+    padding: 7px 16px;
+    border-radius: 999px;
+    border: 1px solid #1e1e2e;
+    font-size: 12px;
+    cursor: pointer;
+    color: #94a3b8;
+    background: #0f0f1a;
+    transition: all 0.15s;
+  }
+  .athlete-pill.active {
+    background: #1e1e3a;
+    border-color: #6366f1;
+    color: #a5b4fc;
+  }
+  .metrics-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+  .metric-card {
+    background: #0f0f1a;
+    border: 1px solid #1e1e2e;
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .metric-card .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #475569;
+    margin-bottom: 10px;
+  }
+  .metric-card .value {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .metric-card .sub {
+    font-size: 11px;
+    color: #475569;
+    margin-top: 4px;
+  }
+  .ctl-val { color: #6366f1; }
+  .atl-val { color: #f59e0b; }
+  .tsb-val { color: #10b981; }
+  .tss-val { color: #94a3b8; }
+  .tsb-neg { color: #ef4444; }
+  .chart-card {
+    background: #0f0f1a;
+    border: 1px solid #1e1e2e;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+  .chart-card h2 {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #475569;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .legend {
+    display: flex;
+    gap: 20px;
+    font-size: 11px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; color: #94a3b8; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .bottom-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .activity-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid #1e1e2e;
+    font-size: 13px;
+  }
+  .activity-row:last-child { border-bottom: none; }
+  .act-icon {
+    width: 32px; height: 32px;
+    background: #1e1e2e;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; margin-right: 12px;
+  }
+  .act-left { display: flex; align-items: center; }
+  .act-name { font-size: 13px; color: #e2e8f0; }
+  .act-meta { font-size: 11px; color: #475569; margin-top: 2px; }
+  .act-tss {
+    font-size: 13px; font-weight: 600;
+    color: #6366f1;
+  }
+  .risk-bar-wrap { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .risk-label { font-size: 12px; color: #94a3b8; width: 80px; }
+  .risk-bar-bg { flex: 1; height: 6px; background: #1e1e2e; border-radius: 999px; overflow: hidden; }
+  .risk-bar-fill { height: 100%; border-radius: 999px; }
+  .risk-val { font-size: 12px; color: #64748b; width: 30px; text-align: right; }
+  .section-title {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #475569; margin-bottom: 16px;
+  }
+  canvas { max-height: 260px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo"><span>Q</span> Quantoryn</div>
+  <div style="display:flex;gap:12px;align-items:center;">
+    <div class="badge">P2 · Analytics</div>
+    <div style="font-size:12px;color:#475569;">Org: Trail Coaching Córdoba</div>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="page-header">
+    <h1>Performance Management Chart</h1>
+    <p>Training load analytics — real execution data · Plan vs Real · Last 90 days</p>
+  </div>
+
+  <!-- Athlete selector -->
+  <div class="athlete-selector">
+    <div class="athlete-pill active">Lucía Romero</div>
+    <div class="athlete-pill">Matías Herrera</div>
+    <div class="athlete-pill">Sofía Delgado</div>
+    <div class="athlete-pill">Rodrigo Paz</div>
+    <div class="athlete-pill">+ 8 athletes</div>
+  </div>
+
+  <!-- Metrics -->
+  <div class="metrics-row">
+    <div class="metric-card">
+      <div class="label">CTL — Fitness</div>
+      <div class="value ctl-val">74</div>
+      <div class="sub">↑ +3.2 vs last week</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">ATL — Fatigue</div>
+      <div class="value atl-val">88</div>
+      <div class="sub">↑ +12.1 vs last week</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">TSB — Form</div>
+      <div class="value tsb-neg">−14</div>
+      <div class="sub">⚠ Pre-race load zone</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">7-day TSS</div>
+      <div class="value tss-val">481</div>
+      <div class="sub">Plan: 460 · Adherence 104%</div>
+    </div>
+  </div>
+
+  <!-- PMC Chart -->
+  <div class="chart-card">
+    <h2>
+      PMC — CTL / ATL / TSB
+      <div class="legend">
+        <div class="legend-item"><div class="dot" style="background:#6366f1"></div>CTL Fitness</div>
+        <div class="legend-item"><div class="dot" style="background:#f59e0b"></div>ATL Fatigue</div>
+        <div class="legend-item"><div class="dot" style="background:#10b981"></div>TSB Form</div>
+      </div>
+    </h2>
+    <canvas id="pmcChart"></canvas>
+  </div>
+
+  <div class="bottom-grid">
+
+    <!-- Recent Activities -->
+    <div class="chart-card">
+      <div class="section-title">Recent Activities — Real Execution</div>
+      <div class="activity-row">
+        <div class="act-left">
+          <div class="act-icon">🏃</div>
+          <div>
+            <div class="act-name">Long Run — Zone 2</div>
+            <div class="act-meta">Mar 19 · 1h 52m · 21.4 km · Strava</div>
+          </div>
+        </div>
+        <div class="act-tss">142</div>
+      </div>
+      <div class="activity-row">
+        <div class="act-left">
+          <div class="act-icon">🚵</div>
+          <div>
+            <div class="act-name">MTB Endurance</div>
+            <div class="act-meta">Mar 17 · 2h 30m · 48 km · Suunto</div>
+          </div>
+        </div>
+        <div class="act-tss">198</div>
+      </div>
+      <div class="activity-row">
+        <div class="act-left">
+          <div class="act-icon">🏃</div>
+          <div>
+            <div class="act-name">Tempo intervals 4×8'</div>
+            <div class="act-meta">Mar 15 · 58m · 12.1 km · Strava</div>
+          </div>
+        </div>
+        <div class="act-tss">87</div>
+      </div>
+      <div class="activity-row">
+        <div class="act-left">
+          <div class="act-icon">🏊</div>
+          <div>
+            <div class="act-name">Open Water Swim</div>
+            <div class="act-meta">Mar 14 · 45m · 2.1 km · Manual</div>
+          </div>
+        </div>
+        <div class="act-tss">54</div>
+      </div>
+    </div>
+
+    <!-- Injury Risk -->
+    <div class="chart-card">
+      <div class="section-title">Injury Risk Model</div>
+
+      <div style="margin-bottom:20px;">
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">Overall Risk Score</div>
+        <div style="font-size:36px;font-weight:700;color:#f59e0b;">Moderate</div>
+        <div style="font-size:11px;color:#475569;margin-top:4px;">ATL/CTL ratio: 1.19 · Threshold: 1.30</div>
+      </div>
+
+      <div class="risk-bar-wrap">
+        <div class="risk-label">Monotony</div>
+        <div class="risk-bar-bg"><div class="risk-bar-fill" style="width:38%;background:#10b981;"></div></div>
+        <div class="risk-val">38%</div>
+      </div>
+      <div class="risk-bar-wrap">
+        <div class="risk-label">Ramp rate</div>
+        <div class="risk-bar-bg"><div class="risk-bar-fill" style="width:62%;background:#f59e0b;"></div></div>
+        <div class="risk-val">62%</div>
+      </div>
+      <div class="risk-bar-wrap">
+        <div class="risk-label">TSB depth</div>
+        <div class="risk-bar-bg"><div class="risk-bar-fill" style="width:71%;background:#f59e0b;"></div></div>
+        <div class="risk-val">71%</div>
+      </div>
+      <div class="risk-bar-wrap">
+        <div class="risk-label">Strain index</div>
+        <div class="risk-bar-bg"><div class="risk-bar-fill" style="width:29%;background:#10b981;"></div></div>
+        <div class="risk-val">29%</div>
+      </div>
+
+      <div style="margin-top:20px;padding:12px;background:#1a1200;border:1px solid #78350f;border-radius:8px;">
+        <div style="font-size:11px;color:#fbbf24;font-weight:600;margin-bottom:4px;">⚠ Coach recommendation</div>
+        <div style="font-size:12px;color:#92400e;">Reduce training volume 15–20% next 3 days before the race weekend. TSB target: −5 to +5.</div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+// Generate 90 days of fake PMC data
+const days = 90;
+const labels = [];
+const ctl = [];
+const atl = [];
+const tsb = [];
+
+let ctlVal = 45, atlVal = 45;
+for (let i = 0; i < days; i++) {
+  const d = new Date();
+  d.setDate(d.getDate() - (days - i));
+  labels.push(d.toLocaleDateString('en', { month: 'short', day: 'numeric' }));
+
+  // Simulate TSS with some variation and a big block around day 70
+  let tss = 0;
+  if (i % 7 === 6) tss = 0; // rest day
+  else if (i > 60 && i < 75) tss = 120 + Math.random() * 80;
+  else tss = 50 + Math.random() * 60;
+
+  ctlVal = ctlVal + (tss - ctlVal) / 42;
+  atlVal = atlVal + (tss - atlVal) / 7;
+  const tsbVal = ctlVal - atlVal;
+
+  ctl.push(+ctlVal.toFixed(1));
+  atl.push(+atlVal.toFixed(1));
+  tsb.push(+tsbVal.toFixed(1));
+}
+
+const ctx = document.getElementById('pmcChart').getContext('2d');
+new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels,
+    datasets: [
+      {
+        label: 'CTL',
+        data: ctl,
+        borderColor: '#6366f1',
+        backgroundColor: 'rgba(99,102,241,0.08)',
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: true,
+        tension: 0.4,
+      },
+      {
+        label: 'ATL',
+        data: atl,
+        borderColor: '#f59e0b',
+        backgroundColor: 'rgba(245,158,11,0.05)',
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: false,
+        tension: 0.4,
+      },
+      {
+        label: 'TSB',
+        data: tsb,
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16,185,129,0.05)',
+        borderWidth: 1.5,
+        borderDash: [4, 3],
+        pointRadius: 0,
+        fill: false,
+        tension: 0.3,
+      },
+    ],
+  },
+  options: {
+    responsive: true,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#0f0f1a',
+        borderColor: '#1e1e2e',
+        borderWidth: 1,
+        titleColor: '#94a3b8',
+        bodyColor: '#e2e8f0',
+      }
+    },
+    scales: {
+      x: {
+        ticks: {
+          color: '#475569',
+          maxTicksLimit: 10,
+          font: { size: 10 },
+        },
+        grid: { color: '#1e1e2e' },
+      },
+      y: {
+        ticks: { color: '#475569', font: { size: 10 } },
+        grid: { color: '#1e1e2e' },
+      }
+    }
+  }
+});
+</script>
+</body>
+</html>

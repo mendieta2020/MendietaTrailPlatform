@@ -130,12 +130,17 @@ const AthleteProfile = () => {
   // ── Card 4: Goals create / delete ────────────────────────────────────────────
 
   const handleAddGoal = async (goalData) => {
-    if (!orgId || !athleteId) return;
+    if (!orgId) return;
+    if (!athleteId) {
+      showToast('Error: perfil no cargado. Recargá la página.');
+      throw new Error('athlete_id_missing');
+    }
     try {
       const { data } = await createGoal(orgId, { ...goalData, athlete_id: athleteId });
       setGoals(prev => [...prev, data]);
       showToast('Objetivo agregado');
-    } catch {
+    } catch (err) {
+      if (err.message === 'athlete_id_missing') throw err;
       showToast('Error al agregar objetivo');
       throw new Error('goal_add_failed');
     }

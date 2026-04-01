@@ -111,3 +111,29 @@ export function deleteWorkoutInterval(orgId, libId, workoutId, blockId, interval
 export function getDashboardAnalytics(orgId) {
   return client.get(`${p1Base(orgId)}/dashboard-analytics/`);
 }
+
+// ── Athlete Availability (PR-153) ─────────────────────────────────────────────
+
+export function getAthleteAvailability(orgId, athleteId) {
+  return client.get(`${p1Base(orgId)}/athletes/${athleteId}/availability/`);
+}
+
+// ── Wellness Check-In (PR-154) ────────────────────────────────────────────────
+
+export function submitWellnessCheckIn(orgId, athleteId, data) {
+  return client.post(`${p1Base(orgId)}/athletes/${athleteId}/wellness/`, data);
+}
+
+export function getWellnessHistory(orgId, athleteId, days = 7) {
+  return client.get(`${p1Base(orgId)}/athletes/${athleteId}/wellness/?days=${days}`);
+}
+
+export function dismissWellnessPrompt(orgId, athleteId) {
+  return client.post(`${p1Base(orgId)}/athletes/${athleteId}/wellness/dismiss/`);
+}
+
+// ── Athlete Profile (PR-116) ──────────────────────────────────────────────────
+
+export function getAthleteProfile(orgId, athleteId) {
+  return client.get(`${p1Base(orgId)}/profiles/${athleteId}/`);
+}

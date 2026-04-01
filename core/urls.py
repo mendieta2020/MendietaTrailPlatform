@@ -58,6 +58,8 @@ from core.views_p1 import (  # PR-115/116/117/119/128/X4/149/PR-128-real-pmc/PR-
     AthleteInjuryViewSet,
     AthleteAvailabilityListView,
     WorkoutLibraryViewSet,
+    WellnessCheckInViewSet,
+    WellnessDismissView,
 )
 from core.views_pmc import (  # PR-128a / PR-145a
     AthletePMCView,
@@ -474,6 +476,18 @@ urlpatterns = [
         'p1/orgs/<int:org_id>/athletes/<int:athlete_id>/availability/',
         AthleteAvailabilityListView.as_view({'get': 'list', 'put': 'bulk_update'}),
         name='p1-athlete-availability',
+    ),
+
+    # PR-154: Wellness check-in
+    path(
+        'p1/orgs/<int:org_id>/athletes/<int:athlete_id>/wellness/',
+        WellnessCheckInViewSet.as_view({'get': 'list', 'post': 'create'}),
+        name='p1-athlete-wellness-list',
+    ),
+    path(
+        'p1/orgs/<int:org_id>/athletes/<int:athlete_id>/wellness/dismiss/',
+        WellnessDismissView.as_view(),
+        name='p1-athlete-wellness-dismiss',
     ),
 
     # ==============================================================================

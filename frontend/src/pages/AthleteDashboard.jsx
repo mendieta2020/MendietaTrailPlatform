@@ -17,6 +17,7 @@ import {
   dismissDevicePreference,
   markNotificationRead,
 } from '../api/athlete';
+import { WellnessCheckIn } from '../components/WellnessCheckIn';
 import { useNavigate } from 'react-router-dom';
 
 // ─── Greeting based on time of day ────────────────────────────────────────────
@@ -409,12 +410,19 @@ const AthleteDashboard = ({ user }) => {
   const [billing, setBilling] = useState(null);
   const [billingLoading, setBillingLoading] = useState(true);
   const orgName = user?.memberships?.[0]?.org_name || '';
+  // Try memberships first, fallback to org_id from /api/me, then from OrgContext
+  const wellnessOrgId = user?.memberships?.[0]?.org_id || user?.org_id || null;
   const [deviceStatus, setDeviceStatus] = useState(null);
   const [pendingNotifications, setPendingNotifications] = useState([]);
   const [mySub, setMySub] = useState(null);
   const [welcomeDismissed, setWelcomeDismissed] = useState(
     () => localStorage.getItem('quantoryn_welcome_done') === 'true'
   );
+  // PR-154: Wellness check-in overlay — show once per day (localStorage gate)
+  const [wellnessVisible, setWellnessVisible] = useState(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return localStorage.getItem('quantoryn_wellness_date') !== today;
+  });
 
   const greeting = getGreeting();
   const displayName = user?.first_name || user?.username || 'Atleta';
@@ -501,6 +509,28 @@ const AthleteDashboard = ({ user }) => {
             orgName={orgName}
             firstName={user?.first_name || displayName}
             onDismiss={handleWelcomeDismiss}
+          />
+        </Box>
+      )}
+
+      {/* PR-154: Wellness Check-In OVERLAY — once per day (localStorage gate).
+           zIndex 1200 < welcome (1300): welcome appears on top for new users; wellness shows
+           after welcome is dismissed or directly for returning users. */}
+      {wellnessVisible && (
+        <Box sx={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          bgcolor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(6px)',
+          zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          p: 2,
+        }}>
+          <WellnessCheckIn
+            firstName={user?.first_name || displayName}
+            orgId={wellnessOrgId}
+            athleteId={user?.athlete_id ?? user?.id}
+            onDismissSession={() => {
+              localStorage.setItem('quantoryn_wellness_date', new Date().toISOString().split('T')[0]);
+              setWellnessVisible(false);
+            }}
           />
         </Box>
       )}
