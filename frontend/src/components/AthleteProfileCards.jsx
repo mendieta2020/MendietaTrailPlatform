@@ -218,11 +218,13 @@ export function AthleteProfileCards({
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [goalForm, setGoalForm] = useState(EMPTY_GOAL);
   const [goalSaving, setGoalSaving] = useState(false);
+  const [goalError, setGoalError] = useState('');
 
   const handleGoalChange = (field, value) => setGoalForm((p) => ({ ...p, [field]: value }));
   const handleAddGoalSubmit = async () => {
     if (!goalForm.title || !goalForm.target_date) return;
     setGoalSaving(true);
+    setGoalError('');
     try {
       const payload = {
         ...goalForm,
@@ -233,6 +235,8 @@ export function AthleteProfileCards({
       await onAddGoal(payload);
       setGoalForm(EMPTY_GOAL);
       setShowGoalForm(false);
+    } catch {
+      setGoalError('No se pudo guardar el objetivo. Intentá de nuevo.');
     } finally {
       setGoalSaving(false);
     }
@@ -525,12 +529,17 @@ export function AthleteProfileCards({
                 onChange={(e) => handleGoalChange('target_elevation_gain_m', e.target.value)}
                 inputProps={{ min: 0, step: 10 }} />
             </div>
+            {goalError && (
+              <Typography variant="caption" sx={{ color: '#DC2626', display: 'block', mb: 0.5 }}>
+                {goalError}
+              </Typography>
+            )}
             <Box sx={{ display: 'flex', gap: 1 }}>
               <Button size="small" variant="contained" onClick={handleAddGoalSubmit} disabled={goalSaving}
                 sx={{ textTransform: 'none', bgcolor: '#6366F1', '&:hover': { bgcolor: '#4F46E5' } }}>
                 {goalSaving ? 'Guardando…' : 'Guardar'}
               </Button>
-              <Button size="small" onClick={() => { setShowGoalForm(false); setGoalForm(EMPTY_GOAL); }}
+              <Button size="small" onClick={() => { setShowGoalForm(false); setGoalForm(EMPTY_GOAL); setGoalError(''); }}
                 sx={{ textTransform: 'none', color: '#64748B' }}>
                 Cancelar
               </Button>

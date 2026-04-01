@@ -376,14 +376,17 @@ const AthleteMyTraining = () => {
     listAthletes(orgId)
       .then((res) => {
         const athletes = res.data?.results ?? res.data ?? [];
-        const me = athletes.find((a) => a.user_id === user.id);
-        if (!me) return;
+        // Use Number() to guard against string/int type mismatch in the serializer response
+        const me = athletes.find((a) => Number(a.user_id) === Number(user.id)) ?? athletes[0];
+        if (!me) return undefined;
         return getAvailability(orgId, me.id);
       })
       .then((res) => {
         if (res?.data) setAvailability(Array.isArray(res.data) ? res.data : []);
       })
-      .catch(() => {}); // non-critical — silently ignore
+      .catch((err) => {
+        console.warn('[AthleteMyTraining] availability fetch failed:', err);
+      });
   }, [orgId, user?.id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);

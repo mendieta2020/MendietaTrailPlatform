@@ -512,8 +512,10 @@ const AthleteDashboard = ({ user }) => {
         </Box>
       )}
 
-      {/* PR-154: Wellness Check-In OVERLAY — once per day (localStorage gate), only if welcome done */}
-      {welcomeDismissed && wellnessVisible && wellnessOrgId && (
+      {/* PR-154: Wellness Check-In OVERLAY — once per day (localStorage gate).
+           zIndex 1200 < welcome (1300): welcome appears on top for new users; wellness shows
+           after welcome is dismissed or directly for returning users. */}
+      {wellnessVisible && wellnessOrgId && (
         <Box sx={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           bgcolor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(6px)',
