@@ -86,10 +86,13 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - Housekeeping: deleted loose dev scripts (asignar_alumnos.py, simular_strava.py, etc.) and celerybeat artifacts
 - Risk: HIGH (tenancy, Constitution Law 1) — RESOLVED
 
-### PR-150 — Close Strava Ingestion Loop
-- Ensure ingestion always writes to CompletedActivity, never Actividad legacy, for P1+ athletes
-- Audit all ingestion code paths
-- Risk: HIGH (data integrity, idempotency)
+### PR-150 — Close Strava Ingestion Loop ✅ 2026-04-01
+- Added dual-write in `_process_strava_event_body()` (core/tasks.py): after upsert_actividad(), calls `ingest_strava_activity()` in a try/except — failure never breaks the Actividad pipeline
+- Changed `get_or_create` → `update_or_create` in `ingest_strava_activity()` so webhook updates refresh CompletedActivity fields
+- PMC double-dispatch (recompute_pmc + compute_pmc_for_activity) both idempotent — documented with comment
+- 11 new tests in `core/tests_pr150_dual_write.py`; all pass
+- CLAUDE.md synced with current PR queue + PASO 0 protocol
+- Risk: HIGH (data integrity, idempotency) — RESOLVED
 
 ### PR-151 — Dashboard Real
 - Connect Dashboard.jsx to existing PMC endpoint (CTL/ATL/TSB chart)

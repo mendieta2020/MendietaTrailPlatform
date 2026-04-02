@@ -228,31 +228,35 @@ def ingest_strava_activity(
         (1000.0 / _avg_speed_ms) if _avg_speed_ms and _avg_speed_ms > 0 else None
     )
 
-    activity, created = CompletedActivity.objects.get_or_create(
+    # Use update_or_create so webhook update events refresh existing CompletedActivity rows.
+    # The lookup key is (organization, provider, provider_activity_id) — guaranteed unique.
+    # PMC dispatch (below) fires only on creation to avoid duplicate queue noise.
+    _ca_defaults = {
+        "alumno": alumno,
+        "athlete": athlete,
+        "sport": _normalize_sport(activity_data.get("type")),
+        "start_time": start_date,
+        "duration_s": int(elapsed_time_s),
+        "distance_m": float(activity_data.get("distance_m") or 0.0),
+        "elevation_gain_m": activity_data.get("elevation_m"),
+        # Normalized biometric fields (provider-agnostic)
+        "avg_hr": int(_avg_hr_raw) if _avg_hr_raw is not None else None,
+        "max_hr": int(_max_hr_raw) if _max_hr_raw is not None else None,
+        "avg_power_w": int(_avg_watts_raw) if _avg_watts_raw is not None else None,
+        "avg_pace_s_km": _avg_pace_s_km,
+        "raw_payload": {
+            "provider": "strava",
+            "strava_activity_id": str(external_activity_id),
+            "calories_kcal": activity_data.get("calories_kcal"),
+            "avg_hr": activity_data.get("avg_hr"),
+            "raw": raw,
+        },
+    }
+    activity, created = CompletedActivity.objects.update_or_create(
         organization=organization,
         provider=CompletedActivity.Provider.STRAVA,
         provider_activity_id=str(external_activity_id),
-        defaults={
-            "alumno": alumno,
-            "athlete": athlete,
-            "sport": _normalize_sport(activity_data.get("type")),
-            "start_time": start_date,
-            "duration_s": int(elapsed_time_s),
-            "distance_m": float(activity_data.get("distance_m") or 0.0),
-            "elevation_gain_m": activity_data.get("elevation_m"),
-            # Normalized biometric fields (provider-agnostic)
-            "avg_hr": int(_avg_hr_raw) if _avg_hr_raw is not None else None,
-            "max_hr": int(_max_hr_raw) if _max_hr_raw is not None else None,
-            "avg_power_w": int(_avg_watts_raw) if _avg_watts_raw is not None else None,
-            "avg_pace_s_km": _avg_pace_s_km,
-            "raw_payload": {
-                "provider": "strava",
-                "strava_activity_id": str(external_activity_id),
-                "calories_kcal": activity_data.get("calories_kcal"),
-                "avg_hr": activity_data.get("avg_hr"),
-                "raw": raw,
-            },
-        },
+        defaults=_ca_defaults,
     )
 
     # Dispatch PMC computation task after a new activity is persisted.
