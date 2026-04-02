@@ -82,7 +82,6 @@ def _build_volume_snapshot(org, athlete_user, alumno, start_date, today):
             distance_m=Sum("distance_m", output_field=FloatField()),
             duration_s=Sum("duration_s", output_field=FloatField()),
             elevation_gain_m=Sum("elevation_gain_m", output_field=FloatField()),
-            calories_kcal=Sum("calories_kcal", output_field=FloatField()),
             sessions_count=Count("id"),
         )
     )
@@ -102,14 +101,13 @@ def _build_volume_snapshot(org, athlete_user, alumno, start_date, today):
                 "distance_km": 0.0,
                 "duration_minutes": 0,
                 "elevation_gain_m": 0,
-                "calories_kcal": 0,
+                "calories_kcal": 0,  # not available on CompletedActivity yet
                 "sessions_count": 0,
             }
         t = sport_totals[group]
         t["distance_km"] += round((r["distance_m"] or 0) / 1000.0, 2)
         t["duration_minutes"] += int(round((r["duration_s"] or 0) / 60.0))
         t["elevation_gain_m"] += int(round(r["elevation_gain_m"] or 0))
-        t["calories_kcal"] += int(round(r["calories_kcal"] or 0))
         t["sessions_count"] += int(r["sessions_count"] or 0)
 
     # Round distance_km
