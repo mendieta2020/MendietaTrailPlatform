@@ -1,7 +1,7 @@
 """
 core/views_pmc.py
 
-PMC (Performance Management Chart) API views — PR-128a.
+PMC (Performance Management Chart) API views — PR-128a / PR-152.
 
 Endpoints:
     GET  /api/athlete/pmc/               — athlete reads own PMC from DailyLoad
@@ -9,6 +9,9 @@ Endpoints:
     GET  /api/coach/team-readiness/      — coach reads team TSB summary
     GET  /api/athlete/hr-profile/        — athlete reads own HR profile
     PUT  /api/athlete/hr-profile/        — athlete updates own HR profile
+    GET  /api/coach/athletes/<m_id>/training-volume/ — volume buckets by sport/metric
+    GET  /api/coach/athletes/<m_id>/wellness/        — wellness check-in history
+    GET  /api/coach/athletes/<m_id>/compliance/      — plan vs actual compliance
 
 Tenancy: organization is resolved from the authenticated user's active Membership.
 For users with a single org membership, resolution is automatic. For multi-org
@@ -16,7 +19,10 @@ users, ?org_id=<pk> is required to avoid non-deterministic selection (PR-149).
 Law 6: no PII logged (user IDs only, no names/emails).
 """
 import logging
+from datetime import timedelta
 
+from django.db.models import Avg, Count, FloatField, Q, Sum
+from django.db.models.functions import TruncMonth, TruncWeek
 from django.utils import timezone
 
 from rest_framework import serializers, status
@@ -25,7 +31,16 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.models import AthleteHRProfile, DailyLoad, Membership
+from core.models import (
+    Alumno,
+    Athlete,
+    AthleteHRProfile,
+    CompletedActivity,
+    DailyLoad,
+    Membership,
+    WellnessCheckIn,
+    WorkoutAssignment,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +195,48 @@ def _validate_days(request) -> int:
     return days
 
 
+def _compute_readiness(athlete_user, org, current_tsb: float) -> tuple[int, str]:
+    """
+    Compute a 0-100 readiness score combining load (TSB) and latest wellness check-in.
+
+    Returns (score, label). Defaults to neutral (50) when no wellness data exists.
+    """
+    # Load component: map TSB from [-30, +30] → [0, 100]
+    tsb_clamped = max(-30.0, min(30.0, float(current_tsb or 0)))
+    load_score = ((tsb_clamped + 30) / 60) * 100
+
+    # Wellness component: latest check-in average (1-5) scaled to 0-100
+    wellness_score = 50.0  # neutral default
+    athlete_obj = Athlete.objects.filter(user=athlete_user, organization=org).first()
+    if athlete_obj:
+        checkin = (
+            WellnessCheckIn.objects
+            .filter(athlete=athlete_obj, organization=org)
+            .order_by("-date")
+            .first()
+        )
+        if checkin:
+            avg = (
+                checkin.sleep_quality + checkin.mood + checkin.energy
+                + checkin.muscle_soreness + checkin.stress
+            ) / 5.0
+            wellness_score = avg * 20.0  # scale 1-5 → 20-100
+
+    score = int(round(wellness_score * 0.5 + load_score * 0.5))
+    score = max(0, min(100, score))
+
+    if score >= 75:
+        label = "Listo para entrenar"
+    elif score >= 50:
+        label = "Entrenar con precaución"
+    elif score >= 25:
+        label = "Carga alta, moderar"
+    else:
+        label = "Recuperación recomendada"
+
+    return score, label
+
+
 # ==============================================================================
 # Athlete endpoints
 # ==============================================================================
@@ -210,6 +267,11 @@ class AthletePMCView(APIView):
             date__lte=today,
         )
         payload = _build_pmc_payload(qs, days)
+        readiness_score, readiness_label = _compute_readiness(
+            request.user, org, payload["current"]["tsb"]
+        )
+        payload["current"]["readiness_score"] = readiness_score
+        payload["current"]["readiness_label"] = readiness_label
 
         logger.info(
             "athlete_pmc_view.served",
@@ -349,6 +411,11 @@ class CoachAthletePMCView(APIView):
             date__lte=today,
         )
         payload = _build_pmc_payload(qs, days)
+        readiness_score, readiness_label = _compute_readiness(
+            athlete_user, org, payload["current"]["tsb"]
+        )
+        payload["current"]["readiness_score"] = readiness_score
+        payload["current"]["readiness_label"] = readiness_label
         payload["athlete_name"] = (
             athlete_user.get_full_name() or athlete_user.username
         )
@@ -540,4 +607,350 @@ class PaceZonesView(APIView):
             "threshold_pace_s_km": threshold_s,
             "threshold_pace_display": _fmt_pace(threshold_s),
             "zones": zones,
+        })
+
+
+# ==============================================================================
+# PR-152: Training Volume, Wellness History, Compliance
+# All three use the same membership_id resolution pattern as CoachAthletePMCView.
+# ==============================================================================
+
+_SPORT_FILTERS = {
+    "run": ["RUN", "TRAIL"],
+    "cycling": ["CYCLING", "MTB", "INDOOR_BIKE"],
+    "strength": ["STRENGTH"],
+    "all": None,
+}
+
+_METRIC_FIELDS = {
+    "distance": "distance_m",
+    "duration": "duration_s",
+    "elevation": "elevation_gain_m",
+    "load": "canonical_load",
+}
+
+
+def _resolve_athlete_membership(request, membership_id: int):
+    """
+    Validate membership_id belongs to an athlete in the coach's org.
+    Returns (coach_org, athlete_membership, athlete_user).
+    Fail-closed: raises NotFound if the membership doesn't exist in the coach's org.
+    """
+    coach_membership = _get_coach_membership(request)
+    org = coach_membership.organization
+    try:
+        athlete_membership = Membership.objects.select_related("user").get(
+            pk=membership_id,
+            organization=org,
+            role=Membership.Role.ATHLETE,
+            is_active=True,
+        )
+    except Membership.DoesNotExist:
+        raise NotFound("Athlete membership not found in this organization.")
+    return org, athlete_membership, athlete_membership.user
+
+
+def _period_buckets_from_qs(qs, date_field: str, value_field: str, precision: str) -> list:
+    """
+    Group a queryset by week or month, returning a list of bucket dicts.
+    date_field: name of the DateTimeField or DateField to truncate.
+    value_field: annotated Sum field name.
+    precision: 'weekly' | 'monthly'
+    """
+    trunc_fn = TruncWeek if precision == "weekly" else TruncMonth
+    rows = (
+        qs
+        .annotate(period=trunc_fn(date_field))
+        .values("period")
+        .annotate(value=Sum(value_field, output_field=FloatField()), sessions=Count("id"))
+        .order_by("period")
+    )
+    buckets = []
+    for row in rows:
+        period_start = row["period"]
+        if hasattr(period_start, "date"):
+            period_start = period_start.date()
+        if precision == "weekly":
+            period_end = period_start + timedelta(days=6)
+        else:
+            # last day of month
+            if period_start.month == 12:
+                period_end = period_start.replace(day=31)
+            else:
+                period_end = (
+                    period_start.replace(month=period_start.month + 1, day=1)
+                    - timedelta(days=1)
+                )
+        buckets.append({
+            "period_start": period_start.isoformat(),
+            "period_end": period_end.isoformat(),
+            "value": round(float(row["value"] or 0), 2),
+            "sessions": row["sessions"],
+        })
+    return buckets
+
+
+class TrainingVolumeView(APIView):
+    """
+    GET /api/coach/athletes/<membership_id>/training-volume/
+
+    Query params:
+        metric:    distance | duration | elevation | load  (default: distance)
+        sport:     all | run | cycling | strength          (default: all)
+        precision: weekly | monthly                        (default: weekly)
+        days:      1–365                                   (default: 90)
+
+    Returns aggregated training volume buckets for the athlete.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, membership_id: int):
+        org, athlete_membership, athlete_user = _resolve_athlete_membership(
+            request, membership_id
+        )
+        days = _validate_days(request)
+
+        metric = request.query_params.get("metric", "distance")
+        sport = request.query_params.get("sport", "all")
+        precision = request.query_params.get("precision", "weekly")
+
+        if metric not in _METRIC_FIELDS:
+            raise ValidationError({"metric": f"Must be one of: {list(_METRIC_FIELDS.keys())}"})
+        if sport not in _SPORT_FILTERS:
+            raise ValidationError({"sport": f"Must be one of: {list(_SPORT_FILTERS.keys())}"})
+        if precision not in ("weekly", "monthly"):
+            raise ValidationError({"precision": "Must be 'weekly' or 'monthly'."})
+
+        today = timezone.now().date()
+        start_date = today - timedelta(days=days - 1)
+
+        # Resolve alumno (legacy path — most activities ingested via Alumno FK)
+        alumno = Alumno.objects.filter(usuario=athlete_user).first()
+        if not alumno:
+            return Response({
+                "metric": metric, "sport": sport, "precision": precision,
+                "summary": {"total": 0, "average_per_period": 0, "count_sessions": 0, "planned_total": None},
+                "buckets": [],
+            })
+
+        metric_field = _METRIC_FIELDS[metric]
+        sport_list = _SPORT_FILTERS[sport]
+
+        qs = CompletedActivity.objects.filter(
+            organization=org,
+            alumno=alumno,
+            start_time__date__gte=start_date,
+            start_time__date__lte=today,
+        )
+        if sport_list:
+            qs = qs.filter(sport__in=sport_list)
+
+        buckets = _period_buckets_from_qs(qs, "start_time", metric_field, precision)
+        total = sum(b["value"] for b in buckets)
+        count_sessions = sum(b["sessions"] for b in buckets)
+        avg = round(total / len(buckets), 2) if buckets else 0
+
+        logger.info(
+            "training_volume_view.served",
+            extra={
+                "event_name": "training_volume_view.served",
+                "organization_id": org.pk,
+                "coach_user_id": request.user.pk,
+                "athlete_user_id": athlete_user.pk,
+                "metric": metric, "sport": sport, "precision": precision, "days": days,
+                "outcome": "success",
+            },
+        )
+        return Response({
+            "metric": metric,
+            "sport": sport,
+            "precision": precision,
+            "summary": {
+                "total": total,
+                "average_per_period": avg,
+                "count_sessions": count_sessions,
+                "planned_total": None,
+            },
+            "buckets": buckets,
+        })
+
+
+class WellnessHistoryView(APIView):
+    """
+    GET /api/coach/athletes/<membership_id>/wellness/?days=30
+
+    Returns wellness check-in history for the athlete.
+    Fields: date, sleep_quality, mood, energy, muscle_soreness, stress, average.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, membership_id: int):
+        org, athlete_membership, athlete_user = _resolve_athlete_membership(
+            request, membership_id
+        )
+        days = _validate_days(request)
+
+        today = timezone.now().date()
+        start_date = today - timedelta(days=days - 1)
+
+        # WellnessCheckIn uses Athlete FK (new org-first model)
+        athlete_obj = Athlete.objects.filter(user=athlete_user, organization=org).first()
+        if not athlete_obj:
+            return Response({
+                "athlete_name": athlete_user.get_full_name() or athlete_user.username,
+                "entries": [],
+                "period_average": None,
+            })
+
+        checkins = (
+            WellnessCheckIn.objects
+            .filter(athlete=athlete_obj, organization=org, date__gte=start_date, date__lte=today)
+            .order_by("date")
+            .values("date", "sleep_quality", "mood", "energy", "muscle_soreness", "stress")
+        )
+
+        entries = []
+        for c in checkins:
+            avg = (c["sleep_quality"] + c["mood"] + c["energy"]
+                   + c["muscle_soreness"] + c["stress"]) / 5.0
+            entries.append({
+                "date": c["date"].isoformat(),
+                "sleep": c["sleep_quality"],
+                "mood": c["mood"],
+                "energy": c["energy"],
+                "soreness": c["muscle_soreness"],
+                "stress": c["stress"],
+                "average": round(avg, 2),
+            })
+
+        period_avg = round(sum(e["average"] for e in entries) / len(entries), 2) if entries else None
+
+        logger.info(
+            "wellness_history_view.served",
+            extra={
+                "event_name": "wellness_history_view.served",
+                "organization_id": org.pk,
+                "coach_user_id": request.user.pk,
+                "athlete_user_id": athlete_user.pk,
+                "entries": len(entries),
+                "outcome": "success",
+            },
+        )
+        return Response({
+            "athlete_name": athlete_user.get_full_name() or athlete_user.username,
+            "entries": entries,
+            "period_average": period_avg,
+        })
+
+
+class ComplianceView(APIView):
+    """
+    GET /api/coach/athletes/<membership_id>/compliance/?days=30&precision=weekly
+
+    Returns plan compliance buckets: planned sessions vs completed sessions.
+    Compliance % = completed / total_non_canceled * 100 per period.
+    Returns "no plan" message when no WorkoutAssignments exist.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, membership_id: int):
+        org, athlete_membership, athlete_user = _resolve_athlete_membership(
+            request, membership_id
+        )
+        days = _validate_days(request)
+        precision = request.query_params.get("precision", "weekly")
+        if precision not in ("weekly", "monthly"):
+            raise ValidationError({"precision": "Must be 'weekly' or 'monthly'."})
+
+        today = timezone.now().date()
+        start_date = today - timedelta(days=days - 1)
+
+        # WorkoutAssignment uses Athlete FK
+        athlete_obj = Athlete.objects.filter(user=athlete_user, organization=org).first()
+        if not athlete_obj:
+            return Response({
+                "overall_pct": None,
+                "buckets": [],
+                "message": "No hay plan asignado",
+            })
+
+        base_qs = WorkoutAssignment.objects.filter(
+            organization=org,
+            athlete=athlete_obj,
+            scheduled_date__gte=start_date,
+            scheduled_date__lte=today,
+        ).exclude(status=WorkoutAssignment.Status.CANCELED)
+
+        if not base_qs.exists():
+            return Response({
+                "overall_pct": None,
+                "buckets": [],
+                "message": "No hay plan asignado",
+            })
+
+        trunc_fn = TruncWeek if precision == "weekly" else TruncMonth
+
+        rows = (
+            base_qs
+            .annotate(period=trunc_fn("scheduled_date"))
+            .values("period")
+            .annotate(
+                planned_sessions=Count("id"),
+                completed_sessions=Count(
+                    "id",
+                    filter=Q(status=WorkoutAssignment.Status.COMPLETED),
+                ),
+            )
+            .order_by("period")
+        )
+
+        buckets = []
+        total_planned = 0
+        total_completed = 0
+        for row in rows:
+            period_start = row["period"]
+            if hasattr(period_start, "date"):
+                period_start = period_start.date()
+            if precision == "weekly":
+                period_end = period_start + timedelta(days=6)
+            else:
+                if period_start.month == 12:
+                    period_end = period_start.replace(day=31)
+                else:
+                    period_end = (
+                        period_start.replace(month=period_start.month + 1, day=1)
+                        - timedelta(days=1)
+                    )
+            planned = row["planned_sessions"]
+            completed = row["completed_sessions"]
+            pct = round(completed / planned * 100) if planned else 0
+            total_planned += planned
+            total_completed += completed
+            buckets.append({
+                "period_start": period_start.isoformat(),
+                "period_end": period_end.isoformat(),
+                "planned_sessions": planned,
+                "actual_sessions": completed,
+                "compliance_pct": pct,
+            })
+
+        overall_pct = round(total_completed / total_planned * 100) if total_planned else None
+
+        logger.info(
+            "compliance_view.served",
+            extra={
+                "event_name": "compliance_view.served",
+                "organization_id": org.pk,
+                "coach_user_id": request.user.pk,
+                "athlete_user_id": athlete_user.pk,
+                "precision": precision, "days": days,
+                "outcome": "success",
+            },
+        )
+        return Response({
+            "overall_pct": overall_pct,
+            "buckets": buckets,
         })

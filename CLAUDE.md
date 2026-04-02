@@ -25,8 +25,9 @@ PR queue:
 - PR-125 through PR-155 MERGED (see project_roadmap_state.md for full history)
 - PR-149 ✅ MERGED — Security Sweep (tenancy disambiguation in billing/PMC)
 - PR-150 ✅ MERGED — Close Strava ingestion loop (dual-write CompletedActivity)
-- PR-151 THIS PR — Dashboard Nivel 1 (team semaphore + ACWR + real CTL in Athletes.jsx)
-- PR-152 NEXT — Vista atleta enriquecida + Morning Readiness Score
+- PR-151 ✅ MERGED — Dashboard Nivel 1 (team semaphore + ACWR + real CTL in Athletes.jsx)
+- PR-152 THIS PR — Vista atleta enriquecida: 7 KPI cards + Readiness Score + metric filters + tooltips
+- PR-153 NEXT — Fitness Summary + GAP (Grade Adjusted Pace)
 
 ## PR Protocol (PASO 0)
 Before writing any code for a new PR:

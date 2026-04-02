@@ -103,9 +103,18 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - Compliance section: empty state placeholder (PR-152 will wire it)
 - Risk: LOW (frontend only, no backend changes)
 
-### PR-152 — Vista atleta enriquecida + Morning Readiness Score
-- Enhanced athlete detail page
-- Morning Readiness Score composite (wellness + daily load + HRV)
+### PR-152 — Vista atleta enriquecida + Morning Readiness Score ✅ 2026-04-02
+- One-Page Athlete View: CoachAthletePMC.jsx refactored with 7 KPI cards (Readiness, CTL, ATL, TSB, ACWR, Compliance, Bienestar)
+- All 7 KPI cards have MUI Tooltip on hover with scientific explanation
+- Readiness Score (0-100) computed in backend: 50% TSB + 50% latest WellnessCheckIn average; added to PMC endpoints
+- 3 new backend endpoints: /api/coach/athletes/<m_id>/training-volume/, /wellness/, /compliance/
+- 9-option metric filter dropdown: PMC, Compliance, Bienestar, Volumen Trail/Running, Volumen Horas, Volumen Ciclismo, Esfuerzo, Fuerza, Tiempo en Zonas (placeholder)
+- Semanal/Mensual precision selector for volume/compliance metrics
+- New components: WellnessHeatmap.jsx (5-row colored grid), VolumeBarChart + ComplianceBarChart (Recharts)
+- ARSCard.jsx: MUI Tooltip added to all 4 cards
+- AthleteProgress.jsx ARSCard bug fixed: pmcData.ars → pmcData.current.ars (same for ctl/atl/tsb)
+- Backend tenancy: all 3 new endpoints use _resolve_athlete_membership (fail-closed, same pattern as CoachAthletePMCView)
+- Risk: MEDIUM — RESOLVED
 
 ### Mes 1 Gate (onboarding 100 athletes)
 - PR-152 — PWA + Push Notifications (service worker, manifest, installability)
