@@ -101,7 +101,7 @@ def _build_volume_snapshot(org, athlete_user, alumno, start_date, today):
                 "distance_km": 0.0,
                 "duration_minutes": 0,
                 "elevation_gain_m": 0,
-                "calories_kcal": 0,  # not available on CompletedActivity yet
+                "calories_kcal": 0,
                 "sessions_count": 0,
             }
         t = sport_totals[group]
@@ -109,6 +109,22 @@ def _build_volume_snapshot(org, athlete_user, alumno, start_date, today):
         t["duration_minutes"] += int(round((r["duration_s"] or 0) / 60.0))
         t["elevation_gain_m"] += int(round(r["elevation_gain_m"] or 0))
         t["sessions_count"] += int(r["sessions_count"] or 0)
+
+    # Extract calories from raw_payload (Strava sends 'calories' in the payload).
+    # Grouped by the same sport bucketing so totals align.
+    for act in qs.only("sport", "raw_payload"):
+        cal = 0
+        if act.raw_payload and isinstance(act.raw_payload, dict):
+            cal = int(act.raw_payload.get("calories", 0) or 0)
+        if cal > 0:
+            raw = (act.sport or "OTHER").upper()
+            group = "OTHER"
+            for g, sports in _SPORT_VOLUME_MAP.items():
+                if raw in sports:
+                    group = g
+                    break
+            if group in sport_totals:
+                sport_totals[group]["calories_kcal"] += cal
 
     # Round distance_km
     for v in sport_totals.values():
@@ -183,6 +199,67 @@ def _build_gap_snapshot(org, alumno, start_date, today):
     return _fmt_gap_pace(gap) if gap is not None else None
 
 
+def _build_narratives(ramp_rate_7d, acwr, compliance_pct, readiness_score):
+    """
+    Auto-generated text recommendations based on current training metrics.
+    Returns a list of strings, each starting with a colored emoji indicator.
+    """
+    narratives = []
+
+    # Fitness trend
+    if ramp_rate_7d > 8:
+        narratives.append(
+            f"⚠️ Tu fitness está subiendo muy rápido (+{ramp_rate_7d:.1f}/sem). "
+            "Moderar la carga para evitar sobreentrenamiento."
+        )
+    elif ramp_rate_7d > 3:
+        narratives.append(
+            f"↗️ Tu fitness está creciendo de forma saludable (+{ramp_rate_7d:.1f} CTL/semana)."
+        )
+    elif ramp_rate_7d < -3:
+        narratives.append(
+            f"↘️ Tu fitness está bajando ({ramp_rate_7d:.1f} CTL/semana). Retomar entrenamientos."
+        )
+    else:
+        narratives.append("→ Tu fitness está estable. Buen mantenimiento.")
+
+    # ACWR
+    if acwr is not None:
+        if acwr > 1.5:
+            narratives.append(
+                f"🔴 ACWR {acwr} — riesgo alto de lesión. Reducir volumen esta semana."
+            )
+        elif acwr > 1.3:
+            narratives.append(f"🟡 ACWR {acwr} — zona de precaución. No aumentar carga.")
+        elif acwr >= 0.8:
+            narratives.append(f"🟢 ACWR {acwr} — zona segura. Podés entrenar con normalidad.")
+        elif acwr > 0:
+            narratives.append(f"🔵 ACWR {acwr} — desentrenamiento. Aumentar gradualmente.")
+
+    # Compliance
+    if compliance_pct is not None and compliance_pct > 0:
+        if compliance_pct >= 90:
+            narratives.append(f"✅ Compliance {compliance_pct}% — excelente adherencia al plan.")
+        elif compliance_pct >= 70:
+            narratives.append(
+                f"📊 Compliance {compliance_pct}% — buena adherencia, hay margen de mejora."
+            )
+        else:
+            narratives.append(
+                f"⚠️ Compliance {compliance_pct}% — baja adherencia al plan. Hablar con tu coach."
+            )
+
+    # Readiness
+    if readiness_score <= 25:
+        narratives.append("🔴 Readiness bajo — recuperación recomendada antes de sesiones intensas.")
+    elif readiness_score <= 50:
+        narratives.append("🟡 Readiness moderado — entrenar con precaución.")
+    elif readiness_score >= 75:
+        narratives.append("🟢 Readiness alto — listo para entrenar fuerte.")
+
+    return narratives
+
+
 def _build_snapshot(org, athlete_user, alumno, athlete_membership, period_days, coach_message, coach_user):
     """
     Assemble the complete point-in-time snapshot dict for the report.
@@ -219,6 +296,11 @@ def _build_snapshot(org, athlete_user, alumno, athlete_membership, period_days, 
     # --- GAP ---
     gap_avg_formatted = _build_gap_snapshot(org, alumno, start_date, today)
 
+    ramp_rate_7d = current.get("ramp_rate_7d", 0.0)
+
+    # --- Narratives ---
+    narratives = _build_narratives(ramp_rate_7d, acwr, compliance_pct, readiness_score)
+
     return {
         "period_days": period_days,
         "generated_at": timezone.now().isoformat(),
@@ -231,7 +313,7 @@ def _build_snapshot(org, athlete_user, alumno, athlete_membership, period_days, 
             "tsb": round(tsb, 1),
             "readiness_score": readiness_score,
             "readiness_label": readiness_label,
-            "ramp_rate_7d": current.get("ramp_rate_7d", 0.0),
+            "ramp_rate_7d": ramp_rate_7d,
             "ramp_rate_28d": current.get("ramp_rate_28d", 0.0),
             "acwr": acwr,
             "gap_avg_formatted": gap_avg_formatted,
@@ -241,6 +323,7 @@ def _build_snapshot(org, athlete_user, alumno, athlete_membership, period_days, 
         "volume_by_sport": volume_by_sport,
         "compliance_pct": compliance_pct,
         "wellness_avg": wellness_avg,
+        "narratives": narratives,
     }
 
 
@@ -439,6 +522,9 @@ def public_report_view(request, token: str):
         f"Coach: {snapshot.get('coach_name', '')}"
     )
 
+    from django.conf import settings
+    frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:5173")
+
     context = {
         "report": report,
         "snapshot": snapshot,
@@ -448,5 +534,6 @@ def public_report_view(request, token: str):
         "volume_items": list(snapshot.get("volume_by_sport", {}).items()),
         "projection": snapshot.get("projection", []),
         "pmc_days_json": snapshot.get("pmc_days", []),
+        "frontend_url": frontend_url,
     }
     return render(request, "report/public_report.html", context)

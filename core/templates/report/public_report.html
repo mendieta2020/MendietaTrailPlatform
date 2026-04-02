@@ -48,6 +48,16 @@
     .badge-red    { background: #fee2e2; color: #b91c1c; }
     .badge-slate  { background: #f1f5f9; color: #475569; }
 
+    /* Narrative summary */
+    .narrative-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+    .narrative-item { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; font-size: 13px; color: #334155; line-height: 1.5; }
+
+    /* Objective section */
+    .goal-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 20px; display: flex; align-items: center; gap: 16px; }
+    .goal-icon { font-size: 24px; }
+    .goal-name { font-size: 15px; font-weight: 700; color: #0f172a; }
+    .goal-meta { font-size: 12px; color: #64748b; margin-top: 2px; }
+
     /* PMC Chart */
     .chart-box { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-top: 4px; }
     .chart-box svg { width: 100%; height: auto; display: block; }
@@ -61,6 +71,7 @@
     .volume-table td { padding: 10px 14px; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
     .volume-table tr:last-child td { border-bottom: none; }
     .sport-label { font-weight: 600; color: #0f172a; }
+    .text-muted { color: #94a3b8; }
 
     /* Coach message */
     .coach-message { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-top: 4px; border-left: 4px solid #f59e0b; }
@@ -194,6 +205,28 @@
   </div>
   {% endif %}
 
+  <!-- RESUMEN — narrative auto-generated recommendations -->
+  {% if snapshot.narratives %}
+  <div class="section-title">Resumen</div>
+  <ul class="narrative-list">
+    {% for text in snapshot.narratives %}
+    <li class="narrative-item">{{ text }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <!-- Goal section: activates when Goal model is created -->
+  {% if snapshot.goal %}
+  <div class="section-title">Objetivo</div>
+  <div class="goal-card">
+    <div class="goal-icon">🎯</div>
+    <div>
+      <div class="goal-name">{{ snapshot.goal.name }}</div>
+      <div class="goal-meta">{{ snapshot.goal.date }} &nbsp;·&nbsp; Faltan {{ snapshot.goal.days_remaining }} días</div>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- PMC CHART (inline SVG rendered from JSON data) -->
   {% if pmc_days_json %}
   <div class="section-title">Curva de rendimiento (PMC)</div>
@@ -294,15 +327,52 @@
       {% for sport, totals in volume_items %}
       <tr>
         <td class="sport-label">{{ sport }}</td>
+        {# Fix 3: STRENGTH has no distance/desnivel — show dash instead of 0 #}
+        {% if sport == "STRENGTH" %}
+        <td class="text-muted">—</td>
+        {% else %}
         <td>{{ totals.distance_km }} km</td>
-        <td>{{ totals.duration_minutes }} min</td>
+        {% endif %}
+        {# Fix 1: Duration cell — JS below converts raw minutes to "Xh Ym" format #}
+        <td>{{ totals.duration_minutes }}</td>
+        {% if sport == "STRENGTH" %}
+        <td class="text-muted">—</td>
+        {% else %}
         <td>{{ totals.elevation_gain_m }} m</td>
+        {% endif %}
+        {# Fix 2: Calories from raw_payload — show dash if 0 #}
+        {% if totals.calories_kcal %}
         <td>{{ totals.calories_kcal }} kcal</td>
+        {% else %}
+        <td class="text-muted">—</td>
+        {% endif %}
         <td>{{ totals.sessions_count }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  <script>
+  // Fix 1: Rewrite duration cells to hours:minutes format
+  (function() {
+    var rows = document.querySelectorAll('.volume-table tbody tr');
+    rows.forEach(function(row) {
+      var cells = row.querySelectorAll('td');
+      if (cells.length < 3) return;
+      var durCell = cells[2];  // 3rd cell = Duración
+      var text = durCell.textContent.trim();
+      // Only rewrite if it looks like a plain number (minutes)
+      var mins = parseInt(text, 10);
+      if (!isNaN(mins) && mins > 0) {
+        var h = Math.floor(mins / 60);
+        var m = mins % 60;
+        durCell.textContent = h + 'h ' + (m < 10 ? '0' + m : m) + 'm';
+      } else if (mins === 0) {
+        durCell.textContent = '—';
+        durCell.className = 'text-muted';
+      }
+    });
+  })();
+  </script>
   {% endif %}
 
   <!-- COACH MESSAGE -->
@@ -314,12 +384,12 @@
   </div>
   {% endif %}
 
-  <!-- CTA -->
+  <!-- CTA — Fix 5: link to frontend URL, not backend root -->
   <div class="cta-box">
     <p style="font-size:14px; color:#64748b; margin-bottom:16px;">
       ¿Querés ver tus métricas en tiempo real?
     </p>
-    <a href="/" class="cta-btn">Abrir Quantoryn</a>
+    <a href="{{ frontend_url }}" class="cta-btn">Abrir Quantoryn</a>
   </div>
 
   <!-- FOOTER -->
