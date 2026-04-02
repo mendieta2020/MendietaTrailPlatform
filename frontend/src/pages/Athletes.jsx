@@ -12,6 +12,15 @@ import { useOrg } from '../context/OrgContext';
 import { listAthletes } from '../api/p1';
 import { getAthleteSubscriptions } from '../api/billing';
 import { notifyAthleteDevice } from '../api/roster';
+import { getTeamReadiness } from '../api/pmc';
+
+const TSB_ZONE_DOT = {
+  overreaching: '#EF4444',
+  fatigued:     '#F59E0B',
+  productive:   '#3B82F6',
+  optimal:      '#22C55E',
+  fresh:        '#06B6D4',
+};
 
 const SUB_STATUS_CONFIG = {
   active:    { label: 'Activo',    bg: '#ECFDF5', text: '#059669', dot: '#10B981' },
@@ -45,6 +54,7 @@ const Athletes = () => {
   const { activeOrg, orgLoading } = useOrg();
   const [athletes, setAthletes] = useState([]);
   const [subscriptionMap, setSubscriptionMap] = useState({});
+  const [fitnessMap, setFitnessMap] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
   const [subFilter, setSubFilter] = useState('all');
   // PR-141: track notify state per athlete (membership_id → 'idle'|'sent'|'duplicate')
@@ -72,8 +82,19 @@ const Athletes = () => {
         // Subscription data is supplementary — silent fail
       }
     };
+    const fetchFitness = async () => {
+      try {
+        const res = await getTeamReadiness();
+        const map = {};
+        (res.data?.athletes || []).forEach(a => { map[a.membership_id] = a; });
+        setFitnessMap(map);
+      } catch {
+        // Fitness data is supplementary — silent fail
+      }
+    };
     fetchAthletes();
     fetchSubscriptions();
+    fetchFitness();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOrg?.org_id]);
 
@@ -229,10 +250,31 @@ const Athletes = () => {
                     </Typography>
                 </TableCell>
                 <TableCell>
-                    <Typography variant="body2" sx={{ fontWeight: 600, color: '#0F172A' }}>
-                        {/* Dato simulado hasta tener real */}
-                        {(((athlete.id || 1) * 7) % 50) + 40} CTL
-                    </Typography>
+                    {(() => {
+                      const fit = fitnessMap[athlete.membership_id];
+                      if (!fit || fit.ctl === 0) {
+                        return <Typography variant="body2" sx={{ color: '#94A3B8' }}>—</Typography>;
+                      }
+                      const dotColor = TSB_ZONE_DOT[fit.tsb_zone];
+                      const acwr = fit.ctl > 0 && fit.atl != null ? fit.atl / fit.ctl : null;
+                      const acwrLabel = acwr === null ? 'Sin datos de carga' :
+                        acwr > 1.5 ? `ACWR ${acwr.toFixed(2)} — Riesgo alto` :
+                        acwr > 1.3 ? `ACWR ${acwr.toFixed(2)} — Precaución` :
+                        acwr >= 0.8 ? `ACWR ${acwr.toFixed(2)} — Óptimo` :
+                        `ACWR ${acwr.toFixed(2)} — Desentrenamiento`;
+                      return (
+                        <Tooltip title={acwrLabel}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, cursor: 'default' }}>
+                            <Typography variant="body2" sx={{ fontWeight: 600, color: '#0F172A' }}>
+                              {fit.ctl} CTL
+                            </Typography>
+                            {dotColor && (
+                              <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: dotColor, flexShrink: 0 }} />
+                            )}
+                          </Box>
+                        </Tooltip>
+                      );
+                    })()}
                 </TableCell>
                 <TableCell>
                   <RiskBadge risk={athlete.injury_risk} />

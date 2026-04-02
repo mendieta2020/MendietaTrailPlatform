@@ -24,8 +24,9 @@ Two agents operate this repo with distinct roles:
 PR queue:
 - PR-125 through PR-155 MERGED (see project_roadmap_state.md for full history)
 - PR-149 ✅ MERGED — Security Sweep (tenancy disambiguation in billing/PMC)
-- PR-150 THIS PR — Close Strava ingestion loop (dual-write CompletedActivity)
-- PR-151 NEXT — Dashboard Real (connect PMC endpoint + real CTL in Athletes.jsx)
+- PR-150 ✅ MERGED — Close Strava ingestion loop (dual-write CompletedActivity)
+- PR-151 THIS PR — Dashboard Nivel 1 (team semaphore + ACWR + real CTL in Athletes.jsx)
+- PR-152 NEXT — Vista atleta enriquecida + Morning Readiness Score
 
 ## PR Protocol (PASO 0)
 Before writing any code for a new PR:
