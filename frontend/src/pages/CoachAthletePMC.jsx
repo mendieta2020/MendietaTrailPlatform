@@ -340,6 +340,9 @@ const CoachAthletePMC = () => {
                 <span className="text-xs text-slate-400">Últimos {selectedDays} días</span>
               </div>
 
+              {/* Fixed-height wrapper — all charts use the same vertical space */}
+              <div style={{ minHeight: 380 }} className="flex flex-col justify-center">
+
               {/* PMC */}
               {selectedMetric === 'pmc' && (
                 hasPMC
@@ -398,6 +401,8 @@ const CoachAthletePMC = () => {
                   </p>
                 </div>
               )}
+
+              </div>{/* end fixed-height wrapper */}
             </div>
           </>
         )}

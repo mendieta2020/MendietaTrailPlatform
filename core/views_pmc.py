@@ -22,7 +22,7 @@ import logging
 import math as _math
 from datetime import timedelta
 
-from django.db.models import Avg, Count, FloatField, Q, Sum
+from django.db.models import Avg, Count, FloatField, Max, Q, Sum
 from django.db.models.functions import TruncMonth, TruncWeek
 from django.utils import timezone
 
@@ -525,19 +525,23 @@ class TeamReadinessView(APIView):
             )
         }
 
-        # GAP: last 7 days of run/trail activities per athlete
-        # Resolved via Alumno FK (legacy ingestion path used by TrainingVolumeView)
+        # Resolve Alumnos for all athletes in one batch (Alumno = legacy ingestion FK)
         from core.models import Alumno as _Alumno
+        alumnos_qs = _Alumno.objects.filter(usuario_id__in=athlete_user_ids).values("pk", "usuario_id")
+        user_to_alumno_id = {row["usuario_id"]: row["pk"] for row in alumnos_qs}
+        alumno_ids = list(user_to_alumno_id.values())
+
+        # GAP: last 7 days of run/trail activities — batched per alumno
         seven_ago_dt = today - timedelta(days=7)
         run_sports = ["RUN", "TRAIL"]
         gap_by_user: dict = {}
         for m in athlete_memberships:
-            alumno = _Alumno.objects.filter(usuario_id=m.user_id).first()
-            if not alumno:
+            alumno_id = user_to_alumno_id.get(m.user_id)
+            if not alumno_id:
                 continue
             agg = CompletedActivity.objects.filter(
                 organization=org,
-                alumno=alumno,
+                alumno_id=alumno_id,
                 sport__in=run_sports,
                 start_time__date__gte=seven_ago_dt,
                 start_time__date__lte=today,
@@ -549,6 +553,20 @@ class TeamReadinessView(APIView):
             gap = compute_gap(agg["td"] or 0, agg["te"] or 0, agg["ts"] or 0)
             if gap is not None:
                 gap_by_user[m.user_id] = _fmt_gap_pace(gap)
+
+        # Last activity date per alumno — one batch query
+        last_act_rows = (
+            CompletedActivity.objects.filter(
+                organization=org,
+                alumno_id__in=alumno_ids,
+            )
+            .values("alumno_id")
+            .annotate(last_start=Max("start_time"))
+        )
+        last_act_by_alumno: dict = {}
+        for row in last_act_rows:
+            if row["last_start"]:
+                last_act_by_alumno[row["alumno_id"]] = row["last_start"].date()
 
         for membership in athlete_memberships:
             user_id = membership.user_id
@@ -568,6 +586,10 @@ class TeamReadinessView(APIView):
             ctl_7d_ago = load_7d_ago.get(user_id, 0.0)
             ramp_rate_7d = round(ctl - ctl_7d_ago, 1)
 
+            alumno_id = user_to_alumno_id.get(user_id)
+            last_act_date = last_act_by_alumno.get(alumno_id) if alumno_id else None
+            last_activity_days_ago = (today - last_act_date).days if last_act_date else None
+
             zone = _tsb_zone(tsb)
             if zone in summary:
                 summary[zone] += 1
@@ -582,6 +604,7 @@ class TeamReadinessView(APIView):
                 "tsb_zone": zone,
                 "ramp_rate_7d": ramp_rate_7d,
                 "avg_gap_formatted": gap_by_user.get(user_id, "—"),
+                "last_activity_days_ago": last_activity_days_ago,
             })
 
         logger.info(

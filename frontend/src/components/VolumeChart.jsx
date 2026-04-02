@@ -67,6 +67,8 @@ const CustomTooltip = ({ active, payload, label, metric, sport }) => {
   const bucket = payload[0]?.payload ?? {}
   const isRunSport = sport === 'vol-run'
   const isHoursSport = sport === 'vol-hours'
+  // D+ shown only for run + cycling, not hours
+  const showElev = !isHoursSport && (bucket.elevation_gain_m ?? 0) > 0
   return (
     <div className="bg-white shadow-lg rounded-xl p-3 border border-slate-200 min-w-[190px]">
       <p className="text-xs font-semibold text-slate-700 mb-2">{label}</p>
@@ -74,12 +76,17 @@ const CustomTooltip = ({ active, payload, label, metric, sport }) => {
         {yLabel(metric)}:{' '}
         <span className="font-semibold text-amber-500">{formatValue(metric, bucket.value ?? 0)}</span>
       </p>
-      {isHoursSport && bucket.calories_kcal != null && bucket.calories_kcal > 0 && (
+      {isHoursSport && (
         <p className="text-xs text-slate-600">
-          Calorías: <span className="font-semibold text-rose-500">{Math.round(bucket.calories_kcal).toLocaleString()} kcal</span>
+          Calorías:{' '}
+          <span className="font-semibold text-rose-500">
+            {bucket.calories_kcal != null && bucket.calories_kcal > 0
+              ? `${Math.round(bucket.calories_kcal).toLocaleString()} kcal`
+              : 'N/D'}
+          </span>
         </p>
       )}
-      {bucket.elevation_gain_m != null && bucket.elevation_gain_m > 0 && (
+      {showElev && (
         <p className="text-xs text-slate-600">
           D+: <span className="font-semibold text-orange-500">{Math.round(bucket.elevation_gain_m)} m</span>
         </p>
@@ -133,22 +140,31 @@ export const VolumeBarChart = ({ buckets = [], metric = 'distance', sport = null
       {/* Summary KPIs */}
       {summary && (
         <div className="flex flex-wrap gap-3 mb-4 text-xs text-slate-600">
+          {/* Hours total — only for vol-hours */}
           {isHoursSport && totalHoursDisplay && (
             <span className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
               Total: <strong className="text-amber-700">{totalHoursDisplay}</strong>
             </span>
           )}
-          {isHoursSport && totalKcal != null && totalKcal > 0 && (
+          {/* Calories — only for vol-hours */}
+          {isHoursSport && (
             <span className="bg-rose-50 border border-rose-200 rounded-lg px-3 py-1.5">
-              Calorías: <strong className="text-rose-600">{Math.round(totalKcal).toLocaleString()} kcal</strong>
+              Calorías:{' '}
+              <strong className="text-rose-600">
+                {totalKcal != null && totalKcal > 0
+                  ? `${Math.round(totalKcal).toLocaleString()} kcal`
+                  : 'N/D'}
+              </strong>
             </span>
           )}
+          {/* GAP — only for vol-run */}
           {isRunSport && summary.avg_gap_formatted && (
             <span className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5">
               GAP promedio: <strong className="text-blue-600">{summary.avg_gap_formatted}/km</strong>
             </span>
           )}
-          {(summary.total_elevation_gain_m ?? 0) > 0 && (
+          {/* D+ total — run and cycling, but NOT hours */}
+          {!isHoursSport && (summary.total_elevation_gain_m ?? 0) > 0 && (
             <span className="bg-orange-50 border border-orange-200 rounded-lg px-3 py-1.5">
               D+ total: <strong className="text-orange-600">{Math.round(summary.total_elevation_gain_m).toLocaleString()} m</strong>
             </span>
