@@ -62,12 +62,15 @@ from core.views_p1 import (  # PR-115/116/117/119/128/X4/149/PR-128-real-pmc/PR-
     WellnessDismissView,
     TrainingWeekViewSet,
 )
-from core.views_pmc import (  # PR-128a / PR-145a
+from core.views_pmc import (  # PR-128a / PR-145a / PR-152
     AthletePMCView,
     AthleteHRProfileView,
     CoachAthletePMCView,
+    ComplianceView,
     PaceZonesView,
     TeamReadinessView,
+    TrainingVolumeView,
+    WellnessHistoryView,
 )
 from core.views_athlete import (  # PR-139 / PR-141
     AthleteTodayView,
@@ -208,6 +211,11 @@ urlpatterns = [
     path('athlete/pace-zones/', PaceZonesView.as_view(), name='athlete-pace-zones'),
     path('coach/athletes/<int:membership_id>/pmc/', CoachAthletePMCView.as_view(), name='coach-athlete-pmc'),
     path('coach/team-readiness/', TeamReadinessView.as_view(), name='coach-team-readiness'),
+
+    # PR-152: Athlete detail views — training volume, wellness, compliance
+    path('coach/athletes/<int:membership_id>/training-volume/', TrainingVolumeView.as_view(), name='coach-athlete-training-volume'),
+    path('coach/athletes/<int:membership_id>/wellness/', WellnessHistoryView.as_view(), name='coach-athlete-wellness'),
+    path('coach/athletes/<int:membership_id>/compliance/', ComplianceView.as_view(), name='coach-athlete-compliance'),
 
     # PR-141: Athlete device status + preference + notifications
     path('athlete/device-status/', AthleteDeviceStatusView.as_view(), name='athlete-device-status'),

@@ -133,12 +133,12 @@ const AthleteProgress = () => {
           <>
             {/* ARS CARDS */}
             <ARSCard
-              ars={pmcData.ars ?? 0}
-              tsb_zone={pmcData.tsb_zone ?? ''}
-              ars_label={pmcData.ars_label ?? ''}
-              ctl={pmcData.ctl ?? 0}
-              atl={pmcData.atl ?? 0}
-              tsb={pmcData.tsb ?? 0}
+              ars={pmcData.current?.ars ?? 0}
+              tsb_zone={pmcData.current?.tsb_zone ?? ''}
+              ars_label={pmcData.current?.ars_label ?? ''}
+              ctl={pmcData.current?.ctl ?? 0}
+              atl={pmcData.current?.atl ?? 0}
+              tsb={pmcData.current?.tsb ?? 0}
             />
 
             {/* PMC CHART */}
