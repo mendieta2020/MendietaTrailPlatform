@@ -525,6 +525,12 @@ def public_report_view(request, token: str):
     from django.conf import settings
     frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:5173")
 
+    projection = snapshot.get("projection", [])
+    projection_2w_ctl = projection[-1]["ctl"] if projection else None
+
+    # Inject derived field into snapshot for template access
+    snapshot["projection_2w_ctl"] = projection_2w_ctl
+
     context = {
         "report": report,
         "snapshot": snapshot,
@@ -532,7 +538,6 @@ def public_report_view(request, token: str):
         "og_description": og_description,
         "report_url": request.build_absolute_uri(),
         "volume_items": list(snapshot.get("volume_by_sport", {}).items()),
-        "projection": snapshot.get("projection", []),
         "pmc_days_json": snapshot.get("pmc_days", []),
         "frontend_url": frontend_url,
     }

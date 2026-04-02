@@ -212,11 +212,11 @@ const Athletes = () => {
           </TableHead>
           <TableBody>
             {filteredAthletes.map((athlete) => (
-              <TableRow 
-                key={athlete.id} 
+              <TableRow
+                key={athlete.id}
                 hover
-                onClick={() => navigate(`/athletes/${athlete.id}`)} // <--- AQUÍ ESTÁ LA MAGIA DEL CLIC
-                sx={{ cursor: 'pointer' }} // <--- Cambia el cursor a manita
+                onClick={() => athlete.membership_id && navigate(`/coach/athletes/${athlete.membership_id}/pmc`)}
+                sx={{ cursor: athlete.membership_id ? 'pointer' : 'default' }}
               >
                 <TableCell>
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -322,10 +322,13 @@ const Athletes = () => {
                   )}
                 </TableCell>
                 <TableCell align="right">
-                  <IconButton size="small" onClick={(e) => { e.stopPropagation(); /* Evita navegar al editar */ }}>
+                  <IconButton size="small" onClick={(e) => { e.stopPropagation(); }}>
                     <Edit fontSize="small" />
                   </IconButton>
-                  <IconButton size="small">
+                  <IconButton
+                    size="small"
+                    onClick={(e) => { e.stopPropagation(); athlete.membership_id && navigate(`/coach/athletes/${athlete.membership_id}/pmc`); }}
+                  >
                     <NavigateNext />
                   </IconButton>
                 </TableCell>

@@ -131,6 +131,17 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - No migrations required (all computed on-the-fly)
 - Risk: MEDIUM — RESOLVED
 
+### PR-155 — Limpieza del Edificio: Consolidar Sidebar + Eliminar Duplicación ✅ 2026-04-02
+- Dashboard.jsx: removed "Alumnos Activos" + "Ingresos (Total)" KPI cards + PaymentsWidget; removed empty Compliance Semanal + AlertsWidget; now has ONLY 2 KPI cards + Semaphore + Attention Table + PMC Chart
+- CoachDashboard.jsx: removed PmcSection entirely (PMC, KpiCards, recharts dependency); page is now org info + briefing + roster
+- App.jsx: /athletes/:id route now redirects to /coach/athletes/:id/pmc via AthleteDetailRedirect
+- Athletes.jsx: row click + NavigateNext button now navigate to /coach/athletes/:membership_id/pmc
+- Layout.jsx: sidebar reordered into 3 labeled sections — DIARIO (Inicio/Calendario/Alumnos/Analytics), HERRAMIENTAS (Librería/Plantilla/Grupos), CONFIGURACIÓN (Finanzas/Conexiones/Mi Organización)
+- public_report.html: projection simplified from 14-card grid to 1 line of text with projection_2w_ctl
+- views_reports.py: projection_2w_ctl computed from last item in projection list, injected into snapshot before render
+- FRONTEND_URL already existed in settings.py (confirmed); "Abrir Quantoryn" button already fixed in PR-154 hotfix
+- Risk: LOW (frontend only, no backend models, no migrations)
+
 ### PR-154 — Reporte Automático Compartible (WhatsApp + Email) ✅ 2026-04-02
 - AthleteReport model: token (UUID hex, 64 chars), org FK, athlete/coach user FK, membership FK, snapshot JSON, expires_at (7 days TTL), view_count tracking
 - Migration: 0106_pr154_athletereport.py
@@ -150,8 +161,8 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - PR-153 — Pre-Expiry Notification (3 days before MP renewal, uses InternalMessage)
 
 ### Before Mes 2 (10 external coaches)
-- PR-155 (next) — Training Week macro periodization (model merged, API endpoint pending)
-- PR-156 — PMC Frontend chart (AthleteProgress reads DailyLoad)
+- PR-155 ✅ — Building cleanup (sidebar consolidation, duplicate removal) — DONE
+- PR-156 (next) — Diferenciación vista coach vs atleta (roles)
 
 ### Before Mes 3 (general market launch)
 - PR-157 — Videos en ejercicios de fuerza

@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { GoogleOAuthProvider } from '@react-oauth/google';
@@ -38,6 +38,12 @@ import CoachAnalytics from './pages/CoachAnalytics';
 import CoachAthletePMC from './pages/CoachAthletePMC';
 import Plantilla from './pages/Plantilla';
 
+
+// --- ATHLETE DETAIL REDIRECT: /athletes/:id → /coach/athletes/:id/pmc ---
+const AthleteDetailRedirect = () => {
+  const { id } = useParams();
+  return <Navigate to={`/coach/athletes/${id}/pmc`} replace />;
+};
 
 // --- DASHBOARD ROUTER: renders athlete or coach dashboard based on role ---
 const DashboardRouter = () => {
@@ -200,12 +206,12 @@ function App() {
             }
           />
 
-          {/* 6. Perfil del Atleta (VISTA INDIVIDUAL - NUEVA) */}
+          {/* 6. Perfil del Atleta (VISTA INDIVIDUAL) → redirect to new PMC view */}
           <Route
             path="/athletes/:id"
             element={
               <ProtectedRoute>
-                <AthleteDetail />
+                <AthleteDetailRedirect />
               </ProtectedRoute>
             }
           />
