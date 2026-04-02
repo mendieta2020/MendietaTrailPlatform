@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import {
   ComposedChart,
   Line,
@@ -78,24 +78,35 @@ function rampRateSign(rate) {
   return `${rate}`
 }
 
-const CustomLegend = ({ rampRate7d }) => (
-  <div className="flex flex-wrap items-center justify-center gap-6 mt-3">
-    <div className="flex items-center gap-1.5">
-      <div className="w-4 h-0.5 bg-blue-500 rounded" />
-      <span className="text-xs text-slate-500">CTL — Forma</span>
-    </div>
-    <div className="flex items-center gap-1.5">
-      <div className="w-4 h-0.5 bg-orange-500 rounded" />
-      <span className="text-xs text-slate-500">ATL — Fatiga</span>
-    </div>
-    <div className="flex items-center gap-1.5">
-      <div className="w-4 h-1.5 rounded" style={{ background: '#10b981' }} />
-      <span className="text-xs text-slate-500">TSB — Balance</span>
-    </div>
-    <div className="flex items-center gap-1.5">
-      <div className="w-4 h-0.5 rounded" style={{ borderTop: '2px dashed #93c5fd' }} />
-      <span className="text-xs text-slate-500">Proyección CTL</span>
-    </div>
+// Legend items with their chart dataKey for hover highlighting
+const LEGEND_ITEMS = [
+  { key: 'ctl',          label: 'CTL — Forma',     color: '#3b82f6', dash: false },
+  { key: 'atl',          label: 'ATL — Fatiga',    color: '#f97316', dash: false },
+  { key: 'tsb',          label: 'TSB — Balance',   color: '#10b981', dash: false },
+  { key: 'ctlProjected', label: 'Proyección CTL',  color: '#93c5fd', dash: true  },
+]
+
+const CustomLegend = ({ rampRate7d, hoveredLine, onHover, onHoverEnd }) => (
+  <div className="flex flex-wrap items-center justify-center gap-5 mt-3">
+    {LEGEND_ITEMS.map(({ key, label, color, dash }) => (
+      <div
+        key={key}
+        className="flex items-center gap-1.5 cursor-pointer select-none"
+        onMouseEnter={() => onHover(key)}
+        onMouseLeave={onHoverEnd}
+        style={{ opacity: hoveredLine && hoveredLine !== key ? 0.4 : 1, transition: 'opacity 0.15s' }}
+      >
+        <div
+          className="w-4 h-0.5 rounded"
+          style={{
+            background: dash ? 'transparent' : color,
+            borderTop: dash ? `2px dashed ${color}` : 'none',
+            height: dash ? 0 : 2,
+          }}
+        />
+        <span className="text-xs text-slate-500">{label}</span>
+      </div>
+    ))}
     {rampRate7d !== null && rampRate7d !== undefined && (
       <MuiTooltip
         title="Velocidad de cambio de fitness. +5 a +8 por semana es crecimiento óptimo."
@@ -110,7 +121,25 @@ const CustomLegend = ({ rampRate7d }) => (
   </div>
 )
 
+// Label component for "Hoy" on the reference line
+const TodayLabel = ({ viewBox }) => {
+  if (!viewBox) return null
+  return (
+    <text
+      x={viewBox.x + 4}
+      y={viewBox.y + 14}
+      fill="#475569"
+      fontSize={10}
+      fontWeight={600}
+    >
+      Hoy
+    </text>
+  )
+}
+
 const PMCChart = ({ days = [], projection = [], rampRate7d = null, height = 320 }) => {
+  const [hoveredLine, setHoveredLine] = useState(null)
+
   // Merge historical + projection into one dataset
   const chartData = useMemo(() => {
     const historical = days.map(d => ({
@@ -134,6 +163,15 @@ const PMCChart = ({ days = [], projection = [], rampRate7d = null, height = 320 
   }, [days, projection])
 
   const projectionTodayStr = useMemo(() => new Date().toISOString().slice(0, 10), [])
+
+  // Per-line style based on hover state
+  function lineStyle(key) {
+    const dimmed = hoveredLine !== null && hoveredLine !== key
+    return {
+      strokeWidth: hoveredLine === key ? 3 : 2,
+      opacity: dimmed ? 0.25 : 1,
+    }
+  }
 
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -165,7 +203,16 @@ const PMCChart = ({ days = [], projection = [], rampRate7d = null, height = 320 
           width={35}
         />
         <Tooltip content={<CustomTooltip />} />
-        <Legend content={<CustomLegend rampRate7d={rampRate7d} />} />
+        <Legend
+          content={
+            <CustomLegend
+              rampRate7d={rampRate7d}
+              hoveredLine={hoveredLine}
+              onHover={setHoveredLine}
+              onHoverEnd={() => setHoveredLine(null)}
+            />
+          }
+        />
 
         {/* TSB positive area — green */}
         <Area
@@ -174,7 +221,7 @@ const PMCChart = ({ days = [], projection = [], rampRate7d = null, height = 320 
           dataKey="tsbPos"
           stroke="none"
           fill="#10b981"
-          fillOpacity={0.2}
+          fillOpacity={hoveredLine === 'tsb' ? 0.35 : hoveredLine ? 0.08 : 0.2}
           legendType="none"
           name=""
           tooltipType="none"
@@ -187,23 +234,32 @@ const PMCChart = ({ days = [], projection = [], rampRate7d = null, height = 320 
           dataKey="tsbNeg"
           stroke="none"
           fill="#ef4444"
-          fillOpacity={0.2}
+          fillOpacity={hoveredLine === 'tsb' ? 0.35 : hoveredLine ? 0.08 : 0.2}
           legendType="none"
           name=""
           tooltipType="none"
           isAnimationActive={false}
         />
 
+        {/* Zero reference line */}
         <ReferenceLine yAxisId="right" y={0} stroke="#cbd5e1" strokeDasharray="4 4" />
 
-        {/* Today marker separating historical from projected */}
+        {/* "Zona de fatiga" label in the red negative area */}
+        <ReferenceLine
+          yAxisId="right"
+          y={-20}
+          stroke="transparent"
+          label={{ value: 'Zona de fatiga', position: 'insideBottomRight', fill: '#ef4444', fillOpacity: 0.45, fontSize: 10 }}
+        />
+
+        {/* Today marker — visible divider between history and projection */}
         {projection.length > 0 && (
           <ReferenceLine
             yAxisId="left"
             x={projectionTodayStr}
-            stroke="#94a3b8"
-            strokeDasharray="6 3"
-            strokeWidth={1}
+            stroke="#475569"
+            strokeWidth={2}
+            label={<TodayLabel />}
           />
         )}
 
@@ -212,7 +268,8 @@ const PMCChart = ({ days = [], projection = [], rampRate7d = null, height = 320 
           type="monotone"
           dataKey="ctl"
           stroke="#3b82f6"
-          strokeWidth={2}
+          strokeWidth={lineStyle('ctl').strokeWidth}
+          opacity={lineStyle('ctl').opacity}
           dot={false}
           name="CTL (Forma)"
           connectNulls={false}
@@ -223,7 +280,8 @@ const PMCChart = ({ days = [], projection = [], rampRate7d = null, height = 320 
           type="monotone"
           dataKey="ctlProjected"
           stroke="#93c5fd"
-          strokeWidth={2}
+          strokeWidth={lineStyle('ctlProjected').strokeWidth + 0.5}
+          opacity={lineStyle('ctlProjected').opacity}
           strokeDasharray="5 5"
           dot={false}
           name="Proyección CTL"
@@ -236,7 +294,8 @@ const PMCChart = ({ days = [], projection = [], rampRate7d = null, height = 320 
           type="monotone"
           dataKey="atl"
           stroke="#f97316"
-          strokeWidth={2}
+          strokeWidth={lineStyle('atl').strokeWidth}
+          opacity={lineStyle('atl').opacity}
           dot={false}
           name="ATL (Fatiga)"
           connectNulls={false}
@@ -246,7 +305,8 @@ const PMCChart = ({ days = [], projection = [], rampRate7d = null, height = 320 
           type="monotone"
           dataKey="tsb"
           stroke="#10b981"
-          strokeWidth={2}
+          strokeWidth={lineStyle('tsb').strokeWidth}
+          opacity={lineStyle('tsb').opacity}
           dot={false}
           name="TSB (Balance)"
           connectNulls={false}

@@ -887,6 +887,8 @@ class TrainingVolumeView(APIView):
             "count_sessions": count_sessions,
             "planned_total": None,
             "total_elevation_gain_m": round(sum(b["elevation_gain_m"] for b in buckets), 1),
+            # calories_kcal is not yet stored on CompletedActivity — placeholder for future
+            "total_calories_kcal": None,
         }
         if is_run_sport:
             # Full-period GAP from totals across all activities
