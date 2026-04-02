@@ -19,11 +19,14 @@ users, ?org_id=<pk> is required to avoid non-deterministic selection (PR-149).
 Law 6: no PII logged (user IDs only, no names/emails).
 """
 import logging
+import math as _math
 from datetime import timedelta
 
 from django.db.models import Avg, Count, FloatField, Q, Sum
 from django.db.models.functions import TruncMonth, TruncWeek
 from django.utils import timezone
+
+from core.services_gap import compute_gap, format_pace as _fmt_gap_pace
 
 from rest_framework import serializers, status
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
@@ -147,6 +150,8 @@ def _build_pmc_payload(daily_loads_qs, days: int) -> dict:
     """
     Build the PMC response dict from a DailyLoad queryset ordered by date.
     Computes a 'current' summary block from the most recent record.
+
+    PR-153: adds ramp_rate_7d, ramp_rate_28d, and 14-day CTL projection.
     """
     rows = list(daily_loads_qs.order_by("date").values(
         "date", "tss", "ctl", "atl", "tsb", "ars"
@@ -154,20 +159,45 @@ def _build_pmc_payload(daily_loads_qs, days: int) -> dict:
 
     if rows:
         latest = rows[-1]
+        latest_date = latest["date"]
+        latest_ctl = latest["ctl"]
         zone = _tsb_zone(latest["tsb"])
+
+        # Ramp rate: CTL change over 7d and 28d
+        ctl_by_date = {r["date"]: r["ctl"] for r in rows}
+        ctl_7d_ago = ctl_by_date.get(latest_date - timedelta(days=7), 0.0)
+        ctl_28d_ago = ctl_by_date.get(latest_date - timedelta(days=28), 0.0)
+        ramp_rate_7d = round(latest_ctl - ctl_7d_ago, 1)
+        ramp_rate_28d = round((latest_ctl - ctl_28d_ago) / 4, 1)
+
         current = {
-            "ctl": latest["ctl"],
+            "ctl": latest_ctl,
             "atl": latest["atl"],
             "tsb": latest["tsb"],
             "ars": latest["ars"],
             "ars_label": _TSB_ZONE_LABELS.get(zone, zone),
             "tsb_zone": zone,
+            "ramp_rate_7d": ramp_rate_7d,
+            "ramp_rate_28d": ramp_rate_28d,
         }
+
+        # CTL projection: 14 days forward using current 7d ramp rate
+        daily_ramp = ramp_rate_7d / 7.0
+        projected_ctl = latest_ctl
+        projection = []
+        for i in range(1, 15):
+            projected_ctl = projected_ctl + daily_ramp
+            projection.append({
+                "date": (latest_date + timedelta(days=i)).isoformat(),
+                "ctl": round(projected_ctl, 1),
+            })
     else:
         current = {
             "ctl": 0.0, "atl": 0.0, "tsb": 0.0,
             "ars": 50, "ars_label": "Sin datos", "tsb_zone": "optimal",
+            "ramp_rate_7d": 0.0, "ramp_rate_28d": 0.0,
         }
+        projection = []
 
     serialized_days = [
         {
@@ -181,7 +211,12 @@ def _build_pmc_payload(daily_loads_qs, days: int) -> dict:
         for r in rows
     ]
 
-    return {"current": current, "days": serialized_days, "period_days": days}
+    return {
+        "current": current,
+        "days": serialized_days,
+        "period_days": days,
+        "projection": projection,
+    }
 
 
 def _validate_days(request) -> int:
@@ -479,6 +514,42 @@ class TeamReadinessView(APIView):
 
         load_by_user = {dl.athlete_id: dl for dl in daily_loads}
 
+        # Ramp rate: fetch 7-day-ago DailyLoad for all athletes
+        seven_days_ago = today - timedelta(days=7)
+        load_7d_ago = {
+            dl.athlete_id: dl.ctl
+            for dl in DailyLoad.objects.filter(
+                organization=org,
+                athlete_id__in=athlete_user_ids,
+                date=seven_days_ago,
+            )
+        }
+
+        # GAP: last 7 days of run/trail activities per athlete
+        # Resolved via Alumno FK (legacy ingestion path used by TrainingVolumeView)
+        from core.models import Alumno as _Alumno
+        seven_ago_dt = today - timedelta(days=7)
+        run_sports = ["RUN", "TRAIL"]
+        gap_by_user: dict = {}
+        for m in athlete_memberships:
+            alumno = _Alumno.objects.filter(usuario_id=m.user_id).first()
+            if not alumno:
+                continue
+            agg = CompletedActivity.objects.filter(
+                organization=org,
+                alumno=alumno,
+                sport__in=run_sports,
+                start_time__date__gte=seven_ago_dt,
+                start_time__date__lte=today,
+            ).aggregate(
+                td=Sum("distance_m", output_field=FloatField()),
+                te=Sum("elevation_gain_m", output_field=FloatField()),
+                ts=Sum("duration_s", output_field=FloatField()),
+            )
+            gap = compute_gap(agg["td"] or 0, agg["te"] or 0, agg["ts"] or 0)
+            if gap is not None:
+                gap_by_user[m.user_id] = _fmt_gap_pace(gap)
+
         for membership in athlete_memberships:
             user_id = membership.user_id
             dl = load_by_user.get(user_id)
@@ -494,6 +565,9 @@ class TeamReadinessView(APIView):
                 atl = 0.0
                 ars = 50
 
+            ctl_7d_ago = load_7d_ago.get(user_id, 0.0)
+            ramp_rate_7d = round(ctl - ctl_7d_ago, 1)
+
             zone = _tsb_zone(tsb)
             if zone in summary:
                 summary[zone] += 1
@@ -506,6 +580,8 @@ class TeamReadinessView(APIView):
                 "tsb": tsb,
                 "ars": ars,
                 "tsb_zone": zone,
+                "ramp_rate_7d": ramp_rate_7d,
+                "avg_gap_formatted": gap_by_user.get(user_id, "—"),
             })
 
         logger.info(
@@ -736,6 +812,7 @@ class TrainingVolumeView(APIView):
 
         metric_field = _METRIC_FIELDS[metric]
         sport_list = _SPORT_FILTERS[sport]
+        is_run_sport = sport in ("run",)  # run includes TRAIL via _SPORT_FILTERS
 
         qs = CompletedActivity.objects.filter(
             organization=org,
@@ -746,10 +823,84 @@ class TrainingVolumeView(APIView):
         if sport_list:
             qs = qs.filter(sport__in=sport_list)
 
-        buckets = _period_buckets_from_qs(qs, "start_time", metric_field, precision)
+        # Enhanced aggregation: include elevation + distance + duration for GAP
+        trunc_fn = TruncWeek if precision == "weekly" else TruncMonth
+        raw_rows = (
+            qs
+            .annotate(period=trunc_fn("start_time"))
+            .values("period")
+            .annotate(
+                value=Sum(metric_field, output_field=FloatField()),
+                sessions=Count("id"),
+                total_distance_m=Sum("distance_m", output_field=FloatField()),
+                total_elevation_gain_m=Sum("elevation_gain_m", output_field=FloatField()),
+                total_duration_s=Sum("duration_s", output_field=FloatField()),
+            )
+            .order_by("period")
+        )
+
+        buckets = []
+        for row in raw_rows:
+            period_start = row["period"]
+            if hasattr(period_start, "date"):
+                period_start = period_start.date()
+            if precision == "weekly":
+                period_end = period_start + timedelta(days=6)
+            else:
+                if period_start.month == 12:
+                    period_end = period_start.replace(day=31)
+                else:
+                    period_end = (
+                        period_start.replace(month=period_start.month + 1, day=1)
+                        - timedelta(days=1)
+                    )
+
+            elev_gain = float(row["total_elevation_gain_m"] or 0)
+            dist_m = float(row["total_distance_m"] or 0)
+            dur_s = float(row["total_duration_s"] or 0)
+
+            bucket = {
+                "period_start": period_start.isoformat(),
+                "period_end": period_end.isoformat(),
+                "value": round(float(row["value"] or 0), 2),
+                "sessions": row["sessions"],
+                "elevation_gain_m": round(elev_gain, 1),
+            }
+
+            # GAP: computed on-the-fly for run/trail
+            if is_run_sport and dist_m > 0 and dur_s > 0:
+                gap = compute_gap(dist_m, elev_gain, dur_s)
+                if gap is not None:
+                    bucket["avg_gap_s_km"] = gap
+                    bucket["avg_gap_formatted"] = _fmt_gap_pace(gap)
+
+            buckets.append(bucket)
+
         total = sum(b["value"] for b in buckets)
         count_sessions = sum(b["sessions"] for b in buckets)
         avg = round(total / len(buckets), 2) if buckets else 0
+
+        # Summary-level GAP: aggregate across all buckets
+        summary = {
+            "total": total,
+            "average_per_period": avg,
+            "count_sessions": count_sessions,
+            "planned_total": None,
+            "total_elevation_gain_m": round(sum(b["elevation_gain_m"] for b in buckets), 1),
+        }
+        if is_run_sport:
+            # Full-period GAP from totals across all activities
+            agg = qs.aggregate(
+                td=Sum("distance_m", output_field=FloatField()),
+                te=Sum("elevation_gain_m", output_field=FloatField()),
+                ts=Sum("duration_s", output_field=FloatField()),
+            )
+            overall_gap = compute_gap(
+                agg["td"] or 0, agg["te"] or 0, agg["ts"] or 0
+            )
+            if overall_gap is not None:
+                summary["avg_gap_s_km"] = overall_gap
+                summary["avg_gap_formatted"] = _fmt_gap_pace(overall_gap)
 
         logger.info(
             "training_volume_view.served",
@@ -766,12 +917,7 @@ class TrainingVolumeView(APIView):
             "metric": metric,
             "sport": sport,
             "precision": precision,
-            "summary": {
-                "total": total,
-                "average_per_period": avg,
-                "count_sessions": count_sessions,
-                "planned_total": None,
-            },
+            "summary": summary,
             "buckets": buckets,
         })
 

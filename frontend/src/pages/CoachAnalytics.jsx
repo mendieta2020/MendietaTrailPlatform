@@ -40,6 +40,20 @@ function tsbSign(val) {
   return val >= 0 ? `+${Math.round(val)}` : `${Math.round(val)}`
 }
 
+function rampBadgeClass(rate) {
+  if (rate === null || rate === undefined) return 'bg-slate-100 text-slate-500'
+  if (rate > 10) return 'bg-red-100 text-red-700'
+  if (rate > 8) return 'bg-amber-100 text-amber-700'
+  if (rate >= 3) return 'bg-green-100 text-green-700'
+  if (rate >= 0) return 'bg-slate-100 text-slate-600'
+  return 'bg-blue-100 text-blue-700'
+}
+
+function rampSign(rate) {
+  if (rate === null || rate === undefined) return '—'
+  return rate >= 0 ? `+${rate}` : `${rate}`
+}
+
 const MiniSparkline = ({ data = [], zone }) => {
   const color = {
     fresh: '#64748b',
@@ -200,7 +214,7 @@ const CoachAnalytics = () => {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-slate-100">
-                        {['ATLETA', 'CTL', 'ATL', 'TSB', 'ESTADO', 'TENDENCIA', ''].map((h, i) => (
+                        {['ATLETA', 'CTL', 'ATL', 'TSB', 'ESTADO', 'GAP', 'RAMP 7D', 'TENDENCIA', ''].map((h, i) => (
                           <th
                             key={i}
                             className="text-xs uppercase tracking-wide text-slate-500 px-6 py-3 text-left font-medium"
@@ -227,6 +241,18 @@ const CoachAnalytics = () => {
                             <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${tsbBadgeClass(a.tsb_zone)}`}>
                               {tsbZoneLabel(a.tsb_zone)}
                             </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-600 font-mono">
+                            {a.avg_gap_formatted ?? '—'}
+                          </td>
+                          <td className="px-6 py-4">
+                            {a.ramp_rate_7d !== undefined ? (
+                              <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${rampBadgeClass(a.ramp_rate_7d)}`}>
+                                {rampSign(a.ramp_rate_7d)}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
                           </td>
                           <td className="px-6 py-4">
                             <MiniSparkline data={a.trend_14d ?? []} zone={a.tsb_zone} />

@@ -116,6 +116,21 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - Backend tenancy: all 3 new endpoints use _resolve_athlete_membership (fail-closed, same pattern as CoachAthletePMCView)
 - Risk: MEDIUM — RESOLVED
 
+### PR-153 — GAP + Ramp Rate + CTL Projection + Volume Enhancements ✅ 2026-04-02
+- GAP service: core/services_gap.py — simplified Minetti model (each 1% grade ≈ +10% metabolic cost)
+- Ramp Rate (7d + 28d) computed from DailyLoad; added to PMC endpoint current object
+- CTL Projection: 14 days forward using current 7d ramp rate; appended as projection[] to PMC response
+- PMCChart.jsx: dashed light-blue projection line (ctlProjected field), vertical "today" marker, ramp rate text in legend with color coding (green/amber/red/blue)
+- TrainingVolumeView: enhanced aggregation — elevation_gain_m per bucket for all sports; avg_gap_s_km + avg_gap_formatted for run/trail sport
+- VolumeBarChart.jsx: GAP summary KPI + D+ total above chart; D+ and GAP in per-bucket tooltip
+- CoachAnalytics.jsx: 2 new columns — GAP (avg last 7d run/trail, formatted) + Ramp Rate (colored badge)
+- vol-hours filter renamed → "Volumen (Horas + Calorías)"
+- TeamReadinessView: now returns avg_gap_formatted + ramp_rate_7d per athlete
+- simulate_pr153_data management command: cycling activities (3x/wk Atleta Test, 2x/wk Carlos Test) + wellness check-ins, idempotent
+- 11 backend tests pass (unit GAP + integration PMC ramp/projection + volume elevation/GAP)
+- No migrations required (all computed on-the-fly)
+- Risk: MEDIUM — RESOLVED
+
 ### Mes 1 Gate (onboarding 100 athletes)
 - PR-152 — PWA + Push Notifications (service worker, manifest, installability)
 - PR-153 — Pre-Expiry Notification (3 days before MP renewal, uses InternalMessage)

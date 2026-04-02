@@ -38,7 +38,7 @@ const METRIC_OPTIONS = [
   { value: 'compliance', label: 'Compliance' },
   { value: 'wellness', label: 'Bienestar' },
   { value: 'vol-run',  label: 'Volumen Trail/Running' },
-  { value: 'vol-hours', label: 'Volumen (Horas)' },
+  { value: 'vol-hours', label: 'Volumen (Horas + Calorías)' },
   { value: 'vol-cycling', label: 'Volumen Ciclismo' },
   { value: 'effort',   label: 'Esfuerzo (Carga TSS)' },
   { value: 'strength', label: 'Fuerza (Carga)' },
@@ -358,7 +358,12 @@ const CoachAthletePMC = () => {
               {/* PMC */}
               {selectedMetric === 'pmc' && (
                 hasPMC
-                  ? <PMCChart days={pmcData.days} height={320} />
+                  ? <PMCChart
+                      days={pmcData.days}
+                      projection={pmcData.projection ?? []}
+                      rampRate7d={current.ramp_rate_7d ?? null}
+                      height={320}
+                    />
                   : <EmptyState message={`Sin actividades en los últimos ${selectedDays} días`} />
               )}
 
@@ -392,6 +397,8 @@ const CoachAthletePMC = () => {
                     : <VolumeBarChart
                         buckets={volumeState.data?.buckets ?? []}
                         metric={volumeState.data?.metric ?? 'distance'}
+                        sport={selectedMetric}
+                        summary={volumeState.data?.summary ?? null}
                       />
               )}
 

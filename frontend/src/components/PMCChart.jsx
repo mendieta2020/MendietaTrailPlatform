@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from 'recharts'
+import { Tooltip as MuiTooltip } from '@mui/material'
 
 const MONTHS_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
 const DAYS_ES = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado']
@@ -63,8 +64,22 @@ const CustomTooltip = ({ active, payload, label }) => {
   )
 }
 
-const CustomLegend = () => (
-  <div className="flex items-center justify-center gap-6 mt-3">
+function rampRateColor(rate) {
+  if (rate === null || rate === undefined) return 'text-slate-400'
+  if (rate > 10) return 'text-red-500'
+  if (rate > 8) return 'text-amber-500'
+  if (rate >= 3) return 'text-green-600'
+  if (rate >= 0) return 'text-slate-500'
+  return 'text-blue-500'
+}
+
+function rampRateSign(rate) {
+  if (rate > 0) return `+${rate}`
+  return `${rate}`
+}
+
+const CustomLegend = ({ rampRate7d }) => (
+  <div className="flex flex-wrap items-center justify-center gap-6 mt-3">
     <div className="flex items-center gap-1.5">
       <div className="w-4 h-0.5 bg-blue-500 rounded" />
       <span className="text-xs text-slate-500">CTL — Forma</span>
@@ -74,21 +89,51 @@ const CustomLegend = () => (
       <span className="text-xs text-slate-500">ATL — Fatiga</span>
     </div>
     <div className="flex items-center gap-1.5">
-      <div className="w-4 h-1.5 rounded" style={{ background: 'linear-gradient(to right, #10b981, #10b981)' }} />
+      <div className="w-4 h-1.5 rounded" style={{ background: '#10b981' }} />
       <span className="text-xs text-slate-500">TSB — Balance</span>
     </div>
+    <div className="flex items-center gap-1.5">
+      <div className="w-4 h-0.5 rounded" style={{ borderTop: '2px dashed #93c5fd' }} />
+      <span className="text-xs text-slate-500">Proyección CTL</span>
+    </div>
+    {rampRate7d !== null && rampRate7d !== undefined && (
+      <MuiTooltip
+        title="Velocidad de cambio de fitness. +5 a +8 por semana es crecimiento óptimo."
+        placement="top"
+        arrow
+      >
+        <span className={`text-xs font-semibold cursor-help ${rampRateColor(rampRate7d)}`}>
+          Ramp Rate: {rampRateSign(rampRate7d)} CTL/sem
+        </span>
+      </MuiTooltip>
+    )}
   </div>
 )
 
-const PMCChart = ({ days = [], height = 320 }) => {
-  const chartData = useMemo(() =>
-    days.map(d => ({
+const PMCChart = ({ days = [], projection = [], rampRate7d = null, height = 320 }) => {
+  // Merge historical + projection into one dataset
+  const chartData = useMemo(() => {
+    const historical = days.map(d => ({
       ...d,
       tsbPos: d.tsb > 0 ? d.tsb : 0,
       tsbNeg: d.tsb < 0 ? d.tsb : 0,
-    })),
-    [days]
-  )
+      ctlProjected: undefined,
+    }))
+    const projected = projection.map(p => ({
+      date: p.date,
+      tss: null,
+      ctl: null,
+      atl: null,
+      tsb: null,
+      ars: null,
+      tsbPos: 0,
+      tsbNeg: 0,
+      ctlProjected: p.ctl,
+    }))
+    return [...historical, ...projected]
+  }, [days, projection])
+
+  const projectionTodayStr = useMemo(() => new Date().toISOString().slice(0, 10), [])
 
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -120,7 +165,7 @@ const PMCChart = ({ days = [], height = 320 }) => {
           width={35}
         />
         <Tooltip content={<CustomTooltip />} />
-        <Legend content={<CustomLegend />} />
+        <Legend content={<CustomLegend rampRate7d={rampRate7d} />} />
 
         {/* TSB positive area — green */}
         <Area
@@ -151,6 +196,17 @@ const PMCChart = ({ days = [], height = 320 }) => {
 
         <ReferenceLine yAxisId="right" y={0} stroke="#cbd5e1" strokeDasharray="4 4" />
 
+        {/* Today marker separating historical from projected */}
+        {projection.length > 0 && (
+          <ReferenceLine
+            yAxisId="left"
+            x={projectionTodayStr}
+            stroke="#94a3b8"
+            strokeDasharray="6 3"
+            strokeWidth={1}
+          />
+        )}
+
         <Line
           yAxisId="left"
           type="monotone"
@@ -159,6 +215,21 @@ const PMCChart = ({ days = [], height = 320 }) => {
           strokeWidth={2}
           dot={false}
           name="CTL (Forma)"
+          connectNulls={false}
+        />
+        {/* CTL projection — dashed, lighter blue */}
+        <Line
+          yAxisId="left"
+          type="monotone"
+          dataKey="ctlProjected"
+          stroke="#93c5fd"
+          strokeWidth={2}
+          strokeDasharray="5 5"
+          dot={false}
+          name="Proyección CTL"
+          legendType="none"
+          connectNulls={false}
+          isAnimationActive={false}
         />
         <Line
           yAxisId="left"
@@ -168,6 +239,7 @@ const PMCChart = ({ days = [], height = 320 }) => {
           strokeWidth={2}
           dot={false}
           name="ATL (Fatiga)"
+          connectNulls={false}
         />
         <Line
           yAxisId="right"
@@ -177,6 +249,7 @@ const PMCChart = ({ days = [], height = 320 }) => {
           strokeWidth={2}
           dot={false}
           name="TSB (Balance)"
+          connectNulls={false}
         />
       </ComposedChart>
     </ResponsiveContainer>
