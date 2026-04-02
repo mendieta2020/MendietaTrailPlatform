@@ -94,10 +94,18 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - CLAUDE.md synced with current PR queue + PASO 0 protocol
 - Risk: HIGH (data integrity, idempotency) — RESOLVED
 
-### PR-151 — Dashboard Real
-- Connect Dashboard.jsx to existing PMC endpoint (CTL/ATL/TSB chart)
-- Replace fake fitness column in Athletes.jsx with real CTL from DailyLoad
-- Risk: LOW (frontend only, endpoints already exist)
+### PR-151 — Dashboard Nivel 1 ✅ 2026-04-02
+- Team semaphore (5 cards: Overreaching/Fatigued/Productive/Optimal/Fresh) from /api/coach/team-readiness/
+- ACWR per athlete (ATL/CTL): injury risk zones, attention table filtered to athletes needing action (ACWR>1.5, ACWR<0.8, overreaching/fatigued)
+- PMC representativo: highest-CTL athlete chart rendered via getCoachAthletePMC(), switches with period selector
+- Fitness Promedio (real avg CTL) and Riesgo Lesión (real ACWR>1.5 count) KPI cards
+- Athletes.jsx: fake CTL formula replaced with real CTL from fitnessMap; tsb_zone colored dot + ACWR tooltip per athlete
+- Compliance section: empty state placeholder (PR-152 will wire it)
+- Risk: LOW (frontend only, no backend changes)
+
+### PR-152 — Vista atleta enriquecida + Morning Readiness Score
+- Enhanced athlete detail page
+- Morning Readiness Score composite (wellness + daily load + HRV)
 
 ### Mes 1 Gate (onboarding 100 athletes)
 - PR-152 — PWA + Push Notifications (service worker, manifest, installability)
