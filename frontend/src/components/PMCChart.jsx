@@ -80,15 +80,15 @@ function rampRateSign(rate) {
 
 // Legend items with their chart dataKey for hover highlighting
 const LEGEND_ITEMS = [
-  { key: 'ctl',          label: 'CTL — Forma',     color: '#3b82f6', dash: false },
-  { key: 'atl',          label: 'ATL — Fatiga',    color: '#f97316', dash: false },
-  { key: 'tsb',          label: 'TSB — Balance',   color: '#10b981', dash: false },
-  { key: 'ctlProjected', label: 'Proyección CTL',  color: '#93c5fd', dash: true  },
+  { key: 'ctl',          label: 'CTL — Forma',     humanLabel: 'Fitness',   color: '#3b82f6', dash: false },
+  { key: 'atl',          label: 'ATL — Fatiga',    humanLabel: 'Fatiga',    color: '#f97316', dash: false },
+  { key: 'tsb',          label: 'TSB — Balance',   humanLabel: 'Forma',     color: '#10b981', dash: false },
+  { key: 'ctlProjected', label: 'Proyección CTL',  humanLabel: null,        color: '#93c5fd', dash: true  },
 ]
 
-const CustomLegend = ({ rampRate7d, hoveredLine, onHover, onHoverEnd }) => (
+const CustomLegend = ({ rampRate7d, hoveredLine, onHover, onHoverEnd, humanLabels }) => (
   <div className="flex flex-wrap items-center justify-center gap-5 mt-3">
-    {LEGEND_ITEMS.map(({ key, label, color, dash }) => (
+    {LEGEND_ITEMS.filter(({ humanLabel, dash }) => !humanLabels || humanLabel !== null || !dash).map(({ key, label, humanLabel, color, dash }) => (
       <div
         key={key}
         className="flex items-center gap-1.5 cursor-pointer select-none"
@@ -104,7 +104,7 @@ const CustomLegend = ({ rampRate7d, hoveredLine, onHover, onHoverEnd }) => (
             height: dash ? 0 : 2,
           }}
         />
-        <span className="text-xs text-slate-500">{label}</span>
+        <span className="text-xs text-slate-500">{humanLabels && humanLabel ? humanLabel : label}</span>
       </div>
     ))}
     {rampRate7d !== null && rampRate7d !== undefined && (
@@ -137,7 +137,7 @@ const TodayLabel = ({ viewBox }) => {
   )
 }
 
-const PMCChart = ({ days = [], projection = [], rampRate7d = null, height = 320 }) => {
+const PMCChart = ({ days = [], projection = [], rampRate7d = null, height = 320, humanLabels = false }) => {
   const [hoveredLine, setHoveredLine] = useState(null)
 
   // Merge historical + projection into one dataset
@@ -206,10 +206,11 @@ const PMCChart = ({ days = [], projection = [], rampRate7d = null, height = 320 
         <Legend
           content={
             <CustomLegend
-              rampRate7d={rampRate7d}
+              rampRate7d={humanLabels ? null : rampRate7d}
               hoveredLine={hoveredLine}
               onHover={setHoveredLine}
               onHoverEnd={() => setHoveredLine(null)}
+              humanLabels={humanLabels}
             />
           }
         />

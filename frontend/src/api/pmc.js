@@ -23,3 +23,13 @@ export const getAthleteWellness = (membershipId, days = 30) =>
 
 export const getAthleteCompliance = (membershipId, { days = 90, precision = 'weekly' } = {}) =>
   client.get(`/api/coach/athletes/${membershipId}/compliance/`, { params: { days, precision } })
+
+// PR-156: Athlete self-serve progress endpoints
+export const getAthleteGoals = () =>
+  client.get('/api/athlete/goals/')
+
+export const getAthleteWeeklySummary = () =>
+  client.get('/api/athlete/weekly-summary/')
+
+export const getAthleteWellnessToday = () =>
+  client.get('/api/athlete/wellness/today/')
