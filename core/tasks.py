@@ -1212,6 +1212,43 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
         defaults=defaults,
     )
 
+    # Dual-write: also persist as CompletedActivity so PMC, reconciliation,
+    # and plan_vs_actual can consume real data (Law 3 — Plan ≠ Real).
+    # Two PMC paths exist: recompute_pmc_from_activities (below, reads Actividad)
+    # and compute_pmc_for_activity (dispatched inside ingest_strava_activity for
+    # new rows, reads CompletedActivity). Both are idempotent — running both is safe.
+    try:
+        from integrations.strava.services_strava_ingest import ingest_strava_activity  # Law 4: lazy boundary import
+
+        _ingest_activity_data = {
+            "start_date_local": activity["start_date_local"],
+            "elapsed_time_s": activity.get("elapsed_time_s") or activity.get("moving_time_s") or 0,
+            "distance_m": float(activity.get("distance_m") or 0.0),
+            "type": activity.get("type") or activity.get("tipo_deporte") or "",
+            "elevation_m": activity.get("elevation_m"),
+            "calories_kcal": float(calories_kcal or 0.0) if calories_kcal else None,
+            "avg_hr": activity.get("avg_hr"),
+            "raw": activity.get("raw") or {},
+        }
+        ingest_strava_activity(
+            alumno_id=alumno.pk,
+            external_activity_id=str(source_object_id),
+            activity_data=_ingest_activity_data,
+        )
+    except Exception:
+        # Dual-write failure must NEVER break the Actividad pipeline (Law 5).
+        logger.warning(
+            "strava.dual_write.failed",
+            extra=safe_extra(
+                {
+                    "event_name": "strava.dual_write.failed",
+                    "alumno_id": alumno.pk,
+                    "source_object_id": str(source_object_id),
+                    "provider": "strava",
+                }
+            ),
+        )
+
     _log_strava_activity_upserted(
         alumno_id=alumno.id,
         source=source,

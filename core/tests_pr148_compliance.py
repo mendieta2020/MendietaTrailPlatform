@@ -394,12 +394,14 @@ def test_coach_briefing_endpoint():
         _assignment(org, a, workout_dur, date=YESTERDAY)
 
     # 1 athlete overloaded (compliance_color="blue"): train this week with huge actual
-    # The overloaded athlete is athlete[0] — also trained yesterday
-    # Use WEEK_START+2 to guarantee no collision with YESTERDAY on any day of the week
+    # The overloaded athlete is athlete[0] — also trained yesterday (day_order=1).
+    # Use day_order=2 to avoid the UniqueConstraint(athlete, scheduled_date, day_order)
+    # collision when WEEK_START+2 happens to equal YESTERDAY (e.g. on Thursdays).
     _assignment(
         org, athletes[0][1], workout_small,
         date=WEEK_START + datetime.timedelta(days=2),
         actual_duration_s=7200,  # 7200/60 = 120× → blue
+        day_order=2,
     )
 
     # 2 athletes inactive 4+ days: athletes[3] and [4] have no COMPLETED in last 4 days
