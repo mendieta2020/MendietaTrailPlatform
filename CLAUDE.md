@@ -28,8 +28,9 @@ PR queue:
 - PR-151 ✅ MERGED — Dashboard Nivel 1 (team semaphore + ACWR + real CTL in Athletes.jsx)
 - PR-152 ✅ MERGED — Vista atleta enriquecida: 7 KPI cards + Readiness Score + metric filters + tooltips
 - PR-153 ✅ MERGED — GAP + Ramp Rate + CTL Projection + Volume enhancements
-- PR-154 THIS PR — Reporte automático compartible (athlete report with WhatsApp sharing)
-- PR-155 NEXT — Training Week (macro periodization phases per athlete per week)
+- PR-154 ✅ MERGED — Reporte automático compartible (athlete report with WhatsApp sharing)
+- PR-155 THIS PR — Limpieza del edificio (consolidar sidebar, eliminar duplicación)
+- PR-156 NEXT — Diferenciación vista coach vs atleta (roles)
 
 ## PR Protocol (PASO 0)
 Before writing any code for a new PR:

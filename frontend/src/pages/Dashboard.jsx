@@ -6,18 +6,14 @@ import {
   TableCell, TableHead, TableRow, Chip, Skeleton, IconButton,
 } from '@mui/material';
 import {
-  PeopleAlt, AttachMoney, MonitorHeart, TrendingUp, CalendarMonth,
-  LocalHospital, OpenInNew, CheckCircle,
+  MonitorHeart, TrendingUp, LocalHospital, OpenInNew, CheckCircle,
 } from '@mui/icons-material';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, Line,
 } from 'recharts';
 import Layout from '../components/Layout';
-import PaymentsWidget from '../components/widgets/PaymentsWidget';
 import { useOrg } from '../context/OrgContext';
-import { listAthletes } from '../api/p1';
-import AlertsWidget from '../components/widgets/AlertsWidget';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { getTeamReadiness, getCoachAthletePMC } from '../api/pmc';
@@ -96,28 +92,19 @@ const Dashboard = () => {
   const [loading, setLoading]             = useState(true);
   const [error, setError]                 = useState('');
   const [periodo, setPeriodo]             = useState('THIS_MONTH');
-  const [kpiData, setKpiData]             = useState({ alumnos: 0, ingresos: 0 });
   const [teamReadiness, setTeamReadiness] = useState(null);
   const [repMembershipId, setRepMembershipId] = useState(null);
   const [repAthleteName, setRepAthleteName]   = useState('');
   const [repPmcData, setRepPmcData]       = useState([]);
   const [pmcLoading, setPmcLoading]       = useState(false);
-  const [pagosData]                       = useState([]);
 
-  // Load athletes count + team readiness in parallel
+  // Load team readiness
   useEffect(() => {
     if (!activeOrg) return;
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [resAthletes, resTeam] = await Promise.all([
-          listAthletes(activeOrg.org_id),
-          getTeamReadiness(),
-        ]);
-
-        const athletesPayload = resAthletes.data?.results ?? resAthletes.data ?? [];
-        setKpiData({ alumnos: Array.isArray(athletesPayload) ? athletesPayload.length : 0, ingresos: 0 });
-
+        const resTeam = await getTeamReadiness();
         const team = resTeam.data;
         setTeamReadiness(team);
 
@@ -214,13 +201,7 @@ const Dashboard = () => {
 
       {/* ROW 1 — KPI CARDS */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <StatCard title="Alumnos Activos" value={kpiData.alumnos} sub="+1 esta semana" color="#0EA5E9" icon={PeopleAlt} loading={loading} />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <StatCard title="Ingresos (Total)" value={`$${kpiData.ingresos.toLocaleString()}`} sub="Objetivo: $1M" color="#10B981" icon={AttachMoney} loading={loading} />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6 }}>
           <StatCard
             title="Fitness Promedio"
             value={loading ? '—' : (avgCtl !== null ? `${avgCtl} CTL` : '—')}
@@ -230,7 +211,7 @@ const Dashboard = () => {
             loading={loading}
           />
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6 }}>
           <StatCard
             title="Riesgo Lesión"
             value={loading ? '—' : highRiskCount}
@@ -326,9 +307,9 @@ const Dashboard = () => {
         )}
       </Paper>
 
-      {/* ROW 4 — PMC CHART + PAYMENTS */}
+      {/* ROW 4 — PMC CHART */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid size={{ xs: 12, md: 8 }}>
+        <Grid size={{ xs: 12 }}>
           <Paper sx={{ p: 3, borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.07)', border: '1px solid #E2E8F0', height: 420 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -385,26 +366,7 @@ const Dashboard = () => {
             </Box>
           </Paper>
         </Grid>
-        <Grid size={{ xs: 12, md: 4 }}>
-          <PaymentsWidget pagos={pagosData} />
-        </Grid>
       </Grid>
-
-      {/* ROW 5 — COMPLIANCE EMPTY STATE */}
-      <Paper sx={{ p: 3, borderRadius: '12px', mb: 4, boxShadow: '0 1px 3px rgba(0,0,0,0.07)', border: '1px solid #E2E8F0' }}>
-        <Typography variant="h6" sx={{ fontWeight: 600, color: '#0F172A', mb: 1 }}>Compliance Semanal</Typography>
-        <Divider sx={{ mb: 2 }} />
-        <Box sx={{ textAlign: 'center', py: 5 }}>
-          <CalendarMonth sx={{ fontSize: 44, color: '#CBD5E1', mb: 1.5 }} />
-          <Typography variant="body1" sx={{ fontWeight: 600, color: '#64748B' }}>Gráfico de compliance próximamente</Typography>
-          <Typography variant="body2" sx={{ color: '#94A3B8', mt: 0.5 }}>
-            Se activará cuando los atletas conecten sus dispositivos y completen entrenamientos planificados.
-          </Typography>
-        </Box>
-      </Paper>
-
-      {/* ROW 6 — ALERTS */}
-      <AlertsWidget pageSize={20} />
     </Layout>
   );
 };

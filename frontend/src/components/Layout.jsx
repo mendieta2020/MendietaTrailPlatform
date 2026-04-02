@@ -129,18 +129,33 @@ const Layout = ({ children }) => {
 
   const isAdminOrOwner = userRole === 'owner' || userRole === 'admin';
 
-  // DEFINICIÓN DEL MENÚ LATERAL
-  const menuItems = [
-    { text: 'Inicio', icon: <Dashboard />, path: '/dashboard' },
-    { text: 'Mi Organización', icon: <Business />, path: '/coach-dashboard' },
-    { text: 'Librería', icon: <LibraryBooksIcon />, path: '/library' },
-    { text: 'Calendario', icon: <CalendarMonth />, path: '/calendar' },
-    { text: 'Plantilla', icon: <GridView />, path: '/plantilla' },
-    { text: 'Grupos', icon: <Groups />, path: '/teams' },
-    { text: 'Alumnos', icon: <People />, path: '/athletes' },
-    { text: 'Analytics', icon: <BarChart2 size={20} />, path: '/coach/analytics' },
-    { text: 'Finanzas', icon: <Payment />, path: '/finance', adminOnly: true },
-    { text: 'Conexiones', icon: <LinkIcon />, path: '/connections' }, // <--- NUEVA OPCIÓN
+  // DEFINICIÓN DEL MENÚ LATERAL — agrupado por sección
+  const menuGroups = [
+    {
+      label: 'DIARIO',
+      items: [
+        { text: 'Inicio',      icon: <Dashboard />,            path: '/dashboard' },
+        { text: 'Calendario',  icon: <CalendarMonth />,         path: '/calendar' },
+        { text: 'Alumnos',     icon: <People />,                path: '/athletes' },
+        { text: 'Analytics',   icon: <BarChart2 size={20} />,   path: '/coach/analytics' },
+      ],
+    },
+    {
+      label: 'HERRAMIENTAS',
+      items: [
+        { text: 'Librería',  icon: <LibraryBooksIcon />, path: '/library' },
+        { text: 'Plantilla', icon: <GridView />,          path: '/plantilla' },
+        { text: 'Grupos',    icon: <Groups />,             path: '/teams' },
+      ],
+    },
+    {
+      label: 'CONFIGURACIÓN',
+      items: [
+        { text: 'Finanzas',         icon: <Payment />,   path: '/finance',        adminOnly: true },
+        { text: 'Conexiones',       icon: <LinkIcon />,  path: '/connections' },
+        { text: 'Mi Organización',  icon: <Business />,  path: '/coach-dashboard' },
+      ],
+    },
   ];
 
   const handleDrawerToggle = () => {
@@ -160,45 +175,59 @@ const Layout = ({ children }) => {
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
 
       {/* LISTA DE NAVEGACIÓN */}
-      <List sx={{ flexGrow: 1, px: 1 }}>
-        {menuItems.map((item) => {
-          const isLocked = item.adminOnly && !isAdminOrOwner;
-          return (
-            <ListItem key={item.text} disablePadding sx={{ mb: 1 }}>
-              <Tooltip
-                title={isLocked ? 'Solo para administradores de la organización' : ''}
-                placement="right"
-                arrow
-              >
-                <span style={{ width: '100%' }}>
-                  <ListItemButton
-                    onClick={() => !isLocked && navigate(item.path)}
-                    selected={!isLocked && location.pathname === item.path}
-                    disabled={isLocked}
-                    sx={{
-                      borderRadius: 2,
-                      '&.Mui-selected': {
-                        bgcolor: 'rgba(245, 124, 0, 0.15)',
-                        borderLeft: '4px solid #F57C00',
-                        color: '#F57C00'
-                      },
-                      '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
-                      '&.Mui-disabled': { opacity: 0.4 },
-                    }}
+      <List sx={{ flexGrow: 1, px: 1, pt: 1 }}>
+        {menuGroups.map((group, gi) => (
+          <React.Fragment key={group.label}>
+            {gi > 0 && <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)', my: 1 }} />}
+            <Typography
+              sx={{
+                px: 1.5, pt: gi === 0 ? 0 : 0.5, pb: 0.5,
+                fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.12em',
+                color: 'rgba(148,163,184,0.6)', textTransform: 'uppercase',
+              }}
+            >
+              {group.label}
+            </Typography>
+            {group.items.map((item) => {
+              const isLocked = item.adminOnly && !isAdminOrOwner;
+              return (
+                <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
+                  <Tooltip
+                    title={isLocked ? 'Solo para administradores de la organización' : ''}
+                    placement="right"
+                    arrow
                   >
-                    <ListItemIcon sx={{ minWidth: 40, color: (!isLocked && location.pathname === item.path) ? '#F57C00' : '#94A3B8' }}>
-                      {item.icon}
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={item.text}
-                      primaryTypographyProps={{ fontSize: '0.9rem', fontWeight: (!isLocked && location.pathname === item.path) ? 600 : 400 }}
-                    />
-                  </ListItemButton>
-                </span>
-              </Tooltip>
-            </ListItem>
-          );
-        })}
+                    <span style={{ width: '100%' }}>
+                      <ListItemButton
+                        onClick={() => !isLocked && navigate(item.path)}
+                        selected={!isLocked && location.pathname === item.path}
+                        disabled={isLocked}
+                        sx={{
+                          borderRadius: 2,
+                          '&.Mui-selected': {
+                            bgcolor: 'rgba(245, 124, 0, 0.15)',
+                            borderLeft: '4px solid #F57C00',
+                            color: '#F57C00',
+                          },
+                          '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
+                          '&.Mui-disabled': { opacity: 0.4 },
+                        }}
+                      >
+                        <ListItemIcon sx={{ minWidth: 40, color: (!isLocked && location.pathname === item.path) ? '#F57C00' : '#94A3B8' }}>
+                          {item.icon}
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={item.text}
+                          primaryTypographyProps={{ fontSize: '0.9rem', fontWeight: (!isLocked && location.pathname === item.path) ? 600 : 400 }}
+                        />
+                      </ListItemButton>
+                    </span>
+                  </Tooltip>
+                </ListItem>
+              );
+            })}
+          </React.Fragment>
+        ))}
       </List>
 
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />

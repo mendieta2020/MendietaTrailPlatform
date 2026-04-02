@@ -86,10 +86,7 @@
     .stat-label { font-size: 11px; color: #64748b; margin-top: 4px; }
 
     /* Projection */
-    .projection-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
-    .proj-item { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 4px; text-align: center; }
-    .proj-date { font-size: 9px; color: #94a3b8; }
-    .proj-ctl  { font-size: 14px; font-weight: 700; color: #3b82f6; margin-top: 2px; }
+    .projection-line { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 18px; font-size: 14px; color: #334155; line-height: 1.5; }
 
     /* CTA */
     .cta-box { text-align: center; margin-top: 40px; padding: 28px; background: #fff; border-radius: 12px; border: 1px solid #e2e8f0; }
@@ -297,15 +294,10 @@
   {% endif %}
 
   <!-- PROJECTION -->
-  {% if projection %}
-  <div class="section-title">Proyección CTL próximos 14 días</div>
-  <div class="projection-grid">
-    {% for p in projection %}
-    <div class="proj-item">
-      <div class="proj-date">{{ p.date|slice:"5:" }}</div>
-      <div class="proj-ctl">{{ p.ctl|floatformat:0 }}</div>
-    </div>
-    {% endfor %}
+  {% if snapshot.projection_2w_ctl %}
+  <div class="section-title">Proyección</div>
+  <div class="projection-line">
+    📈 Si mantenés el ritmo actual, en 2 semanas tu fitness llega a <strong>~{{ snapshot.projection_2w_ctl|floatformat:0 }} CTL</strong>.
   </div>
   {% endif %}
 
