@@ -29,6 +29,7 @@ from analytics.health_views import (
     healthz_redis,
     healthz_strava,
 )
+from core.views_reports import public_report_view  # PR-154
 
 # Configuración de la vista de documentación API
 schema_view = get_schema_view(
@@ -46,6 +47,9 @@ schema_view = get_schema_view(
 urlpatterns = [
     # 0. Landing institucional (sin auth, sin datos privados) — PR16
     path('', landing, name='landing'),
+
+    # PR-154: Public shareable athlete report (no auth required, token-protected)
+    path('report/<str:token>/', public_report_view, name='public_report'),
 
     # 1. Panel de Administración de Django
     path('admin/', admin.site.urls),

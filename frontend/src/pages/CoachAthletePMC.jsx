@@ -6,6 +6,7 @@ import Layout from '../components/Layout'
 import PMCChart from '../components/PMCChart'
 import { VolumeBarChart, ComplianceBarChart } from '../components/VolumeChart'
 import WellnessHeatmap from '../components/WellnessHeatmap'
+import ShareReportModal from '../components/ShareReportModal'
 import {
   getCoachAthletePMC,
   getTrainingVolume,
@@ -102,6 +103,7 @@ const CoachAthletePMC = () => {
   const [volumeState,    dispatchVolume]    = useReducer(fetchReducer, IDLE)
   const [wellnessState,  dispatchWellness]  = useReducer(fetchReducer, IDLE)
   const [complianceState,dispatchCompliance]= useReducer(fetchReducer, IDLE)
+  const [shareOpen,      setShareOpen]      = useState(false)
 
   // PMC always loads on mount + when days change
   useEffect(() => {
@@ -187,7 +189,7 @@ const CoachAthletePMC = () => {
             <h1 className="text-2xl font-bold text-slate-900">{athleteName}</h1>
             <p className="text-sm text-slate-500">Vista de atleta — análisis completo</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {RANGE_OPTIONS.map(({ label, days }) => (
               <button
                 key={label}
@@ -201,6 +203,12 @@ const CoachAthletePMC = () => {
                 {label}
               </button>
             ))}
+            <button
+              onClick={() => setShareOpen(true)}
+              className="px-3 py-1.5 text-sm rounded-lg font-medium bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
+            >
+              Compartir Reporte
+            </button>
           </div>
         </div>
 
@@ -408,6 +416,15 @@ const CoachAthletePMC = () => {
         )}
 
       </div>
+
+      <ShareReportModal
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        membershipId={membershipId}
+        athleteName={athleteName}
+        currentDays={selectedDays}
+        previewKPIs={{ readiness_score: readinessScore, ctl, acwr }}
+      />
     </Layout>
   )
 }

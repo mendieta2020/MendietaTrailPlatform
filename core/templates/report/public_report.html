@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reporte de Entrenamiento — {{ snapshot.athlete_name }}</title>
+
+  <!-- Open Graph meta tags for WhatsApp/social preview -->
+  <meta property="og:title" content="Reporte de Entrenamiento — {{ snapshot.athlete_name }}" />
+  <meta property="og:description" content="{{ og_description }}" />
+  <meta property="og:url" content="{{ report_url }}" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Quantoryn" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1e293b; }
+    .container { max-width: 800px; margin: 0 auto; padding: 24px 16px 48px; }
+
+    /* Header */
+    .header { text-align: center; padding: 32px 0 24px; border-bottom: 2px solid #e2e8f0; margin-bottom: 28px; }
+    .brand { font-size: 13px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #f59e0b; margin-bottom: 8px; }
+    .athlete-name { font-size: 28px; font-weight: 800; color: #0f172a; }
+    .meta { font-size: 13px; color: #64748b; margin-top: 6px; }
+    .expiry { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+
+    /* Section titles */
+    .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; margin-bottom: 14px; margin-top: 32px; }
+
+    /* KPI Grid */
+    .kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    @media (min-width: 480px) { .kpi-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (min-width: 640px) { .kpi-grid { grid-template-columns: repeat(4, 1fr); } }
+    .kpi-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; border-left: 4px solid #e2e8f0; }
+    .kpi-card.readiness { border-left-color: {% if kpis.readiness_score >= 75 %}#22c55e{% elif kpis.readiness_score >= 50 %}#f59e0b{% else %}#ef4444{% endif %}; }
+    .kpi-card.ctl   { border-left-color: #3b82f6; }
+    .kpi-card.atl   { border-left-color: #f97316; }
+    .kpi-card.tsb   { border-left-color: #10b981; }
+    .kpi-card.acwr  { border-left-color: #8b5cf6; }
+    .kpi-card.gap   { border-left-color: #06b6d4; }
+    .kpi-card.ramp  { border-left-color: #ec4899; }
+    .kpi-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #94a3b8; margin-bottom: 6px; }
+    .kpi-value { font-size: 26px; font-weight: 800; color: #0f172a; line-height: 1; }
+    .kpi-sub { font-size: 11px; color: #64748b; margin-top: 4px; }
+    .badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 20px; margin-top: 4px; }
+    .badge-green  { background: #dcfce7; color: #15803d; }
+    .badge-amber  { background: #fef9c3; color: #b45309; }
+    .badge-red    { background: #fee2e2; color: #b91c1c; }
+    .badge-slate  { background: #f1f5f9; color: #475569; }
+
+    /* PMC Chart */
+    .chart-box { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-top: 4px; }
+    .chart-box svg { width: 100%; height: auto; display: block; }
+    .chart-legend { display: flex; gap: 16px; margin-top: 12px; font-size: 11px; color: #64748b; justify-content: center; flex-wrap: wrap; }
+    .legend-item { display: flex; align-items: center; gap: 5px; }
+    .legend-dot { width: 10px; height: 3px; border-radius: 2px; }
+
+    /* Volume table */
+    .volume-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; }
+    .volume-table th { background: #f8fafc; padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; border-bottom: 1px solid #e2e8f0; }
+    .volume-table td { padding: 10px 14px; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
+    .volume-table tr:last-child td { border-bottom: none; }
+    .sport-label { font-weight: 600; color: #0f172a; }
+
+    /* Coach message */
+    .coach-message { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-top: 4px; border-left: 4px solid #f59e0b; }
+    .coach-from { font-size: 12px; color: #94a3b8; margin-bottom: 8px; }
+    .coach-text { font-size: 14px; color: #334155; line-height: 1.6; white-space: pre-wrap; }
+
+    /* Stats row */
+    .stats-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (min-width: 480px) { .stats-row { grid-template-columns: repeat(3, 1fr); } }
+    .stat-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; text-align: center; }
+    .stat-value { font-size: 22px; font-weight: 800; color: #0f172a; }
+    .stat-label { font-size: 11px; color: #64748b; margin-top: 4px; }
+
+    /* Projection */
+    .projection-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+    .proj-item { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 4px; text-align: center; }
+    .proj-date { font-size: 9px; color: #94a3b8; }
+    .proj-ctl  { font-size: 14px; font-weight: 700; color: #3b82f6; margin-top: 2px; }
+
+    /* CTA */
+    .cta-box { text-align: center; margin-top: 40px; padding: 28px; background: #fff; border-radius: 12px; border: 1px solid #e2e8f0; }
+    .cta-btn { display: inline-block; background: #f59e0b; color: #0f172a; font-size: 14px; font-weight: 700; padding: 12px 28px; border-radius: 8px; text-decoration: none; }
+
+    /* Footer */
+    .footer { text-align: center; font-size: 12px; color: #94a3b8; margin-top: 32px; padding-top: 20px; border-top: 1px solid #e2e8f0; }
+
+    @media print {
+      body { background: #fff; }
+      .cta-box { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="brand">Quantoryn</div>
+    <div class="athlete-name">{{ snapshot.athlete_name }}</div>
+    <div class="meta">
+      Reporte de entrenamiento — últimos {{ snapshot.period_days }} días
+      &nbsp;·&nbsp; Coach: {{ snapshot.coach_name }}
+    </div>
+    <div class="expiry">Válido hasta {{ report.expires_at|date:"d/m/Y" }}</div>
+  </div>
+
+  <!-- KPI CARDS -->
+  <div class="section-title">Métricas clave</div>
+  <div class="kpi-grid">
+
+    <!-- Readiness -->
+    <div class="kpi-card readiness">
+      <div class="kpi-label">Readiness</div>
+      <div class="kpi-value">{{ kpis.readiness_score }}</div>
+      <div class="kpi-sub">{{ kpis.readiness_label }}</div>
+    </div>
+
+    <!-- CTL -->
+    <div class="kpi-card ctl">
+      <div class="kpi-label">CTL — Forma</div>
+      <div class="kpi-value">{{ kpis.ctl|floatformat:0 }}</div>
+      <div class="kpi-sub">Fitness acumulado (42d)</div>
+    </div>
+
+    <!-- ATL -->
+    <div class="kpi-card atl">
+      <div class="kpi-label">ATL — Fatiga</div>
+      <div class="kpi-value">{{ kpis.atl|floatformat:0 }}</div>
+      <div class="kpi-sub">Carga reciente (7d)</div>
+    </div>
+
+    <!-- TSB -->
+    <div class="kpi-card tsb">
+      <div class="kpi-label">TSB — Balance</div>
+      <div class="kpi-value">{% if kpis.tsb >= 0 %}+{{ kpis.tsb|floatformat:0 }}{% else %}{{ kpis.tsb|floatformat:0 }}{% endif %}</div>
+      <div class="kpi-sub">Forma / Frescura</div>
+    </div>
+
+    <!-- ACWR -->
+    {% if kpis.acwr %}
+    <div class="kpi-card acwr">
+      <div class="kpi-label">ACWR</div>
+      <div class="kpi-value">{{ kpis.acwr }}</div>
+      <div class="kpi-sub">
+        {% if kpis.acwr > 1.5 %}<span class="badge badge-red">Alto riesgo</span>
+        {% elif kpis.acwr > 1.3 %}<span class="badge badge-amber">Precaución</span>
+        {% elif kpis.acwr >= 0.8 %}<span class="badge badge-green">Zona segura</span>
+        {% else %}<span class="badge badge-slate">Carga baja</span>{% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- GAP -->
+    {% if kpis.gap_avg_formatted %}
+    <div class="kpi-card gap">
+      <div class="kpi-label">GAP promedio</div>
+      <div class="kpi-value" style="font-size:20px;">{{ kpis.gap_avg_formatted }}</div>
+      <div class="kpi-sub">Ritmo ajustado al desnivel</div>
+    </div>
+    {% endif %}
+
+    <!-- Ramp Rate 7d -->
+    <div class="kpi-card ramp">
+      <div class="kpi-label">Ramp Rate 7d</div>
+      <div class="kpi-value" style="font-size:22px;">{% if kpis.ramp_rate_7d >= 0 %}+{% endif %}{{ kpis.ramp_rate_7d }}</div>
+      <div class="kpi-sub">Cambio CTL en 7 días</div>
+    </div>
+
+  </div><!-- end kpi-grid -->
+
+  <!-- STATS: Compliance + Wellness -->
+  {% if snapshot.compliance_pct is not None or snapshot.wellness_avg is not None %}
+  <div class="section-title">Plan y bienestar</div>
+  <div class="stats-row">
+    {% if snapshot.compliance_pct is not None %}
+    <div class="stat-card">
+      <div class="stat-value">{{ snapshot.compliance_pct }}%</div>
+      <div class="stat-label">Cumplimiento del plan</div>
+    </div>
+    {% endif %}
+    {% if snapshot.wellness_avg is not None %}
+    <div class="stat-card">
+      <div class="stat-value">{{ snapshot.wellness_avg }}/5</div>
+      <div class="stat-label">Bienestar promedio</div>
+    </div>
+    {% endif %}
+    <div class="stat-card">
+      <div class="stat-value">{{ snapshot.period_days }}d</div>
+      <div class="stat-label">Período analizado</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- PMC CHART (inline SVG rendered from JSON data) -->
+  {% if pmc_days_json %}
+  <div class="section-title">Curva de rendimiento (PMC)</div>
+  <div class="chart-box">
+    <svg id="pmc-svg" viewBox="0 0 760 200" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="chart-legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div>CTL — Forma</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f97316"></div>ATL — Fatiga</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#10b981"></div>TSB — Balance</div>
+    </div>
+  </div>
+  <script>
+  (function() {
+    var data = {{ pmc_days_json|safe }};
+    if (!data || data.length < 2) return;
+
+    var W = 760, H = 200, pad = { t: 10, r: 10, b: 30, l: 40 };
+    var iW = W - pad.l - pad.r, iH = H - pad.t - pad.b;
+
+    var ctlVals = data.map(function(d){return d.ctl;});
+    var atlVals = data.map(function(d){return d.atl;});
+    var tsbVals = data.map(function(d){return d.tsb;});
+    var allVals = ctlVals.concat(atlVals).concat(tsbVals);
+    var minV = Math.min.apply(null, allVals);
+    var maxV = Math.max.apply(null, allVals);
+    var range = maxV - minV || 1;
+
+    function xPos(i) { return pad.l + (i / (data.length - 1)) * iW; }
+    function yPos(v) { return pad.t + iH - ((v - minV) / range) * iH; }
+
+    function polyline(vals, color, width) {
+      var pts = vals.map(function(v, i){ return xPos(i) + ',' + yPos(v); }).join(' ');
+      return '<polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="' + width + '" stroke-linejoin="round"/>';
+    }
+
+    var html = '';
+
+    // TSB zero line
+    var y0 = yPos(0);
+    if (y0 >= pad.t && y0 <= pad.t + iH) {
+      html += '<line x1="' + pad.l + '" y1="' + y0 + '" x2="' + (pad.l + iW) + '" y2="' + y0 + '" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="4,3"/>';
+    }
+
+    // Grid lines (3 horizontal)
+    for (var g = 1; g <= 3; g++) {
+      var gy = pad.t + (iH / 4) * g;
+      html += '<line x1="' + pad.l + '" y1="' + gy + '" x2="' + (pad.l + iW) + '" y2="' + gy + '" stroke="#f1f5f9" stroke-width="1"/>';
+    }
+
+    // Date labels (4 evenly spaced)
+    var labelIdxs = [0, Math.floor(data.length / 3), Math.floor(data.length * 2 / 3), data.length - 1];
+    labelIdxs.forEach(function(i) {
+      var d = data[i]; if (!d) return;
+      var lx = xPos(i);
+      var parts = d.date.split('-');
+      var label = parts[2] + '/' + parts[1];
+      html += '<text x="' + lx + '" y="' + (H - 8) + '" text-anchor="middle" font-size="9" fill="#94a3b8">' + label + '</text>';
+    });
+
+    // Lines
+    html += polyline(tsbVals, '#10b981', 1.5);
+    html += polyline(atlVals, '#f97316', 1.5);
+    html += polyline(ctlVals, '#3b82f6', 2);
+
+    document.getElementById('pmc-svg').innerHTML = html;
+  })();
+  </script>
+  {% endif %}
+
+  <!-- PROJECTION -->
+  {% if projection %}
+  <div class="section-title">Proyección CTL próximos 14 días</div>
+  <div class="projection-grid">
+    {% for p in projection %}
+    <div class="proj-item">
+      <div class="proj-date">{{ p.date|slice:"5:" }}</div>
+      <div class="proj-ctl">{{ p.ctl|floatformat:0 }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- VOLUME BY SPORT -->
+  {% if volume_items %}
+  <div class="section-title">Volumen por deporte</div>
+  <table class="volume-table">
+    <thead>
+      <tr>
+        <th>Deporte</th>
+        <th>Distancia</th>
+        <th>Duración</th>
+        <th>Desnivel</th>
+        <th>Calorías</th>
+        <th>Sesiones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for sport, totals in volume_items %}
+      <tr>
+        <td class="sport-label">{{ sport }}</td>
+        <td>{{ totals.distance_km }} km</td>
+        <td>{{ totals.duration_minutes }} min</td>
+        <td>{{ totals.elevation_gain_m }} m</td>
+        <td>{{ totals.calories_kcal }} kcal</td>
+        <td>{{ totals.sessions_count }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <!-- COACH MESSAGE -->
+  {% if snapshot.coach_message %}
+  <div class="section-title">Mensaje de tu coach</div>
+  <div class="coach-message">
+    <div class="coach-from">De: {{ snapshot.coach_name }}</div>
+    <div class="coach-text">{{ snapshot.coach_message }}</div>
+  </div>
+  {% endif %}
+
+  <!-- CTA -->
+  <div class="cta-box">
+    <p style="font-size:14px; color:#64748b; margin-bottom:16px;">
+      ¿Querés ver tus métricas en tiempo real?
+    </p>
+    <a href="/" class="cta-btn">Abrir Quantoryn</a>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    Powered by <strong>Quantoryn</strong> — plataforma de entrenamiento científico para atletas de resistencia.
+    <br>Este reporte expira el {{ report.expires_at|date:"d/m/Y" }}.
+  </div>
+
+</div>
+</body>
+</html>
