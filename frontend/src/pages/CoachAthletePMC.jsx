@@ -1,6 +1,6 @@
 import React, { useState, useReducer, useEffect } from 'react'
 import { Alert, MenuItem, Select, Skeleton, Tooltip } from '@mui/material'
-import { ChevronLeft, TrendingUp, Zap, Activity, Heart, CheckSquare, Smile, Dumbbell } from 'lucide-react'
+import { ChevronLeft, TrendingUp, Zap, Activity, Heart, Smile, Dumbbell } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Layout from '../components/Layout'
 import PMCChart from '../components/PMCChart'
@@ -38,7 +38,7 @@ const METRIC_OPTIONS = [
   { value: 'compliance', label: 'Compliance' },
   { value: 'wellness', label: 'Bienestar' },
   { value: 'vol-run',  label: 'Volumen Trail/Running' },
-  { value: 'vol-hours', label: 'Volumen (Horas)' },
+  { value: 'vol-hours', label: 'Volumen (Horas + Calorías)' },
   { value: 'vol-cycling', label: 'Volumen Ciclismo' },
   { value: 'effort',   label: 'Esfuerzo (Carga TSS)' },
   { value: 'strength', label: 'Fuerza (Carga)' },
@@ -163,8 +163,7 @@ const CoachAthletePMC = () => {
   const tsbDisplay = tsb >= 0 ? `+${Math.round(tsb)}` : `${Math.round(tsb)}`
   const acwrRiskInfo = acwr !== null ? acwrRisk(acwr) : null
 
-  const complianceOverall = complianceState.data?.overall_pct
-  const wellnessAvg       = wellnessState.data?.period_average
+  const wellnessAvg = wellnessState.data?.period_average
 
   const showPrecision = VOLUME_METRICS_WITH_PRECISION.has(selectedMetric)
 
@@ -214,8 +213,8 @@ const CoachAthletePMC = () => {
 
         {pmcState.loading ? <LoadingSkeleton /> : (
           <>
-            {/* 7 KPI CARDS */}
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            {/* 6 KPI CARDS — 3 per row (Compliance moved to chart area) */}
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
 
               {/* Readiness */}
               <Tooltip title={CARD_TOOLTIPS.readiness} placement="top" arrow>
@@ -283,20 +282,6 @@ const CoachAthletePMC = () => {
                 </div>
               </Tooltip>
 
-              {/* Compliance */}
-              <Tooltip title={CARD_TOOLTIPS.compliance} placement="top" arrow>
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-teal-500 p-5 cursor-help">
-                  <div className="flex items-start justify-between mb-1">
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Compliance</p>
-                    <CheckSquare className="w-4 h-4 text-teal-400" />
-                  </div>
-                  <p className="text-4xl font-bold text-teal-500 leading-none">
-                    {complianceOverall != null ? `${complianceOverall}%` : '—'}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-2">Cumplimiento del plan</p>
-                </div>
-              </Tooltip>
-
               {/* Bienestar */}
               <Tooltip title={CARD_TOOLTIPS.wellness} placement="top" arrow>
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-pink-500 p-5 cursor-help">
@@ -355,10 +340,18 @@ const CoachAthletePMC = () => {
                 <span className="text-xs text-slate-400">Últimos {selectedDays} días</span>
               </div>
 
+              {/* Fixed-height wrapper — all charts use the same vertical space */}
+              <div style={{ minHeight: 380 }} className="flex flex-col justify-center">
+
               {/* PMC */}
               {selectedMetric === 'pmc' && (
                 hasPMC
-                  ? <PMCChart days={pmcData.days} height={320} />
+                  ? <PMCChart
+                      days={pmcData.days}
+                      projection={pmcData.projection ?? []}
+                      rampRate7d={current.ramp_rate_7d ?? null}
+                      height={320}
+                    />
                   : <EmptyState message={`Sin actividades en los últimos ${selectedDays} días`} />
               )}
 
@@ -371,6 +364,7 @@ const CoachAthletePMC = () => {
                     : <ComplianceBarChart
                         buckets={complianceState.data?.buckets ?? []}
                         message={complianceState.data?.message}
+                        overallPct={complianceState.data?.overall_pct ?? null}
                       />
               )}
 
@@ -392,6 +386,8 @@ const CoachAthletePMC = () => {
                     : <VolumeBarChart
                         buckets={volumeState.data?.buckets ?? []}
                         metric={volumeState.data?.metric ?? 'distance'}
+                        sport={selectedMetric}
+                        summary={volumeState.data?.summary ?? null}
                       />
               )}
 
@@ -405,6 +401,8 @@ const CoachAthletePMC = () => {
                   </p>
                 </div>
               )}
+
+              </div>{/* end fixed-height wrapper */}
             </div>
           </>
         )}
