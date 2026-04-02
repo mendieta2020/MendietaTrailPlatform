@@ -131,13 +131,26 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - No migrations required (all computed on-the-fly)
 - Risk: MEDIUM — RESOLVED
 
+### PR-154 — Reporte Automático Compartible (WhatsApp + Email) ✅ 2026-04-02
+- AthleteReport model: token (UUID hex, 64 chars), org FK, athlete/coach user FK, membership FK, snapshot JSON, expires_at (7 days TTL), view_count tracking
+- Migration: 0106_pr154_athletereport.py
+- POST /api/coach/athletes/<m_id>/report/ — creates report with stable snapshot (KPIs, volume by sport, compliance, wellness, GAP, projection)
+- POST /api/coach/athletes/<m_id>/report/<token>/email/ — sends email with report link (no PDF dependency)
+- GET /report/<token>/ — public page (no auth), Django template, Open Graph meta tags for WhatsApp preview
+- Inline SVG PMC chart rendered from snapshot JSON (no matplotlib needed)
+- Expired/invalid token → 404 with branded "Reporte expirado" page
+- Frontend: "Compartir Reporte" button in CoachAthletePMC.jsx header
+- ShareReportModal.jsx: period selector + coach message textarea + preview KPI cards + WhatsApp/Email/Copy Link actions
+- frontend/src/api/reports.js: createReport + sendReportEmail
+- 8 backend tests in core/tests_pr154_reports.py
+- Risk: MEDIUM — RESOLVED
+
 ### Mes 1 Gate (onboarding 100 athletes)
 - PR-152 — PWA + Push Notifications (service worker, manifest, installability)
 - PR-153 — Pre-Expiry Notification (3 days before MP renewal, uses InternalMessage)
 
 ### Before Mes 2 (10 external coaches)
-- PR-154 (new) — Staff/Coach/Nutritionist Invitation Flow
-- PR-155 (new) — Periodizacion Visual (Macro/Meso/Micro en una pantalla)
+- PR-155 (next) — Training Week macro periodization (model merged, API endpoint pending)
 - PR-156 — PMC Frontend chart (AthleteProgress reads DailyLoad)
 
 ### Before Mes 3 (general market launch)

@@ -72,6 +72,10 @@ from core.views_pmc import (  # PR-128a / PR-145a / PR-152
     TrainingVolumeView,
     WellnessHistoryView,
 )
+from core.views_reports import (  # PR-154
+    CreateReportView,
+    EmailReportView,
+)
 from core.views_athlete import (  # PR-139 / PR-141
     AthleteTodayView,
     AthleteDeviceStatusView,
@@ -216,6 +220,10 @@ urlpatterns = [
     path('coach/athletes/<int:membership_id>/training-volume/', TrainingVolumeView.as_view(), name='coach-athlete-training-volume'),
     path('coach/athletes/<int:membership_id>/wellness/', WellnessHistoryView.as_view(), name='coach-athlete-wellness'),
     path('coach/athletes/<int:membership_id>/compliance/', ComplianceView.as_view(), name='coach-athlete-compliance'),
+
+    # PR-154: Shareable athlete reports
+    path('coach/athletes/<int:membership_id>/report/', CreateReportView.as_view(), name='coach-create-report'),
+    path('coach/athletes/<int:membership_id>/report/<str:token>/email/', EmailReportView.as_view(), name='coach-email-report'),
 
     # PR-141: Athlete device status + preference + notifications
     path('athlete/device-status/', AthleteDeviceStatusView.as_view(), name='athlete-device-status'),
