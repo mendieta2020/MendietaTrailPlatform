@@ -27,8 +27,9 @@ PR queue:
 - PR-155 ✅ MERGED — Limpieza del edificio (consolidar sidebar, eliminar duplicación)
 - PR-156 ✅ MERGED — Mi Progreso del Atleta: Readiness hero + Goals + Weekly + PMC humano + Wellness
 - PR-157 ✅ MERGED — Auto-Periodización + Badge Calendario + Timeline Atleta + Historial Planificador
-- PR-158 THIS PR — Planificador Pro: Historial Visual + Copiar Semana + Carga Estimada + Plan vs Real
-- PR-159 NEXT — TBD
+- PR-158 ✅ MERGED — Planificador Pro: Historial Visual + Copiar Semana + Carga Estimada + Plan vs Real
+- PR-159 THIS PR — Sidebar Colapsable + Athlete Card (5 Tabs) + GroupPlanning Navigation + Editar Sesión
+- PR-160 NEXT — TBD
 
 ## PR Protocol (PASO 0)
 Before writing any code for a new PR:

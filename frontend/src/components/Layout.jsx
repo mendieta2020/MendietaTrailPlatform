@@ -19,6 +19,8 @@ import {
   Business,
   LibraryBooks as LibraryBooksIcon,
   Notifications as NotificationsIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
 import { BarChart2 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -28,11 +30,16 @@ import { listAthletes } from '../api/p1';
 import { useOrg } from '../context/OrgContext';
 import client from '../api/client';
 
-const drawerWidth = 260;
+const DRAWER_EXPANDED = 260;
+const DRAWER_COLLAPSED = 60;
+const LS_KEY = 'sidebar_collapsed';
 
 const Layout = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [userRole, setUserRole] = useState(null); // null until /api/me resolves
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem(LS_KEY) === 'true'; } catch { return false; }
+  });
+  const [userRole, setUserRole] = useState(null);
   const [userInfo, setUserInfo] = useState(null);
   const [openMessages, setOpenMessages] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -44,7 +51,14 @@ const Layout = ({ children }) => {
   const { activeOrg } = useOrg();
   const orgId = activeOrg?.org_id ?? null;
 
-  // Fetch user role on mount
+  const drawerWidth = collapsed ? DRAWER_COLLAPSED : DRAWER_EXPANDED;
+
+  const toggleCollapsed = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    try { localStorage.setItem(LS_KEY, String(next)); } catch { /* storage unavailable */ }
+  };
+
   useEffect(() => {
     client.get('/api/me')
       .then(res => {
@@ -55,7 +69,6 @@ const Layout = ({ children }) => {
         if (import.meta.env.DEV) {
           console.error('Failed to fetch user role:', err);
         }
-        // Silently default to 'coach' on error
       });
   }, []);
 
@@ -64,7 +77,6 @@ const Layout = ({ children }) => {
     window.location.href = '/';
   };
 
-  // ── Coach notification bell ────────────────────────────────────────────────
   const fetchCoachMessages = useCallback(() => {
     if (!orgId || userRole === 'athlete') return;
     getMessages(orgId)
@@ -81,7 +93,6 @@ const Layout = ({ children }) => {
     return () => clearInterval(pollingRef.current);
   }, [fetchCoachMessages]);
 
-  // Fetch athletes so coach can start new conversations from the messages drawer
   useEffect(() => {
     if (!orgId || userRole === 'athlete') return;
     listAthletes(orgId)
@@ -92,7 +103,7 @@ const Layout = ({ children }) => {
             .filter((a) => a.user_id)
             .map((a) => ({
               user_id: a.user_id,
-              athlete_id: a.id,   // Athlete model PK — used for calendarSelectedTarget
+              athlete_id: a.id,
               name: `${a.first_name ?? ''} ${a.last_name ?? ''}`.trim() || a.email || 'Atleta',
             }))
         );
@@ -115,9 +126,7 @@ const Layout = ({ children }) => {
     });
   };
 
-  // Coach clicks "Ver sesión" link inside a session_comment message
   const handleCoachSessionClick = (referenceId, referenceDate, contactUserId) => {
-    // Navigate calendar to the right athlete + auto-open that assignment's drawer
     const athlete = athletes.find((a) => a.user_id === contactUserId);
     if (athlete) {
       sessionStorage.setItem('calendarSelectedTarget', `a:${athlete.athlete_id}`);
@@ -129,7 +138,6 @@ const Layout = ({ children }) => {
 
   const isAdminOrOwner = userRole === 'owner' || userRole === 'admin';
 
-  // DEFINICIÓN DEL MENÚ LATERAL — agrupado por sección
   const menuGroups = [
     {
       label: 'DIARIO',
@@ -164,62 +172,78 @@ const Layout = ({ children }) => {
 
   const drawer = (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#1A2027', color: 'white' }}>
-      {/* HEADER DEL MENÚ LATERAL */}
-      <Toolbar sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-        {/* En el futuro aquí pondremos el logo .img */}
-        <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 'bold', letterSpacing: 1, color: '#F57C00' }}>
-          SENDERO <span style={{ color: 'white' }}>MENDIETA</span>
-        </Typography>
+      {/* HEADER */}
+      <Toolbar sx={{ display: 'flex', justifyContent: collapsed ? 'center' : 'center', py: 2, minHeight: 56 }}>
+        {collapsed ? (
+          <Typography variant="h6" noWrap sx={{ fontWeight: 'bold', color: '#F57C00', fontSize: '1rem' }}>
+            SM
+          </Typography>
+        ) : (
+          <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 'bold', letterSpacing: 1, color: '#F57C00' }}>
+            SENDERO <span style={{ color: 'white' }}>MENDIETA</span>
+          </Typography>
+        )}
       </Toolbar>
 
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
 
-      {/* LISTA DE NAVEGACIÓN */}
-      <List sx={{ flexGrow: 1, px: 1, pt: 1 }}>
+      {/* NAV LIST */}
+      <List sx={{ flexGrow: 1, px: collapsed ? 0.5 : 1, pt: 1 }}>
         {menuGroups.map((group, gi) => (
           <React.Fragment key={group.label}>
             {gi > 0 && <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)', my: 1 }} />}
-            <Typography
-              sx={{
-                px: 1.5, pt: gi === 0 ? 0 : 0.5, pb: 0.5,
-                fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.12em',
-                color: 'rgba(148,163,184,0.6)', textTransform: 'uppercase',
-              }}
-            >
-              {group.label}
-            </Typography>
+            {!collapsed && (
+              <Typography
+                sx={{
+                  px: 1.5, pt: gi === 0 ? 0 : 0.5, pb: 0.5,
+                  fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.12em',
+                  color: 'rgba(148,163,184,0.6)', textTransform: 'uppercase',
+                }}
+              >
+                {group.label}
+              </Typography>
+            )}
             {group.items.map((item) => {
               const isLocked = item.adminOnly && !isAdminOrOwner;
+              const isActive = !isLocked && location.pathname === item.path;
               return (
                 <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
                   <Tooltip
-                    title={isLocked ? 'Solo para administradores de la organización' : ''}
+                    title={collapsed ? item.text : (isLocked ? 'Solo para administradores de la organización' : '')}
                     placement="right"
                     arrow
                   >
                     <span style={{ width: '100%' }}>
                       <ListItemButton
                         onClick={() => !isLocked && navigate(item.path)}
-                        selected={!isLocked && location.pathname === item.path}
+                        selected={isActive}
                         disabled={isLocked}
                         sx={{
                           borderRadius: 2,
+                          justifyContent: collapsed ? 'center' : 'flex-start',
+                          px: collapsed ? 1 : 2,
                           '&.Mui-selected': {
                             bgcolor: 'rgba(245, 124, 0, 0.15)',
-                            borderLeft: '4px solid #F57C00',
+                            borderLeft: collapsed ? 'none' : '4px solid #F57C00',
                             color: '#F57C00',
                           },
                           '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
                           '&.Mui-disabled': { opacity: 0.4 },
                         }}
                       >
-                        <ListItemIcon sx={{ minWidth: 40, color: (!isLocked && location.pathname === item.path) ? '#F57C00' : '#94A3B8' }}>
+                        <ListItemIcon sx={{
+                          minWidth: collapsed ? 0 : 40,
+                          color: isActive ? '#F57C00' : '#94A3B8',
+                          justifyContent: 'center',
+                        }}>
                           {item.icon}
                         </ListItemIcon>
-                        <ListItemText
-                          primary={item.text}
-                          primaryTypographyProps={{ fontSize: '0.9rem', fontWeight: (!isLocked && location.pathname === item.path) ? 600 : 400 }}
-                        />
+                        {!collapsed && (
+                          <ListItemText
+                            primary={item.text}
+                            primaryTypographyProps={{ fontSize: '0.9rem', fontWeight: isActive ? 600 : 400 }}
+                          />
+                        )}
                       </ListItemButton>
                     </span>
                   </Tooltip>
@@ -232,28 +256,51 @@ const Layout = ({ children }) => {
 
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
 
-      {/* FOOTER DEL MENÚ (CERRAR SESIÓN) */}
-      <List sx={{ px: 1 }}>
+      {/* LOGOUT */}
+      <List sx={{ px: collapsed ? 0.5 : 1 }}>
         <ListItem disablePadding>
-          <ListItemButton
-            onClick={handleLogout}
-            sx={{ borderRadius: 2, '&:hover': { bgcolor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' } }}
-          >
-            <ListItemIcon sx={{ minWidth: 40, color: '#64748B' }}><Logout /></ListItemIcon>
-            <ListItemText primary="Cerrar Sesión" primaryTypographyProps={{ fontSize: '0.9rem' }} />
-          </ListItemButton>
+          <Tooltip title={collapsed ? 'Cerrar Sesión' : ''} placement="right" arrow>
+            <ListItemButton
+              onClick={handleLogout}
+              sx={{
+                borderRadius: 2,
+                justifyContent: collapsed ? 'center' : 'flex-start',
+                px: collapsed ? 1 : 2,
+                '&:hover': { bgcolor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' },
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: collapsed ? 0 : 40, color: '#64748B', justifyContent: 'center' }}>
+                <Logout />
+              </ListItemIcon>
+              {!collapsed && (
+                <ListItemText primary="Cerrar Sesión" primaryTypographyProps={{ fontSize: '0.9rem' }} />
+              )}
+            </ListItemButton>
+          </Tooltip>
         </ListItem>
       </List>
+
+      {/* COLLAPSE TOGGLE BUTTON */}
+      <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 0.75 }}>
+        <Tooltip title={collapsed ? 'Expandir sidebar' : 'Colapsar sidebar'} placement="right" arrow>
+          <IconButton
+            size="small"
+            onClick={toggleCollapsed}
+            sx={{ color: '#64748B', '&:hover': { color: '#F57C00' } }}
+          >
+            {collapsed ? <ChevronRightIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" />}
+          </IconButton>
+        </Tooltip>
+      </Box>
     </div>
   );
 
-  // Wait for role resolution before rendering any layout — prevents flash of wrong panel.
-  // Show sidebar-shaped skeleton so the layout shift is invisible to the user.
   if (userRole === null) {
     return (
       <Box sx={{ display: 'flex', minHeight: '100vh' }}>
         <Box sx={{
-          width: { sm: 260 },
+          width: { sm: DRAWER_EXPANDED },
           flexShrink: { sm: 0 },
           bgcolor: '#1A2027',
           display: { xs: 'none', sm: 'block' },
@@ -272,48 +319,43 @@ const Layout = ({ children }) => {
     );
   }
 
-  // Delegate to athlete layout ONLY for role=athlete (case-insensitive safety)
   if (userRole?.toLowerCase() === 'athlete') {
     return <AthleteLayout user={userInfo}>{children}</AthleteLayout>;
   }
 
   return (
     <Box sx={{ display: 'flex' }}>
-      {/* BARRA SUPERIOR (HEADER) */}
+      {/* APPBAR */}
       <AppBar position="fixed"
         sx={{
           width: { sm: `calc(100% - ${drawerWidth}px)` },
           ml: { sm: `${drawerWidth}px` },
           bgcolor: 'white',
           color: '#1E293B',
-          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)', // Sombra sutil profesional
-          borderBottom: 'none'
+          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+          borderBottom: 'none',
+          transition: 'width 0.2s ease, margin-left 0.2s ease',
         }}
       >
         <Toolbar>
           <IconButton color="inherit" edge="start" onClick={handleDrawerToggle} sx={{ mr: 2, display: { sm: 'none' } }}>
             <MenuIcon />
           </IconButton>
-
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1, fontWeight: 700, fontSize: '1.1rem' }}>
-            {userRole === 'athlete' ? 'Panel del Atleta 🚀' : 'Panel de Entrenadores 🚀'}
+            {userRole === 'athlete' ? 'Panel del Atleta' : 'Panel de Entrenadores'}
           </Typography>
-
-          {/* 🔔 Coach notification bell */}
           <IconButton color="inherit" onClick={handleOpenCoachMessages} sx={{ mr: 1 }}>
             <Badge badgeContent={unreadCount > 0 ? unreadCount : null} color="error">
               <NotificationsIcon />
             </Badge>
           </IconButton>
-
-          {/* Avatar del usuario (Esquina superior derecha) */}
           <Avatar sx={{ bgcolor: '#F57C00', fontWeight: 'bold' }}>
             {userInfo?.first_name?.[0] ?? 'C'}{userInfo?.last_name?.[0] ?? ''}
           </Avatar>
         </Toolbar>
       </AppBar>
 
-      {/* Coach messages drawer */}
+      {/* MESSAGES DRAWER */}
       <MessagesDrawer
         open={openMessages}
         onClose={() => setOpenMessages(false)}
@@ -325,26 +367,56 @@ const Layout = ({ children }) => {
         onSessionClick={handleCoachSessionClick}
       />
 
-      {/* MENÚ LATERAL (DRAWER) */}
-      <Box component="nav" sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}>
-        {/* Móvil */}
+      {/* SIDEBAR */}
+      <Box
+        component="nav"
+        sx={{
+          width: { sm: drawerWidth },
+          flexShrink: { sm: 0 },
+          transition: 'width 0.2s ease',
+        }}
+      >
+        {/* Mobile */}
         <Drawer variant="temporary" open={mobileOpen} onClose={handleDrawerToggle}
           ModalProps={{ keepMounted: true }}
-          sx={{ display: { xs: 'block', sm: 'none' }, '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth, bgcolor: '#1A2027' } }}
+          sx={{
+            display: { xs: 'block', sm: 'none' },
+            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: DRAWER_EXPANDED, bgcolor: '#1A2027' },
+          }}
         >
           {drawer}
         </Drawer>
         {/* Desktop */}
         <Drawer variant="permanent"
-          sx={{ display: { xs: 'none', sm: 'block' }, '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth, borderRight: 'none', bgcolor: '#1A2027' } }}
+          sx={{
+            display: { xs: 'none', sm: 'block' },
+            '& .MuiDrawer-paper': {
+              boxSizing: 'border-box',
+              width: drawerWidth,
+              borderRight: 'none',
+              bgcolor: '#1A2027',
+              overflowX: 'hidden',
+              transition: 'width 0.2s ease',
+            },
+          }}
           open
         >
           {drawer}
         </Drawer>
       </Box>
 
-      {/* CONTENIDO PRINCIPAL */}
-      <Box component="main" sx={{ flexGrow: 1, p: 3, width: { sm: `calc(100% - ${drawerWidth}px)` }, bgcolor: '#F1F5F9', minHeight: '100vh' }}>
+      {/* MAIN CONTENT */}
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          p: 3,
+          width: { sm: `calc(100% - ${drawerWidth}px)` },
+          bgcolor: '#F1F5F9',
+          minHeight: '100vh',
+          transition: 'width 0.2s ease',
+        }}
+      >
         <Toolbar />
         {children}
       </Box>

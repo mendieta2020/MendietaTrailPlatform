@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-03 · PR-158 Planificador Pro merged_
+_Last updated: 2026-04-03 · PR-159 Sidebar Colapsable + Athlete Card + GroupPlanning Nav merged_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -158,6 +158,22 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - views_reports.py: projection_2w_ctl computed from last item in projection list, injected into snapshot before render
 - FRONTEND_URL already existed in settings.py (confirmed); "Abrir Quantoryn" button already fixed in PR-154 hotfix
 - Risk: LOW (frontend only, no backend models, no migrations)
+
+### PR-159 — Sidebar Colapsable + Athlete Card (5 Tabs) + GroupPlanning Navigation ✅ 2026-04-03
+- Sidebar colapsable coach (Layout.jsx) y atleta (AthleteLayout.jsx): 260px expandido → 60px colapsado; íconos con tooltip MUI; toggle button con ChevronLeft/Right; preferencia persistida en localStorage
+- GroupPlanningView.jsx: flechas semana ← W14/W16 → (onNavigateWeek prop); back button ahora vuelve a Planificador (setCalendarView('macro'))
+- MacroView.jsx: eliminado botón redundante "Planificar Wxx"
+- CoachAthletePMC.jsx: refactorizado a 5 tabs (MUI Tabs): Rendimiento (existente), Perfil, Lesiones, Objetivos, Wellness
+- AthleteProfileTab.jsx: coach lee y edita datos físicos (peso, altura, FC, VO2max, años entreno) via PATCH /api/coach/athletes/<m_id>/profile/
+- AthleteInjuriesTab.jsx: lista lesiones + formulario agregar lesión via GET/POST /api/coach/athletes/<m_id>/card-injuries/
+- AthleteGoalsTab.jsx: tarjetas de objetivos con días restantes, prioridad, distancia, D+
+- AthleteWellnessTab.jsx: WellnessHeatmap reutilizado (60 días) + KPI bienestar promedio
+- CoachNotes: textarea con auto-save (3s debounce) en todos los tabs via GET/PUT /api/coach/athletes/<m_id>/notes/
+- Backend: core/views_athlete_card.py — 4 nuevas vistas (Profile, Injuries, Goals, Notes); usa _resolve_athlete_membership fail-closed
+- core/tests_pr159_athlete_card.py — 8 tests, todos pasan
+- frontend lint: 0 errores; build: success
+- No migrations (usa Athlete.notes existente para coach_notes)
+- Risk: MEDIUM — RESOLVED
 
 ### PR-158 — Planificador Pro: Historial Visual + Copiar Semana + Carga Estimada + Plan vs Real ✅ 2026-04-03
 - Backend: `core/views_planning.py` — 5 new views (WorkoutHistoryView, GroupWorkoutHistoryView, CopyWeekView, EstimatedWeeklyLoadView, AthletePlanVsRealView)

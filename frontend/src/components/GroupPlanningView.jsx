@@ -78,11 +78,26 @@ function SportChip({ sport }) {
   );
 }
 
+function addWeeksDays(dateStr, n) {
+  const d = new Date(dateStr + 'T12:00:00');
+  d.setDate(d.getDate() + n * 7);
+  return d.toISOString().slice(0, 10);
+}
+
+function isoWeekNum(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  const dow = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dow);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+}
+
 export default function GroupPlanningView({
   orgId,
   weekStart,
   teamId,
   onBack,
+  onNavigateWeek,
   draggingWorkoutRef,
   onAssigned,
   representativeMembershipId,
@@ -229,8 +244,8 @@ export default function GroupPlanningView({
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, height: '100%' }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-        <Tooltip title="Volver al calendario">
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, flexWrap: 'wrap' }}>
+        <Tooltip title="Volver al Planificador">
           <IconButton size="small" onClick={onBack} sx={{ color: '#94a3b8' }}>
             <ArrowBackIcon fontSize="small" />
           </IconButton>
@@ -245,6 +260,32 @@ export default function GroupPlanningView({
             size="small"
             sx={{ fontSize: '0.67rem', bgcolor: '#1e293b', color: '#94a3b8', border: '1px solid #334155' }}
           />
+        )}
+        {/* Week navigation */}
+        {onNavigateWeek && weekStart && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: 'auto' }}>
+            <Tooltip title={`Semana anterior (W${isoWeekNum(addWeeksDays(weekStart, -1))})`}>
+              <IconButton
+                size="small"
+                onClick={() => onNavigateWeek(addWeeksDays(weekStart, -1))}
+                sx={{ color: '#94a3b8', '&:hover': { color: '#F57C00' } }}
+              >
+                <ArrowBackIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.7rem', px: 0.5 }}>
+              W{isoWeekNum(weekStart)}
+            </Typography>
+            <Tooltip title={`Semana siguiente (W${isoWeekNum(addWeeksDays(weekStart, 1))})`}>
+              <IconButton
+                size="small"
+                onClick={() => onNavigateWeek(addWeeksDays(weekStart, 1))}
+                sx={{ color: '#94a3b8', '&:hover': { color: '#F57C00' } }}
+              >
+                <ArrowBackIcon fontSize="small" sx={{ transform: 'rotate(180deg)' }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
         )}
       </Box>
 
