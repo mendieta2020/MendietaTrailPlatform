@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react'
 import {
   Box, Typography, Button, TextField, Checkbox, CircularProgress, Alert, Grid,
+  MenuItem, Select, InputLabel, FormControl,
 } from '@mui/material'
 import { getCoachAthleteProfile, patchCoachAthleteProfile } from '../api/pmc'
 import { updateAvailability } from '../api/athlete'
@@ -63,8 +64,8 @@ function ReadField({ label, value }) {
 }
 
 export default function AthleteProfileTab({ membershipId }) {
-  const { org } = useOrg()
-  const orgId = org?.id
+  const { activeOrg } = useOrg()
+  const orgId = activeOrg?.org_id
 
   const [data,          setData]          = useState(null)
   const [loading,       setLoading]       = useState(true)
@@ -109,12 +110,14 @@ export default function AthleteProfileTab({ membershipId }) {
     setEditPersonal(true)
   }
 
+  const PERSONAL_CHAR_FIELDS = new Set(['emergency_contact_name', 'emergency_contact_phone', 'instagram_handle'])
   const savePersonal = async () => {
     setSavingPersonal(true)
     try {
       const cleaned = {}
       Object.entries(personalDraft).forEach(([k, v]) => {
-        cleaned[k] = v === '' ? null : v
+        // CharField (blank=True) fields must send "" not null
+        cleaned[k] = (v === '' && !PERSONAL_CHAR_FIELDS.has(k)) ? null : (v ?? '')
       })
       const res = await patchCoachAthleteProfile(membershipId, cleaned)
       setData(prev => ({ ...prev, profile: { ...prev.profile, ...res.data } }))
@@ -145,11 +148,14 @@ export default function AthleteProfileTab({ membershipId }) {
 
   const savePhysical = async () => {
     setSavingPhysical(true)
-    const TEXT_FIELDS = new Set(['preferred_training_time'])
     try {
       const cleaned = {}
       Object.entries(physicalDraft).forEach(([k, v]) => {
-        cleaned[k] = v === '' ? null : TEXT_FIELDS.has(k) ? v : Number(v)
+        if (k === 'preferred_training_time') {
+          cleaned[k] = v ?? ''  // CharField — send "" not null
+        } else {
+          cleaned[k] = v === '' ? null : Number(v)
+        }
       })
       const res = await patchCoachAthleteProfile(membershipId, cleaned)
       setData(prev => ({ ...prev, profile: { ...prev.profile, ...res.data } }))
@@ -268,15 +274,14 @@ export default function AthleteProfileTab({ membershipId }) {
         {editPhysical ? (
           <Grid container spacing={2}>
             {[
-              { key: 'weight_kg',              label: 'Peso (kg)',          type: 'number' },
-              { key: 'height_cm',              label: 'Altura (cm)',        type: 'number' },
-              { key: 'max_hr_bpm',             label: 'FC Máx (bpm)',       type: 'number' },
-              { key: 'resting_hr_bpm',         label: 'FC Reposo (bpm)',    type: 'number' },
-              { key: 'vo2max',                 label: 'VO2max',             type: 'number' },
-              { key: 'training_age_years',     label: 'Años entrenando',    type: 'number' },
-              { key: 'weekly_available_hours', label: 'Horas/semana',       type: 'number' },
-              { key: 'preferred_training_time', label: 'Horario preferido', type: 'text' },
-              { key: 'pace_1000m_seconds',     label: 'Ritmo 1km (seg)',    type: 'number' },
+              { key: 'weight_kg',              label: 'Peso (kg)',       type: 'number' },
+              { key: 'height_cm',              label: 'Altura (cm)',     type: 'number' },
+              { key: 'max_hr_bpm',             label: 'FC Máx (bpm)',    type: 'number' },
+              { key: 'resting_hr_bpm',         label: 'FC Reposo (bpm)', type: 'number' },
+              { key: 'vo2max',                 label: 'VO2max',          type: 'number' },
+              { key: 'training_age_years',     label: 'Años entrenando', type: 'number' },
+              { key: 'weekly_available_hours', label: 'Horas/semana',    type: 'number' },
+              { key: 'pace_1000m_seconds',     label: 'Ritmo 1km (seg)', type: 'number' },
             ].map(({ key, label, type }) => (
               <Grid item xs={12} sm={6} key={key}>
                 <TextField
@@ -289,6 +294,21 @@ export default function AthleteProfileTab({ membershipId }) {
                 />
               </Grid>
             ))}
+            <Grid item xs={12} sm={6}>
+              <FormControl size="small" fullWidth>
+                <InputLabel>Horario preferido</InputLabel>
+                <Select
+                  label="Horario preferido"
+                  value={physicalDraft.preferred_training_time ?? ''}
+                  onChange={e => setPhysicalDraft(d => ({ ...d, preferred_training_time: e.target.value }))}
+                >
+                  <MenuItem value="">— Sin preferencia —</MenuItem>
+                  <MenuItem value="morning">Mañana</MenuItem>
+                  <MenuItem value="afternoon">Tarde</MenuItem>
+                  <MenuItem value="evening">Noche</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
           </Grid>
         ) : (
           <Grid container spacing={2}>

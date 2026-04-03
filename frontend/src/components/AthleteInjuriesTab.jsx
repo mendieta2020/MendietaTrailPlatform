@@ -9,7 +9,7 @@ import {
   InputLabel, CircularProgress, Alert, Chip, ToggleButton, ToggleButtonGroup,
 } from '@mui/material'
 import Model from 'react-body-highlighter'
-import { getCoachAthleteInjuries, createCoachAthleteInjury } from '../api/pmc'
+import { getCoachAthleteInjuries, createCoachAthleteInjury, patchCoachAthleteInjury, deleteCoachAthleteInjury } from '../api/pmc'
 
 // ── react-body-highlighter muscle names ──────────────────────────────────────
 const MUSCLE = {
@@ -155,13 +155,15 @@ function emptyForm() {
 }
 
 export default function AthleteInjuriesTab({ membershipId }) {
-  const [injuries,  setInjuries]  = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [error,     setError]     = useState(null)
-  const [showForm,  setShowForm]  = useState(false)
-  const [saving,    setSaving]    = useState(false)
-  const [form,      setForm]      = useState(emptyForm())
-  const [modelView, setModelView] = useState('anterior') // 'anterior' | 'posterior'
+  const [injuries,   setInjuries]   = useState([])
+  const [loading,    setLoading]    = useState(true)
+  const [error,      setError]      = useState(null)
+  const [showForm,   setShowForm]   = useState(false)
+  const [saving,     setSaving]     = useState(false)
+  const [form,       setForm]       = useState(emptyForm())
+  const [editingId,  setEditingId]  = useState(null)  // id of injury being edited
+  const [deleting,   setDeleting]   = useState(null)  // id of injury being deleted
+  const [modelView,  setModelView]  = useState('anterior')
 
   const load = useCallback(() => {
     if (!membershipId) return
@@ -183,14 +185,45 @@ export default function AthleteInjuriesTab({ membershipId }) {
   const handleSave = async () => {
     setSaving(true)
     try {
-      await createCoachAthleteInjury(membershipId, form)
+      if (editingId) {
+        const { data: updated } = await patchCoachAthleteInjury(membershipId, editingId, form)
+        setInjuries(prev => prev.map(i => i.id === editingId ? updated : i))
+      } else {
+        await createCoachAthleteInjury(membershipId, form)
+        load()
+      }
       setShowForm(false)
+      setEditingId(null)
       setForm(emptyForm())
-      load()
     } catch {
       setError('Error al guardar la lesión.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleEdit = (inj) => {
+    setForm({
+      injury_type:   inj.injury_type,
+      body_zone:     inj.body_zone,
+      severity:      inj.severity,
+      status:        inj.status,
+      date_occurred: inj.date_occurred ?? '',
+      description:   inj.description ?? '',
+    })
+    setEditingId(inj.id)
+    setShowForm(true)
+  }
+
+  const handleDelete = async (id) => {
+    setDeleting(id)
+    try {
+      await deleteCoachAthleteInjury(membershipId, id)
+      setInjuries(prev => prev.filter(i => i.id !== id))
+    } catch {
+      setError('Error al eliminar la lesión.')
+    } finally {
+      setDeleting(null)
     }
   }
 
@@ -276,7 +309,10 @@ export default function AthleteInjuriesTab({ membershipId }) {
         <Button
           size="small"
           variant="outlined"
-          onClick={() => { setShowForm(!showForm); if (!showForm) setForm(emptyForm()) }}
+          onClick={() => {
+            if (showForm) { setShowForm(false); setEditingId(null); setForm(emptyForm()) }
+            else { setShowForm(true); setEditingId(null); setForm(emptyForm()) }
+          }}
           sx={{ borderColor: '#F57C00', color: '#F57C00', fontSize: '0.75rem' }}
         >
           {showForm ? 'Cancelar' : '+ Agregar lesión'}
@@ -286,7 +322,9 @@ export default function AthleteInjuriesTab({ membershipId }) {
       {/* ── Add injury form ───────────────────────────────────────────────── */}
       {showForm && (
         <Box sx={{ bgcolor: 'white', border: '1px solid #e2e8f0', borderRadius: 2, p: 2, mb: 2 }}>
-          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1.5, color: '#1e293b' }}>Nueva lesión</Typography>
+          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1.5, color: '#1e293b' }}>
+            {editingId ? 'Editar lesión' : 'Nueva lesión'}
+          </Typography>
           <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 1.5 }}>
             <FormControl size="small" fullWidth>
               <InputLabel>Tipo</InputLabel>
@@ -376,11 +414,32 @@ export default function AthleteInjuriesTab({ membershipId }) {
                     {inj.date_occurred}{inj.resolved_at && ` → ${inj.resolved_at}`}
                   </Typography>
                 </Box>
-                <Chip
-                  label={STATUSES.find(s => s.value === inj.status)?.label ?? inj.status}
-                  size="small"
-                  sx={{ height: 20, fontSize: '0.67rem', bgcolor: col.bg, color: col.color, fontWeight: 600 }}
-                />
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
+                  <Chip
+                    label={STATUSES.find(s => s.value === inj.status)?.label ?? inj.status}
+                    size="small"
+                    sx={{ height: 20, fontSize: '0.67rem', bgcolor: col.bg, color: col.color, fontWeight: 600 }}
+                  />
+                  <Box sx={{ display: 'flex', gap: 0.5 }}>
+                    <Button
+                      size="small"
+                      onClick={() => handleEdit(inj)}
+                      sx={{ minWidth: 0, p: 0.5, color: '#64748b', fontSize: '0.7rem' }}
+                      title="Editar"
+                    >
+                      ✏️
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={() => handleDelete(inj.id)}
+                      disabled={deleting === inj.id}
+                      sx={{ minWidth: 0, p: 0.5, color: '#ef4444', fontSize: '0.7rem' }}
+                      title="Eliminar"
+                    >
+                      {deleting === inj.id ? <CircularProgress size={10} /> : '🗑️'}
+                    </Button>
+                  </Box>
+                </Box>
               </Box>
             )
           })}

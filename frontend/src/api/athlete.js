@@ -76,5 +76,5 @@ export function getPaymentLink() {
 
 // PR-161: Update athlete model fields (location_city, etc.) via the p1 roster endpoint
 export function updateAthleteRecord(orgId, athleteId, data) {
-  return client.patch(`/api/p1/orgs/${orgId}/athletes/${athleteId}/`, data);
+  return client.patch(`/api/p1/orgs/${orgId}/roster/athletes/${athleteId}/`, data);
 }

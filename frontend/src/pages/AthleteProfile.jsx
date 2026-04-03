@@ -100,12 +100,19 @@ const AthleteProfile = () => {
     setEditDraft({});
   };
 
+  const PROFILE_CHAR_FIELDS = new Set([
+    'instagram_handle', 'profession', 'blood_type', 'clothing_size',
+    'emergency_contact_name', 'emergency_contact_phone', 'preferred_training_time',
+  ]);
   const handleSaveCard = async (cardName) => {
     if (!orgId || !athleteId) return;
     const fields = CARD_FIELDS[cardName] || [];
     const patch = {};
     fields.forEach(f => {
-      if (editDraft[f] !== undefined) patch[f] = editDraft[f] === '' ? null : editDraft[f];
+      if (editDraft[f] !== undefined) {
+        // CharField (blank=True) fields: send "" not null
+        patch[f] = (editDraft[f] === '' && !PROFILE_CHAR_FIELDS.has(f)) ? null : (editDraft[f] ?? '');
+      }
     });
     try {
       await updateAthleteProfile(orgId, athleteId, patch);

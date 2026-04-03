@@ -150,8 +150,8 @@ class CoachAthleteProfileView(APIView):
 
 class CoachAthleteInjuriesView(APIView):
     """
-    GET  /api/coach/athletes/<membership_id>/injuries/
-    POST /api/coach/athletes/<membership_id>/injuries/
+    GET  /api/coach/athletes/<membership_id>/card-injuries/
+    POST /api/coach/athletes/<membership_id>/card-injuries/
 
     List or create injuries for the given athlete.
     """
@@ -191,6 +191,66 @@ class CoachAthleteInjuriesView(APIView):
             },
         )
         return Response(serializer.data, status=201)
+
+
+class CoachAthleteInjuryDetailView(APIView):
+    """
+    PATCH  /api/coach/athletes/<membership_id>/card-injuries/<pk>/
+    DELETE /api/coach/athletes/<membership_id>/card-injuries/<pk>/
+
+    PR-161: Update or delete a specific injury for the given athlete.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def _get_injury(self, org, athlete, pk):
+        from rest_framework.exceptions import NotFound
+        try:
+            return AthleteInjury.objects.get(pk=pk, organization=org, athlete=athlete)
+        except AthleteInjury.DoesNotExist:
+            raise NotFound("Injury not found.")
+
+    def patch(self, request, membership_id: int, pk: int):
+        org, athlete_membership, athlete_user = _resolve_athlete_membership(request, membership_id)
+        athlete = _get_athlete(org, athlete_user)
+        injury = self._get_injury(org, athlete, pk)
+
+        serializer = AthleteInjurySerializer(injury, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        logger.info(
+            "coach_athlete_injury.updated",
+            extra={
+                "event_name": "coach_athlete_injury.updated",
+                "organization_id": org.pk,
+                "coach_user_id": request.user.pk,
+                "athlete_user_id": athlete_user.pk,
+                "injury_id": injury.pk,
+                "outcome": "success",
+            },
+        )
+        return Response(serializer.data)
+
+    def delete(self, request, membership_id: int, pk: int):
+        org, athlete_membership, athlete_user = _resolve_athlete_membership(request, membership_id)
+        athlete = _get_athlete(org, athlete_user)
+        injury = self._get_injury(org, athlete, pk)
+
+        injury.delete()
+
+        logger.info(
+            "coach_athlete_injury.deleted",
+            extra={
+                "event_name": "coach_athlete_injury.deleted",
+                "organization_id": org.pk,
+                "coach_user_id": request.user.pk,
+                "athlete_user_id": athlete_user.pk,
+                "injury_id": pk,
+                "outcome": "success",
+            },
+        )
+        return Response(status=204)
 
 
 # ==============================================================================
