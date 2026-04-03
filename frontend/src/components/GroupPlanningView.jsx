@@ -8,15 +8,17 @@
  * Layout:
  *   HistorialPanel (6-week history above)
  *   7 day drop zones (drag workouts from Library sidebar)
+ *   WeeklyLoadEstimate (representative athlete TSS + phase)
  *   TSS estimate + "Asignar a grupo" button
  *
  * Props:
- *   orgId               — organization ID
- *   weekStart           — Monday of the week being planned (YYYY-MM-DD)
- *   teamId              — team filter (number | null)
- *   onBack              — callback to dismiss planning mode
- *   draggingWorkoutRef  — ref shared with Library sidebar (drag source)
- *   onAssigned          — callback() after successful assignment (to reload parent)
+ *   orgId                     — organization ID
+ *   weekStart                 — Monday of the week being planned (YYYY-MM-DD)
+ *   teamId                    — team filter (number | null)
+ *   onBack                    — callback to dismiss planning mode
+ *   draggingWorkoutRef        — ref shared with Library sidebar (drag source)
+ *   onAssigned                — callback() after successful assignment
+ *   representativeMembershipId — membership_id of first team athlete for TSS estimate
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -28,8 +30,6 @@ import {
   Chip,
   IconButton,
   Tooltip,
-  Popover,
-  Divider,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
@@ -37,6 +37,8 @@ import CloseIcon from '@mui/icons-material/Close';
 import { getGroupWeekTemplate } from '../api/planning';
 import { bulkAssignTeam } from '../api/assignments';
 import HistorialPanel from './HistorialPanel';
+import WeeklyLoadEstimate from './WeeklyLoadEstimate';
+import WorkoutCoachDrawer from './WorkoutCoachDrawer';
 
 const MONTHS_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const DAY_LABELS_ES = ['LUN','MAR','MIÉ','JUE','VIE','SÁB','DOM'];
@@ -83,16 +85,19 @@ export default function GroupPlanningView({
   onBack,
   draggingWorkoutRef,
   onAssigned,
+  representativeMembershipId,
 }) {
   const [template, setTemplate] = useState(null);
   const [loadingTemplate, setLoadingTemplate] = useState(false);
-  const [dragOver, setDragOver] = useState(null);    // date string being hovered
-  const [pending, setPending] = useState({});         // { "YYYY-MM-DD": [workout, ...] }
+  const [dragOver, setDragOver] = useState(null);
+  const [pending, setPending] = useState({});  // { "YYYY-MM-DD": [workout, ...] }
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [saveSuccess, setSaveSuccess] = useState(null);
-  // Detail popover — { anchorEl, workout }
-  const [detail, setDetail] = useState(null);
+  // Increments after each successful assign to trigger WeeklyLoadEstimate refresh
+  const [assignTrigger, setAssignTrigger] = useState(0);
+  // WorkoutCoachDrawer — shows workout detail on card click
+  const [drawerWorkout, setDrawerWorkout] = useState(null);
 
   const fetchTemplate = useCallback(() => {
     if (!orgId || !weekStart) return;
@@ -156,7 +161,6 @@ export default function GroupPlanningView({
 
   const pendingCount = Object.values(pending).reduce((sum, arr) => sum + arr.length, 0);
 
-  // Client-side TSS estimate from pending workouts
   const pendingTss = Object.values(pending).flat().reduce((sum, wo) => {
     if (wo.planned_tss) return sum + wo.planned_tss;
     if (wo.duration_min) return sum + (wo.duration_min / 60) * 50;
@@ -184,7 +188,13 @@ export default function GroupPlanningView({
       }
       setPending({});
       setSaveSuccess(`${tasks.length} entrenamiento(s) asignado(s) al grupo.`);
-      fetchTemplate();
+      setAssignTrigger((t) => t + 1);
+      // Fix 1: Direct re-fetch avoids cancel-function interference with useEffect.
+      // fetchTemplate() shares a `cancelled` variable with the useEffect — calling
+      // it here could race with the effect cleanup. Instead we call the API directly.
+      getGroupWeekTemplate(orgId, { weekStart, teamId: teamId || undefined })
+        .then((res) => { setTemplate(res.data); })
+        .catch(() => {});
       if (onAssigned) onAssigned();
     } catch {
       setSaveError('Error al asignar. Intenta de nuevo.');
@@ -192,6 +202,27 @@ export default function GroupPlanningView({
       setSaving(false);
     }
   };
+
+  // Build synthetic event for WorkoutCoachDrawer
+  const drawerEvent = drawerWorkout ? {
+    id: `gpv-${drawerWorkout.planned_workout_id}`,
+    title: drawerWorkout.title,
+    resource: {
+      id: null,
+      planned_workout: {
+        id: drawerWorkout.planned_workout_id,
+        name: drawerWorkout.title,
+        discipline: drawerWorkout.sport ? drawerWorkout.sport.toLowerCase() : 'other',
+        estimated_duration_seconds: drawerWorkout.duration_min
+          ? drawerWorkout.duration_min * 60 : null,
+        estimated_distance_meters: drawerWorkout.distance_km
+          ? drawerWorkout.distance_km * 1000 : null,
+        planned_tss: drawerWorkout.planned_tss,
+      },
+      status: 'planned',
+      compliance_color: 'gray',
+    },
+  } : null;
 
   const days = template?.days ?? [];
 
@@ -288,11 +319,11 @@ export default function GroupPlanningView({
                   {DAY_LABELS_ES[i]}
                 </Typography>
 
-                {/* Existing template workouts — click to view detail */}
+                {/* Existing template workouts — click to view in drawer */}
                 {day.workouts.map((wo, j) => (
                   <Box
                     key={j}
-                    onClick={(e) => setDetail({ anchorEl: e.currentTarget, workout: wo })}
+                    onClick={() => setDrawerWorkout(wo)}
                     sx={{
                       bgcolor: 'rgba(255,255,255,0.04)',
                       border: '1px solid rgba(255,255,255,0.07)',
@@ -332,12 +363,7 @@ export default function GroupPlanningView({
                 {pendingForDay.map((wo, j) => (
                   <Box
                     key={`p-${j}`}
-                    onClick={(e) => {
-                      // Only open detail if not clicking the close button
-                      if (!e.target.closest('[data-remove]')) {
-                        setDetail({ anchorEl: e.currentTarget, workout: wo });
-                      }
-                    }}
+                    onClick={() => setDrawerWorkout(wo)}
                     sx={{
                       bgcolor: 'rgba(245,124,0,0.08)',
                       border: '1px dashed #F57C00',
@@ -350,7 +376,6 @@ export default function GroupPlanningView({
                     }}
                   >
                     <IconButton
-                      data-remove="true"
                       size="small"
                       onClick={(e) => { e.stopPropagation(); removePending(day.date, j); }}
                       sx={{
@@ -400,6 +425,15 @@ export default function GroupPlanningView({
             );
           })}
         </Box>
+      )}
+
+      {/* Fix 2: WeeklyLoadEstimate — representative athlete TSS + phase */}
+      {representativeMembershipId && (
+        <WeeklyLoadEstimate
+          membershipId={representativeMembershipId}
+          weekStart={weekStart}
+          trigger={assignTrigger}
+        />
       )}
 
       {/* Footer: TSS estimate + assign button */}
@@ -457,51 +491,15 @@ export default function GroupPlanningView({
         </Box>
       </Box>
 
-      {/* Workout detail Popover */}
-      <Popover
-        open={Boolean(detail?.anchorEl)}
-        anchorEl={detail?.anchorEl}
-        onClose={() => setDetail(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-        PaperProps={{
-          sx: {
-            bgcolor: '#1e293b',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: 1.5,
-            p: 1.5,
-            minWidth: 200,
-            maxWidth: 280,
-          },
-        }}
-      >
-        {detail?.workout && (
-          <Box>
-            <Typography variant="caption" sx={{ fontWeight: 700, color: '#e2e8f0', fontSize: '0.75rem', display: 'block' }}>
-              {detail.workout.title}
-            </Typography>
-            <Divider sx={{ my: 0.75, borderColor: 'rgba(255,255,255,0.08)' }} />
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.4 }}>
-              <SportChip sport={detail.workout.sport} />
-              {detail.workout.distance_km && (
-                <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.67rem' }}>
-                  Distancia: <strong>{detail.workout.distance_km} km</strong>
-                </Typography>
-              )}
-              {detail.workout.duration_min && (
-                <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.67rem' }}>
-                  Duración: <strong>{detail.workout.duration_min} min</strong>
-                </Typography>
-              )}
-              {detail.workout.planned_tss && (
-                <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.67rem' }}>
-                  TSS: <strong>{Math.round(detail.workout.planned_tss)}</strong>
-                </Typography>
-              )}
-            </Box>
-          </Box>
-        )}
-      </Popover>
+      {/* Fix 3: WorkoutCoachDrawer for workout card detail view */}
+      <WorkoutCoachDrawer
+        key={drawerEvent?.id ?? 'none'}
+        event={drawerEvent}
+        orgId={orgId}
+        onClose={() => setDrawerWorkout(null)}
+        onSaved={() => {}}
+        onMarkComplete={() => {}}
+      />
     </Box>
   );
 }

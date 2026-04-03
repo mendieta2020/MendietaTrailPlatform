@@ -1366,6 +1366,9 @@ export default function CalendarPage() {
                 onBack={() => setPlanningWeek(null)}
                 draggingWorkoutRef={draggingWorkoutRef}
                 onAssigned={() => setLoadTrigger((t) => t + 1)}
+                representativeMembershipId={
+                  athleteState.data.find((a) => a.team_id === planningWeek.teamId)?.membership_id ?? null
+                }
               />
             )}
 
