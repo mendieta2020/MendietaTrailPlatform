@@ -1064,17 +1064,15 @@ export default function CalendarPage() {
   // For individuals: fall back to Calendar/Week view (unchanged behaviour).
 
   const handleNavigateToWeek = useCallback((weekStart, teamId = null) => {
-    if (teamId) {
-      // Group context → open dedicated planning view
-      setPlanningWeek({ weekStart, teamId });
-      setCalendarView('calendar');
-    } else {
-      // Individual context → existing Calendar/Week behaviour
-      const monday = new Date(weekStart + 'T12:00:00');
-      setCurrentDate(monday);
-      setCalViewMode('week');
-      setCalendarView('calendar');
+    if (!teamId) {
+      // No group selected — warn the coach and stay in MacroView
+      setSaveError('Seleccioná un grupo en el filtro del Planificador antes de planificar la semana del grupo.');
+      setTimeout(() => setSaveError(null), 4000);
+      return;
     }
+    // Group context → open dedicated planning view
+    setPlanningWeek({ weekStart, teamId });
+    setCalendarView('calendar');
   }, []);
 
   // ── PR-158: Copy week from historial panel ────────────────────────────────

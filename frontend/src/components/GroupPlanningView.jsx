@@ -28,6 +28,8 @@ import {
   Chip,
   IconButton,
   Tooltip,
+  Popover,
+  Divider,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
@@ -89,6 +91,8 @@ export default function GroupPlanningView({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [saveSuccess, setSaveSuccess] = useState(null);
+  // Detail popover — { anchorEl, workout }
+  const [detail, setDetail] = useState(null);
 
   const fetchTemplate = useCallback(() => {
     if (!orgId || !weekStart) return;
@@ -284,16 +288,19 @@ export default function GroupPlanningView({
                   {DAY_LABELS_ES[i]}
                 </Typography>
 
-                {/* Existing template workouts */}
+                {/* Existing template workouts — click to view detail */}
                 {day.workouts.map((wo, j) => (
                   <Box
                     key={j}
+                    onClick={(e) => setDetail({ anchorEl: e.currentTarget, workout: wo })}
                     sx={{
                       bgcolor: 'rgba(255,255,255,0.04)',
                       border: '1px solid rgba(255,255,255,0.07)',
                       borderRadius: 1,
                       px: 0.75,
                       py: 0.5,
+                      cursor: 'pointer',
+                      '&:hover': { bgcolor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.15)' },
                     }}
                   >
                     <Typography
@@ -325,6 +332,12 @@ export default function GroupPlanningView({
                 {pendingForDay.map((wo, j) => (
                   <Box
                     key={`p-${j}`}
+                    onClick={(e) => {
+                      // Only open detail if not clicking the close button
+                      if (!e.target.closest('[data-remove]')) {
+                        setDetail({ anchorEl: e.currentTarget, workout: wo });
+                      }
+                    }}
                     sx={{
                       bgcolor: 'rgba(245,124,0,0.08)',
                       border: '1px dashed #F57C00',
@@ -332,11 +345,14 @@ export default function GroupPlanningView({
                       px: 0.75,
                       py: 0.5,
                       position: 'relative',
+                      cursor: 'pointer',
+                      '&:hover': { bgcolor: 'rgba(245,124,0,0.14)' },
                     }}
                   >
                     <IconButton
+                      data-remove="true"
                       size="small"
-                      onClick={() => removePending(day.date, j)}
+                      onClick={(e) => { e.stopPropagation(); removePending(day.date, j); }}
                       sx={{
                         position: 'absolute',
                         top: 2,
@@ -440,6 +456,52 @@ export default function GroupPlanningView({
           </Button>
         </Box>
       </Box>
+
+      {/* Workout detail Popover */}
+      <Popover
+        open={Boolean(detail?.anchorEl)}
+        anchorEl={detail?.anchorEl}
+        onClose={() => setDetail(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+        PaperProps={{
+          sx: {
+            bgcolor: '#1e293b',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 1.5,
+            p: 1.5,
+            minWidth: 200,
+            maxWidth: 280,
+          },
+        }}
+      >
+        {detail?.workout && (
+          <Box>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: '#e2e8f0', fontSize: '0.75rem', display: 'block' }}>
+              {detail.workout.title}
+            </Typography>
+            <Divider sx={{ my: 0.75, borderColor: 'rgba(255,255,255,0.08)' }} />
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.4 }}>
+              <SportChip sport={detail.workout.sport} />
+              {detail.workout.distance_km && (
+                <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.67rem' }}>
+                  Distancia: <strong>{detail.workout.distance_km} km</strong>
+                </Typography>
+              )}
+              {detail.workout.duration_min && (
+                <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.67rem' }}>
+                  Duración: <strong>{detail.workout.duration_min} min</strong>
+                </Typography>
+              )}
+              {detail.workout.planned_tss && (
+                <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.67rem' }}>
+                  TSS: <strong>{Math.round(detail.workout.planned_tss)}</strong>
+                </Typography>
+              )}
+            </Box>
+          </Box>
+        )}
+      </Popover>
     </Box>
   );
 }
