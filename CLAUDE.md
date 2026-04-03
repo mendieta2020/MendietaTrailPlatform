@@ -22,16 +22,12 @@ Two agents operate this repo with distinct roles:
 ## Current Phase: P2 — Historical Data, Analytics & Billing
 
 PR queue:
-- PR-125 through PR-155 MERGED (see project_roadmap_state.md for full history)
-- PR-149 ✅ MERGED — Security Sweep (tenancy disambiguation in billing/PMC)
-- PR-150 ✅ MERGED — Close Strava ingestion loop (dual-write CompletedActivity)
-- PR-151 ✅ MERGED — Dashboard Nivel 1 (team semaphore + ACWR + real CTL in Athletes.jsx)
-- PR-152 ✅ MERGED — Vista atleta enriquecida: 7 KPI cards + Readiness Score + metric filters + tooltips
-- PR-153 ✅ MERGED — GAP + Ramp Rate + CTL Projection + Volume enhancements
+- PR-125 through PR-156 MERGED (see project_roadmap_state.md for full history)
 - PR-154 ✅ MERGED — Reporte automático compartible (athlete report with WhatsApp sharing)
 - PR-155 ✅ MERGED — Limpieza del edificio (consolidar sidebar, eliminar duplicación)
-- PR-156 THIS PR — Mi Progreso del Atleta: Readiness hero + Goals + Weekly + PMC humano + Wellness
-- PR-157 NEXT — Diferenciación vista coach vs atleta (roles)
+- PR-156 ✅ MERGED — Mi Progreso del Atleta: Readiness hero + Goals + Weekly + PMC humano + Wellness
+- PR-157 THIS PR — Auto-Periodización + Badge Calendario + Timeline Atleta + Historial Planificador
+- PR-158 NEXT — Plan vs Real mejorado (resumen semanal prominente)
 
 ## PR Protocol (PASO 0)
 Before writing any code for a new PR:

@@ -34,9 +34,12 @@ import {
   FormGroup,
   FormControlLabel,
   Checkbox,
+  Divider,
+  Snackbar,
 } from '@mui/material';
 import { getTrainingWeeks, upsertTrainingWeek, suggestPhase, listTeams, listLibraries, listPlannedWorkouts } from '../api/p1';
 import { bulkCreateAssignments } from '../api/assignments';
+import { autoPeriodizeGroup, getRecentWorkouts } from '../api/periodization';
 
 // ── Phase meta ────────────────────────────────────────────────────────────────
 
@@ -148,6 +151,185 @@ function PhaseCell({ athleteId, weekStart, currentPhase, suggestion, orgId, onUp
   );
 }
 
+// ── Cycle patterns ────────────────────────────────────────────────────────────
+
+const CYCLE_OPTIONS = [
+  { value: '1:1', label: '1:1 — Principiante (5–15 km)' },
+  { value: '2:1', label: '2:1 — Intermedio (21 km)' },
+  { value: '3:1', label: '3:1 — Avanzado (42 km+)' },
+  { value: '4:1', label: '4:1 — Ultra (80 km+)' },
+];
+
+// ── Auto-periodize modal ──────────────────────────────────────────────────────
+
+function AutoPeriodizeModal({ open, onClose, orgId, teams, onSuccess }) {
+  const [teamId, setTeamId] = useState('');
+  const [defaultCycle, setDefaultCycle] = useState('3:1');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [result, setResult] = useState(null);
+
+  function handleClose() {
+    if (saving) return;
+    setResult(null);
+    setError(null);
+    onClose();
+  }
+
+  async function handleSubmit() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await autoPeriodizeGroup(orgId, {
+        team_id: teamId || undefined,
+        default_cycle: defaultCycle,
+      });
+      setResult(res.data);
+      onSuccess();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Error al auto-periodizar. Verificá los datos.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
+      <DialogTitle sx={{ fontWeight: 700 }}>Auto-periodizar equipo</DialogTitle>
+      <DialogContent>
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+        {result ? (
+          <Box>
+            <Alert severity="success" sx={{ mb: 2 }}>
+              <strong>{result.periodized}</strong> atleta{result.periodized !== 1 ? 's' : ''} periodizados.
+              {result.skipped_no_goals > 0 && (
+                <> <strong>{result.skipped_no_goals}</strong> sin objetivo (saltados).</>
+              )}
+            </Alert>
+            {result.athletes?.map((a) => (
+              <Box key={a.athlete_name} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5 }}>
+                <Typography variant="caption">{a.athlete_name}</Typography>
+                <Typography variant="caption" sx={{ color: '#6b7280' }}>
+                  ciclo {a.cycle} · {a.weeks_created + a.weeks_updated} semanas
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        ) : (
+          <Box sx={{ pt: 1 }}>
+            <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+              <InputLabel>Grupo</InputLabel>
+              <Select value={teamId} label="Grupo" onChange={(e) => setTeamId(e.target.value)}>
+                <MenuItem value="">Todos los atletas</MenuItem>
+                {teams.map((t) => (
+                  <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+              <InputLabel>Ciclo por defecto</InputLabel>
+              <Select
+                value={defaultCycle}
+                label="Ciclo por defecto"
+                onChange={(e) => setDefaultCycle(e.target.value)}
+              >
+                {CYCLE_OPTIONS.map((o) => (
+                  <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <Alert severity="info" sx={{ fontSize: '0.75rem' }}>
+              El sistema asigna fases automáticamente basándose en los objetivos de carrera
+              de cada atleta. El ciclo se ajusta según la distancia del objetivo.
+            </Alert>
+          </Box>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={handleClose} disabled={saving}>
+          {result ? 'Cerrar' : 'Cancelar'}
+        </Button>
+        {!result && (
+          <Button
+            variant="contained"
+            onClick={handleSubmit}
+            disabled={saving}
+            sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' } }}
+          >
+            {saving ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : 'Auto-periodizar'}
+          </Button>
+        )}
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// ── Recent workouts panel (inside BulkAssignModal) ────────────────────────────
+
+function RecentWorkoutsPanel({ athletes }) {
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    if (!athletes || athletes.length === 0) return;
+    // Fetch for the first athlete that has a membership_id; show group-level summary
+    const firstWithMembership = athletes.find((a) => a.membership_id);
+    if (!firstWithMembership) return;
+    let cancelled = false;
+    getRecentWorkouts(firstWithMembership.membership_id, 6)
+      .then((res) => { if (!cancelled) setData(res.data); })
+      .catch(() => { if (!cancelled) setData(null); });
+    return () => { cancelled = true; };
+  }, [athletes]);
+
+  if (!data) return null;
+
+  const { weeks, repeated_alerts } = data;
+
+  return (
+    <Box sx={{ mb: 2 }}>
+      <Typography variant="caption" sx={{ fontWeight: 700, color: '#374151', display: 'block', mb: 1 }}>
+        ÚLTIMAS 6 SEMANAS
+      </Typography>
+      <Box sx={{
+        border: '1px solid #e5e7eb', borderRadius: 1, p: 1.5,
+        bgcolor: '#f9fafb', fontSize: '0.72rem',
+      }}>
+        {weeks.filter((w) => w.workouts.length > 0).slice(-6).map((w, i, arr) => (
+          <Box key={w.week_start} sx={{
+            display: 'flex', gap: 1, py: 0.4,
+            borderBottom: i < arr.length - 1 ? '1px solid #f0f0f0' : 'none',
+          }}>
+            <Typography variant="caption" sx={{ color: '#6b7280', minWidth: 70, flexShrink: 0 }}>
+              {w.week_start.slice(5)}
+            </Typography>
+            <Typography variant="caption" sx={{ color: '#374151' }}>
+              {w.workouts.join(', ')}
+            </Typography>
+          </Box>
+        ))}
+        {weeks.every((w) => w.workouts.length === 0) && (
+          <Typography variant="caption" sx={{ color: '#94a3b8' }}>Sin entrenamientos asignados</Typography>
+        )}
+      </Box>
+
+      {repeated_alerts.length > 0 && (
+        <Alert severity="warning" sx={{ mt: 1, py: 0.5, fontSize: '0.72rem' }}>
+          {repeated_alerts.map((a) => (
+            <Box key={a.workout}>
+              ⚠ <strong>"{a.workout}"</strong> — {a.warning}
+            </Box>
+          ))}
+        </Alert>
+      )}
+
+      <Divider sx={{ mt: 1.5, mb: 1 }} />
+    </Box>
+  );
+}
+
 // ── Bulk assign modal ─────────────────────────────────────────────────────────
 
 const DAYS_OF_WEEK = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -224,6 +406,9 @@ function BulkAssignModal({ open, onClose, orgId, weekStart, athletes }) {
       <DialogContent>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
         {success && <Alert severity="success" sx={{ mb: 2 }}>Entrenamientos asignados.</Alert>}
+
+        {/* PR-157: Recent workouts history */}
+        <RecentWorkoutsPanel athletes={athletes} />
 
         <FormControl fullWidth size="small" sx={{ mb: 2, mt: 1 }}>
           <InputLabel>Librería</InputLabel>
@@ -310,6 +495,9 @@ export default function MacroView({ orgId }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [autoOpen, setAutoOpen] = useState(false);
+  // Per-athlete cycle override map: { athleteId: "3:1" }
+  const [cycleMap, setCycleMap] = useState({});
 
   // Load teams
   useEffect(() => {
@@ -375,6 +563,16 @@ export default function MacroView({ orgId }) {
           Actualizar
         </Button>
 
+        {/* PR-157: Auto-periodize group */}
+        <Button
+          variant="outlined"
+          size="small"
+          onClick={() => setAutoOpen(true)}
+          sx={{ borderColor: '#7c3aed', color: '#7c3aed' }}
+        >
+          Auto-periodizar
+        </Button>
+
         <Box sx={{ flex: 1 }} />
 
         <Button
@@ -405,6 +603,7 @@ export default function MacroView({ orgId }) {
                 <TableCell sx={{ fontWeight: 700 }}>Faltan</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Lesión</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Wellness</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Ciclo</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -506,6 +705,24 @@ export default function MacroView({ orgId }) {
                     <TableCell>
                       <WellnessCircle avg={row.wellness_avg} />
                     </TableCell>
+
+                    {/* PR-157: Cycle per athlete — stored locally, applied via Auto-periodizar */}
+                    <TableCell>
+                      <Tooltip title="Ciclo preferido — aplicá con Auto-periodizar" placement="top">
+                        <Select
+                          size="small"
+                          value={cycleMap[row.athlete_id] || '3:1'}
+                          onChange={(e) =>
+                            setCycleMap((prev) => ({ ...prev, [row.athlete_id]: e.target.value }))
+                          }
+                          sx={{ minWidth: 80, fontSize: '0.75rem' }}
+                        >
+                          {['1:1', '2:1', '3:1', '4:1'].map((v) => (
+                            <MenuItem key={v} value={v} sx={{ fontSize: '0.75rem' }}>{v}</MenuItem>
+                          ))}
+                        </Select>
+                      </Tooltip>
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -520,6 +737,15 @@ export default function MacroView({ orgId }) {
         orgId={orgId}
         weekStart={thisMonday}
         athletes={displayRows}
+      />
+
+      {/* PR-157: Auto-periodize group modal */}
+      <AutoPeriodizeModal
+        open={autoOpen}
+        onClose={() => setAutoOpen(false)}
+        orgId={orgId}
+        teams={teams}
+        onSuccess={load}
       />
     </Box>
   );

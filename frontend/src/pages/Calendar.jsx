@@ -47,6 +47,7 @@ import { Users, BookOpen } from 'lucide-react';
 import Layout from '../components/Layout';
 import { useOrg } from '../context/OrgContext';
 import { listAthletes, listTeams, listLibraries, listPlannedWorkouts, getAthleteAvailability, getAthleteProfile } from '../api/p1';
+import { getCoachAthleteTrainingPhases } from '../api/periodization';
 import {
   listAssignments, createAssignment, bulkAssignTeam,
   moveAssignment, deleteAssignment, cloneAssignmentWorkout,
@@ -96,6 +97,23 @@ function getMenstrualPhaseForDate(dateObj, lastPeriodDate, cycleDays) {
 function jsWeekdayToAvailIndex(jsDay) {
   // js: 0=Sun,1=Mon,...,6=Sat → avail: 0=Mon,...,6=Sun
   return jsDay === 0 ? 6 : jsDay - 1;
+}
+
+// PR-157: Training phase color strip helpers
+const TRAINING_PHASE_COLORS = {
+  carga:    { color: '#F97316', label: 'Carga' },
+  descarga: { color: '#22c55e', label: 'Descarga' },
+  carrera:  { color: '#ef4444', label: 'Carrera' },
+  descanso: { color: '#3b82f6', label: 'Descanso' },
+  lesion:   { color: '#6b7280', label: 'Lesión' },
+};
+
+function getMonday(dateObj) {
+  const d = new Date(dateObj);
+  const day = d.getDay(); // 0=Sun
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  return format(d, 'yyyy-MM-dd');
 }
 const localizer = dateFnsLocalizer({
   format,
@@ -472,6 +490,9 @@ export default function CalendarPage() {
   // Blocked-day drop confirmation dialog
   const [blockedDropPending, setBlockedDropPending] = useState(null); // { callback } | null
 
+  // PR-157: Training phase map — { 'YYYY-MM-DD': 'carga' | ... } keyed by Monday
+  const [trainingPhaseMap, setTrainingPhaseMap] = useState({});
+
   const showUndo = useCallback((message, onUndo) => {
     setUndoToast({ message, onUndo });
   }, []);
@@ -516,6 +537,36 @@ export default function CalendarPage() {
       setAthleteProfile(null);
     };
   }, [orgId, selectedTarget]);
+
+  // PR-157: Load training phases when individual athlete selected (for calendar badge).
+  // setState is only called inside async callbacks or the cleanup function (not
+  // synchronously in the effect body) to avoid the react-hooks/set-state-in-effect rule.
+  useEffect(() => {
+    const target = parseTarget(selectedTarget);
+    let cancelled = false;
+    if (!orgId || !target || target.type !== 'a') {
+      return () => {
+        if (!cancelled) setTrainingPhaseMap({});
+        cancelled = true;
+      };
+    }
+    const athleteId = target.id;
+    const from = format(startOfMonth(currentDate), 'yyyy-MM-dd');
+    const to = format(endOfMonth(currentDate), 'yyyy-MM-dd');
+    getCoachAthleteTrainingPhases(orgId, athleteId, from, to)
+      .then((res) => {
+        if (!cancelled) {
+          const map = {};
+          (res.data?.phases ?? []).forEach((p) => { map[p.week_start] = p.phase; });
+          setTrainingPhaseMap(map);
+        }
+      })
+      .catch(() => { if (!cancelled) setTrainingPhaseMap({}); });
+    return () => {
+      cancelled = true;
+      setTrainingPhaseMap({});
+    };
+  }, [orgId, selectedTarget, currentDate]);
 
   // ── Load teams ────────────────────────────────────────────────────────────
 
@@ -1252,6 +1303,10 @@ export default function CalendarPage() {
                             athleteProfile.menstrual_cycle_days,
                           )
                         : null;
+                      // PR-157: Training phase strip
+                      const mondayKey = getMonday(value);
+                      const trainingPhase = trainingPhaseMap[mondayKey];
+                      const trainingPhaseMeta = trainingPhase ? TRAINING_PHASE_COLORS[trainingPhase] : null;
                       return (
                         <Tooltip
                           title={
@@ -1259,17 +1314,28 @@ export default function CalendarPage() {
                               ? `No disponible${avail.reason ? `: ${avail.reason}` : ''}${avail.preferred_time ? ` — ${avail.preferred_time}` : ''}`
                               : phase
                               ? phase.tip
+                              : trainingPhaseMeta
+                              ? trainingPhaseMeta.label
                               : ''
                           }
                           placement="top"
-                          disableHoverListener={!isBlocked && !phase}
+                          disableHoverListener={!isBlocked && !phase && !trainingPhaseMeta}
                         >
                           <div style={{ position: 'relative', height: '100%', width: '100%' }}>
+                            {/* Menstrual phase strip — top 3px */}
                             {phase && (
                               <div style={{
                                 position: 'absolute', top: 0, left: 0, right: 0,
                                 height: 3, background: phase.color, borderRadius: '2px 2px 0 0',
                                 zIndex: 1,
+                              }} />
+                            )}
+                            {/* PR-157: Training phase strip — 4px below menstrual (or at top if no menstrual) */}
+                            {trainingPhaseMeta && (
+                              <div style={{
+                                position: 'absolute', top: phase ? 4 : 0, left: 0, right: 0,
+                                height: 4, background: trainingPhaseMeta.color,
+                                opacity: 0.55, zIndex: 1,
                               }} />
                             )}
                             <div style={{
