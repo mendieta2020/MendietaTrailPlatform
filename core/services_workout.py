@@ -165,13 +165,17 @@ def bulk_assign_team_workout(
     if not athletes:
         return []
 
+    # Idempotency: skip any athlete who already has ANY assignment on
+    # (scheduled_date, day_order) — the unique constraint is on
+    # (athlete, scheduled_date, day_order), NOT on planned_workout.
+    # Previously filtering by planned_workout caused UniqueViolation when the
+    # same slot was occupied by a different workout.
     existing_athlete_ids = set(
         WorkoutAssignment.objects.filter(
             organization=organization,
-            planned_workout=planned_workout,
+            athlete__in=athletes,
             scheduled_date=scheduled_date,
             day_order=day_order,
-            athlete__in=athletes,
         ).values_list("athlete_id", flat=True)
     )
 
@@ -194,7 +198,8 @@ def bulk_assign_team_workout(
     if not to_create:
         return []
 
-    created = WorkoutAssignment.objects.bulk_create(to_create)
+    # ignore_conflicts=True is the last-resort safety net for race conditions.
+    created = WorkoutAssignment.objects.bulk_create(to_create, ignore_conflicts=True)
 
     logger.info(
         "workout_assignment.bulk_team_created",

@@ -26,8 +26,9 @@ PR queue:
 - PR-154 ✅ MERGED — Reporte automático compartible (athlete report with WhatsApp sharing)
 - PR-155 ✅ MERGED — Limpieza del edificio (consolidar sidebar, eliminar duplicación)
 - PR-156 ✅ MERGED — Mi Progreso del Atleta: Readiness hero + Goals + Weekly + PMC humano + Wellness
-- PR-157 THIS PR — Auto-Periodización + Badge Calendario + Timeline Atleta + Historial Planificador
-- PR-158 NEXT — Plan vs Real mejorado (resumen semanal prominente)
+- PR-157 ✅ MERGED — Auto-Periodización + Badge Calendario + Timeline Atleta + Historial Planificador
+- PR-158 THIS PR — Planificador Pro: Historial Visual + Copiar Semana + Carga Estimada + Plan vs Real
+- PR-159 NEXT — TBD
 
 ## PR Protocol (PASO 0)
 Before writing any code for a new PR:

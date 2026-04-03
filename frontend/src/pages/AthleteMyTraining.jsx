@@ -19,6 +19,7 @@ import { listAssignments, updateAssignment } from '../api/assignments';
 import { listAthletes, getAthleteProfile } from '../api/p1';
 import { getAthleteGoals } from '../api/pmc';
 import { getAvailability } from '../api/athlete';
+import { getPlanVsReal } from '../api/planning';
 import client from '../api/client';
 
 // day_of_week: 0=Mon…6=Sun  ↔  JS getDay(): 0=Sun,1=Mon…6=Sat
@@ -187,18 +188,49 @@ function WorkoutDayCard({ assignment, onClick, onCompleteClick }) {
               {chip}
             </Typography>
           )}
-          {isCompleted && dotColor && (
-            <Box
-              title={`Compliance: ${assignment.compliance_color}`}
-              sx={{
-                width: 8, height: 8, borderRadius: '50%',
-                bgcolor: dotColor, flexShrink: 0,
-              }}
-            />
-          )}
-          {isCompleted && !dotColor && (
-            <span style={{ fontSize: 10, color: '#16a34a', fontWeight: 700 }}>✓</span>
-          )}
+              {isCompleted && (() => {
+            // PR-158: compute compliance % from actual vs planned data
+            const plannedM = pw?.estimated_distance_meters;
+            const actualM = assignment.actual_distance_meters;
+            const plannedS = pw?.estimated_duration_seconds;
+            const actualS = assignment.actual_duration_seconds;
+            let pct = null;
+            if (plannedM && actualM != null) {
+              pct = Math.min(150, Math.round(actualM / plannedM * 100));
+            } else if (plannedS && actualS != null) {
+              pct = Math.min(150, Math.round(actualS / plannedS * 100));
+            }
+            const badgeColor = pct == null ? null
+              : pct >= 90 ? '#16a34a'
+              : pct >= 70 ? '#d97706'
+              : '#dc2626';
+            return pct != null ? (
+              <Box
+                title={`Compliance: ${pct}%`}
+                sx={{
+                  px: 0.5, py: 0.1,
+                  borderRadius: 0.75,
+                  bgcolor: `${badgeColor}22`,
+                  border: `1px solid ${badgeColor}44`,
+                  fontSize: '0.58rem',
+                  fontWeight: 700,
+                  color: badgeColor,
+                  lineHeight: 1.4,
+                  flexShrink: 0,
+                }}
+              >
+                {pct}%
+              </Box>
+            ) : dotColor ? (
+              <Box
+                title={`Compliance: ${assignment.compliance_color}`}
+                sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: dotColor, flexShrink: 0 }}
+              />
+            ) : (
+              <span style={{ fontSize: 10, color: '#16a34a', fontWeight: 700 }}>✓</span>
+            );
+          })()}
+          {!isCompleted && null}
         </Box>
       </Box>
 
@@ -248,6 +280,71 @@ function WorkoutDayCard({ assignment, onClick, onCompleteClick }) {
         )}
       </Box>
     </Paper>
+  );
+}
+
+// ── PlanVsRealBar — PR-158 ────────────────────────────────────────────────────
+
+function PlanVsRealBar({ planVsReal }) {
+  if (!planVsReal) return null;
+  const { planned, actual, compliance_pct } = planVsReal;
+  if (!planned || planned.sessions === 0) return null;
+
+  const pct = compliance_pct ?? 0;
+  const barColor = pct >= 90 ? '#16a34a' : pct >= 70 ? '#d97706' : '#dc2626';
+
+  return (
+    <Box
+      sx={{
+        gridColumn: '1 / -1',
+        px: 2, py: 0.5,
+        bgcolor: '#f0fdf4',
+        borderBottom: '1px solid #e2e8f0',
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 0.25 }}>
+        <Typography variant="caption" sx={{ color: '#374151', fontSize: '0.67rem', fontWeight: 600 }}>
+          Plan:
+        </Typography>
+        <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.67rem' }}>
+          {planned.sessions} ses · {planned.distance_km}km · {planned.duration_min}min
+          {planned.elevation_m > 0 ? ` · D+${planned.elevation_m}m` : ''}
+        </Typography>
+        <Typography variant="caption" sx={{ color: '#374151', fontSize: '0.67rem', fontWeight: 600 }}>
+          Real:
+        </Typography>
+        <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.67rem' }}>
+          {actual.sessions} ses · {actual.distance_km}km · {actual.duration_min}min
+          {actual.elevation_m > 0 ? ` · D+${actual.elevation_m}m` : ''}
+        </Typography>
+      </Box>
+
+      {/* Progress bar */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Box
+          sx={{
+            flex: 1, height: 4, borderRadius: 2,
+            bgcolor: '#e2e8f0', overflow: 'hidden',
+          }}
+        >
+          <Box
+            sx={{
+              height: '100%',
+              width: `${Math.min(100, pct)}%`,
+              bgcolor: barColor,
+              borderRadius: 2,
+              transition: 'width 0.4s ease',
+            }}
+          />
+        </Box>
+        <Typography
+          variant="caption"
+          sx={{ fontWeight: 700, color: barColor, fontSize: '0.67rem', minWidth: 34 }}
+        >
+          {pct}%
+        </Typography>
+      </Box>
+    </Box>
   );
 }
 
@@ -375,6 +472,8 @@ const AthleteMyTraining = () => {
   const [athleteProfile, setAthleteProfile] = useState(null);
   // PR-157 hotfix: athlete goals as Set of dateKey strings for badge rendering
   const [goalDateMap, setGoalDateMap] = useState({}); // { 'YYYY-MM-DD': goalTitle }
+  // PR-158: plan vs real data keyed by week Monday string
+  const [planVsRealMap, setPlanVsRealMap] = useState({}); // { 'YYYY-MM-DD': {...} }
 
   const fetchData = useCallback(async () => {
     if (!orgId) { setLoading(false); return; }
@@ -467,6 +566,35 @@ const AthleteMyTraining = () => {
       .catch(() => { if (!cancelled) setGoalDateMap({}); });
     return () => { cancelled = true; };
   }, []);
+
+  // PR-158: Load Plan vs Real for visible weeks
+  useEffect(() => {
+    if (!orgId) return;
+    let cancelled = false;
+    const monthStart = startOfMonth(currentDate);
+    const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
+    // Collect all Mondays visible in this month view
+    const mondays = [];
+    let d = calStart;
+    while (d <= endOfMonth(currentDate)) {
+      mondays.push(format(d, 'yyyy-MM-dd'));
+      d = new Date(d);
+      d.setDate(d.getDate() + 7);
+    }
+    Promise.all(
+      mondays.map((wk) =>
+        getPlanVsReal({ weekStart: wk })
+          .then((res) => ({ wk, data: res.data }))
+          .catch(() => ({ wk, data: null }))
+      )
+    ).then((results) => {
+      if (cancelled) return;
+      const map = {};
+      results.forEach(({ wk, data }) => { if (data) map[wk] = data; });
+      setPlanVsRealMap(map);
+    });
+    return () => { cancelled = true; };
+  }, [orgId, currentDate]);
 
   const handlePrevMonth = () => setCurrentDate((d) => subMonths(d, 1));
   const handleNextMonth = () => setCurrentDate((d) => addMonths(d, 1));
@@ -574,9 +702,16 @@ const AthleteMyTraining = () => {
           {weeks.map((week, wIdx) => {
             const weekDateKeys = week.map((d) => format(d, 'yyyy-MM-dd'));
             const weekAssignments = weekDateKeys.flatMap((k) => assignmentsByDate[k] ?? []);
+            // PR-158: Monday of this calendar row (week[0] is always Monday due to weekStartsOn=1)
+            const weekMondayKey = format(week[0], 'yyyy-MM-dd');
+            const pvr = planVsRealMap[weekMondayKey] ?? null;
 
             return (
               <React.Fragment key={wIdx}>
+                {/* PR-158: Plan vs Real bar above week grid */}
+                {pvr && pvr.planned?.sessions > 0 && (
+                  <PlanVsRealBar planVsReal={pvr} />
+                )}
                 <Box
                   sx={{
                     display: 'grid',
