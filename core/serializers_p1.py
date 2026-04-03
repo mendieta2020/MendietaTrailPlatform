@@ -810,8 +810,11 @@ class MacroRowSerializer(serializers.Serializer):
 
     One row per athlete, containing the athlete's phase for the requested
     week_start plus contextual data (goal A, injuries, wellness average).
+
+    PR-157 hotfix: added membership_id, goal_a_distance_km, goal_a_elevation_m.
     """
     athlete_id = serializers.IntegerField()
+    membership_id = serializers.IntegerField(allow_null=True)
     athlete_name = serializers.CharField()
     phase = serializers.CharField(allow_null=True)
     notes = serializers.CharField(allow_null=True)
@@ -819,6 +822,8 @@ class MacroRowSerializer(serializers.Serializer):
     goal_a_title = serializers.CharField(allow_null=True)
     goal_a_priority = serializers.CharField(allow_null=True)
     goal_a_date = serializers.DateField(allow_null=True)
+    goal_a_distance_km = serializers.FloatField(allow_null=True)
+    goal_a_elevation_m = serializers.IntegerField(allow_null=True)
     days_until_race = serializers.IntegerField(allow_null=True)
     has_active_injury = serializers.BooleanField()
     wellness_avg = serializers.FloatField(allow_null=True)

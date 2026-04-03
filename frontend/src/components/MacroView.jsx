@@ -487,11 +487,13 @@ function BulkAssignModal({ open, onClose, orgId, weekStart, athletes }) {
 export default function MacroView({ orgId }) {
   const thisMonday = formatDate(toMonday(new Date()));
   const nextMonday = addWeeks(thisMonday, 1);
+  const next2Monday = addWeeks(thisMonday, 2);
 
   const [teamId, setTeamId] = useState('');
   const [teams, setTeams] = useState([]);
   const [rows, setRows] = useState([]);           // current week
   const [rowsNext, setRowsNext] = useState([]);   // next week
+  const [rowsNext2, setRowsNext2] = useState([]); // week +2
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -510,23 +512,27 @@ export default function MacroView({ orgId }) {
     setLoading(true);
     setError(null);
     try {
-      const [r1, r2] = await Promise.all([
+      const [r1, r2, r3] = await Promise.all([
         getTrainingWeeks(orgId, thisMonday, teamId || null),
         getTrainingWeeks(orgId, nextMonday, teamId || null),
+        getTrainingWeeks(orgId, next2Monday, teamId || null),
       ]);
       setRows(r1.data || []);
       setRowsNext(r2.data || []);
+      setRowsNext2(r3.data || []);
     } catch {
       setError('Error al cargar la vista macro.');
     } finally {
       setLoading(false);
     }
-  }, [orgId, thisMonday, nextMonday, teamId]);
+  }, [orgId, thisMonday, nextMonday, next2Monday, teamId]);
 
   useEffect(() => { load(); }, [load]);
 
   function handlePhaseUpdated(athleteId, weekStart, phase) {
-    const setter = weekStart === thisMonday ? setRows : setRowsNext;
+    const setter = weekStart === thisMonday ? setRows
+      : weekStart === nextMonday ? setRowsNext
+      : setRowsNext2;
     setter((prev) =>
       prev.map((r) =>
         r.athlete_id === athleteId ? { ...r, phase, training_week_id: r.training_week_id || -1 } : r
@@ -536,6 +542,7 @@ export default function MacroView({ orgId }) {
 
   // Map next-week rows by athleteId for quick lookup
   const nextWeekMap = Object.fromEntries((rowsNext || []).map((r) => [r.athlete_id, r]));
+  const next2WeekMap = Object.fromEntries((rowsNext2 || []).map((r) => [r.athlete_id, r]));
 
   const displayRows = rows;
 
@@ -599,6 +606,7 @@ export default function MacroView({ orgId }) {
                 <TableCell sx={{ fontWeight: 700 }}>Atleta</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Sem. actual ({thisMonday})</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Sem. siguiente ({nextMonday})</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Sem. +2 ({next2Monday})</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Próximo Objetivo</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Faltan</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Lesión</TableCell>
@@ -609,7 +617,7 @@ export default function MacroView({ orgId }) {
             <TableBody>
               {displayRows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 4, color: '#94a3b8' }}>
+                  <TableCell colSpan={9} align="center" sx={{ py: 4, color: '#94a3b8' }}>
                     Sin atletas para mostrar.
                   </TableCell>
                 </TableRow>
@@ -622,6 +630,7 @@ export default function MacroView({ orgId }) {
                   row.has_active_injury,
                 );
                 const nextSuggestion = suggestPhase(null, false, row.has_active_injury);
+                const next2Row = next2WeekMap[row.athlete_id] || {};
 
                 return (
                   <TableRow key={row.athlete_id} hover>
@@ -655,6 +664,18 @@ export default function MacroView({ orgId }) {
                       />
                     </TableCell>
 
+                    {/* Week +2 phase */}
+                    <TableCell>
+                      <PhaseCell
+                        athleteId={row.athlete_id}
+                        weekStart={next2Monday}
+                        currentPhase={next2Row.phase}
+                        suggestion={nextSuggestion}
+                        orgId={orgId}
+                        onUpdated={handlePhaseUpdated}
+                      />
+                    </TableCell>
+
                     {/* Next goal (nearest date, any priority) */}
                     <TableCell>
                       {row.goal_a_title ? (
@@ -665,9 +686,18 @@ export default function MacroView({ orgId }) {
                               : (row.goal_a_date ? `Fecha: ${row.goal_a_date}` : '')
                           }
                         >
-                          <Typography variant="caption" sx={{ maxWidth: 160, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {row.goal_a_title}{row.goal_a_priority ? ` (${row.goal_a_priority})` : ''}
-                          </Typography>
+                          <Box>
+                            <Typography variant="caption" sx={{ maxWidth: 160, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
+                              {row.goal_a_title}{row.goal_a_priority ? ` (${row.goal_a_priority})` : ''}
+                            </Typography>
+                            {(row.goal_a_distance_km || row.goal_a_elevation_m) && (
+                              <Typography variant="caption" sx={{ color: '#6b7280', display: 'block', fontSize: '0.65rem' }}>
+                                {row.goal_a_distance_km ? `${row.goal_a_distance_km}K` : ''}
+                                {row.goal_a_distance_km && row.goal_a_elevation_m ? ' · ' : ''}
+                                {row.goal_a_elevation_m ? `D+ ${row.goal_a_elevation_m.toLocaleString()}m` : ''}
+                              </Typography>
+                            )}
+                          </Box>
                         </Tooltip>
                       ) : (
                         <Typography variant="caption" sx={{ color: '#94a3b8' }}>—</Typography>
@@ -708,7 +738,10 @@ export default function MacroView({ orgId }) {
 
                     {/* PR-157: Cycle per athlete — stored locally, applied via Auto-periodizar */}
                     <TableCell>
-                      <Tooltip title="Ciclo preferido — aplicá con Auto-periodizar" placement="top">
+                      <Tooltip
+                        title={`Ciclo preferido — aplicá con Auto-periodizar${row.goal_a_distance_km ? `. Sugerido: ${suggestPhase(null, false, row.has_active_injury) || '3:1'} (distancia ${row.goal_a_distance_km}K)` : ''}`}
+                        placement="top"
+                      >
                         <Select
                           size="small"
                           value={cycleMap[row.athlete_id] || '3:1'}

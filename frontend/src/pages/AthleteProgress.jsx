@@ -46,6 +46,17 @@ function priorityColor(priority) {
   return 'bg-slate-100 text-slate-600'
 }
 
+// ── PR-157: ISO week number helper ────────────────────────────────────────────
+
+function isoWeekNumber(dateStr) {
+  const d = new Date(dateStr)
+  // ISO week: week containing first Thursday of year
+  const dayOfWeek = d.getUTCDay() || 7 // Mon=1..Sun=7
+  d.setUTCDate(d.getUTCDate() + 4 - dayOfWeek)
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7)
+}
+
 // ── PR-157: Periodization Timeline component ──────────────────────────────────
 
 const PHASE_META = {
@@ -87,7 +98,7 @@ function PeriodizationTimeline({ phases }) {
                   {label}
                 </span>
                 <span className="text-[0.6rem] text-slate-400 mt-0.5">
-                  {isNow ? 'HOY' : `Sem ${i + 1}`}
+                  {isNow ? 'HOY' : `W${isoWeekNumber(w.week_start)}`}
                 </span>
               </div>
             )
