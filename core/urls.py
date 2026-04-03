@@ -106,6 +106,13 @@ from core.views_onboarding import (  # PR-149
     GoogleAuthView,
     OnboardingCompleteView,
 )
+from core.views_periodization import (  # PR-157
+    AutoPeriodizeAthleteView,
+    AutoPeriodizeGroupView,
+    AthleteTrainingPhasesView,
+    CoachAthleteTrainingPhasesView,
+    RecentWorkoutsView,
+)
 
 # Creamos el router para la API REST estándar
 router = DefaultRouter()
@@ -239,6 +246,13 @@ urlpatterns = [
     path('athlete/goals/', AthleteGoalsView.as_view(), name='athlete-goals'),
     path('athlete/weekly-summary/', AthleteWeeklySummaryView.as_view(), name='athlete-weekly-summary'),
     path('athlete/wellness/today/', AthleteWellnessTodayView.as_view(), name='athlete-wellness-today'),
+
+    # PR-157: Auto-periodization
+    path('coach/athletes/<int:membership_id>/auto-periodize/', AutoPeriodizeAthleteView.as_view(), name='coach-auto-periodize-athlete'),
+    path('coach/athletes/<int:membership_id>/recent-workouts/', RecentWorkoutsView.as_view(), name='coach-recent-workouts'),
+    path('athlete/training-phases/', AthleteTrainingPhasesView.as_view(), name='athlete-training-phases'),
+    path('p1/orgs/<int:org_id>/auto-periodize-group/', AutoPeriodizeGroupView.as_view(), name='p1-auto-periodize-group'),
+    path('p1/orgs/<int:org_id>/athletes/<int:athlete_id>/training-phases/', CoachAthleteTrainingPhasesView.as_view(), name='p1-athlete-training-phases'),
 
     # PR-141: Coach notify athlete to connect device
     path('coach/roster/<int:membership_id>/notify-device/', CoachNotifyAthleteDeviceView.as_view(), name='coach-notify-athlete-device'),

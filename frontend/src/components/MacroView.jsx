@@ -34,9 +34,12 @@ import {
   FormGroup,
   FormControlLabel,
   Checkbox,
+  Divider,
+  Snackbar,
 } from '@mui/material';
 import { getTrainingWeeks, upsertTrainingWeek, suggestPhase, listTeams, listLibraries, listPlannedWorkouts } from '../api/p1';
 import { bulkCreateAssignments } from '../api/assignments';
+import { autoPeriodizeGroup, getRecentWorkouts } from '../api/periodization';
 
 // ── Phase meta ────────────────────────────────────────────────────────────────
 
@@ -77,20 +80,46 @@ function WellnessCircle({ avg }) {
 
 function toMonday(date) {
   const d = new Date(date);
-  const day = d.getDay(); // 0=Sun
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
+  const dayOfWeek = d.getDay(); // 0=Sun
+  d.setDate(d.getDate() - ((dayOfWeek + 6) % 7)); // ISO: Mon=0 offset
   return d;
 }
 
+// Local-date formatting — avoids UTC-3 shift from toISOString()
 function formatDate(d) {
-  return d.toISOString().slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function addWeeks(dateStr, n) {
-  const d = new Date(dateStr);
+  const d = new Date(dateStr + 'T12:00:00'); // noon prevents DST shifts
   d.setDate(d.getDate() + n * 7);
   return formatDate(d);
+}
+
+// ISO week number (UTC-Thursday algorithm)
+function isoWeekNumber(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  const dow = d.getUTCDay() || 7; // Mon=1…Sun=7
+  d.setUTCDate(d.getUTCDate() + 4 - dow); // shift to Thursday
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+}
+
+const MONTHS_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+// "W14 (31 Mar — 6 Abr)"
+function formatWeekLabel(weekStart) {
+  const d = new Date(weekStart + 'T12:00:00');
+  const end = new Date(d);
+  end.setDate(end.getDate() + 6);
+  const wNum = isoWeekNumber(weekStart);
+  return `W${wNum} (${d.getDate()} ${MONTHS_SHORT[d.getMonth()]} — ${end.getDate()} ${MONTHS_SHORT[end.getMonth()]})`;
+}
+
+// "W10 (2 Mar)" — short prefix for panel rows
+function weekPrefixLabel(weekStart) {
+  const d = new Date(weekStart + 'T12:00:00');
+  return `W${isoWeekNumber(weekStart)} (${d.getDate()} ${MONTHS_SHORT[d.getMonth()]})`;
 }
 
 // ── Phase selector cell ───────────────────────────────────────────────────────
@@ -145,6 +174,185 @@ function PhaseCell({ athleteId, weekStart, currentPhase, suggestion, orgId, onUp
         </MenuItem>
       ))}
     </Select>
+  );
+}
+
+// ── Cycle patterns ────────────────────────────────────────────────────────────
+
+const CYCLE_OPTIONS = [
+  { value: '1:1', label: '1:1 — Principiante (5–15 km)' },
+  { value: '2:1', label: '2:1 — Intermedio (21 km)' },
+  { value: '3:1', label: '3:1 — Avanzado (42 km+)' },
+  { value: '4:1', label: '4:1 — Ultra (80 km+)' },
+];
+
+// ── Auto-periodize modal ──────────────────────────────────────────────────────
+
+function AutoPeriodizeModal({ open, onClose, orgId, teams, onSuccess }) {
+  const [teamId, setTeamId] = useState('');
+  const [defaultCycle, setDefaultCycle] = useState('3:1');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [result, setResult] = useState(null);
+
+  function handleClose() {
+    if (saving) return;
+    setResult(null);
+    setError(null);
+    onClose();
+  }
+
+  async function handleSubmit() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await autoPeriodizeGroup(orgId, {
+        team_id: teamId || undefined,
+        default_cycle: defaultCycle,
+      });
+      setResult(res.data);
+      onSuccess();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Error al auto-periodizar. Verificá los datos.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
+      <DialogTitle sx={{ fontWeight: 700 }}>Auto-periodizar equipo</DialogTitle>
+      <DialogContent>
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+        {result ? (
+          <Box>
+            <Alert severity="success" sx={{ mb: 2 }}>
+              <strong>{result.periodized}</strong> atleta{result.periodized !== 1 ? 's' : ''} periodizados.
+              {result.skipped_no_goals > 0 && (
+                <> <strong>{result.skipped_no_goals}</strong> sin objetivo (saltados).</>
+              )}
+            </Alert>
+            {result.athletes?.map((a) => (
+              <Box key={a.athlete_name} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5 }}>
+                <Typography variant="caption">{a.athlete_name}</Typography>
+                <Typography variant="caption" sx={{ color: '#6b7280' }}>
+                  ciclo {a.cycle} · {a.weeks_created + a.weeks_updated} semanas
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        ) : (
+          <Box sx={{ pt: 1 }}>
+            <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+              <InputLabel>Grupo</InputLabel>
+              <Select value={teamId} label="Grupo" onChange={(e) => setTeamId(e.target.value)}>
+                <MenuItem value="">Todos los atletas</MenuItem>
+                {teams.map((t) => (
+                  <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+              <InputLabel>Ciclo por defecto</InputLabel>
+              <Select
+                value={defaultCycle}
+                label="Ciclo por defecto"
+                onChange={(e) => setDefaultCycle(e.target.value)}
+              >
+                {CYCLE_OPTIONS.map((o) => (
+                  <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <Alert severity="info" sx={{ fontSize: '0.75rem' }}>
+              El sistema asigna fases automáticamente basándose en los objetivos de carrera
+              de cada atleta. El ciclo se ajusta según la distancia del objetivo.
+            </Alert>
+          </Box>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={handleClose} disabled={saving}>
+          {result ? 'Cerrar' : 'Cancelar'}
+        </Button>
+        {!result && (
+          <Button
+            variant="contained"
+            onClick={handleSubmit}
+            disabled={saving}
+            sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' } }}
+          >
+            {saving ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : 'Auto-periodizar'}
+          </Button>
+        )}
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// ── Recent workouts panel (inside BulkAssignModal) ────────────────────────────
+
+function RecentWorkoutsPanel({ athletes }) {
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    if (!athletes || athletes.length === 0) return;
+    // Fetch for the first athlete that has a membership_id; show group-level summary
+    const firstWithMembership = athletes.find((a) => a.membership_id);
+    if (!firstWithMembership) return;
+    let cancelled = false;
+    getRecentWorkouts(firstWithMembership.membership_id, 6)
+      .then((res) => { if (!cancelled) setData(res.data); })
+      .catch(() => { if (!cancelled) setData(null); });
+    return () => { cancelled = true; };
+  }, [athletes]);
+
+  if (!data) return null;
+
+  const { weeks, repeated_alerts } = data;
+
+  return (
+    <Box sx={{ mb: 2 }}>
+      <Typography variant="caption" sx={{ fontWeight: 700, color: '#374151', display: 'block', mb: 1 }}>
+        ÚLTIMAS 6 SEMANAS
+      </Typography>
+      <Box sx={{
+        border: '1px solid #e5e7eb', borderRadius: 1, p: 1.5,
+        bgcolor: '#f9fafb', fontSize: '0.72rem',
+      }}>
+        {weeks.filter((w) => w.workouts.length > 0).slice(-6).map((w, i, arr) => (
+          <Box key={w.week_start} sx={{
+            display: 'flex', gap: 1, py: 0.4,
+            borderBottom: i < arr.length - 1 ? '1px solid #f0f0f0' : 'none',
+          }}>
+            <Typography variant="caption" sx={{ color: '#6b7280', minWidth: 90, flexShrink: 0 }}>
+              {weekPrefixLabel(w.week_start)}:
+            </Typography>
+            <Typography variant="caption" sx={{ color: '#374151' }}>
+              {w.workouts.join(', ')}
+            </Typography>
+          </Box>
+        ))}
+        {weeks.every((w) => w.workouts.length === 0) && (
+          <Typography variant="caption" sx={{ color: '#94a3b8' }}>Sin entrenamientos asignados</Typography>
+        )}
+      </Box>
+
+      {repeated_alerts.length > 0 && (
+        <Alert severity="warning" sx={{ mt: 1, py: 0.5, fontSize: '0.72rem' }}>
+          {repeated_alerts.map((a) => (
+            <Box key={a.workout}>
+              ⚠ <strong>"{a.workout}"</strong> — {a.warning}
+            </Box>
+          ))}
+        </Alert>
+      )}
+
+      <Divider sx={{ mt: 1.5, mb: 1 }} />
+    </Box>
   );
 }
 
@@ -219,11 +427,14 @@ function BulkAssignModal({ open, onClose, orgId, weekStart, athletes }) {
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>
-        Planificar semana del {weekStart}
+        Planificar {formatWeekLabel(weekStart)}
       </DialogTitle>
       <DialogContent>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
         {success && <Alert severity="success" sx={{ mb: 2 }}>Entrenamientos asignados.</Alert>}
+
+        {/* PR-157: Recent workouts history */}
+        <RecentWorkoutsPanel athletes={athletes} />
 
         <FormControl fullWidth size="small" sx={{ mb: 2, mt: 1 }}>
           <InputLabel>Librería</InputLabel>
@@ -300,16 +511,29 @@ function BulkAssignModal({ open, onClose, orgId, weekStart, athletes }) {
 // ── Main MacroView ────────────────────────────────────────────────────────────
 
 export default function MacroView({ orgId }) {
-  const thisMonday = formatDate(toMonday(new Date()));
-  const nextMonday = addWeeks(thisMonday, 1);
+  const thisMonday = formatDate(toMonday(new Date())); // anchor: today's Monday
+
+  // ── Week window navigation ────────────────────────────────────────────────────
+  // windowOffset = weeks to shift the 3-column view from today's Monday
+  const [windowOffset, setWindowOffset] = useState(0);
+  const week0 = addWeeks(thisMonday, windowOffset);
+  const week1 = addWeeks(thisMonday, windowOffset + 1);
+  const week2 = addWeeks(thisMonday, windowOffset + 2);
+
+  // "Planificar" button targets next week when today is Wed (getDay≥3) or later
+  const planWeek = new Date().getDay() >= 3 ? addWeeks(thisMonday, 1) : thisMonday;
 
   const [teamId, setTeamId] = useState('');
   const [teams, setTeams] = useState([]);
-  const [rows, setRows] = useState([]);           // current week
-  const [rowsNext, setRowsNext] = useState([]);   // next week
+  const [rows, setRows] = useState([]);           // week0
+  const [rowsNext, setRowsNext] = useState([]);   // week1
+  const [rowsNext2, setRowsNext2] = useState([]); // week2
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [autoOpen, setAutoOpen] = useState(false);
+  // Per-athlete cycle override map: { athleteId: "3:1" }
+  const [cycleMap, setCycleMap] = useState({});
 
   // Load teams
   useEffect(() => {
@@ -322,23 +546,41 @@ export default function MacroView({ orgId }) {
     setLoading(true);
     setError(null);
     try {
-      const [r1, r2] = await Promise.all([
-        getTrainingWeeks(orgId, thisMonday, teamId || null),
-        getTrainingWeeks(orgId, nextMonday, teamId || null),
+      const [r1, r2, r3] = await Promise.all([
+        getTrainingWeeks(orgId, week0, teamId || null),
+        getTrainingWeeks(orgId, week1, teamId || null),
+        getTrainingWeeks(orgId, week2, teamId || null),
       ]);
       setRows(r1.data || []);
       setRowsNext(r2.data || []);
+      setRowsNext2(r3.data || []);
     } catch {
       setError('Error al cargar la vista macro.');
     } finally {
       setLoading(false);
     }
-  }, [orgId, thisMonday, nextMonday, teamId]);
+  }, [orgId, week0, week1, week2, teamId]);
 
   useEffect(() => { load(); }, [load]);
 
+  // ── Bulk-assign modal target week ─────────────────────────────────────────────
+  // null = fall back to planWeek (smart default); set explicitly on header click
+  const [bulkWeekStart, setBulkWeekStart] = useState(null);
+
+  function openBulkModal(weekStart) {
+    setBulkWeekStart(weekStart);
+    setBulkOpen(true);
+  }
+
+  function closeBulkModal() {
+    setBulkOpen(false);
+    setBulkWeekStart(null); // reset so next open via orange button uses planWeek
+  }
+
   function handlePhaseUpdated(athleteId, weekStart, phase) {
-    const setter = weekStart === thisMonday ? setRows : setRowsNext;
+    const setter = weekStart === week0 ? setRows
+      : weekStart === week1 ? setRowsNext
+      : setRowsNext2;
     setter((prev) =>
       prev.map((r) =>
         r.athlete_id === athleteId ? { ...r, phase, training_week_id: r.training_week_id || -1 } : r
@@ -348,6 +590,7 @@ export default function MacroView({ orgId }) {
 
   // Map next-week rows by athleteId for quick lookup
   const nextWeekMap = Object.fromEntries((rowsNext || []).map((r) => [r.athlete_id, r]));
+  const next2WeekMap = Object.fromEntries((rowsNext2 || []).map((r) => [r.athlete_id, r]));
 
   const displayRows = rows;
 
@@ -375,15 +618,54 @@ export default function MacroView({ orgId }) {
           Actualizar
         </Button>
 
+        {/* ── Week window navigation ── */}
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={() => setWindowOffset((o) => o - 1)}
+          sx={{ minWidth: 32, px: 1, borderColor: '#d1d5db', color: '#6b7280' }}
+        >
+          ‹
+        </Button>
+        {windowOffset !== 0 && (
+          <Button
+            size="small"
+            variant="text"
+            onClick={() => setWindowOffset(0)}
+            sx={{ color: '#6b7280', fontSize: '0.72rem', minWidth: 36 }}
+          >
+            Hoy
+          </Button>
+        )}
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={() => setWindowOffset((o) => o + 1)}
+          sx={{ minWidth: 32, px: 1, borderColor: '#d1d5db', color: '#6b7280' }}
+        >
+          ›
+        </Button>
+
+        {/* PR-157: Auto-periodize group */}
+        <Button
+          variant="outlined"
+          size="small"
+          onClick={() => setAutoOpen(true)}
+          sx={{ borderColor: '#7c3aed', color: '#7c3aed' }}
+        >
+          Auto-periodizar
+        </Button>
+
         <Box sx={{ flex: 1 }} />
 
+        {/* Defaults to next week when today is Wed or later — or click any column header */}
         <Button
           variant="contained"
           size="small"
-          onClick={() => setBulkOpen(true)}
+          onClick={() => openBulkModal(planWeek)}
           sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' } }}
         >
-          Planificar Sem. {thisMonday}
+          Planificar {formatWeekLabel(planWeek)}
         </Button>
       </Box>
 
@@ -399,18 +681,33 @@ export default function MacroView({ orgId }) {
             <TableHead>
               <TableRow sx={{ bgcolor: '#f8fafc' }}>
                 <TableCell sx={{ fontWeight: 700 }}>Atleta</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Sem. actual ({thisMonday})</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Sem. siguiente ({nextMonday})</TableCell>
+                {[week0, week1, week2].map((w) => (
+                  <TableCell key={w} sx={{ fontWeight: 700, p: 0 }}>
+                    <Tooltip title={`Planificar ${formatWeekLabel(w)}`} placement="top">
+                      <Box
+                        onClick={() => openBulkModal(w)}
+                        sx={{
+                          cursor: 'pointer',
+                          px: 2, py: 1,
+                          '&:hover': { color: '#F57C00', textDecoration: 'underline' },
+                        }}
+                      >
+                        {formatWeekLabel(w)}
+                      </Box>
+                    </Tooltip>
+                  </TableCell>
+                ))}
                 <TableCell sx={{ fontWeight: 700 }}>Próximo Objetivo</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Faltan</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Lesión</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Wellness</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Ciclo</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {displayRows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 4, color: '#94a3b8' }}>
+                  <TableCell colSpan={9} align="center" sx={{ py: 4, color: '#94a3b8' }}>
                     Sin atletas para mostrar.
                   </TableCell>
                 </TableRow>
@@ -423,6 +720,7 @@ export default function MacroView({ orgId }) {
                   row.has_active_injury,
                 );
                 const nextSuggestion = suggestPhase(null, false, row.has_active_injury);
+                const next2Row = next2WeekMap[row.athlete_id] || {};
 
                 return (
                   <TableRow key={row.athlete_id} hover>
@@ -432,11 +730,11 @@ export default function MacroView({ orgId }) {
                       </Typography>
                     </TableCell>
 
-                    {/* Current week phase */}
+                    {/* Week 0 phase */}
                     <TableCell>
                       <PhaseCell
                         athleteId={row.athlete_id}
-                        weekStart={thisMonday}
+                        weekStart={week0}
                         currentPhase={row.phase}
                         suggestion={suggestion}
                         orgId={orgId}
@@ -444,12 +742,24 @@ export default function MacroView({ orgId }) {
                       />
                     </TableCell>
 
-                    {/* Next week phase */}
+                    {/* Week 1 phase */}
                     <TableCell>
                       <PhaseCell
                         athleteId={row.athlete_id}
-                        weekStart={nextMonday}
+                        weekStart={week1}
                         currentPhase={nextRow.phase}
+                        suggestion={nextSuggestion}
+                        orgId={orgId}
+                        onUpdated={handlePhaseUpdated}
+                      />
+                    </TableCell>
+
+                    {/* Week 2 phase */}
+                    <TableCell>
+                      <PhaseCell
+                        athleteId={row.athlete_id}
+                        weekStart={week2}
+                        currentPhase={next2Row.phase}
                         suggestion={nextSuggestion}
                         orgId={orgId}
                         onUpdated={handlePhaseUpdated}
@@ -466,9 +776,18 @@ export default function MacroView({ orgId }) {
                               : (row.goal_a_date ? `Fecha: ${row.goal_a_date}` : '')
                           }
                         >
-                          <Typography variant="caption" sx={{ maxWidth: 160, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {row.goal_a_title}{row.goal_a_priority ? ` (${row.goal_a_priority})` : ''}
-                          </Typography>
+                          <Box>
+                            <Typography variant="caption" sx={{ maxWidth: 160, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
+                              {row.goal_a_title}{row.goal_a_priority ? ` (${row.goal_a_priority})` : ''}
+                            </Typography>
+                            {(row.goal_a_distance_km || row.goal_a_elevation_m) && (
+                              <Typography variant="caption" sx={{ color: '#6b7280', display: 'block', fontSize: '0.65rem' }}>
+                                {row.goal_a_distance_km ? `${row.goal_a_distance_km}K` : ''}
+                                {row.goal_a_distance_km && row.goal_a_elevation_m ? ' · ' : ''}
+                                {row.goal_a_elevation_m ? `D+ ${row.goal_a_elevation_m.toLocaleString()}m` : ''}
+                              </Typography>
+                            )}
+                          </Box>
                         </Tooltip>
                       ) : (
                         <Typography variant="caption" sx={{ color: '#94a3b8' }}>—</Typography>
@@ -506,6 +825,27 @@ export default function MacroView({ orgId }) {
                     <TableCell>
                       <WellnessCircle avg={row.wellness_avg} />
                     </TableCell>
+
+                    {/* PR-157: Cycle per athlete — stored locally, applied via Auto-periodizar */}
+                    <TableCell>
+                      <Tooltip
+                        title={`Ciclo preferido — aplicá con Auto-periodizar${row.goal_a_distance_km ? `. Sugerido: ${suggestPhase(null, false, row.has_active_injury) || '3:1'} (distancia ${row.goal_a_distance_km}K)` : ''}`}
+                        placement="top"
+                      >
+                        <Select
+                          size="small"
+                          value={cycleMap[row.athlete_id] || '3:1'}
+                          onChange={(e) =>
+                            setCycleMap((prev) => ({ ...prev, [row.athlete_id]: e.target.value }))
+                          }
+                          sx={{ minWidth: 80, fontSize: '0.75rem' }}
+                        >
+                          {['1:1', '2:1', '3:1', '4:1'].map((v) => (
+                            <MenuItem key={v} value={v} sx={{ fontSize: '0.75rem' }}>{v}</MenuItem>
+                          ))}
+                        </Select>
+                      </Tooltip>
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -516,10 +856,19 @@ export default function MacroView({ orgId }) {
 
       <BulkAssignModal
         open={bulkOpen}
-        onClose={() => setBulkOpen(false)}
+        onClose={closeBulkModal}
         orgId={orgId}
-        weekStart={thisMonday}
+        weekStart={bulkWeekStart ?? planWeek}
         athletes={displayRows}
+      />
+
+      {/* PR-157: Auto-periodize group modal */}
+      <AutoPeriodizeModal
+        open={autoOpen}
+        onClose={() => setAutoOpen(false)}
+        orgId={orgId}
+        teams={teams}
+        onSuccess={load}
       />
     </Box>
   );

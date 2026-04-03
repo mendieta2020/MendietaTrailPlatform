@@ -17,6 +17,7 @@ import { weatherChip } from '../hooks/useWeatherIcon';
 import { useAuth } from '../context/AuthContext';
 import { listAssignments, updateAssignment } from '../api/assignments';
 import { listAthletes, getAthleteProfile } from '../api/p1';
+import { getAthleteGoals } from '../api/pmc';
 import { getAvailability } from '../api/athlete';
 import client from '../api/client';
 
@@ -372,6 +373,8 @@ const AthleteMyTraining = () => {
   const [availability, setAvailability] = useState([]);
   // PR-155: athlete profile for menstrual cycle overlay
   const [athleteProfile, setAthleteProfile] = useState(null);
+  // PR-157 hotfix: athlete goals as Set of dateKey strings for badge rendering
+  const [goalDateMap, setGoalDateMap] = useState({}); // { 'YYYY-MM-DD': goalTitle }
 
   const fetchData = useCallback(async () => {
     if (!orgId) { setLoading(false); return; }
@@ -448,6 +451,21 @@ const AthleteMyTraining = () => {
     client.get('/api/athlete/pmc/')
       .then((res) => setPmcData(res.data))
       .catch(() => setPmcData(null));
+  }, []);
+
+  // PR-157 hotfix: load athlete goals once for race date badges
+  useEffect(() => {
+    let cancelled = false;
+    getAthleteGoals()
+      .then((res) => {
+        if (!cancelled) {
+          const map = {};
+          (res.data?.goals ?? []).forEach((g) => { if (g.date) map[g.date] = g.name; });
+          setGoalDateMap(map);
+        }
+      })
+      .catch(() => { if (!cancelled) setGoalDateMap({}); });
+    return () => { cancelled = true; };
   }, []);
 
   const handlePrevMonth = () => setCurrentDate((d) => subMonths(d, 1));
@@ -641,6 +659,21 @@ const AthleteMyTraining = () => {
                           >
                             {blocked.reason || 'No disponible'}
                           </Typography>
+                        )}
+
+                        {/* PR-157 hotfix: goal/race date badge */}
+                        {inMonth && goalDateMap[dateKey] && (
+                          <Box
+                            title={`🏔️ Carrera: ${goalDateMap[dateKey]}`}
+                            sx={{
+                              bgcolor: '#dc2626', color: '#fff',
+                              borderRadius: '4px', px: 0.75, py: 0.25, mb: 0.5,
+                              fontSize: '0.62rem', fontWeight: 700,
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            }}
+                          >
+                            🏔️ {goalDateMap[dateKey]}
+                          </Box>
                         )}
 
                         {/* Assignment cards */}

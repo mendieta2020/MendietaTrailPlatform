@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-01 · Full audit completed — security sweep queued as PR-149_
+_Last updated: 2026-04-02 · PR-157 Auto-Periodización merged_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -159,6 +159,19 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - FRONTEND_URL already existed in settings.py (confirmed); "Abrir Quantoryn" button already fixed in PR-154 hotfix
 - Risk: LOW (frontend only, no backend models, no migrations)
 
+### PR-157 — Auto-Periodización + Badge Calendario + Timeline Atleta + Historial Planificador ✅ 2026-04-02
+- Backend: `core/services_periodization.py` — `auto_periodize_athlete()` + `suggest_cycle_pattern()`; idempotent (update_or_create); respects lesion phases
+- Cycle patterns: 1:1 / 2:1 / 3:1 / 4:1 (distance-based suggestion)
+- 5 new endpoints: POST auto-periodize athlete, POST auto-periodize group, GET recent-workouts, GET athlete/training-phases/, GET p1/orgs/<id>/athletes/<id>/training-phases/
+- 10 tests in `core/tests_pr157_periodization.py`
+- Frontend: Auto-periodizar grupo button + CICLO column in MacroView.jsx
+- 6-week workout history panel in BulkAssignModal with consecutive-repetition warnings
+- Periodization timeline in AthleteProgress.jsx (Section 3 between Goals and Weekly)
+- Training phase colored badge (4px strip) in Calendar.jsx month view per week
+- `frontend/src/api/periodization.js` — 5 API client functions
+- No migrations required (TrainingWeek model already exists since PR-155)
+- Risk: MEDIUM — RESOLVED
+
 ### PR-154 — Reporte Automático Compartible (WhatsApp + Email) ✅ 2026-04-02
 - AthleteReport model: token (UUID hex, 64 chars), org FK, athlete/coach user FK, membership FK, snapshot JSON, expires_at (7 days TTL), view_count tracking
 - Migration: 0106_pr154_athletereport.py
@@ -180,7 +193,8 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 ### Before Mes 2 (10 external coaches)
 - PR-155 ✅ — Building cleanup (sidebar consolidation, duplicate removal) — DONE
 - PR-156 ✅ — Mi Progreso del Atleta redesign (Readiness + Goals + Weekly + PMC humano + Wellness) — DONE
-- PR-157 (next) — Diferenciación vista coach vs atleta (roles)
+- PR-157 ✅ — Auto-Periodización + Badge Calendario + Timeline Atleta + Historial Planificador — DONE (2026-04-02)
+- PR-158 (next) — Plan vs Real mejorado (resumen semanal prominente)
 
 ### Before Mes 3 (general market launch)
 - PR-157 — Videos en ejercicios de fuerza

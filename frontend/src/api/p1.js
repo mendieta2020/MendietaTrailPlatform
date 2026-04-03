@@ -154,6 +154,14 @@ export function suggestPhase(recentPhases, hasRaceThisWeek, hasActiveInjury) {
   return null;
 }
 
+// ── Athlete Goals (PR-115) ────────────────────────────────────────────────────
+
+// Returns all active/planned goals for a specific athlete (coach view).
+// ?athlete_id=<id> filter supported by AthleteGoalViewSet.
+export function listAthleteGoals(orgId, athleteId) {
+  return client.get(`${p1Base(orgId)}/goals/?athlete_id=${athleteId}`);
+}
+
 // ── Athlete Profile (PR-116) ──────────────────────────────────────────────────
 
 export function getAthleteProfile(orgId, athleteId) {

@@ -2139,6 +2139,18 @@ class TrainingWeekViewSet(OrgTenantMixin, viewsets.GenericViewSet):
 
         athlete_ids = list(athletes_qs.values_list("id", flat=True))
 
+        # PR-157 hotfix: batch fetch membership_id for each athlete (for recent-workouts endpoint)
+        from core.models import Membership as _Membership
+        membership_map = {
+            m["user_id"]: m["id"]
+            for m in _Membership.objects.filter(
+                organization=self.organization,
+                user_id__in=athletes_qs.values_list("user_id", flat=True),
+                role=_Membership.Role.ATHLETE,
+                is_active=True,
+            ).values("user_id", "id")
+        }
+
         # Batch fetch training weeks for this week_start
         tw_map = {
             tw.athlete_id: tw
@@ -2227,6 +2239,7 @@ class TrainingWeekViewSet(OrgTenantMixin, viewsets.GenericViewSet):
             ]
             rows.append({
                 "athlete_id": athlete.id,
+                "membership_id": membership_map.get(athlete.user_id),
                 "athlete_name": full_name,
                 "phase": tw.phase if tw else None,
                 "notes": tw.notes if tw else None,
@@ -2234,6 +2247,8 @@ class TrainingWeekViewSet(OrgTenantMixin, viewsets.GenericViewSet):
                 "goal_a_title": goal.title if goal else None,
                 "goal_a_priority": goal.priority if goal else None,
                 "goal_a_date": goal_date,
+                "goal_a_distance_km": goal.target_distance_km if goal else None,
+                "goal_a_elevation_m": goal.target_elevation_gain_m if goal else None,
                 "days_until_race": days_until,
                 "has_active_injury": athlete.id in injury_athlete_ids,
                 "wellness_avg": round(wellness_avgs.get(athlete.id, None) or 0, 2) if athlete.id in wellness_avgs else None,

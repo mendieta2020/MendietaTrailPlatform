@@ -9,6 +9,7 @@ import {
   getAthleteWeeklySummary,
   getAthleteWellnessToday,
 } from '../api/pmc'
+import { getAthleteTrainingPhases } from '../api/periodization'
 
 const RANGE_OPTIONS = [
   { label: '1M', days: 30 },
@@ -45,6 +46,86 @@ function priorityColor(priority) {
   return 'bg-slate-100 text-slate-600'
 }
 
+// ── PR-157: ISO week number helper ────────────────────────────────────────────
+
+function isoWeekNumber(dateStr) {
+  const d = new Date(dateStr)
+  // ISO week: week containing first Thursday of year
+  const dayOfWeek = d.getUTCDay() || 7 // Mon=1..Sun=7
+  d.setUTCDate(d.getUTCDate() + 4 - dayOfWeek)
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7)
+}
+
+// ── PR-157: Periodization Timeline component ──────────────────────────────────
+
+const PHASE_META = {
+  carga:    { label: 'CARGA',    bg: 'bg-orange-100',  text: 'text-orange-700',  dot: 'bg-orange-500',  desc: 'Fase de construcción. Volumen alto, intensidad progresiva.' },
+  descarga: { label: 'DESC',     bg: 'bg-green-100',   text: 'text-green-700',   dot: 'bg-green-500',   desc: 'Semana de recuperación. Reducí volumen 30-40%.' },
+  carrera:  { label: 'CARRERA',  bg: 'bg-rose-100',    text: 'text-rose-700',    dot: 'bg-rose-500',    desc: 'Semana de competencia. Activaciones cortas, descansá.' },
+  descanso: { label: 'DESCANSO', bg: 'bg-blue-100',    text: 'text-blue-700',    dot: 'bg-blue-500',    desc: 'Recuperación post-carrera. Actividad suave o descanso completo.' },
+  lesion:   { label: 'LESIÓN',   bg: 'bg-slate-200',   text: 'text-slate-600',   dot: 'bg-slate-500',   desc: 'Recuperación de lesión. Seguí las indicaciones de tu coach.' },
+}
+
+function PeriodizationTimeline({ phases }) {
+  const { phases: weeks, current_phase, current_phase_description } = phases
+  if (!weeks || weeks.length === 0) return null
+
+  const currentMeta = current_phase ? PHASE_META[current_phase] : null
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+      <h2 className="text-base font-semibold text-slate-900 mb-3">Tu Plan de Temporada</h2>
+
+      {/* Scrollable horizontal timeline */}
+      <div className="overflow-x-auto pb-1">
+        <div className="flex gap-1.5 min-w-max">
+          {weeks.map((w, i) => {
+            const meta = w.phase ? PHASE_META[w.phase] : null
+            const label = meta ? meta.label : '—'
+            const isNow = w.is_current
+            return (
+              <div
+                key={w.week_start}
+                title={`Semana ${i + 1}: ${w.week_start}${meta ? ` — ${PHASE_META[w.phase].desc}` : ''}`}
+                className={`flex flex-col items-center rounded-lg px-2 py-1.5 min-w-[52px] border transition-all ${
+                  isNow
+                    ? 'border-amber-400 ring-1 ring-amber-300 shadow-sm'
+                    : 'border-transparent'
+                } ${meta ? meta.bg : 'bg-slate-50'}`}
+              >
+                <span className={`text-xs font-bold leading-tight ${meta ? meta.text : 'text-slate-400'}`}>
+                  {label}
+                </span>
+                <span className="text-[0.6rem] text-slate-400 mt-0.5">
+                  {isNow ? 'HOY' : `W${isoWeekNumber(w.week_start)}`}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Current phase description */}
+      {currentMeta && (
+        <div className={`mt-3 flex items-start gap-2 rounded-lg p-3 ${currentMeta.bg}`}>
+          <div className={`w-2.5 h-2.5 rounded-full mt-0.5 shrink-0 ${currentMeta.dot}`} />
+          <div>
+            <p className={`text-sm font-semibold ${currentMeta.text}`}>
+              {currentMeta.label}
+            </p>
+            <p className="text-xs text-slate-600 mt-0.5">{current_phase_description}</p>
+          </div>
+        </div>
+      )}
+
+      {!current_phase && (
+        <p className="text-xs text-slate-400 mt-2">Tu coach todavía no asignó fases para tu temporada.</p>
+      )}
+    </div>
+  )
+}
+
 const AthleteProgress = () => {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -54,6 +135,7 @@ const AthleteProgress = () => {
   const [goals, setGoals] = useState([])
   const [weekly, setWeekly] = useState(null)
   const [wellness, setWellness] = useState(null)
+  const [phases, setPhases] = useState(null)
   const [loadingPMC, setLoadingPMC] = useState(true)
   const [loadingExtras, setLoadingExtras] = useState(true)
 
@@ -76,14 +158,16 @@ const AthleteProgress = () => {
     const fetchExtras = async () => {
       setLoadingExtras(true)
       try {
-        const [goalsRes, weeklyRes, wellnessRes] = await Promise.all([
+        const [goalsRes, weeklyRes, wellnessRes, phasesRes] = await Promise.all([
           getAthleteGoals().catch(() => ({ data: { goals: [] } })),
           getAthleteWeeklySummary().catch(() => ({ data: null })),
           getAthleteWellnessToday().catch(() => ({ data: { submitted: false } })),
+          getAthleteTrainingPhases(12).catch(() => ({ data: null })),
         ])
         setGoals(goalsRes.data?.goals ?? [])
         setWeekly(weeklyRes.data)
         setWellness(wellnessRes.data)
+        setPhases(phasesRes.data)
       } finally {
         setLoadingExtras(false)
       }
@@ -195,7 +279,12 @@ const AthleteProgress = () => {
           </div>
         )}
 
-        {/* SECTION 3: WEEKLY SUMMARY */}
+        {/* SECTION 3: PERIODIZATION TIMELINE — PR-157 */}
+        {!loadingExtras && phases && phases.phases && phases.phases.some(p => p.phase) && (
+          <PeriodizationTimeline phases={phases} />
+        )}
+
+        {/* SECTION 4: WEEKLY SUMMARY */}
         {!loadingExtras && weekly && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
             <h2 className="text-base font-semibold text-slate-900 mb-4">Esta Semana</h2>
@@ -225,7 +314,7 @@ const AthleteProgress = () => {
           </div>
         )}
 
-        {/* SECTION 4: SIMPLIFIED PMC CHART */}
+        {/* SECTION 5: SIMPLIFIED PMC CHART */}
         {!loadingPMC && hasData && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
             <div className="flex items-center justify-between mb-1">
@@ -257,7 +346,7 @@ const AthleteProgress = () => {
           </div>
         )}
 
-        {/* SECTION 5: WELLNESS CHECK-IN PROMPT */}
+        {/* SECTION 6: WELLNESS CHECK-IN PROMPT */}
         {!loadingExtras && wellness && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
             {wellness.submitted ? (
