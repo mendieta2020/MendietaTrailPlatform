@@ -119,6 +119,7 @@ from core.views_planning import (  # PR-158
     CopyWeekView,
     EstimatedWeeklyLoadView,
     AthletePlanVsRealView,
+    GroupWeekTemplateView,
 )
 
 # Creamos el router para la API REST estándar
@@ -267,6 +268,8 @@ urlpatterns = [
     path('p1/orgs/<int:org_id>/group-workout-history/', GroupWorkoutHistoryView.as_view(), name='p1-group-workout-history'),
     path('p1/orgs/<int:org_id>/copy-week/', CopyWeekView.as_view(), name='p1-copy-week'),
     path('athlete/plan-vs-real/', AthletePlanVsRealView.as_view(), name='athlete-plan-vs-real'),
+    # PR-158 hotfix: Group Planning View template
+    path('p1/orgs/<int:org_id>/group-week-template/', GroupWeekTemplateView.as_view(), name='p1-group-week-template'),
 
     # PR-141: Coach notify athlete to connect device
     path('coach/roster/<int:membership_id>/notify-device/', CoachNotifyAthleteDeviceView.as_view(), name='coach-notify-athlete-device'),

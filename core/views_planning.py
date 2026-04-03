@@ -895,3 +895,126 @@ class AthletePlanVsRealView(APIView):
             "compliance_pct": overall_compliance,
             "per_session": per_session,
         })
+
+
+# ---------------------------------------------------------------------------
+# A5: Group week template (current planned workouts for a team's week)
+# ---------------------------------------------------------------------------
+
+class GroupWeekTemplateView(OrgTenantMixin, APIView):
+    """
+    GET /api/p1/orgs/<org_id>/group-week-template/
+        ?week_start=2026-04-07&team_id=1
+
+    Returns the unique planned workouts already assigned to a team for a given
+    week, deduplicated by (date, planned_workout). Used by GroupPlanningView
+    to display the current template and allow drag-to-add from the Library.
+
+    Response:
+        {
+            "week_start": "YYYY-MM-DD",
+            "team_id": int | null,
+            "team_name": str,
+            "days": [
+                {
+                    "date": "YYYY-MM-DD",
+                    "day": str,
+                    "workouts": [
+                        {
+                            "planned_workout_id": int,
+                            "title": str,
+                            "sport": str,
+                            "duration_min": int | null,
+                            "distance_km": float | null,
+                            "planned_tss": float | null
+                        }
+                    ]
+                }
+            ]
+        }
+    """
+
+    permission_classes = [IsAuthenticated]
+    http_method_names = ["get", "head", "options"]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        self.resolve_membership(self.kwargs["org_id"])
+
+    def get(self, request, org_id: int):
+        if self.membership.role not in ("owner", "coach"):
+            raise PermissionDenied("Coach or owner required.")
+
+        org = self.organization
+
+        week_str = request.query_params.get("week_start")
+        if week_str:
+            try:
+                week_monday = _monday(datetime.date.fromisoformat(week_str))
+            except ValueError:
+                week_monday = _monday(datetime.date.today())
+        else:
+            week_monday = _monday(datetime.date.today())
+
+        team_id = request.query_params.get("team_id")
+        team_name = "Todos los atletas"
+        if team_id:
+            try:
+                team = Team.objects.get(pk=int(team_id), organization=org)
+                team_name = team.name
+            except Team.DoesNotExist:
+                raise NotFound("Team not found in this organization.")
+
+        week_end = week_monday + datetime.timedelta(days=6)
+
+        qs = (
+            WorkoutAssignment.objects
+            .filter(
+                organization=org,
+                scheduled_date__gte=week_monday,
+                scheduled_date__lte=week_end,
+            )
+            .select_related("planned_workout")
+        )
+        if team_id:
+            qs = qs.filter(athlete__team_id=int(team_id))
+
+        # Deduplicate by (date, planned_workout_id) — one entry per unique workout per day
+        by_date: dict[datetime.date, dict[int, dict]] = {}
+        for a in qs:
+            pw = a.planned_workout
+            if not pw:
+                continue
+            day = a.scheduled_date
+            if pw.pk not in by_date.setdefault(day, {}):
+                by_date[day][pw.pk] = {
+                    "planned_workout_id": pw.pk,
+                    "title": pw.name or "Sin nombre",
+                    "sport": (pw.discipline.upper() if pw.discipline else "OTHER"),
+                    "duration_min": (
+                        round(pw.estimated_duration_seconds / 60)
+                        if pw.estimated_duration_seconds else None
+                    ),
+                    "distance_km": (
+                        round(pw.estimated_distance_meters / 1000, 1)
+                        if pw.estimated_distance_meters else None
+                    ),
+                    "planned_tss": pw.planned_tss,
+                }
+
+        days = []
+        for offset in range(7):
+            day = week_monday + datetime.timedelta(days=offset)
+            workouts = list((by_date.get(day) or {}).values())
+            days.append({
+                "date": day.isoformat(),
+                "day": DAY_LABELS[offset],
+                "workouts": workouts,
+            })
+
+        return Response({
+            "week_start": week_monday.isoformat(),
+            "team_id": int(team_id) if team_id else None,
+            "team_name": team_name,
+            "days": days,
+        })

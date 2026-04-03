@@ -61,6 +61,7 @@ import WorkoutCoachDrawer from '../components/WorkoutCoachDrawer';
 import MacroView from '../components/MacroView';
 import HistorialPanel from '../components/HistorialPanel';
 import WeeklyLoadEstimate from '../components/WeeklyLoadEstimate';
+import GroupPlanningView from '../components/GroupPlanningView';
 import { copyWeek } from '../api/planning';
 
 const DnDCalendar = withDragAndDrop(Calendar);
@@ -479,6 +480,8 @@ export default function CalendarPage() {
   const [calViewMode, setCalViewMode] = useState('month');
   // PR-158: trigger to re-fetch load estimate after assignment changes
   const [loadTrigger, setLoadTrigger] = useState(0);
+  // PR-158 hotfix: group planning mode — { weekStart, teamId } | null
+  const [planningWeek, setPlanningWeek] = useState(null);
 
   // PR-145f: undo toast
   const [undoToast, setUndoToast] = useState(null);
@@ -1055,13 +1058,23 @@ export default function CalendarPage() {
     [orgId, selectedTarget, dateFrom, dateTo, showUndo]
   );
 
-  // ── PR-158: Navigate from Planificador to Calendar/Week view ─────────────
+  // ── PR-158: Navigate from Planificador week header ────────────────────────
+  // teamId is non-null when the coach has a team filter selected in MacroView.
+  // For teams: open GroupPlanningView (avoids mixing all athletes' events).
+  // For individuals: fall back to Calendar/Week view (unchanged behaviour).
 
-  const handleNavigateToWeek = useCallback((weekStart) => {
-    const monday = new Date(weekStart + 'T12:00:00');
-    setCurrentDate(monday);
-    setCalViewMode('week');
-    setCalendarView('calendar');
+  const handleNavigateToWeek = useCallback((weekStart, teamId = null) => {
+    if (teamId) {
+      // Group context → open dedicated planning view
+      setPlanningWeek({ weekStart, teamId });
+      setCalendarView('calendar');
+    } else {
+      // Individual context → existing Calendar/Week behaviour
+      const monday = new Date(weekStart + 'T12:00:00');
+      setCurrentDate(monday);
+      setCalViewMode('week');
+      setCalendarView('calendar');
+    }
   }, []);
 
   // ── PR-158: Copy week from historial panel ────────────────────────────────
@@ -1346,8 +1359,20 @@ export default function CalendarPage() {
 
           {/* Calendar area */}
           <Box sx={{ flex: 1, position: 'relative', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0 }}>
-            {/* PR-158: Historial panel — shown in week view */}
-            {calViewMode === 'week' && orgId && (
+            {/* PR-158 hotfix: Group Planning View */}
+            {planningWeek && orgId && (
+              <GroupPlanningView
+                orgId={orgId}
+                weekStart={planningWeek.weekStart}
+                teamId={planningWeek.teamId}
+                onBack={() => setPlanningWeek(null)}
+                draggingWorkoutRef={draggingWorkoutRef}
+                onAssigned={() => setLoadTrigger((t) => t + 1)}
+              />
+            )}
+
+            {/* PR-158: Historial panel — shown in week view (individual) */}
+            {!planningWeek && calViewMode === 'week' && orgId && (
               <HistorialPanel
                 orgId={orgId}
                 teamId={parseTarget(selectedTarget)?.type === 't' ? parseTarget(selectedTarget)?.id : null}
@@ -1356,7 +1381,7 @@ export default function CalendarPage() {
               />
             )}
 
-            {eventsState.loading && (
+            {!planningWeek && eventsState.loading && (
               <Box
                 sx={{ position: 'absolute', top: 10, right: 10, zIndex: 10 }}
               >
@@ -1364,13 +1389,13 @@ export default function CalendarPage() {
               </Box>
             )}
 
-            {eventsState.error && (
+            {!planningWeek && eventsState.error && (
               <Alert severity="error" sx={{ mb: 1 }}>
                 {eventsState.error}
               </Alert>
             )}
 
-            {!selectedTarget ? (
+            {!planningWeek && (!selectedTarget ? (
               <Paper
                 sx={{
                   height: '100%',
@@ -1495,10 +1520,10 @@ export default function CalendarPage() {
                   }}
                 />
               </Paper>
-            )}
+            ))}
 
             {/* PR-158: Weekly load estimate — shown in week view for individual athlete */}
-            {calViewMode === 'week' && (() => {
+            {!planningWeek && calViewMode === 'week' && (() => {
               const target = parseTarget(selectedTarget);
               if (target?.type !== 'a') return null;
               const athleteObj = athleteState.data.find((a) => a.id === target.id);

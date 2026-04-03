@@ -57,3 +57,13 @@ export const getPlanVsReal = ({ weekStart } = {}) =>
   client.get('/api/athlete/plan-vs-real/', {
     params: { week_start: weekStart },
   })
+
+/**
+ * GET /api/p1/orgs/<orgId>/group-week-template/
+ * Current planned workouts for a team's week (deduplicated template).
+ * Used by GroupPlanningView.
+ */
+export const getGroupWeekTemplate = (orgId, { weekStart, teamId } = {}) =>
+  client.get(`/api/p1/orgs/${orgId}/group-week-template/`, {
+    params: { week_start: weekStart, team_id: teamId },
+  })

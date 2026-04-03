@@ -692,7 +692,7 @@ export default function MacroView({ orgId, onNavigateToWeek }) {
                       <Box
                         onClick={() => {
                           if (onNavigateToWeek) {
-                            onNavigateToWeek(w);
+                            onNavigateToWeek(w, teamId || null);
                           } else {
                             openBulkModal(w);
                           }
