@@ -510,7 +510,7 @@ function BulkAssignModal({ open, onClose, orgId, weekStart, athletes }) {
 
 // ── Main MacroView ────────────────────────────────────────────────────────────
 
-export default function MacroView({ orgId }) {
+export default function MacroView({ orgId, onNavigateToWeek }) {
   const thisMonday = formatDate(toMonday(new Date())); // anchor: today's Monday
 
   // ── Week window navigation ────────────────────────────────────────────────────
@@ -683,9 +683,20 @@ export default function MacroView({ orgId }) {
                 <TableCell sx={{ fontWeight: 700 }}>Atleta</TableCell>
                 {[week0, week1, week2].map((w) => (
                   <TableCell key={w} sx={{ fontWeight: 700, p: 0 }}>
-                    <Tooltip title={`Planificar ${formatWeekLabel(w)}`} placement="top">
+                    <Tooltip
+                      title={onNavigateToWeek
+                        ? `Ver ${formatWeekLabel(w)} en calendario`
+                        : `Planificar ${formatWeekLabel(w)}`}
+                      placement="top"
+                    >
                       <Box
-                        onClick={() => openBulkModal(w)}
+                        onClick={() => {
+                          if (onNavigateToWeek) {
+                            onNavigateToWeek(w);
+                          } else {
+                            openBulkModal(w);
+                          }
+                        }}
                         sx={{
                           cursor: 'pointer',
                           px: 2, py: 1,

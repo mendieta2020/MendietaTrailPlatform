@@ -113,6 +113,13 @@ from core.views_periodization import (  # PR-157
     CoachAthleteTrainingPhasesView,
     RecentWorkoutsView,
 )
+from core.views_planning import (  # PR-158
+    WorkoutHistoryView,
+    GroupWorkoutHistoryView,
+    CopyWeekView,
+    EstimatedWeeklyLoadView,
+    AthletePlanVsRealView,
+)
 
 # Creamos el router para la API REST estándar
 router = DefaultRouter()
@@ -253,6 +260,13 @@ urlpatterns = [
     path('athlete/training-phases/', AthleteTrainingPhasesView.as_view(), name='athlete-training-phases'),
     path('p1/orgs/<int:org_id>/auto-periodize-group/', AutoPeriodizeGroupView.as_view(), name='p1-auto-periodize-group'),
     path('p1/orgs/<int:org_id>/athletes/<int:athlete_id>/training-phases/', CoachAthleteTrainingPhasesView.as_view(), name='p1-athlete-training-phases'),
+
+    # PR-158: Planificador Pro — workout history, copy-week, estimated load, plan vs real
+    path('coach/athletes/<int:membership_id>/workout-history/', WorkoutHistoryView.as_view(), name='coach-workout-history'),
+    path('coach/athletes/<int:membership_id>/estimated-weekly-load/', EstimatedWeeklyLoadView.as_view(), name='coach-estimated-weekly-load'),
+    path('p1/orgs/<int:org_id>/group-workout-history/', GroupWorkoutHistoryView.as_view(), name='p1-group-workout-history'),
+    path('p1/orgs/<int:org_id>/copy-week/', CopyWeekView.as_view(), name='p1-copy-week'),
+    path('athlete/plan-vs-real/', AthletePlanVsRealView.as_view(), name='athlete-plan-vs-real'),
 
     # PR-141: Coach notify athlete to connect device
     path('coach/roster/<int:membership_id>/notify-device/', CoachNotifyAthleteDeviceView.as_view(), name='coach-notify-athlete-device'),

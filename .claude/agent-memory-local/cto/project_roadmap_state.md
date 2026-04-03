@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-02 · PR-157 Auto-Periodización merged_
+_Last updated: 2026-04-03 · PR-158 Planificador Pro merged_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -158,6 +158,24 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - views_reports.py: projection_2w_ctl computed from last item in projection list, injected into snapshot before render
 - FRONTEND_URL already existed in settings.py (confirmed); "Abrir Quantoryn" button already fixed in PR-154 hotfix
 - Risk: LOW (frontend only, no backend models, no migrations)
+
+### PR-158 — Planificador Pro: Historial Visual + Copiar Semana + Carga Estimada + Plan vs Real ✅ 2026-04-03
+- Backend: `core/views_planning.py` — 5 new views (WorkoutHistoryView, GroupWorkoutHistoryView, CopyWeekView, EstimatedWeeklyLoadView, AthletePlanVsRealView)
+- Workout history: day-by-day 6-week grid with repetition detection for individual athlete and group
+- Copy week: idempotent (get_or_create) — copies WorkoutAssignments from source to target week, team-filtered
+- Estimated weekly load: planned TSS + phase recommendation (descarga 50-70%, carga 80-100%, etc.) + vs previous week
+- Plan vs Real: per-session compliance (distance or duration based), weekly summary
+- 5 new API endpoints registered in core/urls.py
+- Frontend: `HistorialPanel.jsx` — collapsible 6-week grid in Calendar week view with [📋] copy button per row
+- Frontend: `WeeklyLoadEstimate.jsx` — real-time TSS estimation panel (green/amber/red) in Calendar week view
+- Frontend: `planning.js` — 5 new API client functions
+- MacroView.jsx: `onNavigateToWeek` prop — clicking week header navigates Calendar to that week in week view
+- Calendar.jsx: `calViewMode` state for 'month'/'week' control; HistorialPanel + WeeklyLoadEstimate in week view
+- AthleteMyTraining.jsx: PlanVsRealBar per week (progress bar + sessions/km/min) + compliance % badge on completed workout cards
+- 9 tests in `core/tests_pr158_planificador_pro.py` — all pass
+- frontend lint passes, build succeeds
+- No migrations required
+- Risk: MEDIUM — RESOLVED
 
 ### PR-157 — Auto-Periodización + Badge Calendario + Timeline Atleta + Historial Planificador ✅ 2026-04-02
 - Backend: `core/services_periodization.py` — `auto_periodize_athlete()` + `suggest_cycle_pattern()`; idempotent (update_or_create); respects lesion phases
