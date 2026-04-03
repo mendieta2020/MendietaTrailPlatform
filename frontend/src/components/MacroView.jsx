@@ -563,6 +563,20 @@ export default function MacroView({ orgId }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // ── Bulk-assign modal target week ─────────────────────────────────────────────
+  // null = fall back to planWeek (smart default); set explicitly on header click
+  const [bulkWeekStart, setBulkWeekStart] = useState(null);
+
+  function openBulkModal(weekStart) {
+    setBulkWeekStart(weekStart);
+    setBulkOpen(true);
+  }
+
+  function closeBulkModal() {
+    setBulkOpen(false);
+    setBulkWeekStart(null); // reset so next open via orange button uses planWeek
+  }
+
   function handlePhaseUpdated(athleteId, weekStart, phase) {
     const setter = weekStart === week0 ? setRows
       : weekStart === week1 ? setRowsNext
@@ -644,11 +658,11 @@ export default function MacroView({ orgId }) {
 
         <Box sx={{ flex: 1 }} />
 
-        {/* Defaults to next week when today is Wed or later */}
+        {/* Defaults to next week when today is Wed or later — or click any column header */}
         <Button
           variant="contained"
           size="small"
-          onClick={() => setBulkOpen(true)}
+          onClick={() => openBulkModal(planWeek)}
           sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' } }}
         >
           Planificar {formatWeekLabel(planWeek)}
@@ -667,9 +681,22 @@ export default function MacroView({ orgId }) {
             <TableHead>
               <TableRow sx={{ bgcolor: '#f8fafc' }}>
                 <TableCell sx={{ fontWeight: 700 }}>Atleta</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{formatWeekLabel(week0)}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{formatWeekLabel(week1)}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{formatWeekLabel(week2)}</TableCell>
+                {[week0, week1, week2].map((w) => (
+                  <TableCell key={w} sx={{ fontWeight: 700, p: 0 }}>
+                    <Tooltip title={`Planificar ${formatWeekLabel(w)}`} placement="top">
+                      <Box
+                        onClick={() => openBulkModal(w)}
+                        sx={{
+                          cursor: 'pointer',
+                          px: 2, py: 1,
+                          '&:hover': { color: '#F57C00', textDecoration: 'underline' },
+                        }}
+                      >
+                        {formatWeekLabel(w)}
+                      </Box>
+                    </Tooltip>
+                  </TableCell>
+                ))}
                 <TableCell sx={{ fontWeight: 700 }}>Próximo Objetivo</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Faltan</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Lesión</TableCell>
@@ -829,9 +856,9 @@ export default function MacroView({ orgId }) {
 
       <BulkAssignModal
         open={bulkOpen}
-        onClose={() => setBulkOpen(false)}
+        onClose={closeBulkModal}
         orgId={orgId}
-        weekStart={planWeek}
+        weekStart={bulkWeekStart ?? planWeek}
         athletes={displayRows}
       />
 
