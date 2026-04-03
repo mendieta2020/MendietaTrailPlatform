@@ -10,7 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   getAthleteProfile, updateAthleteProfile, getInjuries, createInjury,
   updateInjury, deleteInjury, getAvailability, updateAvailability,
-  getGoals, createGoal, deleteGoal,
+  getGoals, createGoal, updateGoal, deleteGoal,
 } from '../api/athlete';
 import client from '../api/client';
 
@@ -146,6 +146,18 @@ const AthleteProfile = () => {
     }
   };
 
+  const handleUpdateGoal = async (goalId, data) => {
+    if (!orgId) return;
+    try {
+      const { data: updated } = await updateGoal(orgId, goalId, data);
+      setGoals(prev => prev.map(g => g.id === goalId ? { ...g, ...updated } : g));
+      showToast('Objetivo actualizado');
+    } catch {
+      showToast('Error al actualizar objetivo');
+      throw new Error('goal_update_failed');
+    }
+  };
+
   const handleDeleteGoal = async (goalId) => {
     if (!orgId) return;
     try {
@@ -228,6 +240,7 @@ const AthleteProfile = () => {
           onDraftChange={handleDraftChange}
           onSaveAvailability={handleSaveAvailability}
           onAddGoal={handleAddGoal}
+          onUpdateGoal={handleUpdateGoal}
           onDeleteGoal={handleDeleteGoal}
           onSaveInjury={handleSaveInjury}
           onDeleteInjury={handleDeleteInjury}

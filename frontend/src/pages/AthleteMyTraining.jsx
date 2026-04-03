@@ -552,14 +552,23 @@ const AthleteMyTraining = () => {
       .catch(() => setPmcData(null));
   }, []);
 
-  // PR-157 hotfix: load athlete goals once for race date badges
+  // PR-157 hotfix / PR-160: load athlete goals once for race date badges (with distance/elevation)
   useEffect(() => {
     let cancelled = false;
     getAthleteGoals()
       .then((res) => {
         if (!cancelled) {
           const map = {};
-          (res.data?.goals ?? []).forEach((g) => { if (g.date) map[g.date] = g.name; });
+          (res.data?.goals ?? []).forEach((g) => {
+            const dateKey = g.date || g.target_date;
+            if (dateKey) {
+              map[dateKey] = {
+                title: g.name || g.title || '',
+                distance: g.target_distance_km ?? null,
+                elevation: g.target_elevation_gain_m ?? null,
+              };
+            }
+          });
           setGoalDateMap(map);
         }
       })
@@ -796,20 +805,34 @@ const AthleteMyTraining = () => {
                           </Typography>
                         )}
 
-                        {/* PR-157 hotfix: goal/race date badge */}
-                        {inMonth && goalDateMap[dateKey] && (
-                          <Box
-                            title={`🏔️ Carrera: ${goalDateMap[dateKey]}`}
-                            sx={{
-                              bgcolor: '#dc2626', color: '#fff',
-                              borderRadius: '4px', px: 0.75, py: 0.25, mb: 0.5,
-                              fontSize: '0.62rem', fontWeight: 700,
-                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                            }}
-                          >
-                            🏔️ {goalDateMap[dateKey]}
-                          </Box>
-                        )}
+                        {/* PR-160: goal/race date trophy badge */}
+                        {inMonth && goalDateMap[dateKey] && (() => {
+                          const goal = goalDateMap[dateKey];
+                          const subline = [
+                            goal.distance ? `${goal.distance}km` : null,
+                            goal.elevation ? `D+${goal.elevation}m` : null,
+                          ].filter(Boolean).join(' · ');
+                          return (
+                            <Box
+                              title={`🏆 Carrera: ${goal.title}`}
+                              sx={{
+                                background: 'linear-gradient(135deg, #FFD700 0%, #F97316 100%)',
+                                borderRadius: '6px',
+                                px: 0.75, py: 0.4, mb: 0.5,
+                                cursor: 'default',
+                              }}
+                            >
+                              <Typography sx={{ fontSize: '0.62rem', fontWeight: 800, color: '#7c2d12', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                🏆 {goal.title}
+                              </Typography>
+                              {subline && (
+                                <Typography sx={{ fontSize: '0.55rem', color: '#7c2d12', lineHeight: 1.1, opacity: 0.85 }}>
+                                  {subline}
+                                </Typography>
+                              )}
+                            </Box>
+                          );
+                        })()}
 
                         {/* Assignment cards */}
                         {dayAssignments.map((a) => (

@@ -96,16 +96,20 @@ export default function AthleteProfileTab({ membershipId }) {
       resting_hr_bpm: profile.resting_hr_bpm ?? '',
       vo2max: profile.vo2max ?? '',
       training_age_years: profile.training_age_years ?? '',
+      weekly_available_hours: profile.weekly_available_hours ?? '',
+      preferred_training_time: profile.preferred_training_time ?? '',
+      pace_1000m_seconds: profile.pace_1000m_seconds ?? '',
     })
     setEditPhysical(true)
   }
 
   const savePhysical = async () => {
     setSavingPhysical(true)
+    const TEXT_FIELDS = new Set(['preferred_training_time'])
     try {
       const cleaned = {}
       Object.entries(physicalDraft).forEach(([k, v]) => {
-        cleaned[k] = v === '' ? null : Number(v)
+        cleaned[k] = v === '' ? null : TEXT_FIELDS.has(k) ? v : Number(v)
       })
       const res = await patchCoachAthleteProfile(membershipId, cleaned)
       setData(prev => ({ ...prev, profile: { ...prev.profile, ...res.data } }))
@@ -149,17 +153,20 @@ export default function AthleteProfileTab({ membershipId }) {
         {editPhysical ? (
           <Grid container spacing={2}>
             {[
-              { key: 'weight_kg', label: 'Peso (kg)' },
-              { key: 'height_cm', label: 'Altura (cm)' },
-              { key: 'max_hr_bpm', label: 'FC Máx (bpm)' },
-              { key: 'resting_hr_bpm', label: 'FC Reposo (bpm)' },
-              { key: 'vo2max', label: 'VO2max' },
-              { key: 'training_age_years', label: 'Años entrenando' },
-            ].map(({ key, label }) => (
+              { key: 'weight_kg', label: 'Peso (kg)', type: 'number' },
+              { key: 'height_cm', label: 'Altura (cm)', type: 'number' },
+              { key: 'max_hr_bpm', label: 'FC Máx (bpm)', type: 'number' },
+              { key: 'resting_hr_bpm', label: 'FC Reposo (bpm)', type: 'number' },
+              { key: 'vo2max', label: 'VO2max', type: 'number' },
+              { key: 'training_age_years', label: 'Años entrenando', type: 'number' },
+              { key: 'weekly_available_hours', label: 'Horas/semana', type: 'number' },
+              { key: 'preferred_training_time', label: 'Horario preferido', type: 'text' },
+              { key: 'pace_1000m_seconds', label: 'Ritmo 1km (seg)', type: 'number' },
+            ].map(({ key, label, type }) => (
               <Grid item xs={12} sm={6} key={key}>
                 <TextField
                   label={label}
-                  type="number"
+                  type={type}
                   size="small"
                   fullWidth
                   value={physicalDraft[key] ?? ''}
@@ -176,6 +183,9 @@ export default function AthleteProfileTab({ membershipId }) {
             <Grid item xs={12} sm={6}><ReadField label="FC Reposo" value={profile.resting_hr_bpm ? `${profile.resting_hr_bpm} bpm` : null} /></Grid>
             <Grid item xs={12} sm={6}><ReadField label="VO2max" value={profile.vo2max} /></Grid>
             <Grid item xs={12} sm={6}><ReadField label="Años entrenando" value={profile.training_age_years} /></Grid>
+            <Grid item xs={12} sm={6}><ReadField label="Horas/semana" value={profile.weekly_available_hours} /></Grid>
+            <Grid item xs={12} sm={6}><ReadField label="Horario preferido" value={profile.preferred_training_time} /></Grid>
+            <Grid item xs={12} sm={6}><ReadField label="Ritmo 1km" value={profile.pace_1000m_seconds ? `${profile.pace_1000m_seconds}s` : null} /></Grid>
           </Grid>
         )}
       </Section>

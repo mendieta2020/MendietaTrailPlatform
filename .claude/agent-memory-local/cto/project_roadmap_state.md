@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-03 · PR-159 Sidebar Colapsable + Athlete Card + GroupPlanning Nav merged_
+_Last updated: 2026-04-03 · PR-160 Fixes funcionales + Calendar Pro + Diferenciación roles + Goal badge_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -224,11 +224,22 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - PR-152 — PWA + Push Notifications (service worker, manifest, installability)
 - PR-153 — Pre-Expiry Notification (3 days before MP renewal, uses InternalMessage)
 
+### PR-160 — Fixes funcionales + Calendar Pro + Diferenciación roles + Goal badge ✅ 2026-04-03
+- Goal trophy badge: replaced red #dc2626 ribbon with gold gradient (#FFD700→#F97316) 🏆 in AthleteMyTraining and Calendar.jsx
+- Goal badge shows distance + elevation subline; Calendar goal event title includes metrics
+- AthleteGoalsTab.jsx: coach can now inline-edit (title, date, priority, status, distance, elevation) + delete goals via PATCH /api/p1/orgs/<org_id>/goals/<pk>/
+- AthleteProfileCards.jsx: athlete can inline-edit + delete goals in Perfil page (onUpdateGoal prop)
+- AthleteProfile.jsx: handleUpdateGoal wired; updateGoal imported from athlete.js API
+- athlete.js API: updateGoal(orgId, goalId, data) added (PATCH)
+- AthleteProfileTab.jsx: Datos Físicos edit form now includes weekly_available_hours, preferred_training_time, pace_1000m_seconds (was missing)
+- AthleteWellnessTab.jsx: auto-generated interpretation text below heatmap (7-day averages → actionable coach alerts: pain, sleep, energy, stress, overtraining risk, all-good)
+- Risk: LOW (frontend only, no backend changes, no migrations)
+
 ### Before Mes 2 (10 external coaches)
 - PR-155 ✅ — Building cleanup (sidebar consolidation, duplicate removal) — DONE
 - PR-156 ✅ — Mi Progreso del Atleta redesign (Readiness + Goals + Weekly + PMC humano + Wellness) — DONE
 - PR-157 ✅ — Auto-Periodización + Badge Calendario + Timeline Atleta + Historial Planificador — DONE (2026-04-02)
-- PR-158 (next) — Plan vs Real mejorado (resumen semanal prominente)
+- PR-160 ✅ — Fixes funcionales + Calendar Pro + Diferenciación roles + Goal badge — DONE (2026-04-03)
 
 ### Before Mes 3 (general market launch)
 - PR-157 — Videos en ejercicios de fuerza

@@ -62,6 +62,10 @@ export function createGoal(orgId, data) {
   return client.post(`/api/p1/orgs/${orgId}/goals/`, data);
 }
 
+export function updateGoal(orgId, goalId, data) {
+  return client.patch(`/api/p1/orgs/${orgId}/goals/${goalId}/`, data);
+}
+
 export function deleteGoal(orgId, goalId) {
   return client.delete(`/api/p1/orgs/${orgId}/goals/${goalId}/`);
 }
