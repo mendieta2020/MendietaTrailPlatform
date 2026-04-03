@@ -76,13 +76,16 @@ from core.views_reports import (  # PR-154
     CreateReportView,
     EmailReportView,
 )
-from core.views_athlete import (  # PR-139 / PR-141
+from core.views_athlete import (  # PR-139 / PR-141 / PR-156
     AthleteTodayView,
     AthleteDeviceStatusView,
     AthleteDevicePreferenceDismissView,
     AthleteDevicePreferenceReactivateView,
+    AthleteGoalsView,
     AthleteNotificationListView,
     AthleteNotificationMarkReadView,
+    AthleteWeeklySummaryView,
+    AthleteWellnessTodayView,
 )
 from core.views_p1_roster import (  # PR-129 / PR-141 / PR-148
     AthleteCoachAssignmentViewSet,
@@ -231,6 +234,11 @@ urlpatterns = [
     path('athlete/device-preference/reactivate/', AthleteDevicePreferenceReactivateView.as_view(), name='athlete-device-preference-reactivate'),
     path('athlete/notifications/', AthleteNotificationListView.as_view(), name='athlete-notifications'),
     path('athlete/notifications/<int:pk>/mark-read/', AthleteNotificationMarkReadView.as_view(), name='athlete-notification-mark-read'),
+
+    # PR-156: Athlete self-serve progress endpoints
+    path('athlete/goals/', AthleteGoalsView.as_view(), name='athlete-goals'),
+    path('athlete/weekly-summary/', AthleteWeeklySummaryView.as_view(), name='athlete-weekly-summary'),
+    path('athlete/wellness/today/', AthleteWellnessTodayView.as_view(), name='athlete-wellness-today'),
 
     # PR-141: Coach notify athlete to connect device
     path('coach/roster/<int:membership_id>/notify-device/', CoachNotifyAthleteDeviceView.as_view(), name='coach-notify-athlete-device'),

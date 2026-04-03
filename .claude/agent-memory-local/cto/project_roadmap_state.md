@@ -131,6 +131,23 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - No migrations required (all computed on-the-fly)
 - Risk: MEDIUM — RESOLVED
 
+### PR-156 — Mi Progreso del Atleta: Readiness Hero + Goals + Weekly + PMC Humano + Wellness ✅ 2026-04-02
+- AthleteProgress.jsx: complete redesign — 5 sections replacing ARSCard + PMC + HR form
+- Section 1: Readiness Hero — score/100 + color band (green/amber/orange/red) + label + recommendation text
+- Section 2: Goals Countdown — own goals with days_remaining; urgent (<7d) highlighted in rose; no goals → link to Perfil
+- Section 3: Weekly Summary — 7-day circle indicators + sessions compliance + distance + duration + streak fire
+- Section 4: PMC Chart (human labels) — Fitness/Fatiga/Forma instead of CTL/ATL/TSB; no ramp rate, no projection; trend text below
+- Section 5: Wellness Prompt — if not submitted today: call-to-action; if submitted: 5 metric chips
+- HR Profile form REMOVED from Mi Progreso (was coach-level config, not athlete UX)
+- Backend A3: `readiness_recommendation` text added to `_compute_readiness()` return tuple; added to both PMC endpoints (athlete + coach)
+- Backend A2: `AthleteWeeklySummaryView` — GET /api/athlete/weekly-summary/ — compliance, totals from CompletedActivity, 7-day array, streak
+- Backend A1: `AthleteGoalsView` — GET /api/athlete/goals/ — own goals with days_remaining, sorted by date
+- Backend: `AthleteWellnessTodayView` — GET /api/athlete/wellness/today/ — today's check-in or {submitted: false}
+- PMCChart.jsx: `humanLabels` prop — when true: hides projection legend item, hides ramp rate, shows "Fitness/Fatiga/Forma"
+- 6 backend tests in core/tests_pr156_athlete_progress.py — all pass
+- No migrations required
+- Risk: LOW — RESOLVED
+
 ### PR-155 — Limpieza del Edificio: Consolidar Sidebar + Eliminar Duplicación ✅ 2026-04-02
 - Dashboard.jsx: removed "Alumnos Activos" + "Ingresos (Total)" KPI cards + PaymentsWidget; removed empty Compliance Semanal + AlertsWidget; now has ONLY 2 KPI cards + Semaphore + Attention Table + PMC Chart
 - CoachDashboard.jsx: removed PmcSection entirely (PMC, KpiCards, recharts dependency); page is now org info + briefing + roster
@@ -162,7 +179,8 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 
 ### Before Mes 2 (10 external coaches)
 - PR-155 ✅ — Building cleanup (sidebar consolidation, duplicate removal) — DONE
-- PR-156 (next) — Diferenciación vista coach vs atleta (roles)
+- PR-156 ✅ — Mi Progreso del Atleta redesign (Readiness + Goals + Weekly + PMC humano + Wellness) — DONE
+- PR-157 (next) — Diferenciación vista coach vs atleta (roles)
 
 ### Before Mes 3 (general market launch)
 - PR-157 — Videos en ejercicios de fuerza

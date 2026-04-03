@@ -230,11 +230,11 @@ def _validate_days(request) -> int:
     return days
 
 
-def _compute_readiness(athlete_user, org, current_tsb: float) -> tuple[int, str]:
+def _compute_readiness(athlete_user, org, current_tsb: float) -> tuple[int, str, str]:
     """
     Compute a 0-100 readiness score combining load (TSB) and latest wellness check-in.
 
-    Returns (score, label). Defaults to neutral (50) when no wellness data exists.
+    Returns (score, label, recommendation). Defaults to neutral (50) when no wellness data exists.
     """
     # Load component: map TSB from [-30, +30] → [0, 100]
     tsb_clamped = max(-30.0, min(30.0, float(current_tsb or 0)))
@@ -262,14 +262,18 @@ def _compute_readiness(athlete_user, org, current_tsb: float) -> tuple[int, str]
 
     if score >= 75:
         label = "Listo para entrenar"
+        recommendation = "Estás listo para entrenar fuerte. Aprovechá el día."
     elif score >= 50:
         label = "Entrenar con precaución"
+        recommendation = "Podés entrenar con normalidad. Escuchá tu cuerpo."
     elif score >= 25:
         label = "Carga alta, moderar"
+        recommendation = "Tu cuerpo necesita moderación. Entrenamiento suave hoy."
     else:
         label = "Recuperación recomendada"
+        recommendation = "Recuperación recomendada. Descansá o hacé actividad muy liviana."
 
-    return score, label
+    return score, label, recommendation
 
 
 # ==============================================================================
@@ -302,11 +306,12 @@ class AthletePMCView(APIView):
             date__lte=today,
         )
         payload = _build_pmc_payload(qs, days)
-        readiness_score, readiness_label = _compute_readiness(
+        readiness_score, readiness_label, readiness_recommendation = _compute_readiness(
             request.user, org, payload["current"]["tsb"]
         )
         payload["current"]["readiness_score"] = readiness_score
         payload["current"]["readiness_label"] = readiness_label
+        payload["current"]["readiness_recommendation"] = readiness_recommendation
 
         logger.info(
             "athlete_pmc_view.served",
@@ -446,11 +451,12 @@ class CoachAthletePMCView(APIView):
             date__lte=today,
         )
         payload = _build_pmc_payload(qs, days)
-        readiness_score, readiness_label = _compute_readiness(
+        readiness_score, readiness_label, readiness_recommendation = _compute_readiness(
             athlete_user, org, payload["current"]["tsb"]
         )
         payload["current"]["readiness_score"] = readiness_score
         payload["current"]["readiness_label"] = readiness_label
+        payload["current"]["readiness_recommendation"] = readiness_recommendation
         payload["athlete_name"] = (
             athlete_user.get_full_name() or athlete_user.username
         )

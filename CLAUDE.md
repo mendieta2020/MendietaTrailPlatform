@@ -29,8 +29,9 @@ PR queue:
 - PR-152 ✅ MERGED — Vista atleta enriquecida: 7 KPI cards + Readiness Score + metric filters + tooltips
 - PR-153 ✅ MERGED — GAP + Ramp Rate + CTL Projection + Volume enhancements
 - PR-154 ✅ MERGED — Reporte automático compartible (athlete report with WhatsApp sharing)
-- PR-155 THIS PR — Limpieza del edificio (consolidar sidebar, eliminar duplicación)
-- PR-156 NEXT — Diferenciación vista coach vs atleta (roles)
+- PR-155 ✅ MERGED — Limpieza del edificio (consolidar sidebar, eliminar duplicación)
+- PR-156 THIS PR — Mi Progreso del Atleta: Readiness hero + Goals + Weekly + PMC humano + Wellness
+- PR-157 NEXT — Diferenciación vista coach vs atleta (roles)
 
 ## PR Protocol (PASO 0)
 Before writing any code for a new PR:
