@@ -657,16 +657,6 @@ export default function MacroView({ orgId, onNavigateToWeek }) {
         </Button>
 
         <Box sx={{ flex: 1 }} />
-
-        {/* Defaults to next week when today is Wed or later — or click any column header */}
-        <Button
-          variant="contained"
-          size="small"
-          onClick={() => openBulkModal(planWeek)}
-          sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' } }}
-        >
-          Planificar {formatWeekLabel(planWeek)}
-        </Button>
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}

@@ -1363,7 +1363,8 @@ export default function CalendarPage() {
                 orgId={orgId}
                 weekStart={planningWeek.weekStart}
                 teamId={planningWeek.teamId}
-                onBack={() => setPlanningWeek(null)}
+                onBack={() => { setPlanningWeek(null); setCalendarView('macro'); }}
+                onNavigateWeek={(w) => setPlanningWeek({ weekStart: w, teamId: planningWeek.teamId })}
                 draggingWorkoutRef={draggingWorkoutRef}
                 onAssigned={() => setLoadTrigger((t) => t + 1)}
                 representativeMembershipId={
