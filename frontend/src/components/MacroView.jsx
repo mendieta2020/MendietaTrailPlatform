@@ -80,20 +80,46 @@ function WellnessCircle({ avg }) {
 
 function toMonday(date) {
   const d = new Date(date);
-  const day = d.getDay(); // 0=Sun
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
+  const dayOfWeek = d.getDay(); // 0=Sun
+  d.setDate(d.getDate() - ((dayOfWeek + 6) % 7)); // ISO: Mon=0 offset
   return d;
 }
 
+// Local-date formatting — avoids UTC-3 shift from toISOString()
 function formatDate(d) {
-  return d.toISOString().slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function addWeeks(dateStr, n) {
-  const d = new Date(dateStr);
+  const d = new Date(dateStr + 'T12:00:00'); // noon prevents DST shifts
   d.setDate(d.getDate() + n * 7);
   return formatDate(d);
+}
+
+// ISO week number (UTC-Thursday algorithm)
+function isoWeekNumber(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  const dow = d.getUTCDay() || 7; // Mon=1…Sun=7
+  d.setUTCDate(d.getUTCDate() + 4 - dow); // shift to Thursday
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+}
+
+const MONTHS_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+// "W14 (31 Mar — 6 Abr)"
+function formatWeekLabel(weekStart) {
+  const d = new Date(weekStart + 'T12:00:00');
+  const end = new Date(d);
+  end.setDate(end.getDate() + 6);
+  const wNum = isoWeekNumber(weekStart);
+  return `W${wNum} (${d.getDate()} ${MONTHS_SHORT[d.getMonth()]} — ${end.getDate()} ${MONTHS_SHORT[end.getMonth()]})`;
+}
+
+// "W10 (2 Mar)" — short prefix for panel rows
+function weekPrefixLabel(weekStart) {
+  const d = new Date(weekStart + 'T12:00:00');
+  return `W${isoWeekNumber(weekStart)} (${d.getDate()} ${MONTHS_SHORT[d.getMonth()]})`;
 }
 
 // ── Phase selector cell ───────────────────────────────────────────────────────
@@ -302,8 +328,8 @@ function RecentWorkoutsPanel({ athletes }) {
             display: 'flex', gap: 1, py: 0.4,
             borderBottom: i < arr.length - 1 ? '1px solid #f0f0f0' : 'none',
           }}>
-            <Typography variant="caption" sx={{ color: '#6b7280', minWidth: 70, flexShrink: 0 }}>
-              {w.week_start.slice(5)}
+            <Typography variant="caption" sx={{ color: '#6b7280', minWidth: 90, flexShrink: 0 }}>
+              {weekPrefixLabel(w.week_start)}:
             </Typography>
             <Typography variant="caption" sx={{ color: '#374151' }}>
               {w.workouts.join(', ')}
@@ -401,7 +427,7 @@ function BulkAssignModal({ open, onClose, orgId, weekStart, athletes }) {
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>
-        Planificar semana del {weekStart}
+        Planificar {formatWeekLabel(weekStart)}
       </DialogTitle>
       <DialogContent>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -588,7 +614,7 @@ export default function MacroView({ orgId }) {
           onClick={() => setBulkOpen(true)}
           sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' } }}
         >
-          Planificar Sem. {thisMonday}
+          Planificar {formatWeekLabel(thisMonday)}
         </Button>
       </Box>
 
@@ -604,9 +630,9 @@ export default function MacroView({ orgId }) {
             <TableHead>
               <TableRow sx={{ bgcolor: '#f8fafc' }}>
                 <TableCell sx={{ fontWeight: 700 }}>Atleta</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Sem. actual ({thisMonday})</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Sem. siguiente ({nextMonday})</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Sem. +2 ({next2Monday})</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{formatWeekLabel(thisMonday)}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{formatWeekLabel(nextMonday)}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{formatWeekLabel(next2Monday)}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Próximo Objetivo</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Faltan</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Lesión</TableCell>
