@@ -275,7 +275,7 @@ def _build_snapshot(org, athlete_user, alumno, athlete_membership, period_days, 
         date__lte=today,
     )
     pmc_payload = _build_pmc_payload(qs, period_days)
-    readiness_score, readiness_label = _compute_readiness(
+    readiness_score, readiness_label, _readiness_rec = _compute_readiness(
         athlete_user, org, pmc_payload["current"]["tsb"]
     )
     current = pmc_payload["current"]
