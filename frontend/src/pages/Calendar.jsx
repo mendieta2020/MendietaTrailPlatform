@@ -38,6 +38,8 @@ import {
   DialogActions,
   ToggleButton,
   ToggleButtonGroup,
+  TextField,
+  Grid,
 } from '@mui/material';
 import MenuOpenIcon from '@mui/icons-material/MenuOpen';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -63,6 +65,7 @@ import HistorialPanel from '../components/HistorialPanel';
 import WeeklyLoadEstimate from '../components/WeeklyLoadEstimate';
 import GroupPlanningView from '../components/GroupPlanningView';
 import { copyWeek } from '../api/planning';
+import { updateGoal } from '../api/athlete';
 
 const DnDCalendar = withDragAndDrop(Calendar);
 
@@ -423,6 +426,97 @@ function CoachEventComponent({ event, onContextMenu }) {
   );
 }
 
+// ── PR-161: Goal edit dialog ──────────────────────────────────────────────────
+
+function GoalEditDialog({ goal, orgId, onClose, onSaved }) {
+  const [form, setForm] = React.useState({
+    title:                 goal.title ?? '',
+    target_date:           goal.target_date ?? '',
+    priority:              goal.priority ?? 'B',
+    status:                goal.status ?? 'active',
+    target_distance_km:    goal.target_distance_km ?? '',
+    target_elevation_gain_m: goal.target_elevation_gain_m ?? '',
+  });
+  const [saving, setSaving] = React.useState(false);
+  const [error,  setError]  = React.useState(null);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const patch = {
+        title:    form.title,
+        priority: form.priority,
+        status:   form.status,
+        target_date: form.target_date || null,
+        target_distance_km:       form.target_distance_km === '' ? null : Number(form.target_distance_km),
+        target_elevation_gain_m:  form.target_elevation_gain_m === '' ? null : Number(form.target_elevation_gain_m),
+      };
+      const { data: updated } = await updateGoal(orgId, goal.id, patch);
+      onSaved(updated);
+    } catch {
+      setError('No se pudo guardar el objetivo.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>
+        🏆 Editar Objetivo
+      </DialogTitle>
+      <DialogContent sx={{ pt: 1 }}>
+        {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
+        <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
+          <Grid item xs={12}>
+            <TextField label="Nombre" size="small" fullWidth value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField label="Fecha objetivo" type="date" size="small" fullWidth InputLabelProps={{ shrink: true }} value={form.target_date} onChange={e => setForm(f => ({ ...f, target_date: e.target.value }))} />
+          </Grid>
+          <Grid item xs={6}>
+            <FormControl size="small" fullWidth>
+              <InputLabel>Prioridad</InputLabel>
+              <Select label="Prioridad" value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}>
+                <MenuItem value="A">A — Principal</MenuItem>
+                <MenuItem value="B">B — Secundario</MenuItem>
+                <MenuItem value="C">C — Desarrollo</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={6}>
+            <FormControl size="small" fullWidth>
+              <InputLabel>Estado</InputLabel>
+              <Select label="Estado" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
+                <MenuItem value="active">Activo</MenuItem>
+                <MenuItem value="completed">Completado</MenuItem>
+                <MenuItem value="cancelled">Cancelado</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={6}>
+            <TextField label="Distancia (km)" type="number" size="small" fullWidth value={form.target_distance_km} onChange={e => setForm(f => ({ ...f, target_distance_km: e.target.value }))} />
+          </Grid>
+          <Grid item xs={6}>
+            <TextField label="Elevación (m)" type="number" size="small" fullWidth value={form.target_elevation_gain_m} onChange={e => setForm(f => ({ ...f, target_elevation_gain_m: e.target.value }))} />
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+        <Button variant="text" onClick={onClose} sx={{ textTransform: 'none', color: '#64748B' }}>Cancelar</Button>
+        <Button
+          variant="contained"
+          onClick={handleSave}
+          disabled={saving}
+          sx={{ textTransform: 'none', bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' } }}
+        >
+          {saving ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : 'Guardar'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 // ── Target selector helpers ──────────────────────────────────────────────────
@@ -504,6 +598,8 @@ export default function CalendarPage() {
   const [trainingPhaseMap, setTrainingPhaseMap] = useState({});
   // PR-157 hotfix: goal events (race dates) for individual athlete calendar view
   const [goalEvents, setGoalEvents] = useState([]);
+  // PR-161: selected goal for edit dialog
+  const [selectedGoal, setSelectedGoal] = useState(null); // { id, title, target_date, priority, status, target_distance_km, target_elevation_gain_m }
 
   const showUndo = useCallback((message, onUndo) => {
     setUndoToast({ message, onUndo });
@@ -1514,7 +1610,13 @@ export default function CalendarPage() {
                   dragFromOutsideItem={dragFromOutsideItem}
                   onDropFromOutside={handleDropFromOutside}
                   onEventDrop={handleEventDrop}
-                  onSelectEvent={(event) => { if (!event.isGoal) setSelectedEvent(event); }}
+                  onSelectEvent={(event) => {
+                    if (event.isGoal) {
+                      setSelectedGoal(event.resource?.goal ?? null);
+                    } else {
+                      setSelectedEvent(event);
+                    }
+                  }}
                   messages={{
                     next: 'Siguiente',
                     previous: 'Anterior',
@@ -1625,6 +1727,29 @@ export default function CalendarPage() {
           onClose={() => setDeletingWeek(null)}
           onSuccess={handleDeleteWeekSuccess}
         />
+
+        {/* PR-161: Goal edit dialog */}
+        {selectedGoal && (
+          <GoalEditDialog
+            goal={selectedGoal}
+            orgId={orgId}
+            onClose={() => setSelectedGoal(null)}
+            onSaved={(updated) => {
+              setGoalEvents(prev => prev.map(e =>
+                e.id === `goal-${updated.id}`
+                  ? {
+                      ...e,
+                      title: updated.target_distance_km || updated.target_elevation_gain_m
+                        ? `🏆 ${updated.title} — ${[updated.target_distance_km ? `${updated.target_distance_km}km` : null, updated.target_elevation_gain_m ? `D+${updated.target_elevation_gain_m}m` : null].filter(Boolean).join(' · ')}`
+                        : `🏆 ${updated.title}`,
+                      resource: { type: 'goal', goal: updated },
+                    }
+                  : e
+              ));
+              setSelectedGoal(null);
+            }}
+          />
+        )}
 
         {/* PR-154: Blocked-day drop confirmation dialog */}
         <Dialog

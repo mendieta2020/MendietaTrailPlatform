@@ -15,10 +15,14 @@ import { CompleteWorkoutModal } from '../components/CompleteWorkoutModal';
 import { MiniWorkoutProfile } from '../components/MiniWorkoutProfile';
 import { weatherChip } from '../hooks/useWeatherIcon';
 import { useAuth } from '../context/AuthContext';
+import {
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  TextField, Grid, FormControl, InputLabel, Select, MenuItem as MuiMenuItem,
+} from '@mui/material';
 import { listAssignments, updateAssignment } from '../api/assignments';
 import { listAthletes, getAthleteProfile } from '../api/p1';
 import { getAthleteGoals } from '../api/pmc';
-import { getAvailability } from '../api/athlete';
+import { getAvailability, updateGoal } from '../api/athlete';
 import { getPlanVsReal } from '../api/planning';
 import client from '../api/client';
 
@@ -452,6 +456,96 @@ function getMenstrualPhaseForDate(dateObj, lastPeriodDate, cycleDays) {
   return MENSTRUAL_PHASES[3];
 }
 
+// ── PR-161: Athlete goal edit dialog ─────────────────────────────────────────
+
+function AthleteGoalEditDialog({ goal, orgId, onClose, onSaved }) {
+  const [form, setForm] = React.useState({
+    title:                  goal.title ?? '',
+    target_date:            goal.target_date ?? '',
+    priority:               goal.priority ?? 'B',
+    status:                 goal.status ?? 'active',
+    target_distance_km:     goal.target_distance_km ?? '',
+    target_elevation_gain_m: goal.target_elevation_gain_m ?? '',
+  });
+  const [saving, setSaving] = React.useState(false);
+  const [error,  setError]  = React.useState(null);
+
+  const handleSave = async () => {
+    if (!orgId || !goal.id) return;
+    setSaving(true);
+    try {
+      const patch = {
+        title:    form.title,
+        priority: form.priority,
+        status:   form.status,
+        target_date: form.target_date || null,
+        target_distance_km:      form.target_distance_km === '' ? null : Number(form.target_distance_km),
+        target_elevation_gain_m: form.target_elevation_gain_m === '' ? null : Number(form.target_elevation_gain_m),
+      };
+      const { data: updated } = await updateGoal(orgId, goal.id, patch);
+      onSaved(updated);
+    } catch {
+      setError('No se pudo guardar el objetivo.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>🏆 Editar Objetivo</DialogTitle>
+      <DialogContent sx={{ pt: 1 }}>
+        {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
+        <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
+          <Grid item xs={12}>
+            <TextField label="Nombre" size="small" fullWidth value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField label="Fecha objetivo" type="date" size="small" fullWidth InputLabelProps={{ shrink: true }} value={form.target_date} onChange={e => setForm(f => ({ ...f, target_date: e.target.value }))} />
+          </Grid>
+          <Grid item xs={6}>
+            <FormControl size="small" fullWidth>
+              <InputLabel>Prioridad</InputLabel>
+              <Select label="Prioridad" value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}>
+                <MuiMenuItem value="A">A — Principal</MuiMenuItem>
+                <MuiMenuItem value="B">B — Secundario</MuiMenuItem>
+                <MuiMenuItem value="C">C — Desarrollo</MuiMenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={6}>
+            <FormControl size="small" fullWidth>
+              <InputLabel>Estado</InputLabel>
+              <Select label="Estado" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
+                <MuiMenuItem value="active">Activo</MuiMenuItem>
+                <MuiMenuItem value="completed">Completado</MuiMenuItem>
+                <MuiMenuItem value="cancelled">Cancelado</MuiMenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={6}>
+            <TextField label="Distancia (km)" type="number" size="small" fullWidth value={form.target_distance_km} onChange={e => setForm(f => ({ ...f, target_distance_km: e.target.value }))} />
+          </Grid>
+          <Grid item xs={6}>
+            <TextField label="Elevación (m)" type="number" size="small" fullWidth value={form.target_elevation_gain_m} onChange={e => setForm(f => ({ ...f, target_elevation_gain_m: e.target.value }))} />
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+        <Button variant="text" onClick={onClose} sx={{ textTransform: 'none', color: '#64748B' }}>Cancelar</Button>
+        <Button
+          variant="contained"
+          onClick={handleSave}
+          disabled={saving}
+          sx={{ textTransform: 'none', bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' } }}
+        >
+          {saving ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : 'Guardar'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 const AthleteMyTraining = () => {
@@ -470,8 +564,9 @@ const AthleteMyTraining = () => {
   const [availability, setAvailability] = useState([]);
   // PR-155: athlete profile for menstrual cycle overlay
   const [athleteProfile, setAthleteProfile] = useState(null);
-  // PR-157 hotfix: athlete goals as Set of dateKey strings for badge rendering
-  const [goalDateMap, setGoalDateMap] = useState({}); // { 'YYYY-MM-DD': goalTitle }
+  // PR-157 hotfix / PR-161: athlete goals for race date badges + editing
+  const [goalDateMap, setGoalDateMap] = useState({}); // { 'YYYY-MM-DD': { title, distance, elevation, id, priority, status, target_date } }
+  const [selectedGoalForEdit, setSelectedGoalForEdit] = useState(null);
   // PR-158: plan vs real data keyed by week Monday string
   const [planVsRealMap, setPlanVsRealMap] = useState({}); // { 'YYYY-MM-DD': {...} }
 
@@ -552,7 +647,7 @@ const AthleteMyTraining = () => {
       .catch(() => setPmcData(null));
   }, []);
 
-  // PR-157 hotfix / PR-160: load athlete goals once for race date badges (with distance/elevation)
+  // PR-157 hotfix / PR-160 / PR-161: load athlete goals for race date badges + editing
   useEffect(() => {
     let cancelled = false;
     getAthleteGoals()
@@ -563,9 +658,15 @@ const AthleteMyTraining = () => {
             const dateKey = g.date || g.target_date;
             if (dateKey) {
               map[dateKey] = {
-                title: g.name || g.title || '',
-                distance: g.target_distance_km ?? null,
+                id:        g.id,
+                title:     g.name || g.title || '',
+                distance:  g.target_distance_km ?? null,
                 elevation: g.target_elevation_gain_m ?? null,
+                priority:  g.priority ?? 'B',
+                status:    g.status ?? 'active',
+                target_date: g.target_date ?? dateKey,
+                target_distance_km:      g.target_distance_km ?? null,
+                target_elevation_gain_m: g.target_elevation_gain_m ?? null,
               };
             }
           });
@@ -640,7 +741,7 @@ const AthleteMyTraining = () => {
     return <Navigate to="/dashboard" replace />;
   }
 
-  const weeks = buildCalendarWeeks(currentDate);
+  const weeks = buildCalendarWeeks(currentDate).slice(0, 4);
 
   // Build map: availIndex (0=Mon…6=Sun) → availability record
   const blockedDayMap = {};
@@ -805,7 +906,7 @@ const AthleteMyTraining = () => {
                           </Typography>
                         )}
 
-                        {/* PR-160: goal/race date trophy badge */}
+                        {/* PR-160 / PR-161: goal/race date trophy badge — clickable to edit */}
                         {inMonth && goalDateMap[dateKey] && (() => {
                           const goal = goalDateMap[dateKey];
                           const subline = [
@@ -814,12 +915,14 @@ const AthleteMyTraining = () => {
                           ].filter(Boolean).join(' · ');
                           return (
                             <Box
-                              title={`🏆 Carrera: ${goal.title}`}
+                              title={`🏆 Carrera: ${goal.title} — click para editar`}
+                              onClick={() => setSelectedGoalForEdit(goal)}
                               sx={{
                                 background: 'linear-gradient(135deg, #FFD700 0%, #F97316 100%)',
                                 borderRadius: '6px',
                                 px: 0.75, py: 0.4, mb: 0.5,
-                                cursor: 'default',
+                                cursor: 'pointer',
+                                '&:hover': { opacity: 0.85 },
                               }}
                             >
                               <Typography sx={{ fontSize: '0.62rem', fontWeight: 800, color: '#7c2d12', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -870,6 +973,40 @@ const AthleteMyTraining = () => {
         onSubmit={handleCompleteSubmit}
         assignment={completeTarget}
       />
+
+      {/* PR-161: Goal edit dialog */}
+      {selectedGoalForEdit && (
+        <AthleteGoalEditDialog
+          goal={selectedGoalForEdit}
+          orgId={orgId}
+          onClose={() => setSelectedGoalForEdit(null)}
+          onSaved={(updated) => {
+            const dateKey = updated.target_date;
+            setGoalDateMap(prev => {
+              const newMap = { ...prev };
+              // Remove old entry if date changed
+              Object.keys(newMap).forEach(k => {
+                if (newMap[k].id === updated.id) delete newMap[k];
+              });
+              if (dateKey) {
+                newMap[dateKey] = {
+                  id:        updated.id,
+                  title:     updated.title ?? '',
+                  distance:  updated.target_distance_km ?? null,
+                  elevation: updated.target_elevation_gain_m ?? null,
+                  priority:  updated.priority ?? 'B',
+                  status:    updated.status ?? 'active',
+                  target_date: dateKey,
+                  target_distance_km:      updated.target_distance_km ?? null,
+                  target_elevation_gain_m: updated.target_elevation_gain_m ?? null,
+                };
+              }
+              return newMap;
+            });
+            setSelectedGoalForEdit(null);
+          }}
+        />
+      )}
     </AthleteLayout>
   );
 };

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Paper, Button, CircularProgress, Alert,
+  Box, Typography, Paper, Button, CircularProgress, Alert, TextField,
 } from '@mui/material';
 import { MapPin } from 'lucide-react';
 import AthleteLayout from '../components/AthleteLayout';
@@ -10,7 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   getAthleteProfile, updateAthleteProfile, getInjuries, createInjury,
   updateInjury, deleteInjury, getAvailability, updateAvailability,
-  getGoals, createGoal, updateGoal, deleteGoal,
+  getGoals, createGoal, updateGoal, deleteGoal, updateAthleteRecord,
 } from '../api/athlete';
 import client from '../api/client';
 
@@ -41,6 +41,11 @@ const AthleteProfile = () => {
   const [athleteId, setAthleteId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState('');
+  // PR-161: location city (on Athlete model, not AthleteProfile)
+  const [locationCity, setLocationCity] = useState('');
+  const [locationDraft, setLocationDraft] = useState('');
+  const [editingLocation, setEditingLocation] = useState(false);
+  const [savingLocation, setSavingLocation] = useState(false);
 
   // Inline editing state for Cards 1, 2, 6 (profile PATCH)
   const [editingCard, setEditingCard] = useState(null);
@@ -66,6 +71,10 @@ const AthleteProfile = () => {
             setAvailability(Array.isArray(availRes.data) ? availRes.data : availRes.data?.results ?? []);
             const allGoals = Array.isArray(goalRes.data) ? goalRes.data : goalRes.data?.results ?? [];
             setGoals(allGoals.filter(g => g.status === 'active'));
+            // Load location_city from the Athlete record itself
+            const city = ath.location_city ?? '';
+            setLocationCity(city);
+            setLocationDraft(city);
           }).finally(() => setLoading(false));
         } else {
           setLoading(false);
@@ -200,6 +209,21 @@ const AthleteProfile = () => {
     }
   };
 
+  const handleSaveLocation = async () => {
+    if (!orgId || !athleteId) return;
+    setSavingLocation(true);
+    try {
+      await updateAthleteRecord(orgId, athleteId, { location_city: locationDraft });
+      setLocationCity(locationDraft);
+      setEditingLocation(false);
+      showToast('Ubicación guardada');
+    } catch {
+      showToast('Error al guardar ubicación');
+    } finally {
+      setSavingLocation(false);
+    }
+  };
+
   if (loading) {
     return (
       <AthleteLayout user={user}>
@@ -248,12 +272,55 @@ const AthleteProfile = () => {
           athleteId={athleteId}
         />
 
-        {/* Device + Location */}
+        {/* Device + Location — PR-161 */}
         <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
             <MapPin className="w-5 h-5" style={{ color: '#F97316' }} />
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Conexiones & Ubicación</Typography>
           </Box>
+
+          {/* Location city */}
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', mb: 0.5 }}>
+              Ciudad
+            </Typography>
+            {editingLocation ? (
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                <TextField
+                  size="small"
+                  placeholder="Ej: Buenos Aires, Argentina"
+                  value={locationDraft}
+                  onChange={e => setLocationDraft(e.target.value)}
+                  sx={{ flex: 1 }}
+                />
+                <Button
+                  size="small"
+                  variant="contained"
+                  onClick={handleSaveLocation}
+                  disabled={savingLocation}
+                  sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' }, textTransform: 'none', minWidth: 80 }}
+                >
+                  {savingLocation ? <CircularProgress size={12} sx={{ color: '#fff' }} /> : 'Guardar'}
+                </Button>
+                <Button size="small" onClick={() => { setEditingLocation(false); setLocationDraft(locationCity); }} sx={{ textTransform: 'none', color: '#64748b' }}>
+                  Cancelar
+                </Button>
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="body2" sx={{ color: '#1e293b', fontWeight: 500 }}>
+                  {locationCity || '—'}
+                </Typography>
+                <Button size="small" onClick={() => setEditingLocation(true)} sx={{ color: '#F57C00', fontSize: '0.75rem', minWidth: 'auto', p: 0.5 }}>
+                  Editar
+                </Button>
+              </Box>
+            )}
+            <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.68rem', display: 'block', mt: 0.5 }}>
+              Tu ubicación se usa para mostrar el clima en tus sesiones
+            </Typography>
+          </Box>
+
           <Button variant="outlined" size="small" onClick={() => navigate('/connections')} sx={{ textTransform: 'none' }}>
             Gestionar conexiones de dispositivo
           </Button>

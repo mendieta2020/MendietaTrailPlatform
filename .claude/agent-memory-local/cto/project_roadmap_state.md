@@ -235,6 +235,17 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - AthleteWellnessTab.jsx: auto-generated interpretation text below heatmap (7-day averages → actionable coach alerts: pain, sleep, energy, stress, overtraining risk, all-good)
 - Risk: LOW (frontend only, no backend changes, no migrations)
 
+### PR-161 — Body Map Pro + Fixes funcionales + Sync coach↔atleta + Ubicación→Clima ✅ 2026-04-03
+- AthleteInjuriesTab.jsx: react-body-highlighter Model integrated (front/back toggle, dark bg, severity colors yellow/orange/red); clicking a muscle pre-fills the injury form with the mapped zone
+- AthleteProfileTab.jsx: Datos Personales section now editable (birth_date, emergency_contact, instagram_handle) via PATCH /api/coach/athletes/<m_id>/profile/; Disponibilidad Semanal now editable (clickable day toggles) via PUT /api/p1/orgs/<org_id>/athletes/<athlete_id>/availability/ using useOrg context for orgId
+- Calendar.jsx: GoalEditDialog component added; goal trophy events are now clickable → opens edit dialog (title, date, priority, status, distance, elevation); updateGoal imported from athlete.js
+- AthleteMyTraining.jsx: trophy badge clickable → AthleteGoalEditDialog; goalDateMap enriched with goal id + all fields; calendar limited to 4 weeks (weeks.slice(0,4))
+- AthleteProfile.jsx: location_city field added in Conexiones & Ubicación section; inline edit saves via updateAthleteRecord (PATCH /api/p1/orgs/<org_id>/athletes/<athlete_id>/); info text "Tu ubicación se usa para mostrar el clima"
+- athlete.js: updateAthleteRecord(orgId, athleteId, data) added
+- No backend changes, no migrations
+- Frontend: lint 0 errors, build success
+- Risk: MEDIUM (new dependency react-body-highlighter)
+
 ### Before Mes 2 (10 external coaches)
 - PR-155 ✅ — Building cleanup (sidebar consolidation, duplicate removal) — DONE
 - PR-156 ✅ — Mi Progreso del Atleta redesign (Readiness + Goals + Weekly + PMC humano + Wellness) — DONE

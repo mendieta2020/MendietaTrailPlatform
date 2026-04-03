@@ -23,6 +23,7 @@
     "lucide-react": "^0.556.0",
     "react": "^19.2.0",
     "react-big-calendar": "^1.19.4",
+    "react-body-highlighter": "^2.0.5",
     "react-dnd": "^16.0.1",
     "react-dnd-html5-backend": "^16.0.1",
     "react-dom": "^19.2.0",
