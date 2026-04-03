@@ -1,13 +1,16 @@
 /**
- * AthleteProfileTab — PR-159
+ * AthleteProfileTab — PR-159 / PR-161
  * Coach reads and edits athlete personal, physical, and availability data.
+ * PR-161: Datos Personales and Disponibilidad Semanal are now editable.
  */
 import React, { useState, useEffect } from 'react'
 import {
-  Box, Typography, Button, TextField, Checkbox, FormControlLabel,
-  CircularProgress, Alert, Divider, Grid
+  Box, Typography, Button, TextField, Checkbox, CircularProgress, Alert, Grid,
+  MenuItem, Select, InputLabel, FormControl,
 } from '@mui/material'
 import { getCoachAthleteProfile, patchCoachAthleteProfile } from '../api/pmc'
+import { updateAvailability } from '../api/athlete'
+import { useOrg } from '../context/OrgContext'
 
 const DAY_LABELS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 
@@ -18,7 +21,7 @@ function Section({ title, children, onEdit, editing, onSave, onCancel, saving })
         <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1e293b', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           {title}
         </Typography>
-        {!editing && (
+        {!editing && onEdit && (
           <Button size="small" onClick={onEdit} sx={{ color: '#F57C00', fontSize: '0.75rem' }}>
             Editar
           </Button>
@@ -61,55 +64,98 @@ function ReadField({ label, value }) {
 }
 
 export default function AthleteProfileTab({ membershipId }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const { activeOrg } = useOrg()
+  const orgId = activeOrg?.org_id
 
-  // Edit sections
-  const [editPhysical, setEditPhysical] = useState(false)
-  const [physicalDraft, setPhysicalDraft] = useState({})
+  const [data,          setData]          = useState(null)
+  const [loading,       setLoading]       = useState(true)
+  const [error,         setError]         = useState(null)
+
+  // ── Personal section ─────────────────────────────────────────────────────
+  const [editPersonal,   setEditPersonal]   = useState(false)
+  const [personalDraft,  setPersonalDraft]  = useState({})
+  const [savingPersonal, setSavingPersonal] = useState(false)
+
+  // ── Physical section ─────────────────────────────────────────────────────
+  const [editPhysical,   setEditPhysical]   = useState(false)
+  const [physicalDraft,  setPhysicalDraft]  = useState({})
   const [savingPhysical, setSavingPhysical] = useState(false)
+
+  // ── Availability section ─────────────────────────────────────────────────
+  const [editAvail,   setEditAvail]   = useState(false)
+  const [availDraft,  setAvailDraft]  = useState([])
+  const [savingAvail, setSavingAvail] = useState(false)
 
   useEffect(() => {
     if (!membershipId) return
     setLoading(true)
     getCoachAthleteProfile(membershipId)
-      .then(res => {
-        setData(res.data)
-        setLoading(false)
-      })
-      .catch(() => {
-        setError('No se pudo cargar el perfil del atleta.')
-        setLoading(false)
-      })
+      .then(res => { setData(res.data); setLoading(false) })
+      .catch(() => { setError('No se pudo cargar el perfil del atleta.'); setLoading(false) })
   }, [membershipId])
 
-  const profile = data?.profile ?? {}
+  const profile      = data?.profile ?? {}
   const availability = data?.availability ?? []
+  const athleteId    = data?.athlete_id
 
-  // Physical section handlers
+  // ── Personal handlers ────────────────────────────────────────────────────
+
+  const startEditPersonal = () => {
+    setPersonalDraft({
+      birth_date:              profile.birth_date ?? '',
+      emergency_contact_name:  profile.emergency_contact_name ?? '',
+      emergency_contact_phone: profile.emergency_contact_phone ?? '',
+      instagram_handle:        profile.instagram_handle ?? '',
+    })
+    setEditPersonal(true)
+  }
+
+  const PERSONAL_CHAR_FIELDS = new Set(['emergency_contact_name', 'emergency_contact_phone', 'instagram_handle'])
+  const savePersonal = async () => {
+    setSavingPersonal(true)
+    try {
+      const cleaned = {}
+      Object.entries(personalDraft).forEach(([k, v]) => {
+        // CharField (blank=True) fields must send "" not null
+        cleaned[k] = (v === '' && !PERSONAL_CHAR_FIELDS.has(k)) ? null : (v ?? '')
+      })
+      const res = await patchCoachAthleteProfile(membershipId, cleaned)
+      setData(prev => ({ ...prev, profile: { ...prev.profile, ...res.data } }))
+      setEditPersonal(false)
+    } catch {
+      setError('Error al guardar. Intenta de nuevo.')
+    } finally {
+      setSavingPersonal(false)
+    }
+  }
+
+  // ── Physical handlers ────────────────────────────────────────────────────
+
   const startEditPhysical = () => {
     setPhysicalDraft({
-      weight_kg: profile.weight_kg ?? '',
-      height_cm: profile.height_cm ?? '',
-      max_hr_bpm: profile.max_hr_bpm ?? '',
-      resting_hr_bpm: profile.resting_hr_bpm ?? '',
-      vo2max: profile.vo2max ?? '',
-      training_age_years: profile.training_age_years ?? '',
+      weight_kg:              profile.weight_kg ?? '',
+      height_cm:              profile.height_cm ?? '',
+      max_hr_bpm:             profile.max_hr_bpm ?? '',
+      resting_hr_bpm:         profile.resting_hr_bpm ?? '',
+      vo2max:                 profile.vo2max ?? '',
+      training_age_years:     profile.training_age_years ?? '',
       weekly_available_hours: profile.weekly_available_hours ?? '',
       preferred_training_time: profile.preferred_training_time ?? '',
-      pace_1000m_seconds: profile.pace_1000m_seconds ?? '',
+      pace_1000m_seconds:     profile.pace_1000m_seconds ?? '',
     })
     setEditPhysical(true)
   }
 
   const savePhysical = async () => {
     setSavingPhysical(true)
-    const TEXT_FIELDS = new Set(['preferred_training_time'])
     try {
       const cleaned = {}
       Object.entries(physicalDraft).forEach(([k, v]) => {
-        cleaned[k] = v === '' ? null : TEXT_FIELDS.has(k) ? v : Number(v)
+        if (k === 'preferred_training_time') {
+          cleaned[k] = v ?? ''  // CharField — send "" not null
+        } else {
+          cleaned[k] = v === '' ? null : Number(v)
+        }
       })
       const res = await patchCoachAthleteProfile(membershipId, cleaned)
       setData(prev => ({ ...prev, profile: { ...prev.profile, ...res.data } }))
@@ -121,27 +167,102 @@ export default function AthleteProfileTab({ membershipId }) {
     }
   }
 
+  // ── Availability handlers ────────────────────────────────────────────────
+
+  const startEditAvail = () => {
+    // Build draft: 7 days (0=Mon…6=Sun), default to current state
+    const draft = DAY_LABELS.map((_, i) => {
+      const existing = availability.find(a => a.day_of_week === i + 1)
+      return {
+        day_of_week:  i + 1,
+        is_available: existing?.is_available ?? true,
+        reason:       existing?.reason ?? '',
+        preferred_time: existing?.preferred_time ?? '',
+      }
+    })
+    setAvailDraft(draft)
+    setEditAvail(true)
+  }
+
+  const toggleDay = (idx) => {
+    setAvailDraft(prev => prev.map((d, i) =>
+      i === idx ? { ...d, is_available: !d.is_available } : d
+    ))
+  }
+
+  const saveAvail = async () => {
+    if (!orgId || !athleteId) { setError('No se pudo determinar la organización.'); return }
+    setSavingAvail(true)
+    try {
+      const { data: saved } = await updateAvailability(orgId, athleteId, availDraft)
+      setData(prev => ({
+        ...prev,
+        availability: Array.isArray(saved) ? saved : saved?.results ?? [],
+      }))
+      setEditAvail(false)
+    } catch {
+      setError('Error al guardar disponibilidad.')
+    } finally {
+      setSavingAvail(false)
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────────────────
+
   if (loading) return <Box sx={{ py: 4, display: 'flex', justifyContent: 'center' }}><CircularProgress /></Box>
-  if (error) return <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>
+  if (error)   return <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>
 
   const fullName = data?.athlete_name ?? '—'
-  const email = data?.athlete_email ?? '—'
+  const email    = data?.athlete_email ?? '—'
 
   return (
     <Box>
-      {/* Personal info (read-only) */}
-      <Section title="Datos Personales">
-        <Grid container spacing={2}>
-          <Grid item xs={12} sm={6}><ReadField label="Nombre" value={fullName} /></Grid>
-          <Grid item xs={12} sm={6}><ReadField label="Email" value={email} /></Grid>
-          <Grid item xs={12} sm={6}><ReadField label="Fecha de nacimiento" value={profile.birth_date} /></Grid>
-          <Grid item xs={12} sm={6}><ReadField label="Contacto de emergencia" value={profile.emergency_contact_name} /></Grid>
-          <Grid item xs={12} sm={6}><ReadField label="Tel. emergencia" value={profile.emergency_contact_phone} /></Grid>
-          <Grid item xs={12} sm={6}><ReadField label="Instagram" value={profile.instagram_handle ? `@${profile.instagram_handle}` : null} /></Grid>
-        </Grid>
+      {/* ── Personal (now editable) ──────────────────────────────────────── */}
+      <Section
+        title="Datos Personales"
+        editing={editPersonal}
+        onEdit={startEditPersonal}
+        onSave={savePersonal}
+        onCancel={() => setEditPersonal(false)}
+        saving={savingPersonal}
+      >
+        {editPersonal ? (
+          <Grid container spacing={2}>
+            {/* Name + Email are read-only (User model fields) */}
+            <Grid item xs={12} sm={6}><ReadField label="Nombre" value={fullName} /></Grid>
+            <Grid item xs={12} sm={6}><ReadField label="Email" value={email} /></Grid>
+            {[
+              { key: 'birth_date',              label: 'Fecha de nacimiento', type: 'date' },
+              { key: 'emergency_contact_name',  label: 'Contacto emergencia', type: 'text' },
+              { key: 'emergency_contact_phone', label: 'Tel. emergencia',     type: 'text' },
+              { key: 'instagram_handle',        label: 'Instagram',           type: 'text' },
+            ].map(({ key, label, type }) => (
+              <Grid item xs={12} sm={6} key={key}>
+                <TextField
+                  label={label}
+                  type={type}
+                  size="small"
+                  fullWidth
+                  value={personalDraft[key] ?? ''}
+                  onChange={e => setPersonalDraft(d => ({ ...d, [key]: e.target.value }))}
+                  InputLabelProps={type === 'date' ? { shrink: true } : undefined}
+                />
+              </Grid>
+            ))}
+          </Grid>
+        ) : (
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}><ReadField label="Nombre" value={fullName} /></Grid>
+            <Grid item xs={12} sm={6}><ReadField label="Email" value={email} /></Grid>
+            <Grid item xs={12} sm={6}><ReadField label="Fecha de nacimiento" value={profile.birth_date} /></Grid>
+            <Grid item xs={12} sm={6}><ReadField label="Contacto de emergencia" value={profile.emergency_contact_name} /></Grid>
+            <Grid item xs={12} sm={6}><ReadField label="Tel. emergencia" value={profile.emergency_contact_phone} /></Grid>
+            <Grid item xs={12} sm={6}><ReadField label="Instagram" value={profile.instagram_handle ? `@${profile.instagram_handle}` : null} /></Grid>
+          </Grid>
+        )}
       </Section>
 
-      {/* Physical data (editable) */}
+      {/* ── Physical (already editable) ──────────────────────────────────── */}
       <Section
         title="Datos Físicos"
         editing={editPhysical}
@@ -153,15 +274,14 @@ export default function AthleteProfileTab({ membershipId }) {
         {editPhysical ? (
           <Grid container spacing={2}>
             {[
-              { key: 'weight_kg', label: 'Peso (kg)', type: 'number' },
-              { key: 'height_cm', label: 'Altura (cm)', type: 'number' },
-              { key: 'max_hr_bpm', label: 'FC Máx (bpm)', type: 'number' },
-              { key: 'resting_hr_bpm', label: 'FC Reposo (bpm)', type: 'number' },
-              { key: 'vo2max', label: 'VO2max', type: 'number' },
-              { key: 'training_age_years', label: 'Años entrenando', type: 'number' },
-              { key: 'weekly_available_hours', label: 'Horas/semana', type: 'number' },
-              { key: 'preferred_training_time', label: 'Horario preferido', type: 'text' },
-              { key: 'pace_1000m_seconds', label: 'Ritmo 1km (seg)', type: 'number' },
+              { key: 'weight_kg',              label: 'Peso (kg)',       type: 'number' },
+              { key: 'height_cm',              label: 'Altura (cm)',     type: 'number' },
+              { key: 'max_hr_bpm',             label: 'FC Máx (bpm)',    type: 'number' },
+              { key: 'resting_hr_bpm',         label: 'FC Reposo (bpm)', type: 'number' },
+              { key: 'vo2max',                 label: 'VO2max',          type: 'number' },
+              { key: 'training_age_years',     label: 'Años entrenando', type: 'number' },
+              { key: 'weekly_available_hours', label: 'Horas/semana',    type: 'number' },
+              { key: 'pace_1000m_seconds',     label: 'Ritmo 1km (seg)', type: 'number' },
             ].map(({ key, label, type }) => (
               <Grid item xs={12} sm={6} key={key}>
                 <TextField
@@ -174,6 +294,21 @@ export default function AthleteProfileTab({ membershipId }) {
                 />
               </Grid>
             ))}
+            <Grid item xs={12} sm={6}>
+              <FormControl size="small" fullWidth>
+                <InputLabel>Horario preferido</InputLabel>
+                <Select
+                  label="Horario preferido"
+                  value={physicalDraft.preferred_training_time ?? ''}
+                  onChange={e => setPhysicalDraft(d => ({ ...d, preferred_training_time: e.target.value }))}
+                >
+                  <MenuItem value="">— Sin preferencia —</MenuItem>
+                  <MenuItem value="morning">Mañana</MenuItem>
+                  <MenuItem value="afternoon">Tarde</MenuItem>
+                  <MenuItem value="evening">Noche</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
           </Grid>
         ) : (
           <Grid container spacing={2}>
@@ -190,32 +325,65 @@ export default function AthleteProfileTab({ membershipId }) {
         )}
       </Section>
 
-      {/* Availability (read-only for now) */}
-      <Section title="Disponibilidad Semanal">
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          {DAY_LABELS.map((day, i) => {
-            const avail = availability.find(a => a.day_of_week === i + 1)
-            const available = avail?.is_available ?? false
-            return (
+      {/* ── Availability (now editable) ───────────────────────────────────── */}
+      <Section
+        title="Disponibilidad Semanal"
+        editing={editAvail}
+        onEdit={startEditAvail}
+        onSave={saveAvail}
+        onCancel={() => setEditAvail(false)}
+        saving={savingAvail}
+      >
+        {editAvail ? (
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            {availDraft.map((day, i) => (
               <Box
-                key={day}
+                key={DAY_LABELS[i]}
+                onClick={() => toggleDay(i)}
                 sx={{
-                  px: 1.5, py: 0.75, borderRadius: 1.5,
-                  bgcolor: available ? 'rgba(34,197,94,0.1)' : '#f8fafc',
-                  border: `1px solid ${available ? '#22c55e' : '#e2e8f0'}`,
+                  px: 1.5, py: 1, borderRadius: 1.5, cursor: 'pointer',
+                  bgcolor: day.is_available ? 'rgba(34,197,94,0.1)' : '#f8fafc',
+                  border: `2px solid ${day.is_available ? '#22c55e' : '#e2e8f0'}`,
                   minWidth: 80, textAlign: 'center',
+                  transition: 'all 0.15s',
+                  '&:hover': { borderColor: day.is_available ? '#16a34a' : '#F57C00' },
                 }}
               >
-                <Typography variant="caption" sx={{ fontWeight: 600, color: available ? '#16a34a' : '#94a3b8', fontSize: '0.72rem' }}>
-                  {day.slice(0, 3)}
+                <Typography variant="caption" sx={{ fontWeight: 700, color: day.is_available ? '#16a34a' : '#94a3b8', fontSize: '0.75rem', display: 'block' }}>
+                  {DAY_LABELS[i].slice(0, 3)}
                 </Typography>
-                <Typography variant="caption" sx={{ display: 'block', color: available ? '#16a34a' : '#cbd5e1', fontSize: '0.67rem' }}>
-                  {available ? 'Disponible' : 'No'}
+                <Typography variant="caption" sx={{ color: day.is_available ? '#22c55e' : '#cbd5e1', fontSize: '0.65rem' }}>
+                  {day.is_available ? '✓ Disponible' : '✗ No'}
                 </Typography>
               </Box>
-            )
-          })}
-        </Box>
+            ))}
+          </Box>
+        ) : (
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            {DAY_LABELS.map((day, i) => {
+              const avail = availability.find(a => a.day_of_week === i + 1)
+              const available = avail?.is_available ?? false
+              return (
+                <Box
+                  key={day}
+                  sx={{
+                    px: 1.5, py: 0.75, borderRadius: 1.5,
+                    bgcolor: available ? 'rgba(34,197,94,0.1)' : '#f8fafc',
+                    border: `1px solid ${available ? '#22c55e' : '#e2e8f0'}`,
+                    minWidth: 80, textAlign: 'center',
+                  }}
+                >
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: available ? '#16a34a' : '#94a3b8', fontSize: '0.72rem' }}>
+                    {day.slice(0, 3)}
+                  </Typography>
+                  <Typography variant="caption" sx={{ display: 'block', color: available ? '#16a34a' : '#cbd5e1', fontSize: '0.67rem' }}>
+                    {available ? 'Disponible' : 'No'}
+                  </Typography>
+                </Box>
+              )
+            })}
+          </Box>
+        )}
       </Section>
     </Box>
   )

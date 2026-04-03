@@ -121,9 +121,10 @@ from core.views_planning import (  # PR-158
     AthletePlanVsRealView,
     GroupWeekTemplateView,
 )
-from core.views_athlete_card import (  # PR-159
+from core.views_athlete_card import (  # PR-159 / PR-161
     CoachAthleteProfileView,
     CoachAthleteInjuriesView,
+    CoachAthleteInjuryDetailView,
     CoachAthleteGoalsView,
     CoachAthleteNotesView,
 )
@@ -248,6 +249,7 @@ urlpatterns = [
     # PR-159: Athlete Card — profile, injuries, goals, notes
     path('coach/athletes/<int:membership_id>/profile/', CoachAthleteProfileView.as_view(), name='coach-athlete-profile'),
     path('coach/athletes/<int:membership_id>/card-injuries/', CoachAthleteInjuriesView.as_view(), name='coach-athlete-card-injuries'),
+    path('coach/athletes/<int:membership_id>/card-injuries/<int:pk>/', CoachAthleteInjuryDetailView.as_view(), name='coach-athlete-card-injury-detail'),
     path('coach/athletes/<int:membership_id>/card-goals/', CoachAthleteGoalsView.as_view(), name='coach-athlete-card-goals'),
     path('coach/athletes/<int:membership_id>/notes/', CoachAthleteNotesView.as_view(), name='coach-athlete-notes'),
 

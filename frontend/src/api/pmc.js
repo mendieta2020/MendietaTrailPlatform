@@ -37,6 +37,12 @@ export const getCoachAthleteInjuries = (membershipId) =>
 export const createCoachAthleteInjury = (membershipId, data) =>
   client.post(`/api/coach/athletes/${membershipId}/card-injuries/`, data)
 
+export const patchCoachAthleteInjury = (membershipId, pk, data) =>
+  client.patch(`/api/coach/athletes/${membershipId}/card-injuries/${pk}/`, data)
+
+export const deleteCoachAthleteInjury = (membershipId, pk) =>
+  client.delete(`/api/coach/athletes/${membershipId}/card-injuries/${pk}/`)
+
 export const getCoachAthleteGoals = (membershipId) =>
   client.get(`/api/coach/athletes/${membershipId}/card-goals/`)
 
