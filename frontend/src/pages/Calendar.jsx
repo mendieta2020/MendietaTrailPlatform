@@ -570,9 +570,13 @@ export default function CalendarPage() {
             .map((g) => {
               const dateStr = g.target_date || g.target_event_date;
               const day = parseISO(dateStr);
+              const subparts = [
+                g.target_distance_km ? `${g.target_distance_km}km` : null,
+                g.target_elevation_gain_m ? `D+${g.target_elevation_gain_m}m` : null,
+              ].filter(Boolean).join(' · ');
               return {
                 id: `goal-${g.id}`,
-                title: `🏔️ ${g.title}`,
+                title: subparts ? `🏆 ${g.title} — ${subparts}` : `🏆 ${g.title}`,
                 start: day,
                 end: day,
                 allDay: true,
@@ -1115,16 +1119,16 @@ export default function CalendarPage() {
 
   const eventPropGetter = useCallback(
     (event) => {
-      // PR-157 hotfix: goal events get a special red/prominent style
+      // PR-160: goal events — gold trophy badge style
       if (event.isGoal) {
         return {
           style: {
-            backgroundColor: '#dc2626',
-            borderRadius: '4px',
-            color: '#fff',
-            fontWeight: 700,
-            fontSize: '0.72rem',
-            border: '2px solid #b91c1c',
+            background: 'linear-gradient(135deg, #FFD700 0%, #F97316 100%)',
+            borderRadius: '6px',
+            color: '#7c2d12',
+            fontWeight: 800,
+            fontSize: '0.7rem',
+            border: '1px solid #F59E0B',
             cursor: 'default',
           },
         };

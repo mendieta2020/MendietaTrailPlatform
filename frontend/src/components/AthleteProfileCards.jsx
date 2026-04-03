@@ -187,6 +187,7 @@ export function AthleteProfileCards({
   onSaveAvailability,
   // Card 4: goals
   onAddGoal,
+  onUpdateGoal,
   onDeleteGoal,
   // Card 5: injuries
   onSaveInjury,
@@ -262,6 +263,10 @@ export function AthleteProfileCards({
   const [goalForm, setGoalForm] = useState(EMPTY_GOAL);
   const [goalSaving, setGoalSaving] = useState(false);
   const [goalError, setGoalError] = useState('');
+  // Inline edit per goal
+  const [editingGoalId, setEditingGoalId] = useState(null);
+  const [goalEditDraft, setGoalEditDraft] = useState({});
+  const [goalEditSaving, setGoalEditSaving] = useState(false);
 
   const handleGoalChange = (field, value) => setGoalForm((p) => ({ ...p, [field]: value }));
   const handleAddGoalSubmit = async () => {
@@ -282,6 +287,40 @@ export function AthleteProfileCards({
       setGoalError('No se pudo guardar el objetivo. Intentá de nuevo.');
     } finally {
       setGoalSaving(false);
+    }
+  };
+
+  const startGoalEdit = (g) => {
+    setEditingGoalId(g.id);
+    setGoalEditDraft({
+      title: g.title ?? '',
+      target_date: g.target_date ?? '',
+      priority: g.priority ?? 'C',
+      target_distance_km: g.target_distance_km ?? '',
+      target_elevation_gain_m: g.target_elevation_gain_m ?? '',
+    });
+  };
+
+  const cancelGoalEdit = () => { setEditingGoalId(null); setGoalEditDraft({}); };
+
+  const saveGoalEdit = async (goalId) => {
+    if (!onUpdateGoal) return;
+    setGoalEditSaving(true);
+    try {
+      const payload = {
+        title: goalEditDraft.title,
+        target_date: goalEditDraft.target_date || null,
+        priority: goalEditDraft.priority,
+        target_distance_km: goalEditDraft.target_distance_km !== '' ? Number(goalEditDraft.target_distance_km) : null,
+        target_elevation_gain_m: goalEditDraft.target_elevation_gain_m !== '' ? Number(goalEditDraft.target_elevation_gain_m) : null,
+      };
+      await onUpdateGoal(goalId, payload);
+      setEditingGoalId(null);
+      setGoalEditDraft({});
+    } catch {
+      setGoalError('Error al guardar el objetivo.');
+    } finally {
+      setGoalEditSaving(false);
     }
   };
 
@@ -593,27 +632,72 @@ export function AthleteProfileCards({
         {goals.length > 0 ? (
           <div className="space-y-2">
             {goals.map((g) => (
-              <div key={g.id} className="flex items-center justify-between bg-slate-50 rounded-lg p-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Chip label={`Prioridad ${g.priority}`} size="small"
-                      sx={{
-                        bgcolor: g.priority === 'A' ? '#DBEAFE' : g.priority === 'B' ? '#FEF3C7' : '#F3F4F6',
-                        color: g.priority === 'A' ? '#1E40AF' : g.priority === 'B' ? '#92400E' : '#374151',
-                        fontWeight: 700, fontSize: '0.7rem',
-                      }} />
-                    <strong className="text-sm">{g.title}</strong>
+              <div key={g.id} className="bg-slate-50 rounded-lg p-3">
+                {editingGoalId === g.id ? (
+                  /* Inline edit form */
+                  <div className="flex flex-col gap-2">
+                    <TextField size="small" label="Nombre" fullWidth value={goalEditDraft.title}
+                      onChange={e => setGoalEditDraft(d => ({ ...d, title: e.target.value }))}
+                      sx={{ '& .MuiOutlinedInput-root': { '&.Mui-focused fieldset': { borderColor: '#F57C00' } } }} />
+                    <div className="flex gap-2">
+                      <TextField size="small" type="date" label="Fecha" fullWidth InputLabelProps={{ shrink: true }}
+                        value={goalEditDraft.target_date}
+                        onChange={e => setGoalEditDraft(d => ({ ...d, target_date: e.target.value }))} />
+                      <TextField select size="small" label="Prioridad" sx={{ minWidth: 100 }}
+                        value={goalEditDraft.priority}
+                        onChange={e => setGoalEditDraft(d => ({ ...d, priority: e.target.value }))}>
+                        {['A', 'B', 'C'].map(p => <MenuItem key={p} value={p}>{p}</MenuItem>)}
+                      </TextField>
+                    </div>
+                    <div className="flex gap-2">
+                      <TextField size="small" type="number" label="Distancia (km)" fullWidth
+                        value={goalEditDraft.target_distance_km}
+                        onChange={e => setGoalEditDraft(d => ({ ...d, target_distance_km: e.target.value }))} />
+                      <TextField size="small" type="number" label="Desnivel + (m)" fullWidth
+                        value={goalEditDraft.target_elevation_gain_m}
+                        onChange={e => setGoalEditDraft(d => ({ ...d, target_elevation_gain_m: e.target.value }))} />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button size="small" onClick={cancelGoalEdit} sx={{ color: '#64748b', textTransform: 'none', fontSize: '0.75rem' }}>Cancelar</Button>
+                      <Button size="small" variant="contained" onClick={() => saveGoalEdit(g.id)}
+                        disabled={goalEditSaving || !goalEditDraft.title}
+                        sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' }, textTransform: 'none', fontSize: '0.75rem' }}>
+                        {goalEditSaving ? 'Guardando…' : 'Guardar'}
+                      </Button>
+                    </div>
                   </div>
-                  <span className="text-xs text-slate-500">
-                    {g.target_date}
-                    {g.target_event?.distance_km ? ` — ${g.target_event.distance_km}km` : ''}
-                    {g.target_event?.elevation_gain_m ? ` — D+${g.target_event.elevation_gain_m}m` : ''}
-                  </span>
-                </div>
-                {!readOnly && (
-                  <button onClick={() => onDeleteGoal(g.id)} className="text-slate-400 hover:text-red-500 p-1">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                ) : (
+                  /* View mode */
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Chip label={`Prioridad ${g.priority}`} size="small"
+                          sx={{
+                            bgcolor: g.priority === 'A' ? '#DBEAFE' : g.priority === 'B' ? '#FEF3C7' : '#F3F4F6',
+                            color: g.priority === 'A' ? '#1E40AF' : g.priority === 'B' ? '#92400E' : '#374151',
+                            fontWeight: 700, fontSize: '0.7rem',
+                          }} />
+                        <strong className="text-sm">{g.title}</strong>
+                      </div>
+                      <span className="text-xs text-slate-500">
+                        {g.target_date}
+                        {g.target_distance_km ? ` — ${g.target_distance_km}km` : ''}
+                        {g.target_elevation_gain_m ? ` — D+${g.target_elevation_gain_m}m` : ''}
+                      </span>
+                    </div>
+                    {!readOnly && (
+                      <div className="flex gap-1">
+                        {onUpdateGoal && (
+                          <button onClick={() => startGoalEdit(g)} className="text-slate-400 hover:text-amber-500 p-1" title="Editar">
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button onClick={() => onDeleteGoal(g.id)} className="text-slate-400 hover:text-red-500 p-1" title="Eliminar">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
