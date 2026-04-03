@@ -511,15 +511,23 @@ function BulkAssignModal({ open, onClose, orgId, weekStart, athletes }) {
 // ── Main MacroView ────────────────────────────────────────────────────────────
 
 export default function MacroView({ orgId }) {
-  const thisMonday = formatDate(toMonday(new Date()));
-  const nextMonday = addWeeks(thisMonday, 1);
-  const next2Monday = addWeeks(thisMonday, 2);
+  const thisMonday = formatDate(toMonday(new Date())); // anchor: today's Monday
+
+  // ── Week window navigation ────────────────────────────────────────────────────
+  // windowOffset = weeks to shift the 3-column view from today's Monday
+  const [windowOffset, setWindowOffset] = useState(0);
+  const week0 = addWeeks(thisMonday, windowOffset);
+  const week1 = addWeeks(thisMonday, windowOffset + 1);
+  const week2 = addWeeks(thisMonday, windowOffset + 2);
+
+  // "Planificar" button targets next week when today is Wed (getDay≥3) or later
+  const planWeek = new Date().getDay() >= 3 ? addWeeks(thisMonday, 1) : thisMonday;
 
   const [teamId, setTeamId] = useState('');
   const [teams, setTeams] = useState([]);
-  const [rows, setRows] = useState([]);           // current week
-  const [rowsNext, setRowsNext] = useState([]);   // next week
-  const [rowsNext2, setRowsNext2] = useState([]); // week +2
+  const [rows, setRows] = useState([]);           // week0
+  const [rowsNext, setRowsNext] = useState([]);   // week1
+  const [rowsNext2, setRowsNext2] = useState([]); // week2
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -539,9 +547,9 @@ export default function MacroView({ orgId }) {
     setError(null);
     try {
       const [r1, r2, r3] = await Promise.all([
-        getTrainingWeeks(orgId, thisMonday, teamId || null),
-        getTrainingWeeks(orgId, nextMonday, teamId || null),
-        getTrainingWeeks(orgId, next2Monday, teamId || null),
+        getTrainingWeeks(orgId, week0, teamId || null),
+        getTrainingWeeks(orgId, week1, teamId || null),
+        getTrainingWeeks(orgId, week2, teamId || null),
       ]);
       setRows(r1.data || []);
       setRowsNext(r2.data || []);
@@ -551,13 +559,13 @@ export default function MacroView({ orgId }) {
     } finally {
       setLoading(false);
     }
-  }, [orgId, thisMonday, nextMonday, next2Monday, teamId]);
+  }, [orgId, week0, week1, week2, teamId]);
 
   useEffect(() => { load(); }, [load]);
 
   function handlePhaseUpdated(athleteId, weekStart, phase) {
-    const setter = weekStart === thisMonday ? setRows
-      : weekStart === nextMonday ? setRowsNext
+    const setter = weekStart === week0 ? setRows
+      : weekStart === week1 ? setRowsNext
       : setRowsNext2;
     setter((prev) =>
       prev.map((r) =>
@@ -596,6 +604,34 @@ export default function MacroView({ orgId }) {
           Actualizar
         </Button>
 
+        {/* ── Week window navigation ── */}
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={() => setWindowOffset((o) => o - 1)}
+          sx={{ minWidth: 32, px: 1, borderColor: '#d1d5db', color: '#6b7280' }}
+        >
+          ‹
+        </Button>
+        {windowOffset !== 0 && (
+          <Button
+            size="small"
+            variant="text"
+            onClick={() => setWindowOffset(0)}
+            sx={{ color: '#6b7280', fontSize: '0.72rem', minWidth: 36 }}
+          >
+            Hoy
+          </Button>
+        )}
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={() => setWindowOffset((o) => o + 1)}
+          sx={{ minWidth: 32, px: 1, borderColor: '#d1d5db', color: '#6b7280' }}
+        >
+          ›
+        </Button>
+
         {/* PR-157: Auto-periodize group */}
         <Button
           variant="outlined"
@@ -608,13 +644,14 @@ export default function MacroView({ orgId }) {
 
         <Box sx={{ flex: 1 }} />
 
+        {/* Defaults to next week when today is Wed or later */}
         <Button
           variant="contained"
           size="small"
           onClick={() => setBulkOpen(true)}
           sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' } }}
         >
-          Planificar {formatWeekLabel(thisMonday)}
+          Planificar {formatWeekLabel(planWeek)}
         </Button>
       </Box>
 
@@ -630,9 +667,9 @@ export default function MacroView({ orgId }) {
             <TableHead>
               <TableRow sx={{ bgcolor: '#f8fafc' }}>
                 <TableCell sx={{ fontWeight: 700 }}>Atleta</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{formatWeekLabel(thisMonday)}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{formatWeekLabel(nextMonday)}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{formatWeekLabel(next2Monday)}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{formatWeekLabel(week0)}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{formatWeekLabel(week1)}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{formatWeekLabel(week2)}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Próximo Objetivo</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Faltan</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Lesión</TableCell>
@@ -666,11 +703,11 @@ export default function MacroView({ orgId }) {
                       </Typography>
                     </TableCell>
 
-                    {/* Current week phase */}
+                    {/* Week 0 phase */}
                     <TableCell>
                       <PhaseCell
                         athleteId={row.athlete_id}
-                        weekStart={thisMonday}
+                        weekStart={week0}
                         currentPhase={row.phase}
                         suggestion={suggestion}
                         orgId={orgId}
@@ -678,11 +715,11 @@ export default function MacroView({ orgId }) {
                       />
                     </TableCell>
 
-                    {/* Next week phase */}
+                    {/* Week 1 phase */}
                     <TableCell>
                       <PhaseCell
                         athleteId={row.athlete_id}
-                        weekStart={nextMonday}
+                        weekStart={week1}
                         currentPhase={nextRow.phase}
                         suggestion={nextSuggestion}
                         orgId={orgId}
@@ -690,11 +727,11 @@ export default function MacroView({ orgId }) {
                       />
                     </TableCell>
 
-                    {/* Week +2 phase */}
+                    {/* Week 2 phase */}
                     <TableCell>
                       <PhaseCell
                         athleteId={row.athlete_id}
-                        weekStart={next2Monday}
+                        weekStart={week2}
                         currentPhase={next2Row.phase}
                         suggestion={nextSuggestion}
                         orgId={orgId}
@@ -794,7 +831,7 @@ export default function MacroView({ orgId }) {
         open={bulkOpen}
         onClose={() => setBulkOpen(false)}
         orgId={orgId}
-        weekStart={thisMonday}
+        weekStart={planWeek}
         athletes={displayRows}
       />
 
