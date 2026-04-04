@@ -64,8 +64,9 @@ import MacroView from '../components/MacroView';
 import HistorialPanel from '../components/HistorialPanel';
 import WeeklyLoadEstimate from '../components/WeeklyLoadEstimate';
 import GroupPlanningView from '../components/GroupPlanningView';
-import { copyWeek } from '../api/planning';
+import { copyWeek, getCoachAthletePlanVsReal } from '../api/planning';
 import { updateGoal } from '../api/athlete';
+import { getCoachAthletePMC } from '../api/pmc';
 import CalendarGrid from '../components/calendar/CalendarGrid';
 import AthleteSearchSelector from '../components/calendar/AthleteSearchSelector';
 import CoachWeekOverview from '../components/calendar/CoachWeekOverview';
@@ -606,6 +607,10 @@ export default function CalendarPage() {
   // PR-161: selected goal for edit dialog
   const [selectedGoal, setSelectedGoal] = useState(null); // { id, title, target_date, priority, status, target_distance_km, target_elevation_gain_m }
 
+  // PR-163 QA: coach PMC + plan-vs-real for month grid (Fix 4 + 5)
+  const [coachPmcData, setCoachPmcData] = useState(null);
+  const [coachPlanVsRealMap, setCoachPlanVsRealMap] = useState({});
+
   const showUndo = useCallback((message, onUndo) => {
     setUndoToast({ message, onUndo });
   }, []);
@@ -723,6 +728,75 @@ export default function CalendarPage() {
       cancelled = true;
       setTrainingPhaseMap({});
     };
+  }, [orgId, selectedTarget, currentDate]);
+
+  // PR-163 QA Fix 4: Load PMC data for coach month grid when individual athlete selected
+  useEffect(() => {
+    const target = parseTarget(selectedTarget);
+    let cancelled = false;
+    if (!orgId || !target || target.type !== 'a') {
+      setCoachPmcData(null);
+      return;
+    }
+    const athlete = athleteState.data.find((a) => a.id === target.id);
+    const membershipId = athlete?.membership_id;
+    if (!membershipId) { setCoachPmcData(null); return; }
+    getCoachAthletePMC(membershipId)
+      .then((res) => {
+        if (cancelled) return;
+        console.log('[Calendar] coachPmcData raw:', res.data);
+        // API returns { current: { ctl, atl, tsb, ... }, history: [...] }
+        const current = res.data?.current;
+        if (current?.ctl != null) {
+          setCoachPmcData({ ctl: current.ctl, atl: current.atl, tsb: current.tsb });
+        } else {
+          // Fallback: flat array or { ctl } direct
+          const entries = Array.isArray(res.data) ? res.data : (res.data?.entries ?? []);
+          if (entries.length > 0) {
+            const latest = entries[entries.length - 1];
+            setCoachPmcData({ ctl: latest.ctl, atl: latest.atl, tsb: latest.tsb });
+          } else if (!Array.isArray(res.data) && res.data?.ctl != null) {
+            setCoachPmcData({ ctl: res.data.ctl, atl: res.data.atl, tsb: res.data.tsb });
+          } else {
+            setCoachPmcData(null);
+          }
+        }
+      })
+      .catch(() => { if (!cancelled) setCoachPmcData(null); });
+    return () => { cancelled = true; };
+  }, [orgId, selectedTarget, athleteState.data]);
+
+  // PR-163 QA Fix 5: Load plan-vs-real per week for coach month grid when individual athlete selected
+  useEffect(() => {
+    const target = parseTarget(selectedTarget);
+    let cancelled = false;
+    if (!orgId || !target || target.type !== 'a') {
+      setCoachPlanVsRealMap({});
+      return;
+    }
+    const athleteId = target.id;
+    const monthStart = startOfMonth(currentDate);
+    const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
+    const mondays = [];
+    let d = new Date(calStart);
+    while (d <= endOfMonth(currentDate)) {
+      mondays.push(format(d, 'yyyy-MM-dd'));
+      d = new Date(d);
+      d.setDate(d.getDate() + 7);
+    }
+    Promise.all(
+      mondays.map((wk) =>
+        getCoachAthletePlanVsReal(athleteId, { weekStart: wk })
+          .then((res) => ({ wk, data: res.data }))
+          .catch(() => ({ wk, data: null }))
+      )
+    ).then((results) => {
+      if (cancelled) return;
+      const map = {};
+      results.forEach(({ wk, data }) => { if (data) map[wk] = data; });
+      setCoachPlanVsRealMap(map);
+    });
+    return () => { cancelled = true; setCoachPlanVsRealMap({}); };
   }, [orgId, selectedTarget, currentDate]);
 
   // ── Load teams ────────────────────────────────────────────────────────────
@@ -1023,9 +1097,12 @@ export default function CalendarPage() {
           }
         );
       } catch (err) {
-        console.error('[Calendar] handleGridCardMove error:', err);
+        console.error('[Calendar] handleGridCardMove error:', err.response?.data ?? err);
         eventsDispatch({ type: 'MOVE_EVENT', id: assignmentId, newDate: oldDate });
-        setSaveError('No se pudo mover la sesión.');
+        const errMsg = err.response?.status === 400
+          ? 'No se pudo mover: ya existe un entrenamiento similar en ese día.'
+          : 'No se pudo mover la sesión.';
+        setSaveError(errMsg);
       }
     },
     [orgId, eventsState.data, showUndo]
@@ -1537,6 +1614,7 @@ export default function CalendarPage() {
                 return (
                   <Paper sx={{ flex: 1, borderRadius: 2, overflow: 'hidden', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
                     <CoachWeekOverview
+                      orgId={orgId}
                       athletes={athleteState.data}
                       onSelectAthlete={(v) => {
                         setSelectedTarget(v);
@@ -1557,8 +1635,8 @@ export default function CalendarPage() {
                   <CalendarGrid
                     assignments={rawAssignments}
                     goalDateMap={goalDateMap}
-                    planVsRealMap={{}}
-                    pmcData={null}
+                    planVsRealMap={coachPlanVsRealMap}
+                    pmcData={coachPmcData}
                     trainingPhaseMap={trainingPhaseMap}
                     role="coach"
                     currentDate={currentDate}

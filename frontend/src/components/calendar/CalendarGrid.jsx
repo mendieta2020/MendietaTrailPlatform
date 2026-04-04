@@ -229,11 +229,12 @@ export default function CalendarGrid({
                       p: 0.75,
                       borderRight: dIdx < 6 ? '1px solid #e2e8f0' : 'none',
                       borderBottom: wIdx < weeks.length - 1 ? 'none' : 'none',
-                      borderLeft: isToday ? '3px solid #f97316' : 'none',
                       bgcolor: isDropTarget
                         ? 'rgba(249,115,22,0.08)'
                         : blocked
                         ? '#f1f5f9'
+                        : isToday
+                        ? '#FFF7ED'
                         : hasUnfinishedPast
                         ? 'rgba(239,68,68,0.04)'
                         : inMonth

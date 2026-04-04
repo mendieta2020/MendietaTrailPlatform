@@ -497,6 +497,38 @@ class WorkoutAssignmentViewSet(
             detail = exc.message_dict if hasattr(exc, "message_dict") else {"detail": str(exc)}
             raise DRFValidationError(detail=detail)
 
+    def partial_update(self, request, *args, **kwargs):
+        """
+        Override PATCH to auto-calculate day_order when scheduled_date changes.
+        Prevents UniqueConstraint violation on (athlete, scheduled_date, day_order)
+        when dragging an assignment to a day that already has one.
+        """
+        instance = self.get_object()
+        new_date = request.data.get("scheduled_date")
+
+        if new_date and str(new_date) != str(instance.scheduled_date):
+            from django.db.models import Max as _Max
+            max_order = (
+                WorkoutAssignment.objects
+                .filter(
+                    athlete=instance.athlete,
+                    scheduled_date=new_date,
+                )
+                .exclude(pk=instance.pk)
+                .aggregate(max_order=_Max("day_order"))
+            )["max_order"] or 0
+            # Inject the computed day_order — DRF request.data may be a QueryDict (immutable)
+            # or a plain dict (JSON requests). Handle both.
+            try:
+                request.data._mutable = True
+                request.data["day_order"] = max_order + 1
+                request.data._mutable = False
+            except AttributeError:
+                # JSON-parsed request.data is a plain dict — directly mutable
+                request.data["day_order"] = max_order + 1
+
+        return super().partial_update(request, *args, **kwargs)
+
     def perform_update(self, serializer):
         # Athletes can update their own (queryset already restricts to own).
         # The athlete serializer enforces write-only on athlete_notes + athlete_moved_date.

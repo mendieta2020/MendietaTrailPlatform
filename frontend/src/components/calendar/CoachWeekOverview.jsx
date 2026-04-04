@@ -2,15 +2,19 @@
  * CoachWeekOverview.jsx — Coach weekly snapshot when no athlete is selected (PR-163)
  *
  * Shows a table: Avatar+Name | Compliance% bar | CTL | Estado | "Ver →"
- * Data source: /api/coach/team-readiness/ (getTeamReadiness)
+ * Data sources:
+ *   - CTL/TSB: /api/coach/team-readiness/ (getTeamReadiness)
+ *   - Compliance: /api/p1/orgs/{orgId}/assignments/ for the current week
  *
  * Props:
- *   athletes         — [{ id, first_name, last_name, email }]
+ *   orgId            — number | string | null
+ *   athletes         — [{ id, first_name, last_name, email, membership_id }]
  *   onSelectAthlete  — (value: 'a:42') => void
  */
 import React, { useEffect, useState } from 'react';
 import { Box, Typography, CircularProgress, Alert } from '@mui/material';
 import { getTeamReadiness } from '../../api/pmc';
+import { listAssignments } from '../../api/assignments';
 
 function getInitials(name) {
   return name.split(' ').slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('');
@@ -20,41 +24,92 @@ function athleteDisplayName(a) {
   return [a.first_name, a.last_name].filter(Boolean).join(' ') || a.email?.split('@')[0] || `Atleta #${a.id}`;
 }
 
+/** Returns Monday of the week containing `date` as 'YYYY-MM-DD'. */
+function weekBounds(date = new Date()) {
+  const d = new Date(date);
+  const day = d.getDay(); // 0=Sun
+  const diff = day === 0 ? -6 : 1 - day; // shift to Monday
+  d.setDate(d.getDate() + diff);
+  const monday = d.toISOString().slice(0, 10);
+  d.setDate(d.getDate() + 6);
+  const sunday = d.toISOString().slice(0, 10);
+  return { monday, sunday };
+}
+
 function ComplianceBar({ pct }) {
+  if (pct == null) {
+    return (
+      <Typography variant="caption" sx={{ fontSize: '0.68rem', color: '#94a3b8' }}>
+        —
+      </Typography>
+    );
+  }
   const color = pct >= 80 ? '#16a34a' : pct >= 50 ? '#d97706' : '#dc2626';
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
       <Box sx={{ flex: 1, maxWidth: 80, height: 5, borderRadius: 2, bgcolor: '#e2e8f0', overflow: 'hidden' }}>
-        <Box sx={{ height: '100%', width: `${Math.min(100, pct ?? 0)}%`, bgcolor: color, borderRadius: 2 }} />
+        <Box sx={{ height: '100%', width: `${Math.min(100, pct)}%`, bgcolor: color, borderRadius: 2 }} />
       </Box>
       <Typography variant="caption" sx={{ fontSize: '0.68rem', fontWeight: 600, color, minWidth: 32 }}>
-        {pct ?? 0}%
+        {pct}%
       </Typography>
     </Box>
   );
 }
 
-function StatusBadge({ pct, excess }) {
-  if (excess) return <Box sx={{ px: 0.75, py: 0.15, borderRadius: 1, bgcolor: '#faf5ff', border: '1px solid #d8b4fe', fontSize: '0.62rem', fontWeight: 700, color: '#7c3aed' }}>⚠️ Exceso</Box>;
-  if (pct == null || pct === 0) return <Box sx={{ px: 0.75, py: 0.15, borderRadius: 1, bgcolor: '#fef2f2', border: '1px solid #fca5a5', fontSize: '0.62rem', fontWeight: 700, color: '#dc2626' }}>🔴 Inactivo</Box>;
-  if (pct >= 80) return <Box sx={{ px: 0.75, py: 0.15, borderRadius: 1, bgcolor: '#f0fdf4', border: '1px solid #86efac', fontSize: '0.62rem', fontWeight: 700, color: '#16a34a' }}>✅ OK</Box>;
-  if (pct >= 50) return <Box sx={{ px: 0.75, py: 0.15, borderRadius: 1, bgcolor: '#fffbeb', border: '1px solid #fde047', fontSize: '0.62rem', fontWeight: 700, color: '#d97706' }}>🟡 Parcial</Box>;
-  return <Box sx={{ px: 0.75, py: 0.15, borderRadius: 1, bgcolor: '#fef2f2', border: '1px solid #fca5a5', fontSize: '0.62rem', fontWeight: 700, color: '#dc2626' }}>🔴 Baja</Box>;
+function StatusBadge({ tsbZone }) {
+  if (tsbZone === 'optimal' || tsbZone === 'productive') return <Box sx={{ px: 0.75, py: 0.15, borderRadius: 1, bgcolor: '#f0fdf4', border: '1px solid #86efac', fontSize: '0.62rem', fontWeight: 700, color: '#16a34a' }}>✅ OK</Box>;
+  if (tsbZone === 'stale') return <Box sx={{ px: 0.75, py: 0.15, borderRadius: 1, bgcolor: '#fef2f2', border: '1px solid #fca5a5', fontSize: '0.62rem', fontWeight: 700, color: '#dc2626' }}>🔴 Inactivo</Box>;
+  if (tsbZone === 'overreaching' || tsbZone === 'fatigued') return <Box sx={{ px: 0.75, py: 0.15, borderRadius: 1, bgcolor: '#fffbeb', border: '1px solid #fde047', fontSize: '0.62rem', fontWeight: 700, color: '#d97706' }}>⚠️ Riesgo</Box>;
+  if (tsbZone) return <Box sx={{ px: 0.75, py: 0.15, borderRadius: 1, bgcolor: '#f8fafc', border: '1px solid #e2e8f0', fontSize: '0.62rem', fontWeight: 700, color: '#64748b' }}>{tsbZone}</Box>;
+  return <Box sx={{ px: 0.75, py: 0.15, borderRadius: 1, bgcolor: '#fef2f2', border: '1px solid #fca5a5', fontSize: '0.62rem', fontWeight: 700, color: '#dc2626' }}>🔴 Inactivo</Box>;
 }
 
-export default function CoachWeekOverview({ athletes = [], onSelectAthlete }) {
+export default function CoachWeekOverview({ orgId, athletes = [], onSelectAthlete }) {
   const [readiness, setReadiness] = useState([]);
+  const [complianceMap, setComplianceMap] = useState({}); // athleteId → pct
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
-    getTeamReadiness()
-      .then((res) => {
-        if (!cancelled) {
-          setReadiness(res.data?.athletes ?? res.data ?? []);
-          setLoading(false);
+
+    const { monday, sunday } = weekBounds();
+
+    Promise.all([
+      getTeamReadiness(),
+      orgId
+        ? listAssignments(orgId, { dateFrom: monday, dateTo: sunday })
+        : Promise.resolve({ data: [] }),
+    ])
+      .then(([readinessRes, assignmentsRes]) => {
+        if (cancelled) return;
+
+        const athletesData = readinessRes.data?.athletes ?? readinessRes.data ?? [];
+        setReadiness(athletesData);
+
+        // Calculate compliance per athlete from this week's assignments
+        const rawAssignments = Array.isArray(assignmentsRes.data)
+          ? assignmentsRes.data
+          : assignmentsRes.data?.results ?? [];
+
+        const byAthlete = {};
+        for (const a of rawAssignments) {
+          const aid = a.athlete_id ?? a.athlete;
+          if (!aid) continue;
+          if (!byAthlete[aid]) byAthlete[aid] = { total: 0, completed: 0 };
+          byAthlete[aid].total += 1;
+          if (a.status === 'completed') byAthlete[aid].completed += 1;
         }
+
+        const pctMap = {};
+        for (const [aid, counts] of Object.entries(byAthlete)) {
+          if (counts.total > 0) {
+            pctMap[aid] = Math.round((counts.completed / counts.total) * 100);
+          }
+        }
+        setComplianceMap(pctMap);
+        setLoading(false);
       })
       .catch(() => {
         if (!cancelled) {
@@ -62,13 +117,14 @@ export default function CoachWeekOverview({ athletes = [], onSelectAthlete }) {
           setLoading(false);
         }
       });
-    return () => { cancelled = true; };
-  }, []);
 
-  // Build readiness map by athleteId
+    return () => { cancelled = true; };
+  }, [orgId]);
+
+  // Build readiness map by membership_id (what the API returns)
   const readinessMap = {};
   for (const r of readiness) {
-    if (r.athlete_id) readinessMap[r.athlete_id] = r;
+    if (r.membership_id) readinessMap[r.membership_id] = r;
   }
 
   if (loading) {
@@ -114,12 +170,12 @@ export default function CoachWeekOverview({ athletes = [], onSelectAthlete }) {
 
       {/* Table rows */}
       {athletes.map((athlete) => {
-        const rd = readinessMap[athlete.id] ?? {};
+        const rd = readinessMap[athlete.membership_id] ?? {};
         const name = athleteDisplayName(athlete);
         const initials = getInitials(name);
-        const compliance = rd.compliance_pct ?? null;
+        const compliance = complianceMap[athlete.id] ?? null;
         const ctl = rd.ctl ?? null;
-        const excess = rd.has_excess ?? false;
+        const tsbZone = rd.tsb_zone ?? null;
 
         return (
           <Box
@@ -154,12 +210,18 @@ export default function CoachWeekOverview({ athletes = [], onSelectAthlete }) {
             <ComplianceBar pct={compliance} />
 
             {/* CTL */}
-            <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600, color: '#1d4ed8' }}>
+            <Typography
+              variant="caption"
+              sx={{
+                fontSize: '0.75rem', fontWeight: 600,
+                color: ctl == null ? '#94a3b8' : ctl > 40 ? '#16a34a' : ctl > 20 ? '#d97706' : '#dc2626',
+              }}
+            >
               {ctl != null ? Math.round(ctl) : '—'}
             </Typography>
 
             {/* Estado */}
-            <StatusBadge pct={compliance} excess={excess} />
+            <StatusBadge tsbZone={tsbZone} />
 
             {/* Ver → button */}
             <Box

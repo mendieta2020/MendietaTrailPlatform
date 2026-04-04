@@ -104,7 +104,7 @@ export default function WorkoutCard({
       sx={{
         borderRadius: 2,
         boxShadow: 'none',
-        border: `1px solid ${complianceStyle.borderColor}`,
+        border: '1px solid #e2e8f0',
         borderLeftColor: color,
         borderLeftWidth: 3,
         borderLeftStyle: 'solid',

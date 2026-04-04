@@ -315,41 +315,23 @@ const AthleteMyTraining = () => {
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
-      {!loading && assignments.length === 0 ? (
-        <Paper sx={{ borderRadius: 3, border: '1px solid #e2e8f0', boxShadow: 'none', p: 5, textAlign: 'center' }}>
-          <Typography variant="h6" sx={{ color: '#64748b', fontWeight: 600, mb: 1 }}>
-            Todavía no tenés entrenamientos asignados
-          </Typography>
-          <Typography variant="body2" sx={{ color: '#94a3b8', mb: 3, maxWidth: 360, mx: 'auto' }}>
-            Tu coach te asignará sesiones pronto. Mientras tanto, conectá tu Strava para sincronizar tus actividades.
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <a href="/connections" style={{ textDecoration: 'none' }}>
-              <Box component="span" sx={{ display: 'inline-block', px: 2.5, py: 1, bgcolor: '#f97316', color: '#fff', borderRadius: 2, fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', '&:hover': { bgcolor: '#ea6c0a' } }}>
-                Conectar Strava
-              </Box>
-            </a>
-          </Box>
-        </Paper>
-      ) : (
-        /* PR-163: CalendarGrid replaces inline grid rendering */
-        <CalendarGrid
-          assignments={assignments}
-          goalDateMap={goalDateMap}
-          planVsRealMap={planVsRealMap}
-          pmcData={pmcData}
-          trainingPhaseMap={{}}
-          role="athlete"
-          currentDate={currentDate}
-          onNavigate={setCurrentDate}
-          loading={loading}
-          onCardClick={setSelectedAssignment}
-          onCompleteClick={handleOpenCompleteModal}
-          availability={availability}
-          athleteProfile={athleteProfile}
-          onGoalClick={(goal) => setSelectedGoalForEdit(goal)}
-        />
-      )}
+      {/* PR-163 QA Fix 8: always render CalendarGrid — navigating to empty months must show the grid, not crash */}
+      <CalendarGrid
+        assignments={assignments}
+        goalDateMap={goalDateMap}
+        planVsRealMap={planVsRealMap}
+        pmcData={pmcData}
+        trainingPhaseMap={{}}
+        role="athlete"
+        currentDate={currentDate}
+        onNavigate={setCurrentDate}
+        loading={loading}
+        onCardClick={setSelectedAssignment}
+        onCompleteClick={handleOpenCompleteModal}
+        availability={availability}
+        athleteProfile={athleteProfile}
+        onGoalClick={(goal) => setSelectedGoalForEdit(goal)}
+      />
 
       {/* Workout detail drawer */}
       <WorkoutDetailDrawer

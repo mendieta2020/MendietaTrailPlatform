@@ -95,19 +95,19 @@ export function computeCompliancePct(assignment) {
 export function getComplianceStyle(pct, isPast, isCompleted) {
   if (!isCompleted) {
     if (isPast) {
-      // Past unfinished — red tint
-      return { borderColor: '#fca5a5', bgColor: '#fff5f5', label: 'Sin completar', dotColor: '#ef4444' };
+      // Past unfinished — very subtle red tint, compliance badge is the primary indicator
+      return { borderColor: '#e2e8f0', bgColor: '#fef2f2', label: 'Sin completar', dotColor: '#ef4444' };
     }
     return { borderColor: '#e2e8f0', bgColor: '#ffffff', label: 'Planificado', dotColor: '#94a3b8' };
   }
-  // Completed — compliance ranges
-  if (pct == null)   return { borderColor: '#86efac', bgColor: '#f0fdf4', label: 'Completado',    dotColor: '#16a34a' };
-  if (pct === 0)     return { borderColor: '#fca5a5', bgColor: '#fff5f5', label: 'Sin completar', dotColor: '#ef4444' };
-  if (pct <= 30)     return { borderColor: '#fca5a5', bgColor: '#fff5f5', label: 'Muy parcial',   dotColor: '#ef4444' };
-  if (pct <= 70)     return { borderColor: '#fde047', bgColor: '#fefce8', label: 'Parcial',       dotColor: '#d97706' };
-  if (pct <= 110)    return { borderColor: '#86efac', bgColor: '#f0fdf4', label: 'Completado',    dotColor: '#16a34a' };
-  if (pct <= 150)    return { borderColor: '#93c5fd', bgColor: '#eff6ff', label: 'Sobre-cumplido',dotColor: '#3b82f6' };
-  return             { borderColor: '#d8b4fe', bgColor: '#faf5ff', label: '⚠️ Exceso',            dotColor: '#7c3aed' };
+  // Completed — subtle tint backgrounds; compliance % badge is the primary visual indicator
+  if (pct == null)   return { borderColor: '#e2e8f0', bgColor: '#f0fdf4', label: 'Completado',    dotColor: '#16a34a' };
+  if (pct === 0)     return { borderColor: '#e2e8f0', bgColor: '#fef2f2', label: 'Sin completar', dotColor: '#ef4444' };
+  if (pct <= 30)     return { borderColor: '#e2e8f0', bgColor: '#fef2f2', label: 'Muy parcial',   dotColor: '#ef4444' };
+  if (pct <= 70)     return { borderColor: '#e2e8f0', bgColor: '#fffbeb', label: 'Parcial',       dotColor: '#d97706' };
+  if (pct <= 110)    return { borderColor: '#e2e8f0', bgColor: '#f0fdf4', label: 'Completado',    dotColor: '#16a34a' };
+  if (pct <= 150)    return { borderColor: '#e2e8f0', bgColor: '#eff6ff', label: 'Sobre-cumplido',dotColor: '#3b82f6' };
+  return             { borderColor: '#e2e8f0', bgColor: '#faf5ff', label: '⚠️ Exceso',            dotColor: '#7c3aed' };
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
