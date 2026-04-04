@@ -25,7 +25,7 @@
  *   onGoalClick      — (goal) => void
  */
 import React, { useRef, useState } from 'react';
-import { Box, Typography, IconButton, Paper } from '@mui/material';
+import { Box, Typography, IconButton, Paper, useTheme, useMediaQuery } from '@mui/material';
 import { ChevronLeft, ChevronRight } from '@mui/icons-material';
 import { format, isSameDay, isSameMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -58,6 +58,9 @@ export default function CalendarGrid({
   athleteProfile = null,
   onGoalClick,
 }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
   const today = new Date();
   // Up to 6 weeks — months starting on Fri/Sat can span 5–6 partial weeks
   const weeks = buildCalendarWeeks(currentDate);
@@ -65,6 +68,11 @@ export default function CalendarGrid({
   // Track which card is being dragged internally (coach move)
   const draggingCardIdRef = useRef(null);
   const [dropTargetDate, setDropTargetDate] = useState(null);
+
+  // Mobile touch/pull-to-refresh state (used only when isMobile)
+  const mobileTouchStartXRef = useRef(null);
+  const mobileTouchStartYRef = useRef(null);
+  const [mobilePulling, setMobilePulling] = useState(false);
 
   // Build assignment index: { 'YYYY-MM-DD': [assignment, ...] }
   const assignmentsByDate = {};
@@ -119,6 +127,198 @@ export default function CalendarGrid({
       onDropFromLibrary?.(dateKey);
     }
   };
+
+  // ── Mobile list view (xs only) ───────────────────────────────────────────
+  if (isMobile) {
+    const DAY_ABBR = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+
+    const handleMobileTouchStart = (e) => {
+      mobileTouchStartXRef.current = e.touches[0].clientX;
+      mobileTouchStartYRef.current = e.touches[0].clientY;
+    };
+
+    const handleMobileTouchEnd = (e) => {
+      const startY = mobileTouchStartYRef.current;
+      const startX = mobileTouchStartXRef.current;
+      if (startY === null || startX === null) return;
+
+      const dy = e.changedTouches[0].clientY - startY;
+      const dx = e.changedTouches[0].clientX - startX;
+
+      // Horizontal swipe → change month
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
+        if (dx < 0) onNavigate(addMonths(currentDate, 1));
+        else onNavigate(subMonths(currentDate, 1));
+      }
+
+      // Vertical pull-down > 60px → refresh
+      if (dy > 60 && Math.abs(dy) > Math.abs(dx)) {
+        setMobilePulling(true);
+        setTimeout(() => setMobilePulling(false), 1000);
+        onNavigate(new Date(currentDate));
+      }
+
+      mobileTouchStartXRef.current = null;
+      mobileTouchStartYRef.current = null;
+    };
+
+    return (
+      <Paper
+        sx={{ borderRadius: 3, overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: 'none' }}
+        onTouchStart={handleMobileTouchStart}
+        onTouchEnd={handleMobileTouchEnd}
+      >
+        {/* Month navigation header */}
+        <Box sx={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          px: 2, py: 1, borderBottom: '1px solid #e2e8f0', bgcolor: '#f8fafc',
+        }}>
+          <IconButton size="small" onClick={() => onNavigate(subMonths(currentDate, 1))}
+            sx={{ bgcolor: '#f1f5f9', '&:hover': { bgcolor: '#e2e8f0' } }}>
+            <ChevronLeft fontSize="small" />
+          </IconButton>
+          {mobilePulling && (
+            <Typography variant="caption" sx={{ color: '#F57C00', fontSize: '0.7rem', fontWeight: 600 }}>
+              Actualizando...
+            </Typography>
+          )}
+          <Typography variant="subtitle1" sx={{
+            fontWeight: 700, color: '#1e293b', textTransform: 'capitalize', letterSpacing: 0.3,
+          }}>
+            {format(currentDate, 'MMMM yyyy', { locale: es })}
+          </Typography>
+          <IconButton size="small" onClick={() => onNavigate(addMonths(currentDate, 1))}
+            sx={{ bgcolor: '#f1f5f9', '&:hover': { bgcolor: '#e2e8f0' } }}>
+            <ChevronRight fontSize="small" />
+          </IconButton>
+        </Box>
+
+        {/* Week sections — vertical list */}
+        <Box sx={{ bgcolor: 'white' }}>
+          {weeks.map((week, wIdx) => {
+            const weekDateKeys = week.map((d) => format(d, 'yyyy-MM-dd'));
+            const weekAssignments = weekDateKeys.flatMap((k) => assignmentsByDate[k] ?? []);
+            const weekMondayKey = format(week[0], 'yyyy-MM-dd');
+            const pvr = planVsRealMap[weekMondayKey] ?? null;
+            const trainingPhase = trainingPhaseMap[weekMondayKey] ?? null;
+
+            // Find which days in this week have sessions or goals
+            const activeDays = week.filter((d) => {
+              const dk = format(d, 'yyyy-MM-dd');
+              return (assignmentsByDate[dk]?.length > 0) || goalDateMap[dk];
+            });
+
+            // Collect empty in-month days grouped into one line
+            const emptyInMonthDays = week.filter((d) => {
+              const dk = format(d, 'yyyy-MM-dd');
+              return isSameMonth(d, currentDate) && !assignmentsByDate[dk]?.length && !goalDateMap[dk];
+            });
+
+            return (
+              <React.Fragment key={wIdx}>
+                {/* Week separator */}
+                {wIdx > 0 && <Box sx={{ height: 1, bgcolor: '#e2e8f0' }} />}
+
+                {/* Training phase strip */}
+                {trainingPhase && (() => {
+                  const phaseMeta = TRAINING_PHASE_CONFIG[trainingPhase];
+                  return phaseMeta ? <Box sx={{ height: 3, bgcolor: phaseMeta.color, opacity: 0.6 }} /> : null;
+                })()}
+
+                {/* Week header (plan vs real) */}
+                {weekAssignments.length > 0 && (
+                  <Box sx={{ px: 2, pt: 1.5 }}>
+                    <WeekHeader
+                      planVsReal={pvr}
+                      weekAssignments={weekAssignments}
+                      pmcData={pmcData}
+                      trainingPhase={trainingPhase}
+                    />
+                  </Box>
+                )}
+
+                {/* Empty days — single gray "rest" line */}
+                {emptyInMonthDays.length > 0 && activeDays.length > 0 && (
+                  <Box sx={{ px: 2, py: 0.75 }}>
+                    <Typography variant="caption" sx={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.72rem' }}>
+                      {emptyInMonthDays.map((d) => `${DAY_ABBR[d.getDay()]} ${format(d, 'd')}`).join(' — ')}: Descanso
+                    </Typography>
+                  </Box>
+                )}
+
+                {/* If the entire week is empty (rest week) */}
+                {activeDays.length === 0 && week.some((d) => isSameMonth(d, currentDate)) && (
+                  <Box sx={{ px: 2, py: 1.25 }}>
+                    <Typography variant="caption" sx={{ color: '#cbd5e1', fontStyle: 'italic', fontSize: '0.72rem' }}>
+                      {week.filter((d) => isSameMonth(d, currentDate))
+                        .map((d) => `${DAY_ABBR[d.getDay()]} ${format(d, 'd')}`).join(' — ')}: Descanso
+                    </Typography>
+                  </Box>
+                )}
+
+                {/* Active days — full-width cards */}
+                {activeDays.map((day) => {
+                  const dateKey = format(day, 'yyyy-MM-dd');
+                  const dayAssignments = assignmentsByDate[dateKey] ?? [];
+                  const isToday = isSameDay(day, today);
+                  const isPast = day < today && !isToday;
+
+                  return (
+                    <Box key={dateKey} sx={{ px: 2, pb: 1, pt: 0.5 }}>
+                      {/* Day label */}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                        <Box sx={{
+                          width: 22, height: 22,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          borderRadius: '50%',
+                          bgcolor: isToday ? '#f97316' : 'transparent',
+                          flexShrink: 0,
+                        }}>
+                          <Typography variant="caption" sx={{
+                            fontWeight: isToday ? 700 : 600,
+                            color: isToday ? 'white' : '#374151',
+                            fontSize: '0.72rem',
+                          }}>
+                            {format(day, 'd')}
+                          </Typography>
+                        </Box>
+                        <Typography variant="caption" sx={{
+                          fontWeight: 600, color: isToday ? '#f97316' : '#64748b',
+                          fontSize: '0.72rem', textTransform: 'capitalize',
+                        }}>
+                          {DAY_ABBR[day.getDay()]}
+                        </Typography>
+                      </Box>
+
+                      {/* Goal card */}
+                      {goalDateMap[dateKey] && (
+                        <GoalCard goal={goalDateMap[dateKey]} onClick={onGoalClick} />
+                      )}
+
+                      {/* Assignment cards — full width */}
+                      {dayAssignments.map((a) => (
+                        <WorkoutCard
+                          key={a.id}
+                          assignment={a}
+                          role={role}
+                          isPast={isPast}
+                          onClick={onCardClick}
+                          onCompleteClick={onCompleteClick}
+                          onContextMenu={onContextMenu}
+                          onDragStart={() => {}}
+                          onDragEnd={() => {}}
+                        />
+                      ))}
+                    </Box>
+                  );
+                })}
+              </React.Fragment>
+            );
+          })}
+        </Box>
+      </Paper>
+    );
+  }
 
   return (
     <Paper sx={{ borderRadius: 3, overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: 'none' }}>

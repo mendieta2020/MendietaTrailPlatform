@@ -3,7 +3,7 @@ import {
   Drawer, Box, Typography, IconButton, Divider, Chip, Button,
   useMediaQuery, useTheme,
 } from '@mui/material';
-import { Close, StickyNote2 } from '@mui/icons-material';
+import { Close, StickyNote2, ArrowBack } from '@mui/icons-material';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -256,7 +256,7 @@ export default function WorkoutDetailDrawer({ assignment, onClose, onMarkComplet
             </Typography>
           </Box>
           <IconButton size="small" onClick={onClose} sx={{ color: '#94a3b8' }}>
-            <Close fontSize="small" />
+            {isMobile ? <ArrowBack fontSize="small" /> : <Close fontSize="small" />}
           </IconButton>
         </Box>
 
