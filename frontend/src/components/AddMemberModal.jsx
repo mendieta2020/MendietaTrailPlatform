@@ -13,15 +13,6 @@ const AddMemberModal = ({ open, onClose, teamId, orgId, onMembersAdded }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // 1. Cargar alumnos al abrir el modal
-  useEffect(() => {
-    if (open) {
-      fetchAvailableAthletes();
-      setSelected([]); // Resetear selección
-      setSearchTerm('');
-    }
-  }, [open, fetchAvailableAthletes]);
-
   const fetchAvailableAthletes = useCallback(async () => {
     if (!orgId) return;
     try {
@@ -33,6 +24,15 @@ const AddMemberModal = ({ open, onClose, teamId, orgId, onMembersAdded }) => {
       console.error("Error cargando atletas:", err);
     }
   }, [teamId, orgId]);
+
+  // 1. Cargar alumnos al abrir el modal
+  useEffect(() => {
+    if (open) {
+      fetchAvailableAthletes();
+      setSelected([]); // Resetear selección
+      setSearchTerm('');
+    }
+  }, [open, fetchAvailableAthletes]);
 
   // 2. Manejar Selección (Checkbox)
   const handleToggle = (value) => () => {
