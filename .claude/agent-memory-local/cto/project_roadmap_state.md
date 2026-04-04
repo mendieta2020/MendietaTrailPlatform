@@ -235,6 +235,15 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - AthleteWellnessTab.jsx: auto-generated interpretation text below heatmap (7-day averages → actionable coach alerts: pain, sleep, energy, stress, overtraining risk, all-good)
 - Risk: LOW (frontend only, no backend changes, no migrations)
 
+### PR-162 — Production Ready: Security + Saves rotos + Onboarding polish ✅ 2026-04-03
+- Fix 0 (CRITICAL SECURITY): DashboardRouter now uses activeOrg.role from OrgContext (not memberships[0].role) → athletes always see AthleteDashboard
+- CoachRoute guard added in App.jsx: athletes redirected to /dashboard if they try to access /calendar, /athletes, /teams, /library, /plantilla, /coach/*, /coach-dashboard, /finance
+- Fix 1: AthleteProfile.jsx handleSaveCard — null → '' bug fixed for numeric fields (weight_kg, height_cm, etc.) → PATCH no longer returns 400
+- Fix 2: AthleteProfileTab.jsx startEditAvail — day_of_week was i+1 (1-7, invalid for model) → now i (0-6) → availability save no longer returns 400
+- Fix 4 (empty states): AthleteMyTraining → empty state when no assignments (with Strava CTA); AthleteProgress → empty PMC chart state (with Strava CTA)
+- Fix 7 (coach calendar cards): CoachEventComponent shows ✅ indicator when workout is completed
+- Risk: CRITICAL security + LOW UX fixes
+
 ### PR-161 — Body Map Pro + Fixes funcionales + Sync coach↔atleta + Ubicación→Clima ✅ 2026-04-03
 - AthleteInjuriesTab.jsx: react-body-highlighter Model integrated (front/back toggle, dark bg, severity colors yellow/orange/red); clicking a muscle pre-fills the injury form with the mapped zone
 - AthleteProfileTab.jsx: Datos Personales section now editable (birth_date, emergency_contact, instagram_handle) via PATCH /api/coach/athletes/<m_id>/profile/; Disponibilidad Semanal now editable (clickable day toggles) via PUT /api/p1/orgs/<org_id>/athletes/<athlete_id>/availability/ using useOrg context for orgId

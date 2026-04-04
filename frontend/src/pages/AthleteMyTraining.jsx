@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Navigate } from 'react-router-dom';
 import {
-  Box, Typography, Paper, IconButton, Chip, CircularProgress, Alert,
+  Box, Typography, Paper, IconButton, Chip, CircularProgress, Alert, Button,
 } from '@mui/material';
 import { ChevronLeft, ChevronRight } from '@mui/icons-material';
 import {
@@ -788,6 +788,22 @@ const AthleteMyTraining = () => {
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}>
           <CircularProgress sx={{ color: '#f97316' }} />
         </Box>
+      ) : assignments.length === 0 ? (
+        <Paper sx={{ borderRadius: 3, border: '1px solid #e2e8f0', boxShadow: 'none', p: 5, textAlign: 'center' }}>
+          <Typography variant="h6" sx={{ color: '#64748b', fontWeight: 600, mb: 1 }}>
+            Todavía no tenés entrenamientos asignados
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#94a3b8', mb: 3, maxWidth: 360, mx: 'auto' }}>
+            Tu coach te asignará sesiones pronto. Mientras tanto, conectá tu Strava para sincronizar tus actividades.
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <a href="/connections" style={{ textDecoration: 'none' }}>
+              <Box component="span" sx={{ display: 'inline-block', px: 2.5, py: 1, bgcolor: '#f97316', color: '#fff', borderRadius: 2, fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', '&:hover': { bgcolor: '#ea6c0a' } }}>
+                Conectar Strava
+              </Box>
+            </a>
+          </Box>
+        </Paper>
       ) : (
         <Paper sx={{ borderRadius: 3, overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: 'none' }}>
           {/* Day-of-week headers */}

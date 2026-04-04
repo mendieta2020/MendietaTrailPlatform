@@ -30,7 +30,7 @@ const TemplateLibrary = () => {
     try {
       setLoading(true);
       const res = await client.get('/api/plantillas/');
-      setTemplates(res.data);
+      setTemplates(Array.isArray(res.data) ? res.data : res.data?.results ?? []);
     } catch (err) {
       console.error("Error cargando librería:", err);
     } finally {

@@ -418,6 +418,9 @@ const AthleteDashboard = ({ user }) => {
   const [welcomeDismissed, setWelcomeDismissed] = useState(
     () => localStorage.getItem('quantoryn_welcome_done') === 'true'
   );
+  const [onboardingBannerDismissed, setOnboardingBannerDismissed] = useState(
+    () => localStorage.getItem('quantoryn_onboarding_banner_done') === 'true'
+  );
   // PR-154: Wellness check-in overlay — show once per day (localStorage gate)
   const [wellnessVisible, setWellnessVisible] = useState(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -480,6 +483,11 @@ const AthleteDashboard = ({ user }) => {
     setWelcomeDismissed(true);
   };
 
+  const handleOnboardingBannerDismiss = () => {
+    localStorage.setItem('quantoryn_onboarding_banner_done', 'true');
+    setOnboardingBannerDismissed(true);
+  };
+
   const handleDismissBanner = async () => {
     try {
       await dismissDevicePreference('no_device');
@@ -537,6 +545,47 @@ const AthleteDashboard = ({ user }) => {
 
       {/* ── PR-152: Trial Banner ── */}
       <TrialBanner mySub={mySub} />
+
+      {/* ── Onboarding banner: shown after welcome dismissed, no device yet ── */}
+      {welcomeDismissed && !hasDevice && !onboardingBannerDismissed && (
+        <Paper sx={{
+          p: 2.5, mb: 3, borderRadius: 2,
+          borderLeft: '4px solid #F57C00',
+          bgcolor: '#FFF7ED',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          flexWrap: 'wrap', gap: 2,
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1 }}>
+            <DevicesOther sx={{ color: '#F57C00', flexShrink: 0 }} />
+            <Box>
+              <Typography variant="body2" sx={{ color: '#9A3412', fontWeight: 600 }}>
+                Conecta Strava para sincronizar tus entrenamientos
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#C2410C' }}>
+                Sin dispositivo conectado tus datos no se sincronizan automáticamente.
+              </Typography>
+            </Box>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
+            <Button
+              size="small"
+              variant="contained"
+              onClick={() => window.location.href = '/connections'}
+              sx={{ bgcolor: '#F57C00', textTransform: 'none', fontWeight: 600, '&:hover': { bgcolor: '#E65100' } }}
+            >
+              Conectar Strava
+            </Button>
+            <Button
+              size="small"
+              variant="text"
+              onClick={handleOnboardingBannerDismiss}
+              sx={{ color: '#64748B', textTransform: 'none' }}
+            >
+              Más tarde
+            </Button>
+          </Box>
+        </Paper>
+      )}
 
       {/* ── Header: greeting + weather ── */}
       <Box sx={{ mb: 4, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>

@@ -404,6 +404,7 @@ function CoachEventComponent({ event, onContextMenu }) {
   const distance = pw?.estimated_distance_meters
     ? `${(pw.estimated_distance_meters / 1000).toFixed(1)}km`
     : null;
+  const isCompleted = event.status === 'completed' || event.compliance_color === 'green';
 
   return (
     <div
@@ -414,7 +415,8 @@ function CoachEventComponent({ event, onContextMenu }) {
         if (onContextMenu) onContextMenu(e.clientX, e.clientY, event);
       }}
     >
-      <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '3px' }}>
+        {isCompleted && <span style={{ fontSize: '10px' }}>✅</span>}
         {event.title}
       </div>
       {(duration || distance) && (

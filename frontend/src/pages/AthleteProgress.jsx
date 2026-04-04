@@ -315,6 +315,17 @@ const AthleteProgress = () => {
         )}
 
         {/* SECTION 5: SIMPLIFIED PMC CHART */}
+        {!loadingPMC && !hasData && (
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 text-center">
+            <p className="text-base font-semibold text-slate-700 mb-1">Tu evolución aparecerá aquí</p>
+            <p className="text-sm text-slate-500 mb-4 max-w-sm mx-auto">
+              Tus métricas se calcularán automáticamente cuando empecés a entrenar. Conectá tu dispositivo para comenzar.
+            </p>
+            <a href="/connections" className="inline-block px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold rounded-xl no-underline transition-colors">
+              Conectar Strava
+            </a>
+          </div>
+        )}
         {!loadingPMC && hasData && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
             <div className="flex items-center justify-between mb-1">

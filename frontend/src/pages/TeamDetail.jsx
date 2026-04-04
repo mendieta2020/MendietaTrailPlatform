@@ -11,6 +11,7 @@ import {
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import client from '../api/client';
+import { useOrg } from '../context/OrgContext';
 import AddMemberModal from '../components/AddMemberModal';
 import TemplateLibrary from '../components/TemplateLibrary';
 
@@ -27,6 +28,8 @@ function TabPanel(props) {
 const TeamDetail = () => {
   const { id } = useParams(); // ID del grupo
   const navigate = useNavigate();
+  const { activeOrg } = useOrg();
+  const orgId = activeOrg?.org_id;
   const [team, setTeam] = useState(null);
   const [tabValue, setTabValue] = useState(0);
   const [athletes, setAthletes] = useState([]);
@@ -36,21 +39,22 @@ const TeamDetail = () => {
 
   // Función para cargar los datos
   const fetchTeamData = useCallback(async () => {
+    if (!orgId) return;
     try {
-      const resTeam = await client.get(`/api/equipos/${id}/`);
+      const resTeam = await client.get(`/api/p1/orgs/${orgId}/teams/${id}/`);
       setTeam(resTeam.data);
 
-      const resAthletes = await client.get(`/api/equipos/${id}/alumnos/`);
+      const resAthletes = await client.get(`/api/p1/orgs/${orgId}/teams/${id}/members/`);
       setAthletes(resAthletes.data);
     } catch (err) {
       console.error("Error cargando equipo:", err);
     }
-  }, [id]);
+  }, [id, orgId]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchTeamData();
-  }, [id, fetchTeamData]);
+  }, [id, orgId, fetchTeamData]);
 
   const handleMembersAdded = () => {
     fetchTeamData();
@@ -98,7 +102,7 @@ const TeamDetail = () => {
         </IconButton>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 700, color: '#0F172A' }}>
-            {team.nombre}
+            {team.name}
           </Typography>
           <Typography variant="body2" color="textSecondary">
             Gestión de Grupo • {athletes.length} Miembros
@@ -148,24 +152,24 @@ const TeamDetail = () => {
           ) : (
             <List>
               {athletes.map((athlete) => (
-                <React.Fragment key={athlete.id}>
+                <React.Fragment key={athlete.athlete_id}>
                   <ListItem
-                    button // <--- Habilita el comportamiento de botón
-                    onClick={() => navigate(`/athletes/${athlete.id}`)} // <--- Navega al perfil
+                    button
+                    onClick={() => navigate(`/athletes/${athlete.athlete_id}`)}
                     sx={{
                       cursor: 'pointer',
                       transition: '0.2s',
-                      '&:hover': { bgcolor: '#f1f5f9' } // Efecto visual al pasar el mouse
+                      '&:hover': { bgcolor: '#f1f5f9' },
                     }}
                   >
                     <ListItemAvatar>
                       <Avatar sx={{ bgcolor: '#1976d2' }}>
-                        {athlete.nombre ? athlete.nombre.charAt(0) : '?'}
+                        {athlete.name ? athlete.name.charAt(0) : '?'}
                       </Avatar>
                     </ListItemAvatar>
                     <ListItemText
-                      primary={`${athlete.nombre} ${athlete.apellido}`}
-                      secondary={athlete.email}
+                      primary={athlete.name}
+                      secondary={athlete.username}
                     />
                     <Chip label="Activo" color="success" size="small" variant="outlined" />
                   </ListItem>
@@ -217,6 +221,7 @@ const TeamDetail = () => {
         open={openAddModal}
         onClose={() => setOpenAddModal(false)}
         teamId={id}
+        orgId={orgId}
         onMembersAdded={handleMembersAdded}
       />
     </Layout>

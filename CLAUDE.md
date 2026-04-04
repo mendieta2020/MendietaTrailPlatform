@@ -30,7 +30,8 @@ PR queue:
 - PR-158 ✅ MERGED — Planificador Pro: Historial Visual + Copiar Semana + Carga Estimada + Plan vs Real
 - PR-159 ✅ MERGED — Sidebar Colapsable + Athlete Card (5 Tabs) + GroupPlanning Navigation + Editar Sesión
 - PR-160 ✅ MERGED — Fixes funcionales + Calendar Pro + Diferenciación roles + Goal badge
-- PR-161 THIS PR — Body Map Pro + Fixes funcionales + Sync coach↔atleta + Ubicación→Clima
+- PR-161 ✅ MERGED — Body Map Pro + Fixes funcionales + Sync coach↔atleta + Ubicación→Clima
+- PR-162 THIS PR — Production Ready: Security fix + Saves rotos + Onboarding polish
 
 ## PR Protocol (PASO 0)
 Before writing any code for a new PR:

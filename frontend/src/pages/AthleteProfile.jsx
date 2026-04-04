@@ -110,8 +110,16 @@ const AthleteProfile = () => {
     const patch = {};
     fields.forEach(f => {
       if (editDraft[f] !== undefined) {
-        // CharField (blank=True) fields: send "" not null
-        patch[f] = (editDraft[f] === '' && !PROFILE_CHAR_FIELDS.has(f)) ? null : (editDraft[f] ?? '');
+        const val = editDraft[f];
+        if (val === '' && !PROFILE_CHAR_FIELDS.has(f)) {
+          // Numeric field cleared → send null (model allows null)
+          patch[f] = null;
+        } else if (val === null || val === undefined) {
+          // Null value: send null for numeric, "" for char fields
+          patch[f] = PROFILE_CHAR_FIELDS.has(f) ? '' : null;
+        } else {
+          patch[f] = val;
+        }
       }
     });
     try {

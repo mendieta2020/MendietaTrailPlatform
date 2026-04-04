@@ -21,6 +21,7 @@ import CoachDashboard from './pages/CoachDashboard';
 import WorkoutLibraryPage from './pages/WorkoutLibraryPage';
 import Finanzas from './pages/Finanzas';
 import { useAuth } from './context/AuthContext';
+import { useOrg } from './context/OrgContext';
 
 // 3. Páginas públicas (sin autenticación requerida)
 import LandingPage from './pages/public/LandingPage';
@@ -45,14 +46,26 @@ const AthleteDetailRedirect = () => {
   return <Navigate to={`/coach/athletes/${id}/pmc`} replace />;
 };
 
-// --- DASHBOARD ROUTER: renders athlete or coach dashboard based on role ---
+// --- DASHBOARD ROUTER: renders athlete or coach dashboard based on active org role ---
 const DashboardRouter = () => {
   const { user, loading } = useAuth();
-  if (loading) return null;
-  if (user?.memberships?.[0]?.role === 'athlete') {
+  const { activeOrg, orgLoading } = useOrg();
+  if (loading || orgLoading) return null;
+  if (activeOrg?.role === 'athlete') {
     return <AthleteDashboard user={user} />;
   }
   return <Dashboard />;
+};
+
+// --- COACH ROUTE: blocks athletes from coach-only pages ---
+const CoachRoute = ({ children }) => {
+  const { loading } = useAuth();
+  const { activeOrg, orgLoading } = useOrg();
+  if (loading || orgLoading) return null;
+  if (activeOrg?.role === 'athlete') {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return children;
 };
 
 // --- COMPONENTE DE SEGURIDAD (GUARDIÁN) ---
@@ -141,7 +154,9 @@ function App() {
             path="/coach-dashboard"
             element={
               <ProtectedRoute>
-                <CoachDashboard />
+                <CoachRoute>
+                  <CoachDashboard />
+                </CoachRoute>
               </ProtectedRoute>
             }
           />
@@ -151,7 +166,9 @@ function App() {
             path="/library"
             element={
               <ProtectedRoute>
-                <WorkoutLibraryPage />
+                <CoachRoute>
+                  <WorkoutLibraryPage />
+                </CoachRoute>
               </ProtectedRoute>
             }
           />
@@ -161,7 +178,9 @@ function App() {
             path="/calendar"
             element={
               <ProtectedRoute>
-                <CalendarPage />
+                <CoachRoute>
+                  <CalendarPage />
+                </CoachRoute>
               </ProtectedRoute>
             }
           />
@@ -171,7 +190,9 @@ function App() {
             path="/plantilla"
             element={
               <ProtectedRoute>
-                <Plantilla />
+                <CoachRoute>
+                  <Plantilla />
+                </CoachRoute>
               </ProtectedRoute>
             }
           />
@@ -181,7 +202,9 @@ function App() {
             path="/teams"
             element={
               <ProtectedRoute>
-                <Teams />
+                <CoachRoute>
+                  <Teams />
+                </CoachRoute>
               </ProtectedRoute>
             }
           />
@@ -191,7 +214,9 @@ function App() {
             path="/teams/:id"
             element={
               <ProtectedRoute>
-                <TeamDetail />
+                <CoachRoute>
+                  <TeamDetail />
+                </CoachRoute>
               </ProtectedRoute>
             }
           />
@@ -201,7 +226,9 @@ function App() {
             path="/athletes"
             element={
               <ProtectedRoute>
-                <Athletes />
+                <CoachRoute>
+                  <Athletes />
+                </CoachRoute>
               </ProtectedRoute>
             }
           />
@@ -211,7 +238,9 @@ function App() {
             path="/athletes/:id"
             element={
               <ProtectedRoute>
-                <AthleteDetailRedirect />
+                <CoachRoute>
+                  <AthleteDetailRedirect />
+                </CoachRoute>
               </ProtectedRoute>
             }
           />
@@ -251,7 +280,9 @@ function App() {
             path="/coach/analytics"
             element={
               <ProtectedRoute>
-                <CoachAnalytics />
+                <CoachRoute>
+                  <CoachAnalytics />
+                </CoachRoute>
               </ProtectedRoute>
             }
           />
@@ -259,7 +290,9 @@ function App() {
             path="/coach/athletes/:membershipId/pmc"
             element={
               <ProtectedRoute>
-                <CoachAthletePMC />
+                <CoachRoute>
+                  <CoachAthletePMC />
+                </CoachRoute>
               </ProtectedRoute>
             }
           />

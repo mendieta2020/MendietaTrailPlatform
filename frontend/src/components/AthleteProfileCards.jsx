@@ -476,9 +476,9 @@ export function AthleteProfileCards({
               <strong>{TRAINING_TIME_LABELS[profile?.preferred_training_time] || profile?.preferred_training_time || '—'}</strong>
             </div>
             <div><span className="text-slate-500">Ritmo 1000m:</span> <strong>{profile?.pace_1000m_seconds || '—'}s</strong></div>
-            {profile?.best_10k_minutes > 0 && <div><span className="text-slate-500">10K:</span> <strong>{profile.best_10k_minutes} min</strong></div>}
-            {profile?.best_21k_minutes > 0 && <div><span className="text-slate-500">21K:</span> <strong>{profile.best_21k_minutes} min</strong></div>}
-            {profile?.best_42k_minutes > 0 && <div><span className="text-slate-500">42K:</span> <strong>{profile.best_42k_minutes} min</strong></div>}
+            <div><span className="text-slate-500">10K:</span> <strong>{profile?.best_10k_minutes || '—'} min</strong></div>
+            <div><span className="text-slate-500">21K:</span> <strong>{profile?.best_21k_minutes || '—'} min</strong></div>
+            <div><span className="text-slate-500">42K:</span> <strong>{profile?.best_42k_minutes || '—'} min</strong></div>
           </div>
         )}
       </Paper>
