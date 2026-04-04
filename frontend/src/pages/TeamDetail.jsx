@@ -29,7 +29,7 @@ const TeamDetail = () => {
   const { id } = useParams(); // ID del grupo
   const navigate = useNavigate();
   const { activeOrg } = useOrg();
-  const orgId = activeOrg?.id;
+  const orgId = activeOrg?.org_id;
   const [team, setTeam] = useState(null);
   const [tabValue, setTabValue] = useState(0);
   const [athletes, setAthletes] = useState([]);
