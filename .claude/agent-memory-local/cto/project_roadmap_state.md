@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-03 · PR-160 Fixes funcionales + Calendar Pro + Diferenciación roles + Goal badge_
+_Last updated: 2026-04-04 · PR-163 Calendar Pro — Custom month grid + shared components_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -234,6 +234,24 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - AthleteProfileTab.jsx: Datos Físicos edit form now includes weekly_available_hours, preferred_training_time, pace_1000m_seconds (was missing)
 - AthleteWellnessTab.jsx: auto-generated interpretation text below heatmap (7-day averages → actionable coach alerts: pain, sleep, energy, stress, overtraining risk, all-good)
 - Risk: LOW (frontend only, no backend changes, no migrations)
+
+### PR-163 — Calendar Pro: Custom month grid + shared components ✅ 2026-04-04
+- Custom CalendarGrid replacing react-big-calendar month view (week view unchanged)
+- Shared WorkoutCard, GoalCard, WeekHeader, CalendarGrid components in components/calendar/
+- Shared utilities in utils/calendarHelpers.js (sportColor, compliance, buildCalendarWeeks)
+- AthleteSearchSelector: MUI Autocomplete with recents (athletes only, no groups)
+- CoachWeekOverview: weekly compliance table when no athlete selected (/api/coach/team-readiness/)
+- Compliance: 6 ranges (0%/1-30%/31-70%/71-110%/111-150%/>150% purple Exceso), no 150 cap
+- Training phase badge (Carga/Descarga/etc) per week row in grid
+- GoalCard: gold gradient, days-remaining, priority badge
+- TODAY: orange left border; past unfinished: red tint background
+- Coach comment 💬 icon on cards with coach_comment field
+- Fix: handleEventDrop guards against drag-moving goal events (PR-163 step 5)
+- Internal card-to-card drag (handleGridCardMove) + library drag (handleLibraryDropOnDate)
+- AthleteMyTraining: inline grid replaced with CalendarGrid (role=athlete); removes ~250 LOC duplication
+- No backend changes, no migrations required
+- Frontend: lint 0 errors, build success
+- Risk: MEDIUM (major frontend refactor) — RESOLVED
 
 ### PR-162 — Production Ready: Security + Saves rotos + Onboarding polish ✅ 2026-04-03
 - Fix 0 (CRITICAL SECURITY): DashboardRouter now uses activeOrg.role from OrgContext (not memberships[0].role) → athletes always see AthleteDashboard
