@@ -18,9 +18,9 @@
 import React, { useState } from 'react';
 import {
   Drawer, Box, Typography, IconButton, Divider, Chip, Button,
-  TextField, Tooltip, CircularProgress,
+  TextField, Tooltip, CircularProgress, useTheme, useMediaQuery,
 } from '@mui/material';
-import { Close } from '@mui/icons-material';
+import { Close, ArrowBack } from '@mui/icons-material';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { MiniWorkoutProfile } from './MiniWorkoutProfile';
@@ -174,6 +174,9 @@ export default function WorkoutCoachDrawer({
   onSaved,
   onMarkComplete,
 }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
   const open = !!event;
   const assignment = event?.resource ?? null;
   const pw = assignment?.planned_workout ?? null;
@@ -331,7 +334,7 @@ export default function WorkoutCoachDrawer({
           </Box>
 
           <IconButton size="small" onClick={onClose} sx={{ color: '#94a3b8', mt: -0.5 }}>
-            <Close fontSize="small" />
+            {isMobile ? <ArrowBack fontSize="small" /> : <Close fontSize="small" />}
           </IconButton>
         </Box>
       </Box>
