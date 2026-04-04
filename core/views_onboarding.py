@@ -403,7 +403,7 @@ class OnboardingCompleteView(APIView):
 
             # PR-152: Notify coach about new athlete registration
             try:
-                from core.models import Coach, InternalMessage, Membership
+                from core.models import Coach, InternalMessage
                 coach_record = Coach.objects.filter(
                     organization=org,
                 ).select_related("user").first()
@@ -465,7 +465,7 @@ class OnboardingCompleteView(APIView):
 
         # PR-152: Notify coach about new athlete registration
         try:
-            from core.models import Coach, InternalMessage, Membership
+            from core.models import Coach, InternalMessage
             coach_record = Coach.objects.filter(
                 organization=org,
             ).select_related("user").first()
