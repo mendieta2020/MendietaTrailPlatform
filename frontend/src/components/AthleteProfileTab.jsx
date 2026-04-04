@@ -170,11 +170,11 @@ export default function AthleteProfileTab({ membershipId }) {
   // ── Availability handlers ────────────────────────────────────────────────
 
   const startEditAvail = () => {
-    // Build draft: 7 days (0=Mon…6=Sun), default to current state
+    // Build draft: 7 days (0=Mon…6=Sun), matching AthleteAvailability.DayOfWeek
     const draft = DAY_LABELS.map((_, i) => {
-      const existing = availability.find(a => a.day_of_week === i + 1)
+      const existing = availability.find(a => a.day_of_week === i)
       return {
-        day_of_week:  i + 1,
+        day_of_week:  i,
         is_available: existing?.is_available ?? true,
         reason:       existing?.reason ?? '',
         preferred_time: existing?.preferred_time ?? '',
