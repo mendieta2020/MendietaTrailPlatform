@@ -511,25 +511,44 @@ class TeamReadinessView(APIView):
         athlete_user_ids = [m.user_id for m in athlete_memberships]
         membership_by_user = {m.user_id: m for m in athlete_memberships}
 
-        # Fetch today's DailyLoad for all athletes in one query
-        daily_loads = DailyLoad.objects.filter(
-            organization=org,
-            athlete_id__in=athlete_user_ids,
-            date=today,
-        ).select_related("athlete")
+        # Fetch the most recent DailyLoad per athlete (not just today)
+        from django.db.models import Max
 
-        load_by_user = {dl.athlete_id: dl for dl in daily_loads}
-
-        # Ramp rate: fetch 7-day-ago DailyLoad for all athletes
-        seven_days_ago = today - timedelta(days=7)
-        load_7d_ago = {
-            dl.athlete_id: dl.ctl
-            for dl in DailyLoad.objects.filter(
+        latest_date_by_user = dict(
+            DailyLoad.objects.filter(
                 organization=org,
                 athlete_id__in=athlete_user_ids,
-                date=seven_days_ago,
             )
-        }
+            .values("athlete_id")
+            .annotate(latest=Max("date"))
+            .values_list("athlete_id", "latest")
+        )
+
+        load_by_user: dict = {}
+        for user_id, latest_date in latest_date_by_user.items():
+            dl = (
+                DailyLoad.objects.filter(
+                    organization=org,
+                    athlete_id=user_id,
+                    date=latest_date,
+                )
+                .select_related("athlete")
+                .first()
+            )
+            if dl:
+                load_by_user[user_id] = dl
+
+        # Ramp rate: 7 days before each athlete's latest DailyLoad date
+        load_7d_ago: dict = {}
+        for user_id, latest_date in latest_date_by_user.items():
+            ref_date = latest_date - timedelta(days=7)
+            dl7 = DailyLoad.objects.filter(
+                organization=org,
+                athlete_id=user_id,
+                date=ref_date,
+            ).values_list("ctl", flat=True).first()
+            if dl7 is not None:
+                load_7d_ago[user_id] = dl7
 
         # Resolve Alumnos for all athletes in one batch (Alumno = legacy ingestion FK)
         from core.models import Alumno as _Alumno

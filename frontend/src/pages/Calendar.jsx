@@ -64,8 +64,12 @@ import MacroView from '../components/MacroView';
 import HistorialPanel from '../components/HistorialPanel';
 import WeeklyLoadEstimate from '../components/WeeklyLoadEstimate';
 import GroupPlanningView from '../components/GroupPlanningView';
-import { copyWeek } from '../api/planning';
+import { copyWeek, getCoachAthletePlanVsReal } from '../api/planning';
 import { updateGoal } from '../api/athlete';
+import { getCoachAthletePMC } from '../api/pmc';
+import CalendarGrid from '../components/calendar/CalendarGrid';
+import AthleteSearchSelector from '../components/calendar/AthleteSearchSelector';
+import CoachWeekOverview from '../components/calendar/CoachWeekOverview';
 
 const DnDCalendar = withDragAndDrop(Calendar);
 
@@ -603,6 +607,10 @@ export default function CalendarPage() {
   // PR-161: selected goal for edit dialog
   const [selectedGoal, setSelectedGoal] = useState(null); // { id, title, target_date, priority, status, target_distance_km, target_elevation_gain_m }
 
+  // PR-163 QA: coach PMC + plan-vs-real for month grid (Fix 4 + 5)
+  const [coachPmcData, setCoachPmcData] = useState(null);
+  const [coachPlanVsRealMap, setCoachPlanVsRealMap] = useState({});
+
   const showUndo = useCallback((message, onUndo) => {
     setUndoToast({ message, onUndo });
   }, []);
@@ -720,6 +728,75 @@ export default function CalendarPage() {
       cancelled = true;
       setTrainingPhaseMap({});
     };
+  }, [orgId, selectedTarget, currentDate]);
+
+  // PR-163 QA Fix 4: Load PMC data for coach month grid when individual athlete selected
+  useEffect(() => {
+    const target = parseTarget(selectedTarget);
+    let cancelled = false;
+    if (!orgId || !target || target.type !== 'a') {
+      setCoachPmcData(null);
+      return;
+    }
+    const athlete = athleteState.data.find((a) => a.id === target.id);
+    const membershipId = athlete?.membership_id;
+    if (!membershipId) { setCoachPmcData(null); return; }
+    getCoachAthletePMC(membershipId)
+      .then((res) => {
+        if (cancelled) return;
+        console.log('[Calendar] coachPmcData raw:', res.data);
+        // API returns { current: { ctl, atl, tsb, ... }, history: [...] }
+        const current = res.data?.current;
+        if (current?.ctl != null) {
+          setCoachPmcData({ ctl: current.ctl, atl: current.atl, tsb: current.tsb });
+        } else {
+          // Fallback: flat array or { ctl } direct
+          const entries = Array.isArray(res.data) ? res.data : (res.data?.entries ?? []);
+          if (entries.length > 0) {
+            const latest = entries[entries.length - 1];
+            setCoachPmcData({ ctl: latest.ctl, atl: latest.atl, tsb: latest.tsb });
+          } else if (!Array.isArray(res.data) && res.data?.ctl != null) {
+            setCoachPmcData({ ctl: res.data.ctl, atl: res.data.atl, tsb: res.data.tsb });
+          } else {
+            setCoachPmcData(null);
+          }
+        }
+      })
+      .catch(() => { if (!cancelled) setCoachPmcData(null); });
+    return () => { cancelled = true; };
+  }, [orgId, selectedTarget, athleteState.data]);
+
+  // PR-163 QA Fix 5: Load plan-vs-real per week for coach month grid when individual athlete selected
+  useEffect(() => {
+    const target = parseTarget(selectedTarget);
+    let cancelled = false;
+    if (!orgId || !target || target.type !== 'a') {
+      setCoachPlanVsRealMap({});
+      return;
+    }
+    const athleteId = target.id;
+    const monthStart = startOfMonth(currentDate);
+    const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
+    const mondays = [];
+    let d = new Date(calStart);
+    while (d <= endOfMonth(currentDate)) {
+      mondays.push(format(d, 'yyyy-MM-dd'));
+      d = new Date(d);
+      d.setDate(d.getDate() + 7);
+    }
+    Promise.all(
+      mondays.map((wk) =>
+        getCoachAthletePlanVsReal(athleteId, { weekStart: wk })
+          .then((res) => ({ wk, data: res.data }))
+          .catch(() => ({ wk, data: null }))
+      )
+    ).then((results) => {
+      if (cancelled) return;
+      const map = {};
+      results.forEach(({ wk, data }) => { if (data) map[wk] = data; });
+      setCoachPlanVsRealMap(map);
+    });
+    return () => { cancelled = true; setCoachPlanVsRealMap({}); };
   }, [orgId, selectedTarget, currentDate]);
 
   // ── Load teams ────────────────────────────────────────────────────────────
@@ -974,6 +1051,9 @@ export default function CalendarPage() {
 
   const handleEventDrop = useCallback(
     async ({ event, start }) => {
+      // Goals cannot be moved via drag (PR-163)
+      if (event.isGoal) return;
+
       const newDate = format(start, 'yyyy-MM-dd');
       const oldDate = event.resource?.scheduled_date ?? format(event.start, 'yyyy-MM-dd');
       if (newDate === oldDate) return;
@@ -989,12 +1069,53 @@ export default function CalendarPage() {
             eventsDispatch({ type: 'MOVE_EVENT', id: event.id, newDate: oldDate });
           }
         );
-      } catch {
+      } catch (err) {
+        console.error('[Calendar] handleEventDrop error:', err);
         eventsDispatch({ type: 'MOVE_EVENT', id: event.id, newDate: oldDate });
         setSaveError('No se pudo mover la sesión.');
       }
     },
     [orgId, showUndo]
+  );
+
+  // ── PR-163: Grid card move (custom month view) ────────────────────────────
+
+  const handleGridCardMove = useCallback(
+    async (assignmentId, newDate) => {
+      const event = eventsState.data.find((e) => e.id === assignmentId);
+      if (!event) return;
+      const oldDate = event.resource?.scheduled_date ?? format(event.start, 'yyyy-MM-dd');
+      if (newDate === oldDate) return;
+      eventsDispatch({ type: 'MOVE_EVENT', id: assignmentId, newDate });
+      try {
+        await moveAssignment(orgId, assignmentId, newDate);
+        showUndo(
+          `${event.title} → ${newDate}`,
+          async () => {
+            await moveAssignment(orgId, assignmentId, oldDate);
+            eventsDispatch({ type: 'MOVE_EVENT', id: assignmentId, newDate: oldDate });
+          }
+        );
+      } catch (err) {
+        console.error('[Calendar] handleGridCardMove error:', err.response?.data ?? err);
+        eventsDispatch({ type: 'MOVE_EVENT', id: assignmentId, newDate: oldDate });
+        const errMsg = err.response?.status === 400
+          ? 'No se pudo mover: ya existe un entrenamiento similar en ese día.'
+          : 'No se pudo mover la sesión.';
+        setSaveError(errMsg);
+      }
+    },
+    [orgId, eventsState.data, showUndo]
+  );
+
+  // ── PR-163: Library drop on custom grid date ──────────────────────────────
+
+  const handleLibraryDropOnDate = useCallback(
+    (dateKey) => {
+      // Reuse existing drop logic by simulating a date start
+      handleDropFromOutside({ start: parseISO(dateKey) });
+    },
+    [handleDropFromOutside]
   );
 
   // ── PR-145f: Context menu opener ───────────────────────────────────────────
@@ -1316,51 +1437,39 @@ export default function CalendarPage() {
             </ToggleButton>
           </ToggleButtonGroup>
 
+          {/* PR-163: Month / Week toggle */}
+          {calendarView === 'calendar' && (
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              value={calViewMode}
+              onChange={(_, v) => { if (v) setCalViewMode(v); }}
+            >
+              <ToggleButton value="month" sx={{ px: 1.5, textTransform: 'none', fontWeight: 600, fontSize: '0.8rem' }}>
+                Mes
+              </ToggleButton>
+              <ToggleButton value="week" sx={{ px: 1.5, textTransform: 'none', fontWeight: 600, fontSize: '0.8rem' }}>
+                Semana
+              </ToggleButton>
+            </ToggleButtonGroup>
+          )}
+
           {saving && (
             <Tooltip title="Guardando asignación…">
               <CircularProgress size={20} sx={{ color: '#F57C00' }} />
             </Tooltip>
           )}
 
-          <FormControl size="small" sx={{ minWidth: 220 }}>
-            <InputLabel>Atleta o Grupo</InputLabel>
-            <Select
-              value={selectedTarget}
-              label="Atleta o Grupo"
-              onChange={(e) => {
-                const v = e.target.value;
-                setSelectedTarget(v);
-                sessionStorage.setItem('calendarSelectedTarget', v);
-              }}
-              disabled={(athleteState.loading || teamState.loading) || !orgId}
-            >
-              {teamState.data.length > 0 && (
-                <ListSubheader sx={{ lineHeight: '28px', fontSize: '0.7rem', letterSpacing: '0.06em' }}>
-                  GRUPOS
-                </ListSubheader>
-              )}
-              {teamState.data.map((t) => (
-                <MenuItem key={`t:${t.id}`} value={`t:${t.id}`}>
-                  {t.name}
-                </MenuItem>
-              ))}
-              {athleteState.data.length > 0 && (
-                <ListSubheader sx={{ lineHeight: '28px', fontSize: '0.7rem', letterSpacing: '0.06em' }}>
-                  ATLETAS
-                </ListSubheader>
-              )}
-              {athleteState.data.map((a) => {
-                const name = [a.first_name, a.last_name].filter(Boolean).join(' ')
-                  || a.email?.split('@')[0]
-                  || `Atleta #${a.id}`;
-                return (
-                  <MenuItem key={`a:${a.id}`} value={`a:${a.id}`}>
-                    {name}
-                  </MenuItem>
-                );
-              })}
-            </Select>
-          </FormControl>
+          {/* PR-163: Searchable athlete selector (athletes only, with recents) */}
+          <AthleteSearchSelector
+            athletes={athleteState.data}
+            value={selectedTarget}
+            onChange={(v) => {
+              setSelectedTarget(v);
+              sessionStorage.setItem('calendarSelectedTarget', v);
+            }}
+            loading={(athleteState.loading || teamState.loading) || !orgId}
+          />
         </Box>
 
         {saveError && (
@@ -1499,7 +1608,62 @@ export default function CalendarPage() {
               </Alert>
             )}
 
-            {!planningWeek && (!selectedTarget ? (
+            {/* PR-163: Month view — custom grid or CoachWeekOverview */}
+            {!planningWeek && calViewMode === 'month' && (() => {
+              if (!selectedTarget) {
+                return (
+                  <Paper sx={{ flex: 1, borderRadius: 2, overflow: 'hidden', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
+                    <CoachWeekOverview
+                      orgId={orgId}
+                      athletes={athleteState.data}
+                      onSelectAthlete={(v) => {
+                        setSelectedTarget(v);
+                        sessionStorage.setItem('calendarSelectedTarget', v);
+                      }}
+                    />
+                  </Paper>
+                );
+              }
+              const rawAssignments = eventsState.data.map((e) => e.resource);
+              const goalDateMap = {};
+              goalEvents.forEach((e) => {
+                const g = e.resource?.goal;
+                if (g?.target_date) goalDateMap[g.target_date] = g;
+              });
+              return (
+                <Box sx={{ flex: 1, overflowY: 'auto' }}>
+                  <CalendarGrid
+                    assignments={rawAssignments}
+                    goalDateMap={goalDateMap}
+                    planVsRealMap={coachPlanVsRealMap}
+                    pmcData={coachPmcData}
+                    trainingPhaseMap={trainingPhaseMap}
+                    role="coach"
+                    currentDate={currentDate}
+                    onNavigate={setCurrentDate}
+                    loading={eventsState.loading}
+                    onCardClick={(assignment) => {
+                      const event = eventsState.data.find((e) => e.id === assignment.id);
+                      if (event) setSelectedEvent(event);
+                    }}
+                    onCompleteClick={() => {}}
+                    onContextMenu={(x, y, assignment) => {
+                      const event = eventsState.data.find((e) => e.id === assignment.id);
+                      if (event) handleContextMenu(x, y, event);
+                    }}
+                    onMoveAssignment={handleGridCardMove}
+                    onDropFromLibrary={handleLibraryDropOnDate}
+                    draggingWorkoutRef={draggingWorkoutRef}
+                    availability={athleteAvailability}
+                    athleteProfile={athleteProfile}
+                    onGoalClick={(goal) => setSelectedGoal(goal)}
+                  />
+                </Box>
+              );
+            })()}
+
+            {/* Week view — react-big-calendar (unchanged) */}
+            {!planningWeek && calViewMode === 'week' && (!selectedTarget ? (
               <Paper
                 sx={{
                   height: '100%',
@@ -1516,10 +1680,10 @@ export default function CalendarPage() {
                     style={{ width: 48, height: 48, color: '#cbd5e1', marginBottom: 16 }}
                   />
                   <Typography variant="h6" fontWeight={600} sx={{ color: '#374151' }}>
-                    Selecciona un atleta o grupo
+                    Selecciona un atleta
                   </Typography>
                   <Typography variant="body2" sx={{ color: '#6b7280', mt: 0.5 }}>
-                    Elige en el desplegable de arriba para visualizar y gestionar el calendario de entrenamientos.
+                    Elige en el desplegable de arriba para visualizar el calendario semanal.
                   </Typography>
                 </Box>
               </Paper>
@@ -1530,9 +1694,9 @@ export default function CalendarPage() {
                   events={[...eventsState.data, ...goalEvents]}
                   date={currentDate}
                   onNavigate={setCurrentDate}
-                  view={calViewMode}
+                  view="week"
                   onView={setCalViewMode}
-                  views={['month', 'week']}
+                  views={['week']}
                   culture="es"
                   style={{ height: '100%' }}
                   eventPropGetter={eventPropGetter}
@@ -1554,7 +1718,6 @@ export default function CalendarPage() {
                             athleteProfile.menstrual_cycle_days,
                           )
                         : null;
-                      // PR-157: Training phase strip
                       const mondayKey = getMonday(value);
                       const trainingPhase = trainingPhaseMap[mondayKey];
                       const trainingPhaseMeta = trainingPhase ? TRAINING_PHASE_COLORS[trainingPhase] : null;
@@ -1573,7 +1736,6 @@ export default function CalendarPage() {
                           disableHoverListener={!isBlocked && !phase && !trainingPhaseMeta}
                         >
                           <div style={{ position: 'relative', height: '100%', width: '100%' }}>
-                            {/* Menstrual phase strip — top 3px */}
                             {phase && (
                               <div style={{
                                 position: 'absolute', top: 0, left: 0, right: 0,
@@ -1581,7 +1743,6 @@ export default function CalendarPage() {
                                 zIndex: 1,
                               }} />
                             )}
-                            {/* PR-157: Training phase strip — 4px below menstrual (or at top if no menstrual) */}
                             {trainingPhaseMeta && (
                               <div style={{
                                 position: 'absolute', top: phase ? 4 : 0, left: 0, right: 0,

@@ -59,6 +59,15 @@ export const getPlanVsReal = ({ weekStart } = {}) =>
   })
 
 /**
+ * GET /api/planning/athlete/<athleteId>/plan-vs-real/
+ * Coach view of an athlete's weekly plan vs real compliance summary.
+ */
+export const getCoachAthletePlanVsReal = (athleteId, { weekStart } = {}) =>
+  client.get(`/api/planning/athlete/${athleteId}/plan-vs-real/`, {
+    params: { week_start: weekStart },
+  })
+
+/**
  * GET /api/p1/orgs/<orgId>/group-week-template/
  * Current planned workouts for a team's week (deduplicated template).
  * Used by GroupPlanningView.
