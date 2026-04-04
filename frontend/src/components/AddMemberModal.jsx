@@ -17,8 +17,8 @@ const AddMemberModal = ({ open, onClose, teamId, orgId, onMembersAdded }) => {
     if (!orgId) return;
     try {
       const res = await client.get(`/api/p1/orgs/${orgId}/roster/athletes/`);
-      // Filter out athletes already in this team
-      const available = res.data.filter(a => a.team_id !== parseInt(teamId));
+      const raw = Array.isArray(res.data) ? res.data : res.data?.results ?? [];
+      const available = raw.filter(a => a.team_id !== parseInt(teamId));
       setAthletes(available);
     } catch (err) {
       console.error("Error cargando atletas:", err);
