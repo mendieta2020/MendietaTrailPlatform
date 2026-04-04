@@ -142,6 +142,9 @@ export default function AthleteProfileTab({ membershipId }) {
       weekly_available_hours: profile.weekly_available_hours ?? '',
       preferred_training_time: profile.preferred_training_time ?? '',
       pace_1000m_seconds:     profile.pace_1000m_seconds ?? '',
+      best_10k_minutes:       profile.best_10k_minutes ?? '',
+      best_21k_minutes:       profile.best_21k_minutes ?? '',
+      best_42k_minutes:       profile.best_42k_minutes ?? '',
     })
     setEditPhysical(true)
   }
@@ -282,6 +285,9 @@ export default function AthleteProfileTab({ membershipId }) {
               { key: 'training_age_years',     label: 'Años entrenando', type: 'number' },
               { key: 'weekly_available_hours', label: 'Horas/semana',    type: 'number' },
               { key: 'pace_1000m_seconds',     label: 'Ritmo 1km (seg)', type: 'number' },
+              { key: 'best_10k_minutes',       label: 'Mejor 10K (min)', type: 'number' },
+              { key: 'best_21k_minutes',       label: 'Mejor 21K (min)', type: 'number' },
+              { key: 'best_42k_minutes',       label: 'Mejor 42K (min)', type: 'number' },
             ].map(({ key, label, type }) => (
               <Grid item xs={12} sm={6} key={key}>
                 <TextField
@@ -321,6 +327,9 @@ export default function AthleteProfileTab({ membershipId }) {
             <Grid item xs={12} sm={6}><ReadField label="Horas/semana" value={profile.weekly_available_hours} /></Grid>
             <Grid item xs={12} sm={6}><ReadField label="Horario preferido" value={profile.preferred_training_time} /></Grid>
             <Grid item xs={12} sm={6}><ReadField label="Ritmo 1km" value={profile.pace_1000m_seconds ? `${profile.pace_1000m_seconds}s` : null} /></Grid>
+            <Grid item xs={12} sm={6}><ReadField label="Mejor 10K" value={profile.best_10k_minutes ? `${profile.best_10k_minutes} min` : null} /></Grid>
+            <Grid item xs={12} sm={6}><ReadField label="Mejor 21K" value={profile.best_21k_minutes ? `${profile.best_21k_minutes} min` : null} /></Grid>
+            <Grid item xs={12} sm={6}><ReadField label="Mejor 42K" value={profile.best_42k_minutes ? `${profile.best_42k_minutes} min` : null} /></Grid>
           </Grid>
         )}
       </Section>
@@ -361,7 +370,7 @@ export default function AthleteProfileTab({ membershipId }) {
         ) : (
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             {DAY_LABELS.map((day, i) => {
-              const avail = availability.find(a => a.day_of_week === i + 1)
+              const avail = availability.find(a => a.day_of_week === i)
               const available = avail?.is_available ?? false
               return (
                 <Box

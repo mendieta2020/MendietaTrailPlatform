@@ -7,7 +7,7 @@ import {
 import { Search, PersonAdd } from '@mui/icons-material';
 import client from '../api/client';
 
-const AddMemberModal = ({ open, onClose, teamId, onMembersAdded }) => {
+const AddMemberModal = ({ open, onClose, teamId, orgId, onMembersAdded }) => {
   const [athletes, setAthletes] = useState([]); // Todos los alumnos
   const [selected, setSelected] = useState([]); // IDs seleccionados
   const [searchTerm, setSearchTerm] = useState('');
@@ -23,17 +23,16 @@ const AddMemberModal = ({ open, onClose, teamId, onMembersAdded }) => {
   }, [open, fetchAvailableAthletes]);
 
   const fetchAvailableAthletes = useCallback(async () => {
+    if (!orgId) return;
     try {
-      // Traemos TODOS los alumnos
-      const res = await client.get('/api/alumnos/');
-      // Filtramos: Solo mostramos los que NO están ya en este equipo
-      // (Asumiendo que res.data trae el objeto completo, verificamos su equipo actual)
-      const available = res.data.filter(a => a.equipo !== parseInt(teamId));
+      const res = await client.get(`/api/p1/orgs/${orgId}/roster/athletes/`);
+      // Filter out athletes already in this team
+      const available = res.data.filter(a => a.team_id !== parseInt(teamId));
       setAthletes(available);
     } catch (err) {
       console.error("Error cargando atletas:", err);
     }
-  }, [teamId]);
+  }, [teamId, orgId]);
 
   // 2. Manejar Selección (Checkbox)
   const handleToggle = (value) => () => {
@@ -52,10 +51,8 @@ const AddMemberModal = ({ open, onClose, teamId, onMembersAdded }) => {
   const handleSave = async () => {
     try {
       setLoading(true);
-      // Truco Profesional: Usamos Promise.all para enviar múltiples peticiones en paralelo
-      // Esto es mucho más rápido que un bucle for normal.
       const promises = selected.map(athleteId =>
-        client.patch(`/api/alumnos/${athleteId}/`, { equipo: teamId })
+        client.post(`/api/p1/orgs/${orgId}/teams/${teamId}/members/`, { athlete_id: athleteId })
       );
 
       await Promise.all(promises);
@@ -73,7 +70,7 @@ const AddMemberModal = ({ open, onClose, teamId, onMembersAdded }) => {
 
   // Filtro de búsqueda visual
   const filteredAthletes = athletes.filter(a =>
-    `${a.nombre} ${a.apellido}`.toLowerCase().includes(searchTerm.toLowerCase())
+    `${a.first_name} ${a.last_name}`.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -122,17 +119,13 @@ const AddMemberModal = ({ open, onClose, teamId, onMembersAdded }) => {
                 >
                   <ListItemAvatar>
                     <Avatar sx={{ bgcolor: isSelected ? '#F57C00' : '#bdbdbd' }}>
-                      {athlete.nombre.charAt(0)}{athlete.apellido.charAt(0)}
+                      {(athlete.first_name || '?').charAt(0)}{(athlete.last_name || '').charAt(0)}
                     </Avatar>
                   </ListItemAvatar>
                   <ListItemText
                     id={labelId}
-                    primary={`${athlete.nombre} ${athlete.apellido}`}
-                    secondary={
-                      athlete.equipo_nombre ?
-                        `Actualmente en: ${athlete.equipo_nombre}` :
-                        "Sin Grupo asignado"
-                    }
+                    primary={`${athlete.first_name} ${athlete.last_name}`.trim() || athlete.email}
+                    secondary={athlete.team_id ? "En otro grupo" : "Sin grupo asignado"}
                   />
                 </ListItem>
               );

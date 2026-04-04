@@ -403,24 +403,33 @@ class OnboardingCompleteView(APIView):
 
             # PR-152: Notify coach about new athlete registration
             try:
-                from core.models import Coach, InternalMessage
+                from core.models import Coach, InternalMessage, Membership
                 coach_record = Coach.objects.filter(
                     organization=org,
                 ).select_related("user").first()
-                if coach_record and coach_record.user:
+                coach_user = coach_record.user if (coach_record and coach_record.user) else None
+                if not coach_user:
+                    # Fallback: find coach/owner via Membership
+                    coach_membership = Membership.objects.filter(
+                        organization=org,
+                        role__in=["owner", "coach"],
+                        is_active=True,
+                    ).select_related("user").first()
+                    coach_user = coach_membership.user if coach_membership else None
+                if coach_user:
                     athlete_name = f"{user.first_name} {user.last_name}".strip() or user.username
                     plan_name = coach_plan.name if coach_plan else "Sin plan"
                     InternalMessage.objects.create(
                         organization=org,
                         sender=user,
-                        recipient=coach_record.user,
+                        recipient=coach_user,
                         content=f"🆕 {athlete_name} se unió a tu equipo (Plan {plan_name})",
                         alert_type="athlete_registered",
                     )
                     # Welcome message TO the athlete
                     InternalMessage.objects.create(
                         organization=org,
-                        sender=coach_record.user,
+                        sender=coach_user,
                         recipient=user,
                         content=f"🎉 ¡Bienvenido a {org.name}! Tu coach ya puede verte y asignarte entrenamientos.",
                         alert_type="athlete_welcome",
@@ -456,24 +465,33 @@ class OnboardingCompleteView(APIView):
 
         # PR-152: Notify coach about new athlete registration
         try:
-            from core.models import Coach, InternalMessage
+            from core.models import Coach, InternalMessage, Membership
             coach_record = Coach.objects.filter(
                 organization=org,
             ).select_related("user").first()
-            if coach_record and coach_record.user:
+            coach_user = coach_record.user if (coach_record and coach_record.user) else None
+            if not coach_user:
+                # Fallback: find coach/owner via Membership
+                coach_membership = Membership.objects.filter(
+                    organization=org,
+                    role__in=["owner", "coach"],
+                    is_active=True,
+                ).select_related("user").first()
+                coach_user = coach_membership.user if coach_membership else None
+            if coach_user:
                 athlete_name = f"{user.first_name} {user.last_name}".strip() or user.username
                 plan_name = coach_plan.name if coach_plan else "Sin plan"
                 InternalMessage.objects.create(
                     organization=org,
                     sender=user,
-                    recipient=coach_record.user,
+                    recipient=coach_user,
                     content=f"🆕 {athlete_name} se unió a tu equipo (Plan {plan_name})",
                     alert_type="athlete_registered",
                 )
                 # Welcome message TO the athlete
                 InternalMessage.objects.create(
                     organization=org,
-                    sender=coach_record.user,
+                    sender=coach_user,
                     recipient=user,
                     content=f"🎉 ¡Bienvenido a {org.name}! Tu coach ya puede verte y asignarte entrenamientos.",
                     alert_type="athlete_welcome",
