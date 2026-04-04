@@ -177,7 +177,7 @@ const WeeklyCalendar = ({ trainings: initialTrainings, athleteId, onTrainingCrea
                     <StatGauge title="Ciclismo" value={stats.distBike.actual} target={stats.distBike.planned} unit="km" icon={PedalBike} color="#3B82F6" />
                 </Grid>
                 <Grid size={{ xs: 6, md: 2.4 }}>
-                    <StatGauge title="Desnivel (+)" value={stats.elevation.actual} target={stats.elevation.planned} unit="m" icon={Terrain} color="#10B981" />
+                    <StatGauge title="Desnivel (+)" value={stats.elevation.actual} target={stats.elevation.planned} unit="m" icon={Terrain} color="#00D4AA" />
                 </Grid>
             </Grid>
 
@@ -206,7 +206,7 @@ const WeeklyCalendar = ({ trainings: initialTrainings, athleteId, onTrainingCrea
                                     {/* Cabecera Día */}
                                     <Box sx={{
                                         p: 1.5, textAlign: 'center', borderBottom: '1px solid #E2E8F0',
-                                        bgcolor: isToday ? '#F57C00' : 'transparent',
+                                        bgcolor: isToday ? '#00D4AA' : 'transparent',
                                         color: isToday ? 'white' : 'inherit'
                                     }}>
                                         <Typography variant="caption" sx={{ textTransform: 'uppercase', fontWeight: 700, opacity: 0.8, display: 'block' }}>
@@ -239,7 +239,7 @@ const WeeklyCalendar = ({ trainings: initialTrainings, athleteId, onTrainingCrea
                                             fullWidth
                                             variant="text"
                                             size="small"
-                                            sx={{ mt: 'auto', color: '#CBD5E1', fontSize: '1.2rem', minWidth: 0, '&:hover': { color: '#F57C00', bgcolor: '#FFF7ED' } }}
+                                            sx={{ mt: 'auto', color: '#CBD5E1', fontSize: '1.2rem', minWidth: 0, '&:hover': { color: '#00D4AA', bgcolor: '#FFF7ED' } }}
                                         >
                                             +
                                         </Button>

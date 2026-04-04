@@ -197,15 +197,15 @@ const Layout = ({ children }) => {
   };
 
   const drawer = (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#1A2027', color: 'white' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#0D1117', color: 'white' }}>
       {/* HEADER */}
       <Toolbar sx={{ display: 'flex', justifyContent: collapsed ? 'center' : 'center', py: 2, minHeight: 56 }}>
         {collapsed ? (
-          <Typography variant="h6" noWrap sx={{ fontWeight: 'bold', color: '#F57C00', fontSize: '1rem' }}>
+          <Typography variant="h6" noWrap sx={{ fontWeight: 'bold', color: '#00D4AA', fontSize: '1rem' }}>
             SM
           </Typography>
         ) : (
-          <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 'bold', letterSpacing: 1, color: '#F57C00' }}>
+          <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 'bold', letterSpacing: 1, color: '#00D4AA' }}>
             SENDERO <span style={{ color: 'white' }}>MENDIETA</span>
           </Typography>
         )}
@@ -249,9 +249,9 @@ const Layout = ({ children }) => {
                           justifyContent: collapsed ? 'center' : 'flex-start',
                           px: collapsed ? 1 : 2,
                           '&.Mui-selected': {
-                            bgcolor: 'rgba(245, 124, 0, 0.15)',
-                            borderLeft: collapsed ? 'none' : '4px solid #F57C00',
-                            color: '#F57C00',
+                            bgcolor: 'rgba(0, 212, 170, 0.15)',
+                            borderLeft: collapsed ? 'none' : '4px solid #00D4AA',
+                            color: '#00D4AA',
                           },
                           '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
                           '&.Mui-disabled': { opacity: 0.4 },
@@ -259,7 +259,7 @@ const Layout = ({ children }) => {
                       >
                         <ListItemIcon sx={{
                           minWidth: collapsed ? 0 : 40,
-                          color: isActive ? '#F57C00' : '#94A3B8',
+                          color: isActive ? '#00D4AA' : '#94A3B8',
                           justifyContent: 'center',
                         }}>
                           {item.icon}
@@ -313,7 +313,7 @@ const Layout = ({ children }) => {
           <IconButton
             size="small"
             onClick={toggleCollapsed}
-            sx={{ color: '#64748B', '&:hover': { color: '#F57C00' } }}
+            sx={{ color: '#64748B', '&:hover': { color: '#00D4AA' } }}
           >
             {collapsed ? <ChevronRightIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" />}
           </IconButton>
@@ -328,7 +328,7 @@ const Layout = ({ children }) => {
         <Box sx={{
           width: { sm: DRAWER_EXPANDED },
           flexShrink: { sm: 0 },
-          bgcolor: '#1A2027',
+          bgcolor: '#0D1117',
           display: { xs: 'none', sm: 'block' },
         }} />
         <Box sx={{
@@ -374,7 +374,7 @@ const Layout = ({ children }) => {
             <>
               <Typography
                 noWrap
-                sx={{ fontWeight: 800, fontSize: '0.9rem', letterSpacing: 1, color: '#F57C00' }}
+                sx={{ fontWeight: 800, fontSize: '0.9rem', letterSpacing: 1, color: '#00D4AA' }}
               >
                 S. <span style={{ color: '#1E293B' }}>MENDIETA</span>
               </Typography>
@@ -384,7 +384,7 @@ const Layout = ({ children }) => {
                   <NotificationsIcon fontSize="small" />
                 </Badge>
               </IconButton>
-              <Avatar sx={{ bgcolor: '#F57C00', fontWeight: 'bold', width: 30, height: 30, fontSize: '0.75rem' }}>
+              <Avatar sx={{ bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 'bold', width: 30, height: 30, fontSize: '0.75rem' }}>
                 {userInfo?.first_name?.[0] ?? 'C'}{userInfo?.last_name?.[0] ?? ''}
               </Avatar>
             </>
@@ -402,7 +402,7 @@ const Layout = ({ children }) => {
                   <NotificationsIcon />
                 </Badge>
               </IconButton>
-              <Avatar sx={{ bgcolor: '#F57C00', fontWeight: 'bold' }}>
+              <Avatar sx={{ bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 'bold' }}>
                 {userInfo?.first_name?.[0] ?? 'C'}{userInfo?.last_name?.[0] ?? ''}
               </Avatar>
             </>
@@ -441,7 +441,7 @@ const Layout = ({ children }) => {
               boxSizing: 'border-box',
               width: drawerWidth,
               borderRight: 'none',
-              bgcolor: '#1A2027',
+              bgcolor: '#0D1117',
               overflowX: 'hidden',
               transition: 'width 0.2s ease',
             },
@@ -494,24 +494,26 @@ const Layout = ({ children }) => {
           }}
           sx={{
             height: 'auto',
-            minHeight: 56,
+            minHeight: 64,
             paddingBottom: 'env(safe-area-inset-bottom)',
             bgcolor: 'transparent',
             '& .MuiBottomNavigationAction-root': {
               minWidth: 0,
               padding: '6px 4px',
-              color: '#94a3b8',
+              color: '#8B949E',
             },
             '& .MuiBottomNavigationAction-root.Mui-selected': {
-              color: '#F57C00',
+              color: '#00D4AA',
             },
             '& .MuiBottomNavigationAction-label': {
-              fontSize: '0.62rem',
-              fontWeight: 500,
+              opacity: '1 !important',
+              fontSize: '0.65rem',
+              fontWeight: 600,
               marginTop: 2,
             },
             '& .MuiBottomNavigationAction-root.Mui-selected .MuiBottomNavigationAction-label': {
-              fontSize: '0.62rem',
+              opacity: '1 !important',
+              fontSize: '0.65rem',
               fontWeight: 700,
             },
           }}
@@ -544,7 +546,7 @@ const Layout = ({ children }) => {
           display: { xs: 'block', sm: 'none' },
           '& .MuiDrawer-paper': {
             borderRadius: '16px 16px 0 0',
-            bgcolor: '#1A2027',
+            bgcolor: '#0D1117',
             pb: 'env(safe-area-inset-bottom)',
             maxHeight: '80vh',
           },
@@ -575,18 +577,18 @@ const Layout = ({ children }) => {
                   disabled={isLocked}
                   sx={{
                     borderRadius: 2,
-                    '&.Mui-selected, &.active': { bgcolor: 'rgba(245,124,0,0.15)', color: '#F57C00' },
+                    '&.Mui-selected, &.active': { bgcolor: 'rgba(0, 212, 170,0.15)', color: '#00D4AA' },
                     '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
                     '&.Mui-disabled': { opacity: 0.4 },
-                    bgcolor: isActive ? 'rgba(245,124,0,0.15)' : 'transparent',
+                    bgcolor: isActive ? 'rgba(0, 212, 170,0.15)' : 'transparent',
                   }}
                 >
-                  <ListItemIcon sx={{ minWidth: 40, color: isActive ? '#F57C00' : '#94A3B8' }}>
+                  <ListItemIcon sx={{ minWidth: 40, color: isActive ? '#00D4AA' : '#94A3B8' }}>
                     {item.icon}
                   </ListItemIcon>
                   <ListItemText
                     primary={item.text}
-                    primaryTypographyProps={{ fontSize: '0.9rem', fontWeight: isActive ? 600 : 400, color: isActive ? '#F57C00' : 'white' }}
+                    primaryTypographyProps={{ fontSize: '0.9rem', fontWeight: isActive ? 600 : 400, color: isActive ? '#00D4AA' : 'white' }}
                   />
                 </ListItemButton>
               </ListItem>

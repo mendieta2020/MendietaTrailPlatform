@@ -1,0 +1,45 @@
+:root {
+  /* MARCA */
+  --brand-primary: #00D4AA;
+  --brand-primary-hover: #00BF99;
+  --brand-primary-light: rgba(0, 212, 170, 0.10);
+  --brand-primary-border: rgba(0, 212, 170, 0.25);
+
+  /* SIDEBAR */
+  --sidebar-bg: #0D1117;
+  --sidebar-bg-hover: #161B22;
+  --sidebar-active-bg: rgba(0, 212, 170, 0.12);
+  --sidebar-active-text: #00D4AA;
+  --sidebar-inactive-text: #8B949E;
+  --sidebar-section-label: #484F58;
+  --sidebar-border: #21262D;
+
+  /* TEXT */
+  --text-primary: #0D1117;
+  --text-secondary: #57606A;
+  --text-muted: #8B949E;
+  --text-caption: #6E7781;
+  --text-link: #00D4AA;
+
+  /* BUTTONS */
+  --btn-primary-bg: #00D4AA;
+  --btn-primary-text: #0D1117;
+  --btn-primary-hover: #00BF99;
+  --btn-ghost-text: #00D4AA;
+  --btn-danger-bg: #DC2626;
+  --btn-danger-hover: #B91C1C;
+
+  /* LOGIN */
+  --login-bg-start: #0D1117;
+  --login-bg-end: #1A2332;
+  --login-input-focus: #00D4AA;
+
+  /* CHARTS */
+  --chart-ctl: #3B82F6;
+  --chart-atl: #F97316;
+  --chart-tsb: #00D4AA;
+
+  /* PWA */
+  --pwa-theme: #00D4AA;
+  --pwa-background: #0D1117;
+}

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'; // <--- IMPORTANTE: Faltaba esto
 import {
   Box, Paper, Typography, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Avatar, Chip, IconButton, Button, TextField, InputAdornment,
-  CircularProgress, Alert, Tooltip, Snackbar
+  CircularProgress, Alert, Tooltip, Snackbar, LinearProgress, useTheme, useMediaQuery,
 } from '@mui/material';
 import { Search, Edit, Add, NavigateNext, NotificationsActive, CheckCircle } from '@mui/icons-material';
 import Layout from '../components/Layout';
@@ -23,7 +23,7 @@ const TSB_ZONE_DOT = {
 };
 
 const SUB_STATUS_CONFIG = {
-  active:    { label: 'Activo',    bg: '#ECFDF5', text: '#059669', dot: '#10B981' },
+  active:    { label: 'Activo',    bg: '#ECFDF5', text: '#059669', dot: '#00D4AA' },
   pending:   { label: 'Pendiente', bg: '#FFFBEB', text: '#D97706', dot: '#F59E0B' },
   overdue:   { label: 'Atrasado',  bg: '#FEF2F2', text: '#DC2626', dot: '#EF4444' },
   cancelled: { label: 'Cancelado', bg: '#F1F5F9', text: '#64748B', dot: '#94A3B8' },
@@ -51,6 +51,8 @@ function SubBadge({ status }) {
 
 const Athletes = () => {
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { activeOrg, orgLoading } = useOrg();
   const [athletes, setAthletes] = useState([]);
   const [subscriptionMap, setSubscriptionMap] = useState({});
@@ -143,7 +145,7 @@ const Athletes = () => {
         <Button 
             variant="contained" 
             startIcon={<Add />}
-            sx={{ bgcolor: '#F57C00', borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+            sx={{ bgcolor: '#00D4AA', color: '#0D1117', '&:hover': { bgcolor: '#00BF99' }, borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
         >
             Nuevo Alumno
         </Button>
@@ -153,7 +155,7 @@ const Athletes = () => {
       <Paper sx={{ p: 2, mb: 3, borderRadius: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
           <TextField
-            sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            sx={{ flex: 1, minWidth: isMobile ? '100%' : 200, width: isMobile ? '100%' : undefined, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
             placeholder="Buscar por nombre..."
             variant="outlined"
             size="small"
@@ -195,8 +197,58 @@ const Athletes = () => {
         </Box>
       </Paper>
 
-      {/* Tabla de Alumnos */}
-      <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+      {/* Mobile card list — xs only */}
+      {isMobile && (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          {filteredAthletes.map((athlete) => {
+            const fit = fitnessMap[athlete.membership_id];
+            const subStatus = subscriptionMap[athlete.id];
+            const subCfg = SUB_STATUS_CONFIG[subStatus];
+            const ctl = fit?.ctl ?? null;
+            const compliance = ctl && fit?.atl ? Math.round((fit.atl / fit.ctl) * 100) : null;
+            return (
+              <Paper
+                key={athlete.id}
+                sx={{ p: 2, borderRadius: 2, cursor: athlete.membership_id ? 'pointer' : 'default' }}
+                onClick={() => athlete.membership_id && navigate(`/coach/athletes/${athlete.membership_id}/pmc`)}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                  <Avatar sx={{ bgcolor: '#0EA5E9', color: 'white', width: 36, height: 36, fontSize: '0.85rem', fontWeight: 700 }}>
+                    {athlete.first_name ? athlete.first_name.charAt(0) : '?'}
+                    {athlete.last_name ? athlete.last_name.charAt(0) : ''}
+                  </Avatar>
+                  <Box sx={{ flexGrow: 1 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                      {athlete.first_name} {athlete.last_name}
+                    </Typography>
+                    {subCfg && (
+                      <Chip label={subCfg.label} size="small" sx={{ bgcolor: subCfg.bg, color: subCfg.text, fontWeight: 600, fontSize: '0.7rem', height: 18 }} />
+                    )}
+                  </Box>
+                  {ctl !== null && ctl > 0 && (
+                    <Chip label={`CTL ${ctl}`} size="small" sx={{ bgcolor: '#EFF6FF', color: '#2563EB', fontWeight: 700, fontSize: '0.7rem' }} />
+                  )}
+                </Box>
+                {compliance !== null && (
+                  <Box>
+                    <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 600 }}>
+                      Cumplimiento: {compliance}%
+                    </Typography>
+                    <LinearProgress
+                      variant="determinate"
+                      value={Math.min(compliance, 100)}
+                      sx={{ height: 4, borderRadius: 2, mt: 0.5, bgcolor: 'rgba(0,0,0,0.06)', '& .MuiLinearProgress-bar': { bgcolor: compliance >= 80 ? '#22C55E' : compliance >= 60 ? '#F59E0B' : '#EF4444', borderRadius: 2 } }}
+                    />
+                  </Box>
+                )}
+              </Paper>
+            );
+          })}
+        </Box>
+      )}
+
+      {/* Tabla de Alumnos — sm+ only */}
+      <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.03)', display: isMobile ? 'none' : undefined }}>
         <Table>
           <TableHead sx={{ bgcolor: '#F8FAFC' }}>
             <TableRow>
@@ -309,7 +361,7 @@ const Athletes = () => {
                               size="small"
                               disabled={!!notifyState[athlete.membership_id]}
                               onClick={() => handleNotify(athlete.membership_id)}
-                              sx={{ color: notifyState[athlete.membership_id] ? '#10B981' : '#94A3B8' }}
+                              sx={{ color: notifyState[athlete.membership_id] ? '#00D4AA' : '#94A3B8' }}
                             >
                               {notifyState[athlete.membership_id] === 'sent' || notifyState[athlete.membership_id] === 'duplicate'
                                 ? <CheckCircle fontSize="small" />

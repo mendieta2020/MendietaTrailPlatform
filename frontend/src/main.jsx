@@ -19,6 +19,9 @@ if (_sentryDsn) {
   });
 }
 
+// Brand design tokens — must load before any component styles
+import './styles/tokens.css'
+
 // Tailwind CSS v4 utilities (sin preflight para no interferir con MUI).
 // Ver src/index.css — activa flex, grid, gap, text, bg, etc.
 import './index.css'

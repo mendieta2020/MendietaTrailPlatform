@@ -60,7 +60,7 @@ function CoachBriefingCard({ orgId }) {
         p: 2.5, mb: 3, borderRadius: 3,
         border: '1px solid', borderColor: 'divider',
         boxShadow: '0 1px 3px 0 rgba(0,0,0,0.06)',
-        borderLeft: '4px solid #F57C00',
+        borderLeft: '4px solid #00D4AA',
       }}
     >
       <Typography variant="subtitle2" fontWeight={700} color="text.primary" sx={{ mb: 1.5 }}>
@@ -160,7 +160,7 @@ export default function CoachDashboard() {
               label={activeOrg.role}
               size="small"
               variant="outlined"
-              sx={{ borderColor: '#F57C00', color: '#F57C00', fontWeight: 600 }}
+              sx={{ borderColor: '#00D4AA', color: '#00D4AA', fontWeight: 600 }}
             />
           </Box>
 
@@ -183,9 +183,9 @@ export default function CoachDashboard() {
               startIcon={<LinkIcon />}
               onClick={() => setConnectionsOpen(true)}
               sx={{
-                color: '#F57C00',
-                borderColor: '#F57C00',
-                '&:hover': { borderColor: '#e65100', bgcolor: 'rgba(245,124,0,0.04)' },
+                color: '#00D4AA',
+                borderColor: '#00D4AA',
+                '&:hover': { borderColor: '#00BF99', bgcolor: 'rgba(0, 212, 170,0.04)' },
               }}
             >
               Gestionar Conexiones

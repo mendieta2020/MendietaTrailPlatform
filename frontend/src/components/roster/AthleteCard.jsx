@@ -19,7 +19,7 @@ export default function AthleteCard({ athlete }) {
     >
       <CardContent>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Avatar sx={{ bgcolor: '#F57C00', fontWeight: 'bold' }}>
+          <Avatar sx={{ bgcolor: '#00D4AA', fontWeight: 'bold' }}>
             {initials(first_name, last_name)}
           </Avatar>
           <Box>

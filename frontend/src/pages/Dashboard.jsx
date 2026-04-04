@@ -182,7 +182,7 @@ const Dashboard = () => {
   return (
     <Layout>
       {/* HEADER */}
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+      <Box sx={{ mb: 4, p: { xs: 2, sm: 3 }, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 700, color: '#0F172A' }}>Panel de Control</Typography>
           <Typography variant="body2" sx={{ color: '#64748B' }}>Visión científica de tu equipo en tiempo real.</Typography>
@@ -200,8 +200,8 @@ const Dashboard = () => {
       {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
 
       {/* ROW 1 — KPI CARDS */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid size={{ xs: 12, sm: 6 }}>
+      <Grid container spacing={{ xs: 2, sm: 3 }} sx={{ mb: 3 }}>
+        <Grid size={{ xs: 6, sm: 6 }}>
           <StatCard
             title="Fitness Promedio"
             value={loading ? '—' : (avgCtl !== null ? `${avgCtl} CTL` : '—')}
@@ -211,7 +211,7 @@ const Dashboard = () => {
             loading={loading}
           />
         </Grid>
-        <Grid size={{ xs: 12, sm: 6 }}>
+        <Grid size={{ xs: 6, sm: 6 }}>
           <StatCard
             title="Riesgo Lesión"
             value={loading ? '—' : highRiskCount}
@@ -251,6 +251,7 @@ const Dashboard = () => {
             <Typography variant="body2" sx={{ color: '#64748B', mt: 0.5 }}>Ningún atleta presenta alertas de carga o riesgo de lesión.</Typography>
           </Box>
         ) : (
+          <Box sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead sx={{ bgcolor: '#F8FAFC' }}>
               <TableRow>
@@ -304,13 +305,14 @@ const Dashboard = () => {
               })}
             </TableBody>
           </Table>
+          </Box>
         )}
       </Paper>
 
       {/* ROW 4 — PMC CHART */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid size={{ xs: 12 }}>
-          <Paper sx={{ p: 3, borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.07)', border: '1px solid #E2E8F0', height: 420 }}>
+          <Paper sx={{ p: 3, borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.07)', border: '1px solid #E2E8F0', height: 420, minHeight: 250 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <MonitorHeart sx={{ color: '#64748B' }} />

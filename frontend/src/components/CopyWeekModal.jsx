@@ -70,7 +70,7 @@ export default function CopyWeekModal({ open, onClose, sourceEvent, athletes, or
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
       <DialogTitle>Copiar semana</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
-        <Box sx={{ bgcolor: 'rgba(245,124,0,0.08)', borderRadius: 1, px: 2, py: 1 }}>
+        <Box sx={{ bgcolor: 'rgba(0, 212, 170,0.08)', borderRadius: 1, px: 2, py: 1 }}>
           <Typography variant="caption" sx={{ color: '#94a3b8' }}>Origen</Typography>
           <Typography variant="body2" fontWeight={600}>
             {formatRange(srcFrom, srcTo)}
@@ -117,7 +117,7 @@ export default function CopyWeekModal({ open, onClose, sourceEvent, athletes, or
           onClick={handleConfirm}
           variant="contained"
           disabled={saving}
-          sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65c00' } }}
+          sx={{ bgcolor: '#00D4AA', '&:hover': { bgcolor: '#e65c00' } }}
           startIcon={saving ? <CircularProgress size={14} color="inherit" /> : null}
         >
           Pegar semana

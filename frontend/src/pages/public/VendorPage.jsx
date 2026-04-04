@@ -99,7 +99,7 @@ const SidebarContent = ({ activeSlug, onClose }) => (
         pb: 1.5,
         fontSize: '0.7rem',
         fontWeight: 800,
-        color: '#F57C00',
+        color: '#00D4AA',
         textTransform: 'uppercase',
         letterSpacing: '0.1em',
       }}
@@ -139,14 +139,14 @@ const SidebarContent = ({ activeSlug, onClose }) => (
                   py: 0.9,
                   fontSize: '0.875rem',
                   fontWeight: isActive ? 700 : 400,
-                  color: isActive ? '#F57C00' : '#444',
-                  bgcolor: isActive ? 'rgba(245,124,0,0.08)' : 'transparent',
-                  borderRight: isActive ? '3px solid #F57C00' : '3px solid transparent',
+                  color: isActive ? '#00D4AA' : '#444',
+                  bgcolor: isActive ? 'rgba(0, 212, 170,0.08)' : 'transparent',
+                  borderRight: isActive ? '3px solid #00D4AA' : '3px solid transparent',
                   cursor: 'pointer',
                   transition: 'all 0.15s',
                   '&:hover': {
-                    bgcolor: 'rgba(245,124,0,0.05)',
-                    color: '#F57C00',
+                    bgcolor: 'rgba(0, 212, 170,0.05)',
+                    color: '#00D4AA',
                   },
                 }}
               >
@@ -224,7 +224,7 @@ const VendorPage = () => {
               <IconButton
                 size="small"
                 onClick={() => setDrawerOpen(!drawerOpen)}
-                sx={{ color: '#1A2027' }}
+                sx={{ color: '#0D1117' }}
                 aria-label="toggle sidebar"
               >
                 {drawerOpen ? <MenuOpenIcon /> : <MenuIcon />}
@@ -238,7 +238,7 @@ const VendorPage = () => {
           <Box sx={{ px: { xs: 2, md: 5 }, py: { xs: 4, md: 6 }, maxWidth: 820 }}>
             <Typography
               variant="overline"
-              sx={{ color: '#F57C00', fontWeight: 700, letterSpacing: '0.1em', display: 'block', mb: 0.5 }}
+              sx={{ color: '#00D4AA', fontWeight: 700, letterSpacing: '0.1em', display: 'block', mb: 0.5 }}
             >
               Vendor Documentation
             </Typography>

@@ -313,7 +313,7 @@ const AthleteProfile = () => {
                   variant="contained"
                   onClick={handleSaveLocation}
                   disabled={savingLocation}
-                  sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' }, textTransform: 'none', minWidth: 80 }}
+                  sx={{ bgcolor: '#00D4AA', '&:hover': { bgcolor: '#00BF99' }, textTransform: 'none', minWidth: 80 }}
                 >
                   {savingLocation ? <CircularProgress size={12} sx={{ color: '#fff' }} /> : 'Guardar'}
                 </Button>
@@ -326,7 +326,7 @@ const AthleteProfile = () => {
                 <Typography variant="body2" sx={{ color: '#1e293b', fontWeight: 500 }}>
                   {locationCity || '—'}
                 </Typography>
-                <Button size="small" onClick={() => setEditingLocation(true)} sx={{ color: '#F57C00', fontSize: '0.75rem', minWidth: 'auto', p: 0.5 }}>
+                <Button size="small" onClick={() => setEditingLocation(true)} sx={{ color: '#00D4AA', fontSize: '0.75rem', minWidth: 'auto', p: 0.5 }}>
                   Editar
                 </Button>
               </Box>

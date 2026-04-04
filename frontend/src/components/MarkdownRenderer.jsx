@@ -24,7 +24,7 @@ const MarkdownRenderer = ({ content }) => {
       <Typography
         component="h2"
         variant="h5"
-        sx={{ fontWeight: 700, mt: 4, mb: 1.5, color: 'text.primary', borderBottom: '2px solid #F57C00', pb: 0.5 }}
+        sx={{ fontWeight: 700, mt: 4, mb: 1.5, color: 'text.primary', borderBottom: '2px solid #00D4AA', pb: 0.5 }}
       >
         {children}
       </Typography>
@@ -78,7 +78,7 @@ const MarkdownRenderer = ({ content }) => {
       <Box
         component="pre"
         sx={{
-          bgcolor: '#1A2027',
+          bgcolor: '#0D1117',
           color: '#e8e8e8',
           borderRadius: 2,
           p: 2.5,
@@ -101,7 +101,7 @@ const MarkdownRenderer = ({ content }) => {
         sx={{
           fontFamily: '"Fira Mono", "Cascadia Code", monospace',
           fontSize: '0.875em',
-          bgcolor: 'rgba(245,124,0,0.10)',
+          bgcolor: 'rgba(0, 212, 170,0.10)',
           color: '#b45309',
           px: '5px',
           py: '2px',
@@ -158,7 +158,7 @@ const MarkdownRenderer = ({ content }) => {
     blockquote: ({ children }) => (
       <Box
         sx={{
-          borderLeft: '4px solid #F57C00',
+          borderLeft: '4px solid #00D4AA',
           pl: 2,
           ml: 0,
           my: 2,
@@ -174,7 +174,7 @@ const MarkdownRenderer = ({ content }) => {
         component="a"
         href={href}
         sx={{
-          color: '#F57C00',
+          color: '#00D4AA',
           textDecoration: 'none',
           fontWeight: 500,
           '&:hover': { textDecoration: 'underline' },

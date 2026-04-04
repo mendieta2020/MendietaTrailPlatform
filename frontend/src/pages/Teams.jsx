@@ -85,11 +85,11 @@ const Teams = () => {
             startIcon={<Add />}
             onClick={() => setOpenModal(true)}
             sx={{ 
-              bgcolor: '#F57C00', 
+              bgcolor: '#00D4AA', 
               borderRadius: 2, 
               textTransform: 'none', 
               fontWeight: 600,
-              boxShadow: '0 4px 14px 0 rgba(245, 124, 0, 0.39)'
+              boxShadow: '0 4px 14px 0 rgba(0, 212, 170, 0.39)'
             }}
         >
             Nuevo Grupo
@@ -126,7 +126,7 @@ const Teams = () => {
                   '&:hover': { 
                     transform: 'translateY(-4px)', 
                     boxShadow: '0 12px 24px rgba(0,0,0,0.08)',
-                    borderColor: '#F57C00' // Borde naranja al pasar el mouse
+                    borderColor: '#00D4AA' // Borde naranja al pasar el mouse
                   } 
                 }}
               >
@@ -158,7 +158,7 @@ const Teams = () => {
                     <AvatarGroup max={4} sx={{ '& .MuiAvatar-root': { width: 28, height: 28, fontSize: 12 } }}>
                       <Avatar sx={{ bgcolor: '#3B82F6' }}>A</Avatar>
                       <Avatar sx={{ bgcolor: '#EF4444' }}>B</Avatar>
-                      <Avatar sx={{ bgcolor: '#10B981' }}>C</Avatar>
+                      <Avatar sx={{ bgcolor: '#00D4AA' }}>C</Avatar>
                     </AvatarGroup>
                   </Tooltip>
                   
@@ -170,7 +170,7 @@ const Teams = () => {
                       e.stopPropagation(); 
                       goToTeamDetail(team.id); 
                     }}
-                    sx={{ fontWeight: 700, textTransform: 'none', color: '#F57C00' }}
+                    sx={{ fontWeight: 700, textTransform: 'none', color: '#00D4AA' }}
                   >
                     Ver Calendario
                   </Button>
@@ -219,7 +219,7 @@ const Teams = () => {
             onClick={handleCreateTeam} 
             variant="contained" 
             disableElevation
-            sx={{ bgcolor: '#F57C00', color: 'white', borderRadius: 2, textTransform: 'none', fontWeight: 600, '&:hover': { bgcolor: '#ea580c' } }}
+            sx={{ bgcolor: '#00D4AA', color: 'white', borderRadius: 2, textTransform: 'none', fontWeight: 600, '&:hover': { bgcolor: '#ea580c' } }}
           >
             Crear Grupo
           </Button>

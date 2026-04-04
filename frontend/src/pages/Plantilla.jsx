@@ -129,14 +129,14 @@ function WorkoutCard({ workout, onDragStart, onDragEnd }) {
       onDragEnd={() => { onDragEnd(); setDragging(false); }}
       sx={{
         p: 1.5, mb: 0.75, borderRadius: 1.5,
-        bgcolor: dragging ? 'rgba(245,124,0,0.12)' : '#1c2230',
+        bgcolor: dragging ? 'rgba(0, 212, 170,0.12)' : '#1c2230',
         border: '1px solid',
-        borderColor: dragging ? '#F57C00' : 'rgba(255,255,255,0.07)',
+        borderColor: dragging ? '#00D4AA' : 'rgba(255,255,255,0.07)',
         cursor: 'grab', opacity: dragging ? 0.45 : 1,
-        '&:hover': { borderColor: '#F57C00', bgcolor: 'rgba(245,124,0,0.07)' },
+        '&:hover': { borderColor: '#00D4AA', bgcolor: 'rgba(0, 212, 170,0.07)' },
       }}
     >
-      <Typography variant="caption" sx={{ color: '#F57C00', fontWeight: 600, display: 'block', lineHeight: 1 }}>
+      <Typography variant="caption" sx={{ color: '#00D4AA', fontWeight: 600, display: 'block', lineHeight: 1 }}>
         <FitnessCenter sx={{ fontSize: 10, mr: 0.5, verticalAlign: 'middle' }} />
         arrastrar
       </Typography>
@@ -195,7 +195,7 @@ function LibrarySidebar({ orgId, onDragStart, onDragEnd, collapsed, onToggle }) 
         <Box sx={{ flex: 1, overflowY: 'auto', p: 1 }}>
           {libState.loading && (
             <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-              <CircularProgress size={20} sx={{ color: '#F57C00' }} />
+              <CircularProgress size={20} sx={{ color: '#00D4AA' }} />
             </Box>
           )}
           {!libState.loading && !libState.data.length && (
@@ -222,7 +222,7 @@ function LibrarySidebar({ orgId, onDragStart, onDragEnd, collapsed, onToggle }) 
               </AccordionSummary>
               <AccordionDetails sx={{ p: 0, pl: 0.5 }}>
                 {loadingWorkouts[lib.id] && (
-                  <CircularProgress size={14} sx={{ color: '#F57C00', m: 1 }} />
+                  <CircularProgress size={14} sx={{ color: '#00D4AA', m: 1 }} />
                 )}
                 {(workoutsByLib[lib.id] ?? []).map((w) => (
                   <WorkoutCard key={w.id} workout={w} onDragStart={onDragStart} onDragEnd={onDragEnd} />
@@ -275,8 +275,8 @@ function DayCell({ day, dayData, sessionCount, onDotClick, onDrop, draggingRef }
         width: 52, height: 48, position: 'relative',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         borderRadius: 1,
-        bgcolor: dragOver ? 'rgba(245,124,0,0.15)' : 'transparent',
-        border: dragOver ? '1px dashed #F57C00' : '1px solid transparent',
+        bgcolor: dragOver ? 'rgba(0, 212, 170,0.15)' : 'transparent',
+        border: dragOver ? '1px dashed #00D4AA' : '1px solid transparent',
         transition: 'background-color 0.1s, border-color 0.1s',
       }}
     >
@@ -502,7 +502,7 @@ function AlertModal({ open, onClose, athleteId, userId, athleteName, orgId, onSe
                 <Button
                   size="small"
                   variant="text"
-                  sx={{ alignSelf: 'flex-start', color: '#F57C00', pl: 0 }}
+                  sx={{ alignSelf: 'flex-start', color: '#00D4AA', pl: 0 }}
                   onClick={() => {
                     // Use the same sessionStorage key Calendar.jsx reads for target selection
                     sessionStorage.setItem('calendarSelectedTarget', `a:${athleteId}`);
@@ -555,7 +555,7 @@ function AlertModal({ open, onClose, athleteId, userId, athleteName, orgId, onSe
             variant="contained"
             disabled={sending || !msgText.trim()}
             onClick={handleSend}
-            sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#E65100' } }}
+            sx={{ bgcolor: '#00D4AA', '&:hover': { bgcolor: '#00BF99' } }}
           >
             {sending ? 'Enviando…' : 'Enviar →'}
           </Button>
@@ -785,7 +785,7 @@ export default function Plantilla() {
           <Box sx={{ flex: 1, overflowY: 'auto', px: 2, py: 1.5 }}>
             {complianceState.loading && (
               <Box sx={{ display: 'flex', justifyContent: 'center', mt: 6 }}>
-                <CircularProgress sx={{ color: '#F57C00' }} />
+                <CircularProgress sx={{ color: '#00D4AA' }} />
               </Box>
             )}
             {complianceState.error && (
@@ -804,7 +804,7 @@ export default function Plantilla() {
                           checked={allSelected}
                           indeterminate={someSelected}
                           onChange={toggleAll}
-                          sx={{ color: '#64748b', '&.Mui-checked': { color: '#F57C00' }, '&.MuiCheckbox-indeterminate': { color: '#F57C00' } }}
+                          sx={{ color: '#64748b', '&.Mui-checked': { color: '#00D4AA' }, '&.MuiCheckbox-indeterminate': { color: '#00D4AA' } }}
                         />
                       </Box>
                       {/* Athlete col */}
@@ -840,7 +840,7 @@ export default function Plantilla() {
                         key={athlete.athlete_id}
                         sx={{
                           borderTop: '1px solid rgba(255,255,255,0.05)',
-                          bgcolor: selected.has(athlete.athlete_id) ? 'rgba(245,124,0,0.06)' : 'transparent',
+                          bgcolor: selected.has(athlete.athlete_id) ? 'rgba(0, 212, 170,0.06)' : 'transparent',
                           '&:hover': { bgcolor: 'rgba(255,255,255,0.03)' },
                         }}
                       >
@@ -850,7 +850,7 @@ export default function Plantilla() {
                             size="small"
                             checked={selected.has(athlete.athlete_id)}
                             onChange={() => toggleAthlete(athlete.athlete_id)}
-                            sx={{ color: '#64748b', '&.Mui-checked': { color: '#F57C00' } }}
+                            sx={{ color: '#64748b', '&.Mui-checked': { color: '#00D4AA' } }}
                           />
                         </Box>
                         {/* Athlete name */}
@@ -860,7 +860,7 @@ export default function Plantilla() {
                             onClick={() => handleAthleteClick(athlete.athlete_id, athlete.athlete_name)}
                             sx={{
                               color: '#cbd5e1', cursor: 'pointer', fontWeight: 500,
-                              '&:hover': { color: '#F57C00', textDecoration: 'underline' },
+                              '&:hover': { color: '#00D4AA', textDecoration: 'underline' },
                             }}
                             noWrap
                           >

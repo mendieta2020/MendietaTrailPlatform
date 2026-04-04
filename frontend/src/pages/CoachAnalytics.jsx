@@ -83,7 +83,7 @@ function LastActivityCell({ days }) {
 const MiniSparkline = ({ data = [], zone }) => {
   const color = {
     fresh: '#64748b',
-    optimal: '#10b981',
+    optimal: '#00D4AA',
     productive: '#f59e0b',
     fatigued: '#f97316',
     overreaching: '#ef4444',

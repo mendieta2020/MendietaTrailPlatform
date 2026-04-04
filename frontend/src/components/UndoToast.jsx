@@ -47,16 +47,16 @@ export default function UndoToast({ message, onUndo, onClose, duration = 5000 })
           onClick={() => { onUndo(); onClose(); }}
           sx={{
             background: 'none',
-            border: '1px solid rgba(245,124,0,0.5)',
+            border: '1px solid rgba(0, 212, 170,0.5)',
             borderRadius: 1,
-            color: '#F57C00',
+            color: '#00D4AA',
             cursor: 'pointer',
             fontWeight: 700,
             fontSize: '0.78rem',
             px: 1.2,
             py: 0.4,
             whiteSpace: 'nowrap',
-            '&:hover': { bgcolor: 'rgba(245,124,0,0.1)' },
+            '&:hover': { bgcolor: 'rgba(0, 212, 170,0.1)' },
           }}
         >
           Deshacer
@@ -68,7 +68,7 @@ export default function UndoToast({ message, onUndo, onClose, duration = 5000 })
         sx={{
           height: 3,
           bgcolor: 'rgba(255,255,255,0.08)',
-          '& .MuiLinearProgress-bar': { bgcolor: '#F57C00', transition: 'none' },
+          '& .MuiLinearProgress-bar': { bgcolor: '#00D4AA', transition: 'none' },
         }}
       />
     </Box>

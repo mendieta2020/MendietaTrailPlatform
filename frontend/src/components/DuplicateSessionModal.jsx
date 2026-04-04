@@ -23,8 +23,8 @@ export default function DuplicateSessionModal({ open, onClose, assignment, athle
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
       <DialogTitle>Duplicar sesión</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
-        <Box sx={{ bgcolor: 'rgba(245,124,0,0.08)', borderRadius: 1, px: 2, py: 1 }}>
-          <Typography variant="body2" sx={{ color: '#F57C00', fontWeight: 600 }}>
+        <Box sx={{ bgcolor: 'rgba(0, 212, 170,0.08)', borderRadius: 1, px: 2, py: 1 }}>
+          <Typography variant="body2" sx={{ color: '#00D4AA', fontWeight: 600 }}>
             {workoutName}
           </Typography>
         </Box>
@@ -64,7 +64,7 @@ export default function DuplicateSessionModal({ open, onClose, assignment, athle
           onClick={handleConfirm}
           variant="contained"
           disabled={!targetDate}
-          sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65c00' } }}
+          sx={{ bgcolor: '#00D4AA', '&:hover': { bgcolor: '#e65c00' } }}
         >
           Duplicar
         </Button>

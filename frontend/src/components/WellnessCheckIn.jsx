@@ -24,7 +24,7 @@ const DIMENSIONS = [
   { key: 'stress',          label: 'Estrés',       emoji: '🧘', low: 'Muy estresado', high: 'Muy relajado' },
 ];
 
-const DOT_COLORS = ['#EF4444', '#F97316', '#F59E0B', '#84CC16', '#10B981'];
+const DOT_COLORS = ['#EF4444', '#F97316', '#F59E0B', '#84CC16', '#00D4AA'];
 
 function ScoreInput({ dimension, value, onChange }) {
   return (
@@ -114,7 +114,7 @@ export function WellnessCheckIn({ firstName, orgId, athleteId, onDismissSession 
             variant="contained"
             fullWidth
             onClick={() => setPhase('checkin')}
-            sx={{ bgcolor: '#10B981', '&:hover': { bgcolor: '#059669' }, borderRadius: 2, textTransform: 'none', fontWeight: 700 }}>
+            sx={{ bgcolor: '#00D4AA', '&:hover': { bgcolor: '#059669' }, borderRadius: 2, textTransform: 'none', fontWeight: 700 }}>
             Seguir contestando
           </Button>
           <Button

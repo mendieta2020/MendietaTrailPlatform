@@ -249,7 +249,7 @@ export const ComplianceBarChart = ({ buckets = [], message, overallPct = null })
           />
           <Tooltip content={<ComplianceTooltip />} />
           <Bar dataKey="planned_sessions" fill="#cbd5e1" radius={[4, 4, 0, 0]} maxBarSize={40} name="Planificadas" />
-          <Bar dataKey="actual_sessions" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} name="Completadas" />
+          <Bar dataKey="actual_sessions" fill="#00D4AA" radius={[4, 4, 0, 0]} maxBarSize={40} name="Completadas" />
         </BarChart>
       </ResponsiveContainer>
     </div>

@@ -178,7 +178,7 @@ export default function CalendarGrid({
             <ChevronLeft fontSize="small" />
           </IconButton>
           {mobilePulling && (
-            <Typography variant="caption" sx={{ color: '#F57C00', fontSize: '0.7rem', fontWeight: 600 }}>
+            <Typography variant="caption" sx={{ color: '#00D4AA', fontSize: '0.7rem', fontWeight: 600 }}>
               Actualizando...
             </Typography>
           )}

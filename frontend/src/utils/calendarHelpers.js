@@ -126,7 +126,7 @@ export const TRAINING_PHASE_CONFIG = {
 
 export const MENSTRUAL_PHASES = [
   { name: 'Menstrual', color: '#EF4444', tip: 'Fase menstrual — escuchá a tu cuerpo' },
-  { name: 'Folicular', color: '#10B981', tip: 'Fase folicular — ideal para alta intensidad' },
+  { name: 'Folicular', color: '#00D4AA', tip: 'Fase folicular — ideal para alta intensidad' },
   { name: 'Ovulación', color: '#F59E0B', tip: 'Ovulación — pico de energía' },
   { name: 'Lútea',     color: '#F97316', tip: 'Fase lútea — considerá reducir intensidad' },
 ];

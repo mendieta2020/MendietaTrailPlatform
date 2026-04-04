@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box, Drawer, AppBar, Toolbar, List, Typography, Divider, IconButton,
   ListItem, ListItemButton, ListItemIcon, ListItemText, Avatar, Badge, Tooltip,
-  BottomNavigation, BottomNavigationAction, useTheme, useMediaQuery,
+  BottomNavigation, BottomNavigationAction, useTheme, useMediaQuery, SwipeableDrawer,
 } from '@mui/material';
 import {
   Home,
@@ -34,19 +34,15 @@ const menuItems = [
   { text: 'Perfil', icon: <Person />, path: '/athlete/profile' },
 ];
 
-// Bottom tabs for athlete (xs only)
-const ATHLETE_BOTTOM_TABS = [
-  { label: 'Hoy',      icon: <Home sx={{ fontSize: 22 }} />,         value: '/dashboard' },
-  { label: 'Entreno',  icon: <CalendarMonth sx={{ fontSize: 22 }} />, value: '/athlete/training' },
-  { label: 'Progreso', icon: <BarChart sx={{ fontSize: 22 }} />,      value: '/athlete/progress' },
-  { label: 'Perfil',   icon: <Person sx={{ fontSize: 22 }} />,        value: '/athlete/profile' },
-];
+// Bottom tabs for athlete (xs only) — defined inside component to support dynamic Entreno badge
 
 const AthleteLayout = ({ children, user }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const [mobileOpen, setMobileOpen] = useState(false);
+  // TODO: wire todayHasPending to /api/athlete/today/ — set true when has_workout && !completed
+  const [todayHasPending, setTodayHasPending] = useState(false); // eslint-disable-line no-unused-vars
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem(LS_KEY) === 'true'; } catch { return false; }
   });
@@ -121,14 +117,14 @@ const AthleteLayout = ({ children, user }) => {
     : user?.username ?? '';
 
   const drawer = (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#1A2027', color: 'white' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#0D1117', color: 'white' }}>
       <Toolbar sx={{ display: 'flex', justifyContent: 'center', py: 2, minHeight: 56 }}>
         {collapsed ? (
-          <Typography variant="h6" noWrap sx={{ fontWeight: 'bold', color: '#F57C00', fontSize: '1rem' }}>
+          <Typography variant="h6" noWrap sx={{ fontWeight: 'bold', color: '#00D4AA', fontSize: '1rem' }}>
             SM
           </Typography>
         ) : (
-          <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 'bold', letterSpacing: 1, color: '#F57C00' }}>
+          <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 'bold', letterSpacing: 1, color: '#00D4AA' }}>
             SENDERO <span style={{ color: 'white' }}>MENDIETA</span>
           </Typography>
         )}
@@ -140,7 +136,7 @@ const AthleteLayout = ({ children, user }) => {
       {!collapsed && (
         <>
           <Box sx={{ px: 2, py: 2, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Avatar sx={{ bgcolor: '#F57C00', fontWeight: 'bold', width: 36, height: 36, fontSize: '0.85rem' }}>
+            <Avatar sx={{ bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 'bold', width: 36, height: 36, fontSize: '0.85rem' }}>
               {initials}
             </Avatar>
             <Box>
@@ -168,16 +164,16 @@ const AthleteLayout = ({ children, user }) => {
                     justifyContent: collapsed ? 'center' : 'flex-start',
                     px: collapsed ? 1 : 2,
                     '&.Mui-selected': {
-                      bgcolor: 'rgba(245, 124, 0, 0.15)',
-                      borderLeft: collapsed ? 'none' : '4px solid #F57C00',
-                      color: '#F57C00',
+                      bgcolor: 'rgba(0, 212, 170, 0.15)',
+                      borderLeft: collapsed ? 'none' : '4px solid #00D4AA',
+                      color: '#00D4AA',
                     },
                     '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
                   }}
                 >
                   <ListItemIcon sx={{
                     minWidth: collapsed ? 0 : 40,
-                    color: isActive ? '#F57C00' : '#94A3B8',
+                    color: isActive ? '#00D4AA' : '#94A3B8',
                     justifyContent: 'center',
                   }}>
                     {item.icon}
@@ -230,7 +226,7 @@ const AthleteLayout = ({ children, user }) => {
           <IconButton
             size="small"
             onClick={toggleCollapsed}
-            sx={{ color: '#64748B', '&:hover': { color: '#F57C00' } }}
+            sx={{ color: '#64748B', '&:hover': { color: '#00D4AA' } }}
           >
             {collapsed ? <ChevronRightIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" />}
           </IconButton>
@@ -238,6 +234,22 @@ const AthleteLayout = ({ children, user }) => {
       </Box>
     </div>
   );
+
+  // Build athlete bottom tabs with dynamic Entreno badge
+  const ATHLETE_BOTTOM_TABS = [
+    { label: 'Hoy',      icon: <Home sx={{ fontSize: 22 }} />,         value: '/dashboard' },
+    {
+      label: 'Entreno',
+      icon: (
+        <Badge badgeContent={todayHasPending ? '' : null} variant="dot" color="error" overlap="circular">
+          <CalendarMonth sx={{ fontSize: 22 }} />
+        </Badge>
+      ),
+      value: '/athlete/training',
+    },
+    { label: 'Progreso', icon: <BarChart sx={{ fontSize: 22 }} />,      value: '/athlete/progress' },
+    { label: 'Perfil',   icon: <Person sx={{ fontSize: 22 }} />,        value: '/athlete/profile' },
+  ];
 
   // Determine active bottom tab value
   const activeBottomTab = ATHLETE_BOTTOM_TABS.find(
@@ -264,7 +276,7 @@ const AthleteLayout = ({ children, user }) => {
             <>
               <Typography
                 noWrap
-                sx={{ fontWeight: 800, fontSize: '0.9rem', letterSpacing: 1, color: '#F57C00' }}
+                sx={{ fontWeight: 800, fontSize: '0.9rem', letterSpacing: 1, color: '#00D4AA' }}
               >
                 S. <span style={{ color: '#1E293B' }}>MENDIETA</span>
               </Typography>
@@ -275,7 +287,7 @@ const AthleteLayout = ({ children, user }) => {
                 </Badge>
               </IconButton>
               <Avatar
-                sx={{ bgcolor: '#F57C00', fontWeight: 'bold', width: 30, height: 30, fontSize: '0.75rem' }}
+                sx={{ bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 'bold', width: 30, height: 30, fontSize: '0.75rem' }}
                 onClick={() => navigate('/athlete/profile')}
               >
                 {initials}
@@ -295,7 +307,7 @@ const AthleteLayout = ({ children, user }) => {
                   <NotificationsIcon />
                 </Badge>
               </IconButton>
-              <Avatar sx={{ bgcolor: '#F57C00', fontWeight: 'bold', width: 32, height: 32, fontSize: '0.8rem' }}>
+              <Avatar sx={{ bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 'bold', width: 32, height: 32, fontSize: '0.8rem' }}>
                 {initials}
               </Avatar>
             </>
@@ -322,7 +334,7 @@ const AthleteLayout = ({ children, user }) => {
             '& .MuiDrawer-paper': {
               width: drawerWidth,
               borderRight: 'none',
-              bgcolor: '#1A2027',
+              bgcolor: '#0D1117',
               overflowX: 'hidden',
               transition: 'width 0.2s ease',
             },
@@ -371,24 +383,26 @@ const AthleteLayout = ({ children, user }) => {
           }}
           sx={{
             height: 'auto',
-            minHeight: 56,
+            minHeight: 64,
             paddingBottom: 'env(safe-area-inset-bottom)',
             bgcolor: 'transparent',
             '& .MuiBottomNavigationAction-root': {
               minWidth: 0,
               padding: '6px 4px',
-              color: '#94a3b8',
+              color: '#8B949E',
             },
             '& .MuiBottomNavigationAction-root.Mui-selected': {
-              color: '#F57C00',
+              color: '#00D4AA',
             },
             '& .MuiBottomNavigationAction-label': {
-              fontSize: '0.62rem',
-              fontWeight: 500,
+              opacity: '1 !important',
+              fontSize: '0.65rem',
+              fontWeight: 600,
               marginTop: 2,
             },
             '& .MuiBottomNavigationAction-root.Mui-selected .MuiBottomNavigationAction-label': {
-              fontSize: '0.62rem',
+              opacity: '1 !important',
+              fontSize: '0.65rem',
               fontWeight: 700,
             },
           }}

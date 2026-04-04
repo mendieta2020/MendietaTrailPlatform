@@ -60,7 +60,7 @@ export default function WeeklyLoadEstimate({ membershipId, weekStart, trigger })
   if (loading) {
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.75 }}>
-        <CircularProgress size={14} sx={{ color: '#F57C00' }} />
+        <CircularProgress size={14} sx={{ color: '#00D4AA' }} />
         <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.67rem' }}>
           Calculando carga estimada…
         </Typography>

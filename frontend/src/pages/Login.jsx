@@ -12,7 +12,7 @@ const BackgroundBox = styled(Box)({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)',
+    background: 'linear-gradient(135deg, #0D1117 0%, #1A2332 100%)',
     backgroundSize: 'cover',
 });
 
@@ -91,7 +91,7 @@ const Login = () => {
                         fullWidth 
                         variant="contained" 
                         size="large"
-                        sx={{ mt: 3, mb: 2, bgcolor: '#ff6b00', '&:hover': { bgcolor: '#e65100' } }}
+                        sx={{ mt: 3, mb: 2, bgcolor: '#00D4AA', '&:hover': { bgcolor: '#00BF99' } }}
                     >
                         Ingresar
                     </Button>

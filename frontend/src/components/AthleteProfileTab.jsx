@@ -22,7 +22,7 @@ function Section({ title, children, onEdit, editing, onSave, onCancel, saving })
           {title}
         </Typography>
         {!editing && onEdit && (
-          <Button size="small" onClick={onEdit} sx={{ color: '#F57C00', fontSize: '0.75rem' }}>
+          <Button size="small" onClick={onEdit} sx={{ color: '#00D4AA', fontSize: '0.75rem' }}>
             Editar
           </Button>
         )}
@@ -36,7 +36,7 @@ function Section({ title, children, onEdit, editing, onSave, onCancel, saving })
               variant="contained"
               onClick={onSave}
               disabled={saving}
-              sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' }, fontSize: '0.75rem' }}
+              sx={{ bgcolor: '#00D4AA', '&:hover': { bgcolor: '#00BF99' }, fontSize: '0.75rem' }}
             >
               {saving ? <CircularProgress size={12} sx={{ color: '#fff' }} /> : 'Guardar'}
             </Button>
@@ -355,7 +355,7 @@ export default function AthleteProfileTab({ membershipId }) {
                   border: `2px solid ${day.is_available ? '#22c55e' : '#e2e8f0'}`,
                   minWidth: 80, textAlign: 'center',
                   transition: 'all 0.15s',
-                  '&:hover': { borderColor: day.is_available ? '#16a34a' : '#F57C00' },
+                  '&:hover': { borderColor: day.is_available ? '#16a34a' : '#00D4AA' },
                 }}
               >
                 <Typography variant="caption" sx={{ fontWeight: 700, color: day.is_available ? '#16a34a' : '#94a3b8', fontSize: '0.75rem', display: 'block' }}>
