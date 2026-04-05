@@ -1026,6 +1026,18 @@ class Organization(models.Model):
     name = models.CharField(max_length=200)
     slug = models.SlugField(max_length=100, unique=True)
     is_active = models.BooleanField(default=True, db_index=True)
+    # PR-165b: Organization profile fields
+    description = models.TextField(blank=True, default="")
+    contact_email = models.EmailField(blank=True, default="")
+    phone = models.CharField(max_length=30, blank=True, default="")
+    instagram = models.CharField(max_length=100, blank=True, default="")
+    website = models.URLField(blank=True, default="")
+    city = models.CharField(max_length=120, blank=True, default="")
+    disciplines = models.CharField(
+        max_length=300, blank=True, default="",
+        help_text="Comma-separated: Trail Running, Ultra, Maratón",
+    )
+    founded_year = models.PositiveIntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

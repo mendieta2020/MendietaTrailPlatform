@@ -35,9 +35,11 @@ from core.models import (
     Athlete,
     AthleteCoachAssignment,
     AthleteNotification,
+    AthleteSubscription,
     Coach,
     InternalMessage,
     Membership,
+    Organization,
     Team,
     TeamInvitation,
     WorkoutAssignment,
@@ -1025,3 +1027,159 @@ class TeamMembersView(APIView):
             })
 
         return Response(data)
+
+
+# ── PR-165b: Org Profile ──────────────────────────────────────────────────────
+
+_PROFILE_FIELDS = [
+    "description", "contact_email", "phone", "instagram",
+    "website", "city", "disciplines", "founded_year",
+]
+
+
+class OrgProfileView(APIView):
+    """
+    GET  /api/p1/orgs/{org_id}/profile/ — any member reads org profile
+    PATCH /api/p1/orgs/{org_id}/profile/ — owner/admin only
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, org_id):
+        membership = Membership.objects.filter(
+            user=request.user,
+            organization_id=org_id,
+            is_active=True,
+        ).first()
+        if not membership:
+            return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+        org = Organization.objects.get(id=org_id)
+        return Response({
+            "id": org.id,
+            "name": org.name,
+            "slug": org.slug,
+            "description": org.description,
+            "contact_email": org.contact_email,
+            "phone": org.phone,
+            "instagram": org.instagram,
+            "website": org.website,
+            "city": org.city,
+            "disciplines": org.disciplines,
+            "founded_year": org.founded_year,
+        })
+
+    def patch(self, request, org_id):
+        membership = Membership.objects.filter(
+            user=request.user,
+            organization_id=org_id,
+            role__in=["owner", "admin"],
+            is_active=True,
+        ).first()
+        if not membership:
+            return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+        org = Organization.objects.get(id=org_id)
+        for field in _PROFILE_FIELDS:
+            if field in request.data:
+                setattr(org, field, request.data[field])
+        org.save()
+        return Response({"status": "updated"})
+
+
+# ── PR-165b: My Subscription (athlete view with coach + org data) ─────────────
+
+class MySubscriptionView(APIView):
+    """
+    GET /api/me/subscription/?org_id=<id>
+    Returns the authenticated athlete's subscription, coach info, and org branding.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.utils import timezone as tz
+
+        org_id = request.query_params.get("org_id")
+        if not org_id:
+            return Response({"detail": "org_id required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        membership = Membership.objects.filter(
+            user=request.user,
+            organization_id=org_id,
+            role="athlete",
+            is_active=True,
+        ).first()
+        if not membership:
+            return Response({"detail": "Not an athlete in this org"}, status=status.HTTP_404_NOT_FOUND)
+
+        athlete = (
+            Athlete.objects.filter(user=request.user, organization_id=org_id)
+            .select_related("coach__user")
+            .first()
+        )
+        if not athlete:
+            return Response({"detail": "Athlete profile not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Coach info
+        coach_data = None
+        if athlete.coach and athlete.coach.user:
+            c = athlete.coach
+            coach_data = {
+                "name": (
+                    f"{c.user.first_name} {c.user.last_name}".strip()
+                    or c.user.username
+                ),
+                "email": c.user.email,
+                "bio": c.bio,
+                "specialties": c.specialties,
+                "years_experience": c.years_experience,
+                "certifications": c.certifications,
+            }
+
+        # Subscription info
+        sub = (
+            AthleteSubscription.objects.filter(
+                athlete=athlete,
+                organization_id=org_id,
+            )
+            .select_related("coach_plan")
+            .order_by("-created_at")
+            .first()
+        )
+
+        sub_data = None
+        if sub:
+            trial_active = False
+            trial_days_remaining = 0
+            if sub.trial_ends_at:
+                remaining = (sub.trial_ends_at - tz.now()).total_seconds()
+                if remaining > 0:
+                    trial_active = True
+                    trial_days_remaining = max(0, int(remaining / 86400))
+
+            sub_data = {
+                "id": sub.id,
+                "status": sub.status,
+                "plan_name": sub.coach_plan.name if sub.coach_plan else None,
+                "plan_price": str(sub.coach_plan.price_ars) if sub.coach_plan else None,
+                "last_payment_at": (
+                    sub.last_payment_at.isoformat() if sub.last_payment_at else None
+                ),
+                "next_payment_at": (
+                    sub.next_payment_at.isoformat() if sub.next_payment_at else None
+                ),
+                "trial_ends_at": (
+                    sub.trial_ends_at.isoformat() if sub.trial_ends_at else None
+                ),
+                "trial_active": trial_active,
+                "trial_days_remaining": trial_days_remaining,
+                "mp_preapproval_id": sub.mp_preapproval_id,
+            }
+
+        org = Organization.objects.get(id=org_id)
+        return Response({
+            "coach": coach_data,
+            "subscription": sub_data,
+            "organization": {
+                "name": org.name,
+                "description": org.description,
+                "city": org.city,
+            },
+        })

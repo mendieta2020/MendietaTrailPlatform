@@ -162,9 +162,13 @@ class CompletedActivityAdmin(admin.ModelAdmin):
 
 @admin.register(Organization)
 class OrganizationAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "is_active", "created_at")
-    search_fields = ("name", "slug")
+    list_display = ("name", "slug", "city", "is_active", "created_at")
+    search_fields = ("name", "slug", "city")
     prepopulated_fields = {"slug": ("name",)}
+    fieldsets = (
+        (None, {"fields": ("name", "slug", "is_active")}),
+        ("Perfil", {"fields": ("description", "contact_email", "phone", "instagram", "website", "city", "disciplines", "founded_year")}),
+    )
 
 
 @admin.register(Team)

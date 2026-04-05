@@ -188,3 +188,14 @@ export const deleteTeamInvitation = (orgId, invitationId) =>
 
 export const listTeamMembers = (orgId) =>
   client.get(`${p1Base(orgId)}/team-members/`);
+
+// ── PR-165b: Org Profile + Athlete subscription with coach data ───────────────
+
+export const getOrgProfile = (orgId) =>
+  client.get(`${p1Base(orgId)}/profile/`);
+
+export const updateOrgProfile = (orgId, data) =>
+  client.patch(`${p1Base(orgId)}/profile/`, data);
+
+export const getMySubscriptionWithCoach = (orgId) =>
+  client.get(`/api/me/subscription/?org_id=${orgId}`);

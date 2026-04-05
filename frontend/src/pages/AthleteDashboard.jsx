@@ -12,13 +12,17 @@ import AthleteLayout from '../components/AthleteLayout';
 import useWeather from '../hooks/useWeather';
 import client from '../api/client';
 import { getBillingStatus, getMySubscription } from '../api/billing';
-import { listAthleteGoals } from '../api/p1';
+import { listAthleteGoals, getMySubscriptionWithCoach } from '../api/p1';
 import {
   getDeviceStatus,
   dismissDevicePreference,
   markNotificationRead,
 } from '../api/athlete';
 import { WellnessCheckIn } from '../components/WellnessCheckIn';
+import CoachInfoCard from '../components/CoachInfoCard';
+import CoachPlanCard from '../components/SubscriptionCard';
+import TrialBannerWidget from '../components/TrialBanner';
+import TrialPaywall from '../components/TrialPaywall';
 import { useNavigate } from 'react-router-dom';
 
 // ─── Greeting based on time of day ────────────────────────────────────────────
@@ -416,6 +420,7 @@ const AthleteDashboard = ({ user }) => {
   const [deviceStatus, setDeviceStatus] = useState(null);
   const [pendingNotifications, setPendingNotifications] = useState([]);
   const [mySub, setMySub] = useState(null);
+  const [mySubWithCoach, setMySubWithCoach] = useState(null);
   const [goals, setGoals] = useState([]);
   const [welcomeDismissed, setWelcomeDismissed] = useState(
     () => localStorage.getItem('quantoryn_welcome_done') === 'true'
@@ -477,6 +482,14 @@ const AthleteDashboard = ({ user }) => {
     getMySubscription()
       .then(res => setMySub(res.data))
       .catch(() => setMySub(null));
+
+    // PR-165b: Fetch subscription with coach + org data
+    const orgIdForCoach = user?.memberships?.[0]?.org_id || user?.org_id || null;
+    if (orgIdForCoach) {
+      getMySubscriptionWithCoach(orgIdForCoach)
+        .then(res => setMySubWithCoach(res.data))
+        .catch(() => setMySubWithCoach(null));
+    }
 
     // PR-164b: Fetch athlete goals for countdown card
     const orgId = user?.memberships?.[0]?.org_id || user?.org_id || null;
@@ -554,8 +567,42 @@ const AthleteDashboard = ({ user }) => {
         </Box>
       )}
 
-      {/* ── PR-152: Trial Banner ── */}
+      {/* ── PR-165b: Trial Paywall (full-screen, zIndex 1250) ── */}
+      {mySubWithCoach?.subscription && (() => {
+        const sub = mySubWithCoach.subscription;
+        if (sub.trial_ends_at && new Date(sub.trial_ends_at) < new Date() && sub.status !== 'active') {
+          return (
+            <TrialPaywall
+              trialEndsAt={sub.trial_ends_at}
+              status={sub.status}
+              planName={sub.plan_name}
+              planPrice={sub.plan_price}
+              coachName={mySubWithCoach.coach?.name}
+              mpPreapprovalId={sub.mp_preapproval_id}
+            />
+          );
+        }
+        return null;
+      })()}
+
+      {/* ── PR-152: Trial Banner (existing inline component, kept for compatibility) ── */}
       <TrialBanner mySub={mySub} />
+
+      {/* ── PR-165b: New trial banner widget (shows < 5 days) ── */}
+      {mySubWithCoach?.subscription && (
+        <TrialBannerWidget
+          trialEndsAt={mySubWithCoach.subscription.trial_ends_at}
+          status={mySubWithCoach.subscription.status}
+        />
+      )}
+
+      {/* ── PR-165b: Coach info card ── */}
+      {mySubWithCoach?.coach && (
+        <CoachInfoCard
+          coach={mySubWithCoach.coach}
+          orgName={mySubWithCoach.organization?.name}
+        />
+      )}
 
       {/* ── Onboarding banner: shown after welcome dismissed, no device yet ── */}
       {welcomeDismissed && !hasDevice && !onboardingBannerDismissed && (
@@ -696,44 +743,52 @@ const AthleteDashboard = ({ user }) => {
         </Grid>
 
         <Grid size={{ xs: 12, md: 4 }}>
-          {/* ── Subscription card ── */}
+          {/* ── Subscription card (billing.is_active — coach billing) ── */}
           <SubscriptionCard billing={billing} loading={billingLoading} />
 
-          {/* ── PR-150: Coach plan subscription widget ── */}
-          {mySub?.has_subscription && (
-            <Paper sx={{ p: 2.5, borderRadius: 2, mt: 2, borderLeft: `4px solid ${mySub.status === 'active' ? '#00D4AA' : mySub.status === 'overdue' ? '#EF4444' : '#F59E0B'}` }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <CreditCard sx={{ color: mySub.status === 'active' ? '#00D4AA' : '#F59E0B', fontSize: 20 }} />
-                <Typography variant="body2" sx={{ fontWeight: 700, color: '#1E293B' }}>
-                  Mi suscripción
-                </Typography>
-              </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Box>
-                  <Typography variant="body2" sx={{ fontWeight: 600, color: '#334155' }}>
-                    {mySub.plan_name}
-                  </Typography>
-                  <Typography variant="caption" sx={{ color: '#64748B' }}>
-                    {mySub.next_payment_at ? `Próximo cobro: ${new Date(mySub.next_payment_at).toLocaleDateString('es-AR')}` : ''}
-                  </Typography>
-                </Box>
-                <Box sx={{ textAlign: 'right' }}>
+          {/* ── PR-165b: Enhanced coach plan card ── */}
+          {mySubWithCoach?.subscription ? (
+            <CoachPlanCard
+              subscription={mySubWithCoach.subscription}
+              orgName={mySubWithCoach.organization?.name}
+            />
+          ) : (
+            /* ── PR-150 fallback: original inline subscription widget ── */
+            mySub?.has_subscription && (
+              <Paper sx={{ p: 2.5, borderRadius: 2, mt: 2, borderLeft: `4px solid ${mySub.status === 'active' ? '#00D4AA' : mySub.status === 'overdue' ? '#EF4444' : '#F59E0B'}` }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                  <CreditCard sx={{ color: mySub.status === 'active' ? '#00D4AA' : '#F59E0B', fontSize: 20 }} />
                   <Typography variant="body2" sx={{ fontWeight: 700, color: '#1E293B' }}>
-                    ${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(mySub.price_ars)}
-                    <Typography component="span" variant="caption" sx={{ color: '#94A3B8' }}>/mes</Typography>
+                    Mi suscripción
                   </Typography>
-                  <Chip
-                    label={mySub.status === 'active' ? 'Al día' : mySub.status === 'overdue' ? 'Vencido' : 'Pendiente'}
-                    size="small"
-                    sx={{
-                      bgcolor: mySub.status === 'active' ? '#DCFCE7' : mySub.status === 'overdue' ? '#FEE2E2' : '#FEF3C7',
-                      color: mySub.status === 'active' ? '#166534' : mySub.status === 'overdue' ? '#991B1B' : '#92400E',
-                      fontWeight: 600, height: 20, fontSize: '0.7rem',
-                    }}
-                  />
                 </Box>
-              </Box>
-            </Paper>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: '#334155' }}>
+                      {mySub.plan_name}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#64748B' }}>
+                      {mySub.next_payment_at ? `Próximo cobro: ${new Date(mySub.next_payment_at).toLocaleDateString('es-AR')}` : ''}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ textAlign: 'right' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700, color: '#1E293B' }}>
+                      ${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(mySub.price_ars)}
+                      <Typography component="span" variant="caption" sx={{ color: '#94A3B8' }}>/mes</Typography>
+                    </Typography>
+                    <Chip
+                      label={mySub.status === 'active' ? 'Al día' : mySub.status === 'overdue' ? 'Vencido' : 'Pendiente'}
+                      size="small"
+                      sx={{
+                        bgcolor: mySub.status === 'active' ? '#DCFCE7' : mySub.status === 'overdue' ? '#FEE2E2' : '#FEF3C7',
+                        color: mySub.status === 'active' ? '#166534' : mySub.status === 'overdue' ? '#991B1B' : '#92400E',
+                        fontWeight: 600, height: 20, fontSize: '0.7rem',
+                      }}
+                    />
+                  </Box>
+                </Box>
+              </Paper>
+            )
           )}
         </Grid>
       </Grid>
