@@ -429,7 +429,7 @@ export default function WorkoutLibraryPage() {
       {libError && <Alert severity="error" sx={{ mb: 2 }}>{libError}</Alert>}
 
       {/* ── 2-Column Layout ── */}
-      <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-start', minHeight: '70vh' }}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 3, alignItems: 'flex-start', minHeight: { xs: 'auto', sm: '70vh' } }}>
 
         {/* ── LEFT COLUMN: Folders ── */}
         <Paper elevation={2} sx={{ width: 280, flexShrink: 0, borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>

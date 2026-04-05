@@ -26,6 +26,7 @@ import {
   MoreHoriz,
 } from '@mui/icons-material';
 import { BarChart2 } from 'lucide-react';
+import QuantorynLogo from './QuantorynLogo';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { logoutSession } from '../api/authClient';
 import { getMessages, markMessageRead } from '../api/messages';
@@ -50,7 +51,7 @@ const Layout = ({ children }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false); // eslint-disable-line no-unused-vars
   const [moreDrawerOpen, setMoreDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem(LS_KEY) === 'true'; } catch { return false; }
@@ -192,23 +193,18 @@ const Layout = ({ children }) => {
     { text: 'Mi Organización',  icon: <Business />,           path: '/coach-dashboard' },
   ];
 
-  const handleDrawerToggle = () => {
-    setMobileOpen(!mobileOpen);
-  };
-
   const drawer = (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#0D1117', color: 'white' }}>
       {/* HEADER */}
-      <Toolbar sx={{ display: 'flex', justifyContent: collapsed ? 'center' : 'center', py: 2, minHeight: 56 }}>
-        {collapsed ? (
-          <Typography variant="h6" noWrap sx={{ fontWeight: 'bold', color: '#00D4AA', fontSize: '1rem' }}>
-            SM
-          </Typography>
-        ) : (
-          <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 'bold', letterSpacing: 1, color: '#00D4AA' }}>
-            SENDERO <span style={{ color: 'white' }}>MENDIETA</span>
-          </Typography>
-        )}
+      <Toolbar sx={{ display: 'flex', justifyContent: 'center', py: 2, minHeight: 56 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 1 }}>
+          <QuantorynLogo size={collapsed ? 28 : 32} />
+          {!collapsed && (
+            <Typography noWrap sx={{ fontWeight: 800, fontSize: '0.95rem', letterSpacing: '0.08em', color: '#fff' }}>
+              QUANTORYN
+            </Typography>
+          )}
+        </Box>
       </Toolbar>
 
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
@@ -354,6 +350,203 @@ const Layout = ({ children }) => {
     (t) => t.value !== 'mas' && location.pathname.startsWith(t.value)
   )?.value ?? false;
 
+  const bottomNavSx = {
+    height: 'auto',
+    minHeight: 64,
+    bgcolor: 'transparent',
+    '& .MuiBottomNavigationAction-root': {
+      minWidth: 0,
+      padding: '6px 4px',
+      color: '#8B949E',
+    },
+    '& .MuiBottomNavigationAction-root.Mui-selected': {
+      color: '#00D4AA',
+    },
+    '& .MuiBottomNavigationAction-label': {
+      opacity: '1 !important',
+      fontSize: '0.65rem',
+      fontWeight: 600,
+      marginTop: 2,
+    },
+    '& .MuiBottomNavigationAction-root.Mui-selected .MuiBottomNavigationAction-label': {
+      opacity: '1 !important',
+      fontSize: '0.65rem',
+      fontWeight: 700,
+    },
+  };
+
+  // ── MOBILE: flex-column layout — header + scroll area + bottom nav ──
+  if (isMobile) {
+    return (
+      <Box sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100dvh',
+        overflow: 'hidden',
+      }}>
+        {/* HEADER — static, never scrolls */}
+        <AppBar position="static" elevation={0} sx={{
+          bgcolor: 'white',
+          color: '#1E293B',
+          borderBottom: '1px solid #e2e8f0',
+          flexShrink: 0,
+        }}>
+          <Toolbar sx={{ minHeight: 48, px: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+              <QuantorynLogo size={24} color="#00D4AA" />
+              <Typography noWrap sx={{ fontWeight: 800, fontSize: '0.85rem', letterSpacing: '0.08em', color: '#0D1117' }}>
+                QUANTORYN
+              </Typography>
+            </Box>
+            <Box sx={{ flexGrow: 1 }} />
+            <IconButton color="inherit" size="small" onClick={handleOpenCoachMessages} sx={{ mr: 0.5 }}>
+              <Badge badgeContent={unreadCount > 0 ? unreadCount : null} color="error">
+                <NotificationsIcon fontSize="small" />
+              </Badge>
+            </IconButton>
+            <Avatar sx={{ bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 'bold', width: 30, height: 30, fontSize: '0.75rem' }}>
+              {userInfo?.first_name?.[0] ?? 'C'}{userInfo?.last_name?.[0] ?? ''}
+            </Avatar>
+          </Toolbar>
+        </AppBar>
+
+        {/* SCROLLABLE CONTENT — this is the only thing that scrolls */}
+        <Box sx={{
+          flex: 1,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          WebkitOverflowScrolling: 'touch',
+          bgcolor: '#F1F5F9',
+        }}>
+          {children}
+        </Box>
+
+        {/* BOTTOM NAV — static, never scrolls */}
+        <Box sx={{
+          flexShrink: 0,
+          borderTop: '1px solid #e2e8f0',
+          bgcolor: '#FFFFFF',
+          boxShadow: '0 -2px 8px rgba(0,0,0,0.08)',
+          paddingBottom: 'env(safe-area-inset-bottom)',
+        }}>
+          <BottomNavigation
+            value={activeBottomTab}
+            onChange={(_, newValue) => {
+              if (newValue === 'mas') {
+                setMoreDrawerOpen(true);
+              } else if (newValue) {
+                navigate(newValue);
+              }
+            }}
+            sx={bottomNavSx}
+          >
+            {COACH_BOTTOM_TABS.map((tab) => (
+              <BottomNavigationAction
+                key={tab.value}
+                label={tab.label}
+                value={tab.value}
+                icon={tab.icon}
+                sx={{
+                  '&.Mui-selected svg': {
+                    transform: 'scale(1.05)',
+                    transition: 'transform 100ms ease',
+                  },
+                }}
+              />
+            ))}
+          </BottomNavigation>
+        </Box>
+
+        {/* "MÁS" BOTTOM SHEET */}
+        <SwipeableDrawer
+          anchor="bottom"
+          open={moreDrawerOpen}
+          onOpen={() => setMoreDrawerOpen(true)}
+          onClose={() => setMoreDrawerOpen(false)}
+          disableSwipeToOpen
+          sx={{
+            '& .MuiDrawer-paper': {
+              borderRadius: '16px 16px 0 0',
+              bgcolor: '#0D1117',
+              pb: 'env(safe-area-inset-bottom)',
+              maxHeight: '80vh',
+            },
+          }}
+        >
+          {/* Handle bar */}
+          <Box sx={{ display: 'flex', justifyContent: 'center', pt: 1.5, pb: 1 }}>
+            <Box sx={{ width: 32, height: 4, bgcolor: 'rgba(255,255,255,0.2)', borderRadius: 2 }} />
+          </Box>
+
+          <Typography sx={{ px: 2.5, pb: 1.5, fontSize: '0.65rem', fontWeight: 700, color: 'rgba(148,163,184,0.6)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
+            Más opciones
+          </Typography>
+
+          <List sx={{ px: 1, pb: 1 }}>
+            {moreItems.map((item) => {
+              const isLocked = item.adminOnly && !isAdminOrOwner;
+              const isActive = !isLocked && location.pathname === item.path;
+              return (
+                <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
+                  <ListItemButton
+                    onClick={() => {
+                      if (!isLocked) {
+                        navigate(item.path);
+                        setMoreDrawerOpen(false);
+                      }
+                    }}
+                    disabled={isLocked}
+                    sx={{
+                      borderRadius: 2,
+                      '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
+                      '&.Mui-disabled': { opacity: 0.4 },
+                      bgcolor: isActive ? 'rgba(0, 212, 170,0.15)' : 'transparent',
+                    }}
+                  >
+                    <ListItemIcon sx={{ minWidth: 40, color: isActive ? '#00D4AA' : '#94A3B8' }}>
+                      {item.icon}
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={item.text}
+                      primaryTypographyProps={{ fontSize: '0.9rem', fontWeight: isActive ? 600 : 400, color: isActive ? '#00D4AA' : 'white' }}
+                    />
+                  </ListItemButton>
+                </ListItem>
+              );
+            })}
+
+            <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)', my: 1 }} />
+
+            <ListItem disablePadding>
+              <ListItemButton
+                onClick={() => { setMoreDrawerOpen(false); handleLogout(); }}
+                sx={{ borderRadius: 2, '&:hover': { bgcolor: 'rgba(239,68,68,0.1)', color: '#ef4444' } }}
+              >
+                <ListItemIcon sx={{ minWidth: 40, color: '#64748B' }}>
+                  <Logout />
+                </ListItemIcon>
+                <ListItemText primary="Cerrar Sesión" primaryTypographyProps={{ fontSize: '0.9rem', color: 'white' }} />
+              </ListItemButton>
+            </ListItem>
+          </List>
+        </SwipeableDrawer>
+
+        <PWAInstallPrompt />
+        <MessagesDrawer
+          open={openMessages}
+          onClose={() => setOpenMessages(false)}
+          messages={messages}
+          contacts={athletes}
+          orgId={orgId}
+          currentUserId={userInfo?.id}
+          onMessageSent={fetchCoachMessages}
+          onSessionClick={handleCoachSessionClick}
+        />
+      </Box>
+    );
+  }
+
+  // ── DESKTOP: sidebar + fixed appbar layout ──
   return (
     <Box sx={{ display: 'flex' }}>
       {/* APPBAR */}
@@ -368,45 +561,21 @@ const Layout = ({ children }) => {
           transition: 'width 0.2s ease, margin-left 0.2s ease',
         }}
       >
-        <Toolbar sx={{ minHeight: { xs: 48, sm: 64 }, px: { xs: 2, sm: 3 } }}>
-          {isMobile ? (
-            /* Mobile compact header — brand + bell + avatar */
-            <>
-              <Typography
-                noWrap
-                sx={{ fontWeight: 800, fontSize: '0.9rem', letterSpacing: 1, color: '#00D4AA' }}
-              >
-                S. <span style={{ color: '#1E293B' }}>MENDIETA</span>
-              </Typography>
-              <Box sx={{ flexGrow: 1 }} />
-              <IconButton color="inherit" size="small" onClick={handleOpenCoachMessages} sx={{ mr: 0.5 }}>
-                <Badge badgeContent={unreadCount > 0 ? unreadCount : null} color="error">
-                  <NotificationsIcon fontSize="small" />
-                </Badge>
-              </IconButton>
-              <Avatar sx={{ bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 'bold', width: 30, height: 30, fontSize: '0.75rem' }}>
-                {userInfo?.first_name?.[0] ?? 'C'}{userInfo?.last_name?.[0] ?? ''}
-              </Avatar>
-            </>
-          ) : (
-            /* Desktop header */
-            <>
-              <IconButton color="inherit" edge="start" onClick={handleDrawerToggle} sx={{ mr: 2, display: { sm: 'none' } }}>
-                <MenuIcon />
-              </IconButton>
-              <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1, fontWeight: 700, fontSize: '1.1rem' }}>
-                Panel de Entrenadores
-              </Typography>
-              <IconButton color="inherit" onClick={handleOpenCoachMessages} sx={{ mr: 1 }}>
-                <Badge badgeContent={unreadCount > 0 ? unreadCount : null} color="error">
-                  <NotificationsIcon />
-                </Badge>
-              </IconButton>
-              <Avatar sx={{ bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 'bold' }}>
-                {userInfo?.first_name?.[0] ?? 'C'}{userInfo?.last_name?.[0] ?? ''}
-              </Avatar>
-            </>
-          )}
+        <Toolbar sx={{ minHeight: 64, px: 3 }}>
+          <IconButton color="inherit" edge="start" onClick={() => setMobileOpen((p) => !p)} sx={{ mr: 2, display: { sm: 'none' } }}>
+            <MenuIcon />
+          </IconButton>
+          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1, fontWeight: 700, fontSize: '1.1rem' }}>
+            Panel de Entrenadores
+          </Typography>
+          <IconButton color="inherit" onClick={handleOpenCoachMessages} sx={{ mr: 1 }}>
+            <Badge badgeContent={unreadCount > 0 ? unreadCount : null} color="error">
+              <NotificationsIcon />
+            </Badge>
+          </IconButton>
+          <Avatar sx={{ bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 'bold' }}>
+            {userInfo?.first_name?.[0] ?? 'C'}{userInfo?.last_name?.[0] ?? ''}
+          </Avatar>
         </Toolbar>
       </AppBar>
 
@@ -425,14 +594,13 @@ const Layout = ({ children }) => {
         onSessionClick={handleCoachSessionClick}
       />
 
-      {/* SIDEBAR — hidden on mobile (xs), shown on sm+ */}
+      {/* SIDEBAR */}
       <Box
         component="nav"
         sx={{
           width: { sm: drawerWidth },
           flexShrink: { sm: 0 },
           transition: 'width 0.2s ease',
-          display: { xs: 'none', sm: 'block' },
         }}
       >
         <Drawer variant="permanent"
@@ -457,159 +625,16 @@ const Layout = ({ children }) => {
         component="main"
         sx={{
           flexGrow: 1,
-          p: { xs: 2, sm: 3 },
+          p: 3,
           width: { sm: `calc(100% - ${drawerWidth}px)` },
           bgcolor: '#F1F5F9',
           minHeight: '100vh',
           transition: 'width 0.2s ease',
-          pb: { xs: '80px', sm: 3 }, // clear bottom nav on mobile
         }}
       >
-        <Toolbar sx={{ minHeight: { xs: 48, sm: 64 } }} />
+        <Toolbar sx={{ minHeight: 64 }} />
         {children}
       </Box>
-
-      {/* BOTTOM NAVIGATION — xs only */}
-      <Box
-        sx={{
-          display: { xs: 'block', sm: 'none' },
-          position: 'fixed',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          zIndex: 1200,
-          borderTop: '1px solid #e2e8f0',
-          bgcolor: 'white',
-          boxShadow: '0 -2px 8px rgba(0,0,0,0.08)',
-        }}
-      >
-        <BottomNavigation
-          value={activeBottomTab}
-          onChange={(_, newValue) => {
-            if (newValue === 'mas') {
-              setMoreDrawerOpen(true);
-            } else if (newValue) {
-              navigate(newValue);
-            }
-          }}
-          sx={{
-            height: 'auto',
-            minHeight: 64,
-            paddingBottom: 'env(safe-area-inset-bottom)',
-            bgcolor: 'transparent',
-            '& .MuiBottomNavigationAction-root': {
-              minWidth: 0,
-              padding: '6px 4px',
-              color: '#8B949E',
-            },
-            '& .MuiBottomNavigationAction-root.Mui-selected': {
-              color: '#00D4AA',
-            },
-            '& .MuiBottomNavigationAction-label': {
-              opacity: '1 !important',
-              fontSize: '0.65rem',
-              fontWeight: 600,
-              marginTop: 2,
-            },
-            '& .MuiBottomNavigationAction-root.Mui-selected .MuiBottomNavigationAction-label': {
-              opacity: '1 !important',
-              fontSize: '0.65rem',
-              fontWeight: 700,
-            },
-          }}
-        >
-          {COACH_BOTTOM_TABS.map((tab) => (
-            <BottomNavigationAction
-              key={tab.value}
-              label={tab.label}
-              value={tab.value}
-              icon={tab.icon}
-              sx={{
-                '&.Mui-selected svg': {
-                  transform: 'scale(1.05)',
-                  transition: 'transform 100ms ease',
-                },
-              }}
-            />
-          ))}
-        </BottomNavigation>
-      </Box>
-
-      {/* "MÁS" BOTTOM SHEET — xs only */}
-      <SwipeableDrawer
-        anchor="bottom"
-        open={moreDrawerOpen}
-        onOpen={() => setMoreDrawerOpen(true)}
-        onClose={() => setMoreDrawerOpen(false)}
-        disableSwipeToOpen
-        sx={{
-          display: { xs: 'block', sm: 'none' },
-          '& .MuiDrawer-paper': {
-            borderRadius: '16px 16px 0 0',
-            bgcolor: '#0D1117',
-            pb: 'env(safe-area-inset-bottom)',
-            maxHeight: '80vh',
-          },
-        }}
-      >
-        {/* Handle bar */}
-        <Box sx={{ display: 'flex', justifyContent: 'center', pt: 1.5, pb: 1 }}>
-          <Box sx={{ width: 32, height: 4, bgcolor: 'rgba(255,255,255,0.2)', borderRadius: 2 }} />
-        </Box>
-
-        <Typography sx={{ px: 2.5, pb: 1.5, fontSize: '0.65rem', fontWeight: 700, color: 'rgba(148,163,184,0.6)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
-          Más opciones
-        </Typography>
-
-        <List sx={{ px: 1, pb: 1 }}>
-          {moreItems.map((item) => {
-            const isLocked = item.adminOnly && !isAdminOrOwner;
-            const isActive = !isLocked && location.pathname === item.path;
-            return (
-              <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
-                <ListItemButton
-                  onClick={() => {
-                    if (!isLocked) {
-                      navigate(item.path);
-                      setMoreDrawerOpen(false);
-                    }
-                  }}
-                  disabled={isLocked}
-                  sx={{
-                    borderRadius: 2,
-                    '&.Mui-selected, &.active': { bgcolor: 'rgba(0, 212, 170,0.15)', color: '#00D4AA' },
-                    '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
-                    '&.Mui-disabled': { opacity: 0.4 },
-                    bgcolor: isActive ? 'rgba(0, 212, 170,0.15)' : 'transparent',
-                  }}
-                >
-                  <ListItemIcon sx={{ minWidth: 40, color: isActive ? '#00D4AA' : '#94A3B8' }}>
-                    {item.icon}
-                  </ListItemIcon>
-                  <ListItemText
-                    primary={item.text}
-                    primaryTypographyProps={{ fontSize: '0.9rem', fontWeight: isActive ? 600 : 400, color: isActive ? '#00D4AA' : 'white' }}
-                  />
-                </ListItemButton>
-              </ListItem>
-            );
-          })}
-
-          <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)', my: 1 }} />
-
-          <ListItem disablePadding>
-            <ListItemButton
-              onClick={() => { setMoreDrawerOpen(false); handleLogout(); }}
-              sx={{ borderRadius: 2, '&:hover': { bgcolor: 'rgba(239,68,68,0.1)', color: '#ef4444' } }}
-            >
-              <ListItemIcon sx={{ minWidth: 40, color: '#64748B' }}>
-                <Logout />
-              </ListItemIcon>
-              <ListItemText primary="Cerrar Sesión" primaryTypographyProps={{ fontSize: '0.9rem', color: 'white' }} />
-            </ListItemButton>
-          </ListItem>
-        </List>
-      </SwipeableDrawer>
     </Box>
   );
 };

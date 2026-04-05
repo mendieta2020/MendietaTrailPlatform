@@ -110,12 +110,13 @@ const LandingPage = () => (
 
         <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
           <Button
-            component="a"
-            href="https://app.quantoryn.com"
+            component={Link}
+            to="/login"
             variant="contained"
             size="large"
             sx={{
               bgcolor: '#00D4AA',
+              color: '#0D1117',
               '&:hover': { bgcolor: '#00BF99' },
               px: 4,
               fontWeight: 700,

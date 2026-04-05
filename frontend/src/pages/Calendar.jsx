@@ -10,6 +10,7 @@ import {
   startOfMonth,
   endOfMonth,
   parseISO,
+  addDays,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
@@ -183,7 +184,7 @@ function fetchReducer(state, action) {
 
 // ── Draggable workout card ────────────────────────────────────────────────────
 
-function WorkoutCard({ workout, onDragStart, onDragEnd }) {
+function WorkoutCard({ workout, onDragStart, onDragEnd, onSelect }) {
   const [isDragging, setIsDragging] = React.useState(false);
 
   const handleDragStart = (e) => {
@@ -202,6 +203,7 @@ function WorkoutCard({ workout, onDragStart, onDragEnd }) {
       draggable
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onClick={onSelect ? () => onSelect(workout) : undefined}
       sx={{
         p: 1.5,
         mb: 1,
@@ -209,7 +211,7 @@ function WorkoutCard({ workout, onDragStart, onDragEnd }) {
         bgcolor: isDragging ? 'rgba(0, 212, 170, 0.12)' : '#1c2230',
         border: '1px solid',
         borderColor: isDragging ? '#00D4AA' : 'rgba(255,255,255,0.07)',
-        cursor: 'grab',
+        cursor: onSelect ? 'pointer' : 'grab',
         transition: 'border-color 0.15s, background-color 0.15s',
         opacity: isDragging ? 0.45 : 1,
         '&:hover': {
@@ -223,7 +225,7 @@ function WorkoutCard({ workout, onDragStart, onDragEnd }) {
         sx={{ color: '#00D4AA', fontWeight: 600, display: 'block', lineHeight: 1 }}
       >
         <FitnessCenterIcon sx={{ fontSize: 10, mr: 0.5, verticalAlign: 'middle' }} />
-        arrastrar
+        {onSelect ? 'toca para asignar' : 'arrastrar'}
       </Typography>
       <Typography variant="body2" sx={{ color: '#e2e8f0', fontWeight: 500, mt: 0.4 }}>
         {workout.name}
@@ -243,7 +245,7 @@ function WorkoutCard({ workout, onDragStart, onDragEnd }) {
 
 // ── Library sidebar ───────────────────────────────────────────────────────────
 
-function LibrarySidebar({ orgId, onDragStart, onDragEnd }) {
+function LibrarySidebar({ orgId, onDragStart, onDragEnd, onSelect }) {
   const [libState, libDispatch] = useReducer(fetchReducer, {
     data: [],
     loading: false,
@@ -360,6 +362,7 @@ function LibrarySidebar({ orgId, onDragStart, onDragEnd }) {
                   workout={wo}
                   onDragStart={onDragStart}
                   onDragEnd={onDragEnd}
+                  onSelect={onSelect}
                 />
               ))
             )}
@@ -544,6 +547,8 @@ export default function CalendarPage() {
   const orgId = activeOrg?.org_id ?? null;
   const navigate = useNavigate();
   const [libDrawerOpen, setLibDrawerOpen] = useState(false);
+  const [mobileAssignWorkout, setMobileAssignWorkout] = useState(null);
+  const [mobileAssignDialogOpen, setMobileAssignDialogOpen] = useState(false);
 
   // Athletes + Teams
   const [athleteState, athleteDispatch] = useReducer(fetchReducer, {
@@ -876,6 +881,33 @@ export default function CalendarPage() {
   const handleDragEnd = useCallback(() => {
     draggingWorkoutRef.current = null;
   }, []);
+
+  // Mobile FAB: tap workout in library → date picker dialog
+  const handleMobileWorkoutSelect = useCallback((workout) => {
+    setLibDrawerOpen(false);
+    setMobileAssignWorkout(workout);
+    setMobileAssignDialogOpen(true);
+  }, []);
+
+  const handleMobileAssign = useCallback((dateStr) => {
+    const target = parseTarget(selectedTarget);
+    if (!target || target.type !== 'a') return;
+    setMobileAssignDialogOpen(false);
+    setMobileAssignWorkout(null);
+    createAssignment(orgId, {
+      planned_workout_id: mobileAssignWorkout.id,
+      athlete_id: target.id,
+      scheduled_date: dateStr,
+    }).then(() => {
+      const params = { athleteId: target.id, dateFrom, dateTo };
+      listAssignments(orgId, params)
+        .then((res) => {
+          const data = res.data?.results ?? res.data ?? [];
+          eventsDispatch({ type: 'FETCH_SUCCESS', data: toEvents(data) });
+        })
+        .catch(() => {});
+    }).catch(() => {});
+  }, [orgId, selectedTarget, mobileAssignWorkout, dateFrom, dateTo]);
 
   // Called by react-big-calendar to get a preview event while dragging over slots
   const dragFromOutsideItem = useCallback(() => {
@@ -1498,8 +1530,8 @@ export default function CalendarPage() {
           sx={{
             display: calendarView === 'macro' ? 'none' : 'flex',
             gap: 2,
-            height: 'calc(100vh - 220px)',
-            minHeight: 560,
+            height: { sm: 'calc(100vh - 220px)' },
+            minHeight: { sm: 560 },
           }}
         >
           {/* Sidebar — hidden on mobile (xs), shown on sm+ */}
@@ -2001,11 +2033,70 @@ export default function CalendarPage() {
               orgId={orgId}
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
+              onSelect={handleMobileWorkoutSelect}
             />
           ) : (
             <CircularProgress size={20} sx={{ color: '#00D4AA' }} />
           )}
         </SwipeableDrawer>
+
+        {/* Mobile assign date picker dialog */}
+        <Dialog
+          open={mobileAssignDialogOpen}
+          onClose={() => { setMobileAssignDialogOpen(false); setMobileAssignWorkout(null); }}
+          maxWidth="xs"
+          fullWidth
+        >
+          <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 0.5 }}>
+            Asignar entrenamiento
+          </DialogTitle>
+          <DialogContent>
+            {mobileAssignWorkout && (
+              <Typography variant="body2" sx={{ mb: 2, color: '#475569' }}>
+                {mobileAssignWorkout.name}
+              </Typography>
+            )}
+            {!parseTarget(selectedTarget) || parseTarget(selectedTarget)?.type !== 'a' ? (
+              <Typography variant="body2" sx={{ color: '#f59e0b' }}>
+                Seleccioná un atleta en el filtro antes de asignar.
+              </Typography>
+            ) : (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                {Array.from({ length: 7 }, (_, i) => {
+                  const d = addDays(new Date(), i);
+                  const dateStr = format(d, 'yyyy-MM-dd');
+                  const label = format(d, 'EEE d', { locale: es });
+                  return (
+                    <Button
+                      key={dateStr}
+                      variant="outlined"
+                      size="small"
+                      onClick={() => handleMobileAssign(dateStr)}
+                      sx={{
+                        borderColor: '#00D4AA',
+                        color: '#00D4AA',
+                        textTransform: 'capitalize',
+                        fontWeight: 600,
+                        '&:hover': { bgcolor: 'rgba(0,212,170,0.08)', borderColor: '#00D4AA' },
+                      }}
+                    >
+                      {label}
+                    </Button>
+                  );
+                })}
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button
+              variant="text"
+              onClick={() => { setMobileAssignDialogOpen(false); setMobileAssignWorkout(null); }}
+              sx={{ textTransform: 'none', color: '#64748B' }}
+            >
+              Cancelar
+            </Button>
+          </DialogActions>
+        </Dialog>
       </>
     </Layout>
   );

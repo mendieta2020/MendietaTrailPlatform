@@ -728,10 +728,10 @@ export default function Plantilla() {
 
   return (
     <Layout>
-      <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden', bgcolor: '#0f1623' }}>
+      <Box sx={{ display: 'flex', height: { sm: '100vh' }, overflow: { sm: 'hidden' }, bgcolor: '#0f1623' }}>
 
         {/* ── Main content ── */}
-        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: { sm: 'hidden' } }}>
 
           {/* Header */}
           <Box sx={{

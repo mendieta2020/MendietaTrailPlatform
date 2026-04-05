@@ -20,7 +20,6 @@ const NAV_LINKS = [
   { label: 'Privacy', to: '/privacy' },
   { label: 'Terms', to: '/terms' },
   { label: 'Security', to: '/security' },
-  { label: 'Vendor Docs', to: '/vendor' },
 ];
 
 const navLinkStyle = (isActive) => ({
@@ -46,21 +45,8 @@ const PublicLayout = ({ children }) => {
 
   const drawer = (
     <Box sx={{ width: 260 }} role="presentation" onClick={() => setDrawerOpen(false)}>
-      <Box sx={{ p: 2.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Box
-          sx={{
-            width: 28,
-            height: 28,
-            borderRadius: '8px',
-            bgcolor: '#00D4AA',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Typography sx={{ color: '#fff', fontWeight: 900, fontSize: '0.75rem', lineHeight: 1 }}>Q</Typography>
-        </Box>
-        <Typography sx={{ fontWeight: 800, fontSize: '1.1rem', color: '#0D1117' }}>Quantoryn</Typography>
+      <Box sx={{ p: 2.5 }}>
+        <img src="/quantoryn-full.svg" alt="Quantoryn" height={28} style={{ display: 'block' }} />
       </Box>
       <Divider />
       <List>
@@ -86,7 +72,7 @@ const PublicLayout = ({ children }) => {
           to="/login"
           variant="contained"
           fullWidth
-          sx={{ bgcolor: '#00D4AA', '&:hover': { bgcolor: '#00BF99' } }}
+          sx={{ bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 700, '&:hover': { bgcolor: '#00BF99' } }}
         >
           Login
         </Button>
@@ -114,29 +100,12 @@ const PublicLayout = ({ children }) => {
             sx={{
               display: 'flex',
               alignItems: 'center',
-              gap: 1,
               textDecoration: 'none',
               mr: 3,
               flexShrink: 0,
             }}
           >
-            <Box
-              sx={{
-                width: 32,
-                height: 32,
-                borderRadius: '10px',
-                bgcolor: '#00D4AA',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <Typography sx={{ color: '#fff', fontWeight: 900, fontSize: '0.85rem', lineHeight: 1 }}>Q</Typography>
-            </Box>
-            <Typography sx={{ fontWeight: 800, fontSize: '1.15rem', color: '#0D1117', letterSpacing: '-0.01em' }}>
-              Quantoryn
-            </Typography>
+            <img src="/quantoryn-full.svg" alt="Quantoryn" height={32} style={{ display: 'block' }} />
           </Box>
 
           {/* Desktop nav links */}
@@ -259,7 +228,6 @@ const PublicLayout = ({ children }) => {
               { label: 'Privacy', to: '/privacy' },
               { label: 'Terms', to: '/terms' },
               { label: 'Security', to: '/security' },
-              { label: 'Vendor Docs', to: '/vendor' },
             ].map(({ label, to }) => (
               <Box
                 key={to}
