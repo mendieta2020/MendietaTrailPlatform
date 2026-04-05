@@ -526,11 +526,16 @@ class TeamJoinView(APIView):
     GET  /api/team-join/{token}/  — public; returns invitation info (org, role, status).
     POST /api/team-join/{token}/  — accepts first_name, last_name, email, password.
                                     Creates User + Membership. Returns JWT pair.
-                                    If user is already authenticated, only creates Membership.
+                                    If user is already authenticated (JWT header present),
+                                    only creates the Membership — no registration needed.
+
+    Note: authentication_classes uses DEFAULT (JWT) so an authenticated user's token
+    is recognised. permission_classes = AllowAny so unauthenticated requests still work.
     """
 
     permission_classes = [AllowAny]
-    authentication_classes = []
+    # Do NOT set authentication_classes = [] here — we need JWT auth to resolve
+    # request.user for the "already logged in" path.
 
     def _get_invitation(self, token):
         try:
@@ -576,7 +581,9 @@ class TeamJoinView(APIView):
 
     def post(self, request, token):
         invitation = self._get_invitation(token)
-        email = request.data.get("email", "").lower().strip()
+        # Only validate email match when the user is NOT authenticated
+        # (authenticated users are identified by their session/token, not by email in body)
+        email = "" if (request.user and request.user.is_authenticated) else request.data.get("email", "").lower().strip()
         inv, err = self._validate_invitation(invitation, email=email)
         if err:
             return err

@@ -1,13 +1,12 @@
 import React, { useReducer, useEffect, useState } from 'react';
 import {
   Tabs, Tab, Box, Grid, CircularProgress, Alert, Typography,
-  Button, Avatar, Chip, Divider,
+  Button, Avatar, Chip,
 } from '@mui/material';
 import { Users, UserCheck, Users2 } from 'lucide-react';
-import { listAthletes, listCoaches, listTeams, listTeamInvitations } from '../../api/p1';
+import { listAthletes, listCoaches, listTeamInvitations, deleteTeamInvitation } from '../../api/p1';
 import AthleteCard from './AthleteCard';
 import CoachCard from './CoachCard';
-import TeamCard from './TeamCard';
 import InviteTeamModal from './InviteTeamModal';
 
 const ROLE_COLORS = {
@@ -22,7 +21,6 @@ const initialState = {
   error: null,
   athletes: [],
   coaches: [],
-  teams: [],
   teamMembers: [],
   pendingInvites: [],
 };
@@ -37,7 +35,6 @@ function rosterReducer(state, action) {
         error: null,
         athletes: action.athletes,
         coaches: action.coaches,
-        teams: action.teams,
         teamMembers: action.teamMembers,
         pendingInvites: action.pendingInvites,
       };
@@ -45,6 +42,8 @@ function rosterReducer(state, action) {
       return { ...state, loading: false, error: action.error };
     case 'ADD_INVITE':
       return { ...state, pendingInvites: [action.invite, ...state.pendingInvites] };
+    case 'REMOVE_INVITE':
+      return { ...state, pendingInvites: state.pendingInvites.filter((i) => i.id !== action.id) };
     default:
       return state;
   }
@@ -64,19 +63,17 @@ export default function RosterSection({ orgId, onSelectAthlete, userRole }) {
     const promises = [
       listAthletes(orgId),
       listCoaches(orgId),
-      listTeams(orgId),
     ];
     if (isOwner) {
       promises.push(listTeamInvitations(orgId));
     }
 
     Promise.all(promises)
-      .then(([athletesRes, coachesRes, teamsRes, invitesRes]) => {
+      .then(([athletesRes, coachesRes, invitesRes]) => {
         const athletes = athletesRes.data?.results ?? athletesRes.data ?? [];
         const coaches  = coachesRes.data?.results  ?? coachesRes.data  ?? [];
-        const teams    = teamsRes.data?.results    ?? teamsRes.data    ?? [];
 
-        // Build team members list from coaches (owner implied)
+        // Build team members list from coaches
         const members = coaches.map((c) => ({
           id: `coach-${c.id}`,
           name: c.user?.name || c.user?.username || `Coach #${c.id}`,
@@ -93,7 +90,6 @@ export default function RosterSection({ orgId, onSelectAthlete, userRole }) {
           type: 'FETCH_SUCCESS',
           athletes,
           coaches,
-          teams,
           teamMembers: members,
           pendingInvites,
         });
@@ -108,6 +104,16 @@ export default function RosterSection({ orgId, onSelectAthlete, userRole }) {
 
   const handleInviteCreated = (invite) => {
     dispatch({ type: 'ADD_INVITE', invite });
+  };
+
+  const handleRevokeInvite = async (invId) => {
+    if (!window.confirm('¿Revocar esta invitación?')) return;
+    try {
+      await deleteTeamInvitation(orgId, invId);
+      dispatch({ type: 'REMOVE_INVITE', id: invId });
+    } catch {
+      // ignore — invitation may already be gone
+    }
   };
 
   if (state.loading) {
@@ -126,7 +132,6 @@ export default function RosterSection({ orgId, onSelectAthlete, userRole }) {
     { label: 'Atletas', items: state.athletes, Card: AthleteCard, prop: 'athlete', emptyTitle: 'No hay atletas aún', emptySubtitle: 'Agrega atletas a la organización usando "Gestionar Conexiones".', EmptyIcon: Users },
     { label: 'Coaches', items: state.coaches, Card: CoachCard, prop: 'coach', emptyTitle: 'No hay coaches aún', emptySubtitle: 'Los coaches asignados a esta organización aparecerán aquí.', EmptyIcon: UserCheck },
     ...(isOwner ? [{ label: 'Equipo', items: null, Card: null, prop: null, emptyTitle: '', emptySubtitle: '', EmptyIcon: null }] : []),
-    { label: 'Equipos', items: state.teams, Card: TeamCard, prop: 'team', emptyTitle: 'No hay equipos aún', emptySubtitle: 'Crea equipos para organizar a tus atletas por grupos de entrenamiento.', EmptyIcon: Users2 },
   ];
 
   const equipoTabIndex = standardTabs.findIndex((t) => t.label === 'Equipo');
@@ -237,6 +242,15 @@ export default function RosterSection({ orgId, onSelectAthlete, userRole }) {
                     sx={{ textTransform: 'none', fontSize: '0.7rem', borderColor: '#f59e0b', color: '#92400e', minWidth: 90 }}
                   >
                     Copiar link
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => handleRevokeInvite(inv.id)}
+                    sx={{ textTransform: 'none', fontSize: '0.7rem', color: '#ef4444', minWidth: 0, px: 1 }}
+                    title="Revocar invitación"
+                  >
+                    ×
                   </Button>
                 </Box>
               ))}

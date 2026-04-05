@@ -1,15 +1,19 @@
 /**
  * PR-165a: JoinTeamPage — public page for coaches/staff to accept a team invitation.
  * Route: /join/team/:token
+ *
+ * Fix 1: Uses loginWithTokens (not manual localStorage) so AuthContext updates.
+ * Fix 2: Uses RegistrationStep for unauthenticated users (Google OAuth + email).
  */
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import {
-  Box, Button, CircularProgress, TextField, Typography, Chip, Alert,
+  Box, Button, CircularProgress, Typography, Chip, Alert,
 } from '@mui/material';
 import { AlertTriangle, Clock, CheckCircle } from 'lucide-react';
 import { getTeamJoinInfo, acceptTeamJoin } from '../api/p1';
 import { useAuth } from '../context/AuthContext';
+import RegistrationStep from '../components/onboarding/RegistrationStep';
 
 const ROLE_COLORS = { coach: '#3b82f6', staff: '#8b5cf6', owner: '#00D4AA' };
 const ROLE_LABELS = { coach: 'Coach', staff: 'Admin Staff', owner: 'Owner' };
@@ -35,12 +39,12 @@ function ErrorCard({ icon, color, title, subtitle }) {
 
 export default function JoinTeamPage() {
   const { token } = useParams();
-  const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
 
   const [state, setState] = useState('loading'); // loading | pending | expired | already_used | not_found | error
   const [invite, setInvite] = useState(null);
-  const [form, setForm] = useState({ first_name: '', last_name: '', email: '', password: '' });
+  // step 0 = registration (unauthenticated), step 1 = confirm join
+  const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
 
@@ -49,33 +53,30 @@ export default function JoinTeamPage() {
     getTeamJoinInfo(token)
       .then(({ data }) => {
         setInvite(data);
+        // If already authenticated, skip registration step
+        setStep(user ? 1 : 0);
         setState('pending');
       })
       .catch((err) => {
         const code = err.response?.data?.code;
-        if (code === 'expired')      setState('expired');
+        if (code === 'expired')           setState('expired');
         else if (code === 'already_used') setState('already_used');
         else if (code === 'not_found')    setState('not_found');
         else setState('error');
       });
-  }, [token, authLoading]);
+  }, [token, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSubmit = async () => {
+  const handleJoin = async () => {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const payload = user
-        ? {} // authenticated user — no credentials needed
-        : { ...form };
-      const res = await acceptTeamJoin(token, payload);
-      // Store tokens
-      localStorage.setItem('access_token', res.data.access);
-      localStorage.setItem('refresh_token', res.data.refresh);
-      navigate('/dashboard', { replace: true });
+      await acceptTeamJoin(token, {});
+      // Full reload so OrgContext picks up the new membership (same pattern as JoinPage.jsx)
+      window.location.href = '/dashboard';
     } catch (err) {
       const code = err.response?.data?.code;
       const detail = err.response?.data?.detail || 'No se pudo procesar la invitación.';
-      if (code === 'expired')      setState('expired');
+      if (code === 'expired')           setState('expired');
       else if (code === 'already_used') setState('already_used');
       else if (code === 'email_mismatch') setSubmitError('Este link no está destinado a tu email.');
       else setSubmitError(detail);
@@ -135,18 +136,26 @@ export default function JoinTeamPage() {
             />
           </Box>
 
-          {submitError && <Alert severity="error" sx={{ mb: 2 }}>{submitError}</Alert>}
+          {/* Step 0: Registration (unauthenticated) */}
+          {step === 0 && (
+            <RegistrationStep onComplete={() => setStep(1)} />
+          )}
 
-          {user ? (
-            /* Already logged in */
+          {/* Step 1: Confirm join */}
+          {step === 1 && (
             <Box sx={{ textAlign: 'center' }}>
-              <Typography variant="body2" sx={{ color: '#374151', mb: 3 }}>
-                Sesión activa como <strong>{user.email}</strong>
-              </Typography>
+              {submitError && <Alert severity="error" sx={{ mb: 2, textAlign: 'left' }}>{submitError}</Alert>}
+
+              {user && (
+                <Typography variant="body2" sx={{ color: '#374151', mb: 3 }}>
+                  Sesión activa como <strong>{user.email}</strong>
+                </Typography>
+              )}
+
               <Button
                 fullWidth
                 variant="contained"
-                onClick={handleSubmit}
+                onClick={handleJoin}
                 disabled={submitting}
                 sx={{
                   bgcolor: roleColor, color: '#fff',
@@ -154,42 +163,9 @@ export default function JoinTeamPage() {
                   textTransform: 'none', fontWeight: 700, py: 1.5,
                 }}
               >
-                {submitting ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : `Unirme como ${roleLabel}`}
-              </Button>
-            </Box>
-          ) : (
-            /* Registration form */
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <TextField
-                  label="Nombre" size="small" fullWidth
-                  value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })}
-                />
-                <TextField
-                  label="Apellido" size="small" fullWidth
-                  value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })}
-                />
-              </Box>
-              <TextField
-                label="Email" size="small" fullWidth type="email"
-                value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
-              />
-              <TextField
-                label="Contraseña" size="small" fullWidth type="password"
-                value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })}
-              />
-              <Button
-                fullWidth
-                variant="contained"
-                onClick={handleSubmit}
-                disabled={submitting || !form.email || !form.password}
-                sx={{
-                  bgcolor: roleColor, color: '#fff',
-                  '&:hover': { bgcolor: roleColor, filter: 'brightness(0.9)' },
-                  textTransform: 'none', fontWeight: 700, py: 1.5, mt: 0.5,
-                }}
-              >
-                {submitting ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : `Registrarme como ${roleLabel}`}
+                {submitting
+                  ? <CircularProgress size={20} sx={{ color: '#fff' }} />
+                  : `Unirme como ${roleLabel}`}
               </Button>
             </Box>
           )}

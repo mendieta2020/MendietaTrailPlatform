@@ -889,10 +889,11 @@ class CoachBriefingView(OrgTenantMixin, APIView):
 # PR-165a: TeamInvitationViewSet
 # ==============================================================================
 
-class TeamInvitationViewSet(OrgTenantMixin, mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.GenericViewSet):
+class TeamInvitationViewSet(OrgTenantMixin, mixins.ListModelMixin, mixins.CreateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
     """
-    GET  /api/p1/orgs/{org_id}/invitations/team/  — list team invitations (owner/admin only)
-    POST /api/p1/orgs/{org_id}/invitations/team/  — create invitation (owner only)
+    GET    /api/p1/orgs/{org_id}/invitations/team/       — list (owner/coach)
+    POST   /api/p1/orgs/{org_id}/invitations/team/       — create (owner only)
+    DELETE /api/p1/orgs/{org_id}/invitations/team/{pk}/  — revoke pending (owner only)
     """
 
     _OWNER_ROLES = {"owner"}
@@ -944,3 +945,25 @@ class TeamInvitationViewSet(OrgTenantMixin, mixins.ListModelMixin, mixins.Create
         read_data = TeamInvitationSerializer(invitation, context=self.get_serializer_context()).data
         read_data["join_url"] = join_url
         return Response(read_data, status=status.HTTP_201_CREATED)
+
+    def destroy(self, request, *args, **kwargs):
+        if self.membership.role not in self._OWNER_ROLES:
+            raise PermissionDenied("Solo el owner puede revocar invitaciones.")
+
+        invitation = self.get_object()
+        if invitation.status != TeamInvitation.Status.PENDING:
+            return Response(
+                {"detail": "Solo se pueden eliminar invitaciones pendientes."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        logger.info(
+            "team_invitation_revoked",
+            extra={
+                "organization_id": self.organization.id,
+                "user_id": request.user.id,
+                "invitation_token": str(invitation.token),
+            },
+        )
+        invitation.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

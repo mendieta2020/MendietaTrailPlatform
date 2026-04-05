@@ -182,3 +182,6 @@ export const getTeamJoinInfo = (token) =>
 
 export const acceptTeamJoin = (token, data) =>
   client.post(`/api/team-join/${token}/`, data);
+
+export const deleteTeamInvitation = (orgId, invitationId) =>
+  client.delete(`${p1Base(orgId)}/invitations/team/${invitationId}/`);

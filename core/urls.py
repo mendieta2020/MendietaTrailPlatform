@@ -750,8 +750,9 @@ urlpatterns = [
     path('auth/google/', GoogleAuthView.as_view(), name='auth-google'),
     path('onboarding/complete/', OnboardingCompleteView.as_view(), name='onboarding-complete'),
 
-    # PR-165a: Team invitations (owner/admin create; owner/coach list)
+    # PR-165a: Team invitations (owner creates/revokes; owner+coach lists)
     path('p1/orgs/<int:org_id>/invitations/team/', TeamInvitationViewSet.as_view({'get': 'list', 'post': 'create'}), name='team-invitations'),
+    path('p1/orgs/<int:org_id>/invitations/team/<int:pk>/', TeamInvitationViewSet.as_view({'delete': 'destroy'}), name='team-invitation-detail'),
     # PR-165a: Public team join endpoint (preview GET + accept POST)
     path('team-join/<uuid:token>/', TeamJoinView.as_view(), name='team-join'),
 

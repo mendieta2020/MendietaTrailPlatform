@@ -366,3 +366,49 @@ def test_invitation_token_is_org_isolated():
     # Must only have membership in org_b — never in org_a
     assert Membership.objects.filter(user=user, organization=org_b).exists()
     assert not Membership.objects.filter(user=user, organization=org_a).exists()
+
+
+# ---------------------------------------------------------------------------
+# Fix 4: Delete / revoke invitation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_owner_can_delete_pending_invitation():
+    org = _org("del-org")
+    owner = _user("del-owner")
+    _membership(owner, org, "owner")
+    inv = _invitation(org, creator=owner)
+    client = _auth_client(owner)
+
+    resp = client.delete(f"/api/p1/orgs/{org.id}/invitations/team/{inv.id}/")
+    assert resp.status_code == status.HTTP_204_NO_CONTENT
+    assert not TeamInvitation.objects.filter(id=inv.id).exists()
+
+
+@pytest.mark.django_db
+def test_non_owner_cannot_delete_invitation():
+    org = _org("del-perm-org")
+    owner = _user("del-perm-owner")
+    coach_user = _user("del-perm-coach")
+    _membership(owner, org, "owner")
+    _membership(coach_user, org, "coach")
+    inv = _invitation(org, creator=owner)
+    client = _auth_client(coach_user)
+
+    resp = client.delete(f"/api/p1/orgs/{org.id}/invitations/team/{inv.id}/")
+    assert resp.status_code == status.HTTP_403_FORBIDDEN
+    assert TeamInvitation.objects.filter(id=inv.id).exists()
+
+
+@pytest.mark.django_db
+def test_cannot_delete_accepted_invitation():
+    org = _org("del-accepted-org")
+    owner = _user("del-accepted-owner")
+    _membership(owner, org, "owner")
+    inv = _invitation(org, status=TeamInvitation.Status.ACCEPTED, creator=owner)
+    client = _auth_client(owner)
+
+    resp = client.delete(f"/api/p1/orgs/{org.id}/invitations/team/{inv.id}/")
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert TeamInvitation.objects.filter(id=inv.id).exists()
