@@ -31,6 +31,7 @@ import SecurityPage from './pages/public/SecurityPage';
 import VendorPage from './pages/public/VendorPage';
 import InvitePage from './pages/InvitePage';
 import JoinPage from './pages/JoinPage';
+import JoinTeamPage from './pages/JoinTeamPage';
 import AthleteDashboard from './pages/AthleteDashboard';
 import AthleteMyTraining from './pages/AthleteMyTraining';
 import AthleteProgress from './pages/AthleteProgress';
@@ -110,6 +111,7 @@ function App() {
           <Route path="/vendor/:doc" element={<VendorPage />} />
           <Route path="/invite/:token" element={<InvitePage />} />
           <Route path="/join/:slug" element={<JoinPage />} />
+          <Route path="/join/team/:token" element={<JoinTeamPage />} />
 
           {/* --- RUTAS PRIVADAS (ÁREA SEGURA) --- */}
 

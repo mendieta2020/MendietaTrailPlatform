@@ -38,6 +38,7 @@ from core.models import (
     InternalMessage,
     Membership,
     Team,
+    TeamInvitation,
     WorkoutAssignment,
 )
 from core.tenancy import get_active_membership
@@ -48,6 +49,8 @@ from core.serializers_p1_roster import (
     AthleteRosterSerializer,
     CoachSerializer,
     MembershipSerializer,
+    TeamInvitationCreateSerializer,
+    TeamInvitationSerializer,
     TeamSerializer,
 )
 from core.tenancy import OrgTenantMixin
@@ -880,3 +883,64 @@ class CoachBriefingView(OrgTenantMixin, APIView):
             "athletes_inactive_4d": athletes_inactive_4d,
             "unread_messages": unread_messages,
         })
+
+
+# ==============================================================================
+# PR-165a: TeamInvitationViewSet
+# ==============================================================================
+
+class TeamInvitationViewSet(OrgTenantMixin, mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.GenericViewSet):
+    """
+    GET  /api/p1/orgs/{org_id}/invitations/team/  — list team invitations (owner/admin only)
+    POST /api/p1/orgs/{org_id}/invitations/team/  — create invitation (owner only)
+    """
+
+    _OWNER_ROLES = {"owner"}
+    _LIST_ROLES  = {"owner", "coach"}  # coaches can see but not create
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        self.resolve_membership(kwargs["org_id"])
+
+    def get_queryset(self):
+        return TeamInvitation.objects.filter(organization=self.organization)
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return TeamInvitationCreateSerializer
+        return TeamInvitationSerializer
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx["organization"] = self.organization
+        return ctx
+
+    def list(self, request, *args, **kwargs):
+        if self.membership.role not in self._LIST_ROLES:
+            raise PermissionDenied("Solo el owner o coach puede ver las invitaciones.")
+        return super().list(request, *args, **kwargs)
+
+    def create(self, request, *args, **kwargs):
+        if self.membership.role not in self._OWNER_ROLES:
+            raise PermissionDenied("Solo el owner puede crear invitaciones de equipo.")
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        invitation = serializer.save()
+
+        frontend_url = getattr(__import__("django.conf", fromlist=["settings"]).settings, "FRONTEND_URL", "https://app.quantoryn.com")
+        join_url = f"{frontend_url}/join/team/{invitation.token}"
+
+        logger.info(
+            "team_invitation_created",
+            extra={
+                "organization_id": self.organization.id,
+                "user_id": request.user.id,
+                "role": invitation.role,
+                "invitation_token": str(invitation.token),
+            },
+        )
+
+        read_data = TeamInvitationSerializer(invitation, context=self.get_serializer_context()).data
+        read_data["join_url"] = join_url
+        return Response(read_data, status=status.HTTP_201_CREATED)

@@ -167,3 +167,18 @@ export function listAthleteGoals(orgId, athleteId) {
 export function getAthleteProfile(orgId, athleteId) {
   return client.get(`${p1Base(orgId)}/profiles/${athleteId}/`);
 }
+
+
+// ── Team Invitations (PR-165a) ────────────────────────────────────────────────
+
+export const listTeamInvitations = (orgId) =>
+  client.get(`${p1Base(orgId)}/invitations/team/`);
+
+export const createTeamInvitation = (orgId, data) =>
+  client.post(`${p1Base(orgId)}/invitations/team/`, data);
+
+export const getTeamJoinInfo = (token) =>
+  client.get(`/api/team-join/${token}/`);
+
+export const acceptTeamJoin = (token, data) =>
+  client.post(`/api/team-join/${token}/`, data);

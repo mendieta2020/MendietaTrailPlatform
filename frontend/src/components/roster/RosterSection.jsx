@@ -1,10 +1,21 @@
-import React, { useReducer, useEffect } from 'react';
-import { Tabs, Tab, Box, Grid, CircularProgress, Alert, Typography } from '@mui/material';
+import React, { useReducer, useEffect, useState } from 'react';
+import {
+  Tabs, Tab, Box, Grid, CircularProgress, Alert, Typography,
+  Button, Avatar, Chip, Divider,
+} from '@mui/material';
 import { Users, UserCheck, Users2 } from 'lucide-react';
-import { listAthletes, listCoaches, listTeams } from '../../api/p1';
+import { listAthletes, listCoaches, listTeams, listTeamInvitations } from '../../api/p1';
 import AthleteCard from './AthleteCard';
 import CoachCard from './CoachCard';
 import TeamCard from './TeamCard';
+import InviteTeamModal from './InviteTeamModal';
+
+const ROLE_COLORS = {
+  owner: '#00D4AA',
+  coach: '#3b82f6',
+  staff: '#8b5cf6',
+  athlete: '#64748b',
+};
 
 const initialState = {
   loading: false,
@@ -12,6 +23,8 @@ const initialState = {
   athletes: [],
   coaches: [],
   teams: [],
+  teamMembers: [],
+  pendingInvites: [],
 };
 
 function rosterReducer(state, action) {
@@ -25,29 +38,64 @@ function rosterReducer(state, action) {
         athletes: action.athletes,
         coaches: action.coaches,
         teams: action.teams,
+        teamMembers: action.teamMembers,
+        pendingInvites: action.pendingInvites,
       };
     case 'FETCH_ERROR':
       return { ...state, loading: false, error: action.error };
+    case 'ADD_INVITE':
+      return { ...state, pendingInvites: [action.invite, ...state.pendingInvites] };
     default:
       return state;
   }
 }
 
-export default function RosterSection({ orgId, onSelectAthlete }) {
+export default function RosterSection({ orgId, onSelectAthlete, userRole }) {
   const [tab, setTab] = React.useState(0);
   const [state, dispatch] = useReducer(rosterReducer, initialState);
+  const [inviteModal, setInviteModal] = useState(null); // null | 'coach' | 'staff'
+
+  const isOwner = userRole === 'owner';
 
   useEffect(() => {
     if (!orgId) return;
     dispatch({ type: 'FETCH_START' });
 
-    Promise.all([listAthletes(orgId), listCoaches(orgId), listTeams(orgId)])
-      .then(([athletesRes, coachesRes, teamsRes]) => {
+    const promises = [
+      listAthletes(orgId),
+      listCoaches(orgId),
+      listTeams(orgId),
+    ];
+    if (isOwner) {
+      promises.push(listTeamInvitations(orgId));
+    }
+
+    Promise.all(promises)
+      .then(([athletesRes, coachesRes, teamsRes, invitesRes]) => {
+        const athletes = athletesRes.data?.results ?? athletesRes.data ?? [];
+        const coaches  = coachesRes.data?.results  ?? coachesRes.data  ?? [];
+        const teams    = teamsRes.data?.results    ?? teamsRes.data    ?? [];
+
+        // Build team members list from coaches (owner implied)
+        const members = coaches.map((c) => ({
+          id: `coach-${c.id}`,
+          name: c.user?.name || c.user?.username || `Coach #${c.id}`,
+          email: c.user?.email || '',
+          role: 'coach',
+          status: 'active',
+        }));
+
+        const pendingInvites = invitesRes
+          ? (invitesRes.data?.results ?? invitesRes.data ?? []).filter((i) => i.status === 'pending')
+          : [];
+
         dispatch({
           type: 'FETCH_SUCCESS',
-          athletes: athletesRes.data?.results ?? athletesRes.data ?? [],
-          coaches: coachesRes.data?.results ?? coachesRes.data ?? [],
-          teams: teamsRes.data?.results ?? teamsRes.data ?? [],
+          athletes,
+          coaches,
+          teams,
+          teamMembers: members,
+          pendingInvites,
         });
       })
       .catch(() =>
@@ -56,7 +104,11 @@ export default function RosterSection({ orgId, onSelectAthlete }) {
           error: 'No se pudo cargar el roster. Intenta de nuevo.',
         })
       );
-  }, [orgId]);
+  }, [orgId, isOwner]);
+
+  const handleInviteCreated = (invite) => {
+    dispatch({ type: 'ADD_INVITE', invite });
+  };
 
   if (state.loading) {
     return (
@@ -70,54 +122,179 @@ export default function RosterSection({ orgId, onSelectAthlete }) {
     return <Alert severity="error" sx={{ mt: 2 }}>{state.error}</Alert>;
   }
 
-  const tabs = [
+  const standardTabs = [
     { label: 'Atletas', items: state.athletes, Card: AthleteCard, prop: 'athlete', emptyTitle: 'No hay atletas aún', emptySubtitle: 'Agrega atletas a la organización usando "Gestionar Conexiones".', EmptyIcon: Users },
     { label: 'Coaches', items: state.coaches, Card: CoachCard, prop: 'coach', emptyTitle: 'No hay coaches aún', emptySubtitle: 'Los coaches asignados a esta organización aparecerán aquí.', EmptyIcon: UserCheck },
+    ...(isOwner ? [{ label: 'Equipo', items: null, Card: null, prop: null, emptyTitle: '', emptySubtitle: '', EmptyIcon: null }] : []),
     { label: 'Equipos', items: state.teams, Card: TeamCard, prop: 'team', emptyTitle: 'No hay equipos aún', emptySubtitle: 'Crea equipos para organizar a tus atletas por grupos de entrenamiento.', EmptyIcon: Users2 },
   ];
 
-  const { items, Card, prop, emptyTitle, emptySubtitle, EmptyIcon } = tabs[tab];
+  const equipoTabIndex = standardTabs.findIndex((t) => t.label === 'Equipo');
+  const activeTab = standardTabs[tab];
 
   return (
     <Box>
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-        {tabs.map((t) => (
+        {standardTabs.map((t) => (
           <Tab key={t.label} label={t.label} />
         ))}
       </Tabs>
 
-      {items.length === 0 ? (
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            py: 10,
-            textAlign: 'center',
-          }}
-        >
-          <EmptyIcon style={{ width: 48, height: 48, color: '#cbd5e1', marginBottom: 16 }} />
-          <Typography variant="h6" fontWeight={600} sx={{ color: '#374151' }}>
-            {emptyTitle}
-          </Typography>
-          <Typography variant="body2" sx={{ color: '#6b7280', mt: 0.5, maxWidth: 360 }}>
-            {emptySubtitle}
-          </Typography>
+      {/* Equipo tab */}
+      {isOwner && tab === equipoTabIndex ? (
+        <Box>
+          {/* Action buttons */}
+          <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
+            <Button
+              variant="contained"
+              size="small"
+              onClick={() => setInviteModal('coach')}
+              sx={{
+                bgcolor: '#1e293b', color: '#fff',
+                '&:hover': { bgcolor: '#334155' },
+                textTransform: 'none', fontWeight: 600,
+              }}
+            >
+              + Invitar Coach
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => setInviteModal('staff')}
+              sx={{
+                borderColor: '#8b5cf6', color: '#8b5cf6',
+                '&:hover': { borderColor: '#7c3aed', bgcolor: 'rgba(139,92,246,0.05)' },
+                textTransform: 'none', fontWeight: 600,
+              }}
+            >
+              + Invitar Staff
+            </Button>
+          </Box>
+
+          {/* Active team members */}
+          {state.teamMembers.length > 0 && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                Miembros activos
+              </Typography>
+              {state.teamMembers.map((m) => (
+                <Box
+                  key={m.id}
+                  sx={{
+                    display: 'flex', alignItems: 'center', gap: 1.5,
+                    py: 1.5, borderBottom: '1px solid rgba(0,0,0,0.06)',
+                  }}
+                >
+                  <Avatar sx={{ width: 36, height: 36, bgcolor: ROLE_COLORS[m.role] || '#64748b', fontSize: 14, fontWeight: 700 }}>
+                    {(m.name || '?')[0].toUpperCase()}
+                  </Avatar>
+                  <Box sx={{ flexGrow: 1 }}>
+                    <Typography variant="body2" fontWeight={600}>{m.name}</Typography>
+                    <Typography variant="caption" sx={{ color: '#64748b' }}>{m.email}</Typography>
+                  </Box>
+                  <Chip label={m.role} size="small" sx={{ bgcolor: `${ROLE_COLORS[m.role]}20`, color: ROLE_COLORS[m.role], fontWeight: 700, fontSize: '0.65rem' }} />
+                  <Chip label="Activo" size="small" sx={{ bgcolor: '#dcfce7', color: '#16a34a', fontWeight: 700, fontSize: '0.65rem' }} />
+                </Box>
+              ))}
+            </Box>
+          )}
+
+          {/* Pending invitations */}
+          {state.pendingInvites.length > 0 && (
+            <Box>
+              <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                Invitaciones pendientes
+              </Typography>
+              {state.pendingInvites.map((inv) => (
+                <Box
+                  key={inv.id}
+                  sx={{
+                    display: 'flex', alignItems: 'center', gap: 1.5,
+                    py: 1.5, borderLeft: '3px solid #f59e0b', pl: 1.5,
+                    borderBottom: '1px solid rgba(0,0,0,0.06)',
+                    bgcolor: 'rgba(245,158,11,0.04)',
+                  }}
+                >
+                  <Avatar sx={{ width: 36, height: 36, bgcolor: '#f59e0b', fontSize: 14, fontWeight: 700 }}>
+                    ?
+                  </Avatar>
+                  <Box sx={{ flexGrow: 1 }}>
+                    <Typography variant="body2" fontWeight={600} sx={{ color: '#92400e' }}>
+                      {inv.email || 'Cualquier persona con el link'}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#64748b', fontFamily: 'monospace' }}>
+                      {String(inv.token).slice(0, 8)}…
+                    </Typography>
+                  </Box>
+                  <Chip label={inv.role} size="small" sx={{ bgcolor: `${ROLE_COLORS[inv.role] || '#64748b'}20`, color: ROLE_COLORS[inv.role] || '#64748b', fontWeight: 700, fontSize: '0.65rem' }} />
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => {
+                      const url = `${window.location.origin}/join/team/${inv.token}`;
+                      navigator.clipboard?.writeText(url);
+                    }}
+                    sx={{ textTransform: 'none', fontSize: '0.7rem', borderColor: '#f59e0b', color: '#92400e', minWidth: 90 }}
+                  >
+                    Copiar link
+                  </Button>
+                </Box>
+              ))}
+            </Box>
+          )}
+
+          {state.teamMembers.length === 0 && state.pendingInvites.length === 0 && (
+            <Box sx={{ py: 8, textAlign: 'center' }}>
+              <Users2 style={{ width: 48, height: 48, color: '#cbd5e1', marginBottom: 16 }} />
+              <Typography variant="h6" fontWeight={600} sx={{ color: '#374151' }}>Sin miembros de equipo</Typography>
+              <Typography variant="body2" sx={{ color: '#6b7280', mt: 0.5 }}>Invita coaches y staff para que colaboren en la organización.</Typography>
+            </Box>
+          )}
         </Box>
       ) : (
-        <Grid container spacing={2}>
-          {items.map((item) => (
-            <Grid size={{ xs: 12, sm: 6, md: 4 }} key={item.id}>
-              <Box
-                onClick={prop === 'athlete' && onSelectAthlete ? () => onSelectAthlete(item.id) : undefined}
-                sx={prop === 'athlete' && onSelectAthlete ? { cursor: 'pointer' } : undefined}
-              >
-                <Card {...{ [prop]: item }} />
-              </Box>
+        /* Standard tab rendering */
+        activeTab && activeTab.items !== null && (
+          activeTab.items.length === 0 ? (
+            <Box
+              sx={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                justifyContent: 'center', py: 10, textAlign: 'center',
+              }}
+            >
+              <activeTab.EmptyIcon style={{ width: 48, height: 48, color: '#cbd5e1', marginBottom: 16 }} />
+              <Typography variant="h6" fontWeight={600} sx={{ color: '#374151' }}>
+                {activeTab.emptyTitle}
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#6b7280', mt: 0.5, maxWidth: 360 }}>
+                {activeTab.emptySubtitle}
+              </Typography>
+            </Box>
+          ) : (
+            <Grid container spacing={2}>
+              {activeTab.items.map((item) => (
+                <Grid size={{ xs: 12, sm: 6, md: 4 }} key={item.id}>
+                  <Box
+                    onClick={activeTab.prop === 'athlete' && onSelectAthlete ? () => onSelectAthlete(item.id) : undefined}
+                    sx={activeTab.prop === 'athlete' && onSelectAthlete ? { cursor: 'pointer' } : undefined}
+                  >
+                    <activeTab.Card {...{ [activeTab.prop]: item }} />
+                  </Box>
+                </Grid>
+              ))}
             </Grid>
-          ))}
-        </Grid>
+          )
+        )
+      )}
+
+      {/* Invite team modal */}
+      {inviteModal && (
+        <InviteTeamModal
+          open={!!inviteModal}
+          defaultRole={inviteModal}
+          orgId={orgId}
+          onClose={() => setInviteModal(null)}
+          onCreated={handleInviteCreated}
+        />
       )}
     </Box>
   );

@@ -17,7 +17,7 @@ Design rules enforced here:
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from core.models import Athlete, AthleteCoachAssignment, Coach, Membership, OAuthIntegrationStatus, Team
+from core.models import Athlete, AthleteCoachAssignment, Coach, Membership, OAuthIntegrationStatus, Team, TeamInvitation
 
 User = get_user_model()
 
@@ -323,3 +323,60 @@ class AthleteCoachAssignmentSerializer(serializers.ModelSerializer):
             self.fields["coach_id"].queryset = Coach.objects.filter(
                 organization=organization
             )
+
+
+# ==============================================================================
+# PR-165a: TeamInvitation serializers
+# ==============================================================================
+
+_FORBIDDEN_INVITE_ROLES = {"owner", "athlete"}
+
+
+class TeamInvitationSerializer(serializers.ModelSerializer):
+    """Read serializer for TeamInvitation list/retrieve."""
+
+    accepted_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TeamInvitation
+        fields = [
+            "id",
+            "token",
+            "role",
+            "email",
+            "status",
+            "created_at",
+            "expires_at",
+            "accepted_by_name",
+        ]
+
+    def get_accepted_by_name(self, obj):
+        if obj.accepted_by:
+            return obj.accepted_by.get_full_name() or obj.accepted_by.username
+        return None
+
+
+class TeamInvitationCreateSerializer(serializers.ModelSerializer):
+    """Write serializer for creating a TeamInvitation."""
+
+    class Meta:
+        model = TeamInvitation
+        fields = ["role", "email"]
+
+    def validate_role(self, value):
+        if value in _FORBIDDEN_INVITE_ROLES:
+            raise serializers.ValidationError(
+                f"No se puede invitar con el rol '{value}'."
+            )
+        return value
+
+    def create(self, validated_data):
+        from django.utils import timezone
+        from datetime import timedelta
+
+        request = self.context["request"]
+        organization = self.context["organization"]
+        validated_data["organization"] = organization
+        validated_data["created_by"] = request.user
+        validated_data["expires_at"] = timezone.now() + timedelta(days=7)
+        return super().create(validated_data)
