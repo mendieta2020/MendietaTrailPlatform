@@ -185,3 +185,6 @@ export const acceptTeamJoin = (token, data) =>
 
 export const deleteTeamInvitation = (orgId, invitationId) =>
   client.delete(`${p1Base(orgId)}/invitations/team/${invitationId}/`);
+
+export const listTeamMembers = (orgId) =>
+  client.get(`${p1Base(orgId)}/team-members/`);

@@ -4,7 +4,7 @@ import {
   Button, Avatar, Chip,
 } from '@mui/material';
 import { Users, UserCheck, Users2 } from 'lucide-react';
-import { listAthletes, listCoaches, listTeamInvitations, deleteTeamInvitation } from '../../api/p1';
+import { listAthletes, listCoaches, listTeamInvitations, listTeamMembers, deleteTeamInvitation } from '../../api/p1';
 import AthleteCard from './AthleteCard';
 import CoachCard from './CoachCard';
 import InviteTeamModal from './InviteTeamModal';
@@ -66,21 +66,17 @@ export default function RosterSection({ orgId, onSelectAthlete, userRole }) {
     ];
     if (isOwner) {
       promises.push(listTeamInvitations(orgId));
+      promises.push(listTeamMembers(orgId));
     }
 
     Promise.all(promises)
-      .then(([athletesRes, coachesRes, invitesRes]) => {
+      .then(([athletesRes, coachesRes, invitesRes, teamMembersRes]) => {
         const athletes = athletesRes.data?.results ?? athletesRes.data ?? [];
         const coaches  = coachesRes.data?.results  ?? coachesRes.data  ?? [];
 
-        // Build team members list from coaches
-        const members = coaches.map((c) => ({
-          id: `coach-${c.id}`,
-          name: c.user?.name || c.user?.username || `Coach #${c.id}`,
-          email: c.user?.email || '',
-          role: 'coach',
-          status: 'active',
-        }));
+        // Team members come from Membership (not Coach model) so coach/staff
+        // registered via JoinTeamPage appear correctly
+        const members = teamMembersRes ? (teamMembersRes.data ?? []) : [];
 
         const pendingInvites = invitesRes
           ? (invitesRes.data?.results ?? invitesRes.data ?? []).filter((i) => i.status === 'pending')

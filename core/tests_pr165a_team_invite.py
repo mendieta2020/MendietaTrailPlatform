@@ -373,6 +373,67 @@ def test_invitation_token_is_org_isolated():
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# TeamMembersView
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_team_members_returns_owner_coach_staff():
+    org = _org("tm-org")
+    owner = _user("tm-owner")
+    coach_user = _user("tm-coach")
+    staff_user = _user("tm-staff")
+    athlete_user = _user("tm-athlete")
+    _membership(owner, org, "owner")
+    _membership(coach_user, org, "coach")
+    _membership(staff_user, org, "staff")
+    _membership(athlete_user, org, "athlete")
+    client = _auth_client(owner)
+
+    resp = client.get(f"/api/p1/orgs/{org.id}/team-members/")
+    assert resp.status_code == status.HTTP_200_OK
+    roles = {m["role"] for m in resp.data}
+    emails = {m["email"] for m in resp.data}
+    assert "owner" in roles
+    assert "coach" in roles
+    assert "staff" in roles
+    assert "athlete" not in roles
+    assert athlete_user.email not in emails
+
+
+@pytest.mark.django_db
+def test_team_members_excludes_athletes():
+    org = _org("tm-excl-org")
+    owner = _user("tm-excl-owner")
+    athlete_user = _user("tm-excl-ath")
+    _membership(owner, org, "owner")
+    _membership(athlete_user, org, "athlete")
+    client = _auth_client(owner)
+
+    resp = client.get(f"/api/p1/orgs/{org.id}/team-members/")
+    assert resp.status_code == status.HTTP_200_OK
+    assert all(m["role"] != "athlete" for m in resp.data)
+
+
+@pytest.mark.django_db
+def test_team_members_non_owner_returns_403():
+    org = _org("tm-perm-org")
+    owner = _user("tm-perm-owner")
+    coach_user = _user("tm-perm-coach")
+    _membership(owner, org, "owner")
+    _membership(coach_user, org, "coach")
+    client = _auth_client(coach_user)
+
+    resp = client.get(f"/api/p1/orgs/{org.id}/team-members/")
+    assert resp.status_code == status.HTTP_403_FORBIDDEN
+
+
+# ---------------------------------------------------------------------------
+# Fix 4: Delete / revoke invitation
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.django_db
 def test_owner_can_delete_pending_invitation():
     org = _org("del-org")

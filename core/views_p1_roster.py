@@ -26,6 +26,7 @@ from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -967,3 +968,60 @@ class TeamInvitationViewSet(OrgTenantMixin, mixins.ListModelMixin, mixins.Create
         )
         invitation.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ==============================================================================
+# PR-165a Fix 2: TeamMembersView — list non-athlete memberships
+# ==============================================================================
+
+_TEAM_ROLES = {"owner", "coach", "staff"}
+_TEAM_ADMIN_ROLES = {"owner", "admin"}
+
+
+class TeamMembersView(APIView):
+    """
+    GET /api/p1/orgs/{org_id}/team-members/
+    Returns all non-athlete memberships (owner, coach, staff) for the org.
+    Restricted to owner/admin role.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, org_id):
+        # Fail-closed tenancy: caller must be owner or admin of the org
+        caller = Membership.objects.filter(
+            user=request.user,
+            organization_id=org_id,
+            role__in=list(_TEAM_ADMIN_ROLES),
+            is_active=True,
+        ).first()
+        if not caller:
+            return Response(
+                {"detail": "No tienes permiso para ver los miembros del equipo."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        members = (
+            Membership.objects
+            .filter(organization_id=org_id, role__in=list(_TEAM_ROLES), is_active=True)
+            .select_related("user")
+            .order_by("role", "user__first_name")
+        )
+
+        data = []
+        for m in members:
+            name = (
+                f"{m.user.first_name} {m.user.last_name}".strip()
+                or m.user.username
+                or m.user.email
+            )
+            data.append({
+                "id": m.id,
+                "user_id": m.user_id,
+                "name": name,
+                "email": m.user.email,
+                "role": m.role,
+                "joined_at": m.joined_at,
+            })
+
+        return Response(data)

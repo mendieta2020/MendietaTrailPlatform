@@ -95,6 +95,7 @@ from core.views_p1_roster import (  # PR-129 / PR-141 / PR-148 / PR-165a
     CoachViewSet,
     MembershipViewSet,
     TeamInvitationViewSet,
+    TeamMembersView,
     TeamViewSet,
 )
 from core.views_messages import (  # PR-147
@@ -753,6 +754,8 @@ urlpatterns = [
     # PR-165a: Team invitations (owner creates/revokes; owner+coach lists)
     path('p1/orgs/<int:org_id>/invitations/team/', TeamInvitationViewSet.as_view({'get': 'list', 'post': 'create'}), name='team-invitations'),
     path('p1/orgs/<int:org_id>/invitations/team/<int:pk>/', TeamInvitationViewSet.as_view({'delete': 'destroy'}), name='team-invitation-detail'),
+    # PR-165a Fix 2: Team members from Membership (owner/coach/staff)
+    path('p1/orgs/<int:org_id>/team-members/', TeamMembersView.as_view(), name='team-members'),
     # PR-165a: Public team join endpoint (preview GET + accept POST)
     path('team-join/<uuid:token>/', TeamJoinView.as_view(), name='team-join'),
 
