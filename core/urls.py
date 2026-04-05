@@ -87,13 +87,15 @@ from core.views_athlete import (  # PR-139 / PR-141 / PR-156
     AthleteWeeklySummaryView,
     AthleteWellnessTodayView,
 )
-from core.views_p1_roster import (  # PR-129 / PR-141 / PR-148
+from core.views_p1_roster import (  # PR-129 / PR-141 / PR-148 / PR-165a
     AthleteCoachAssignmentViewSet,
     AthleteRosterViewSet,
     CoachBriefingView,
     CoachNotifyAthleteDeviceView,
     CoachViewSet,
     MembershipViewSet,
+    TeamInvitationViewSet,
+    TeamMembersView,
     TeamViewSet,
 )
 from core.views_messages import (  # PR-147
@@ -101,10 +103,11 @@ from core.views_messages import (  # PR-147
     InternalMessageMarkReadView,
     AthleteAlertsView,
 )
-from core.views_onboarding import (  # PR-149
+from core.views_onboarding import (  # PR-149 / PR-165a
     RegisterView,
     GoogleAuthView,
     OnboardingCompleteView,
+    TeamJoinView,
 )
 from core.views_periodization import (  # PR-157
     AutoPeriodizeAthleteView,
@@ -747,6 +750,14 @@ urlpatterns = [
     path('auth/register/', RegisterView.as_view(), name='auth-register'),
     path('auth/google/', GoogleAuthView.as_view(), name='auth-google'),
     path('onboarding/complete/', OnboardingCompleteView.as_view(), name='onboarding-complete'),
+
+    # PR-165a: Team invitations (owner creates/revokes; owner+coach lists)
+    path('p1/orgs/<int:org_id>/invitations/team/', TeamInvitationViewSet.as_view({'get': 'list', 'post': 'create'}), name='team-invitations'),
+    path('p1/orgs/<int:org_id>/invitations/team/<int:pk>/', TeamInvitationViewSet.as_view({'delete': 'destroy'}), name='team-invitation-detail'),
+    # PR-165a Fix 2: Team members from Membership (owner/coach/staff)
+    path('p1/orgs/<int:org_id>/team-members/', TeamMembersView.as_view(), name='team-members'),
+    # PR-165a: Public team join endpoint (preview GET + accept POST)
+    path('team-join/<uuid:token>/', TeamJoinView.as_view(), name='team-join'),
 
     # PR-147: Internal Messages & Smart Alerts
     # URL: /api/p1/orgs/<org_id>/messages/

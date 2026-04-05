@@ -198,7 +198,7 @@ export default function CoachDashboard() {
       <CoachBriefingCard orgId={activeOrg.org_id} />
 
       {/* Roster */}
-      <RosterSection orgId={activeOrg.org_id} onSelectAthlete={setSelectedAthleteId} />
+      <RosterSection orgId={activeOrg.org_id} onSelectAthlete={setSelectedAthleteId} userRole={activeOrg.role} />
 
       {selectedAthleteId !== null && (
         <AssignmentCalendar athleteId={selectedAthleteId} orgId={activeOrg.org_id} />

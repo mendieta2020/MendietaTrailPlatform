@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-04 · PR-163 Calendar Pro — Custom month grid + shared components_
+_Last updated: 2026-04-05 · PR-165a Team Invite + Role-Based Sidebar_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -354,5 +354,26 @@ Coach B2C:     Athlete pays Coach via MercadoPago (AthleteSubscription)
 - **WellnessCheckIn**: 5 Hooper-Index dimensions, UniqueConstraint(athlete+date), upsert, permanent dismiss
 - New models: WellnessCheckIn (migration 0102), AthleteProfile.wellness_checkin_dismissed
 
+### PR-164a — Mobile Navigation + PWA ✅ 2026-04-05
+- Bottom tabs (5 coach, 4 athlete), service worker, standalone PWA manifest
+
+### PR-164b — Brand #00D4AA + Responsive + Logo real ✅ 2026-04-05
+- Zero #F57C00 remaining; real Quantoryn SVG logo; flex-column layout; psychological hooks
+
+### PR-165a — Team Invite + Role-Based Sidebar ✅ 2026-04-05
+- TeamInvitation model: token, role (coach/staff only), email, 7-day expiry, idempotent accept
+- Migration: 0107_pr165a_teaminvitation.py (migration 107)
+- TeamInvitationViewSet: GET list (owner+coach) + POST create (owner only) — org-scoped
+- TeamJoinView: GET /api/team-join/<token>/ (public preview) + POST (accept → JWT)
+- Role-aware sidebar: coach hides Finanzas + Mi Organización; staff sees only Alumnos + Grupos
+- Dynamic mobile bottom tabs by role (staff 3 tabs, coach/owner 5 tabs)
+- RosterSection: 4th tab "Equipo" (owner only) — active members + pending invites + copy link
+- InviteTeamModal: role selector + optional email + generated link with clipboard copy
+- JoinTeamPage: /join/team/:token — public registration flow (new user or logged-in shortcut)
+- 20 backend tests in core/tests_pr165a_team_invite.py — all pass
+- Frontend: lint 0 errors, build success
+- Risk: MEDIUM — RESOLVED
+- Next: PR-165b — org profile, photo upload, athlete payment visibility, trial paywall
+
 ## Test Baseline
-~1349+ tests | CI: backend ✅ frontend ✅ (pending disk space fix)
+~1369+ tests | CI: backend ✅ frontend ✅

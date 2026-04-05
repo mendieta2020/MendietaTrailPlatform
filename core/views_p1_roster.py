@@ -26,6 +26,7 @@ from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -38,6 +39,7 @@ from core.models import (
     InternalMessage,
     Membership,
     Team,
+    TeamInvitation,
     WorkoutAssignment,
 )
 from core.tenancy import get_active_membership
@@ -48,6 +50,8 @@ from core.serializers_p1_roster import (
     AthleteRosterSerializer,
     CoachSerializer,
     MembershipSerializer,
+    TeamInvitationCreateSerializer,
+    TeamInvitationSerializer,
     TeamSerializer,
 )
 from core.tenancy import OrgTenantMixin
@@ -880,3 +884,144 @@ class CoachBriefingView(OrgTenantMixin, APIView):
             "athletes_inactive_4d": athletes_inactive_4d,
             "unread_messages": unread_messages,
         })
+
+
+# ==============================================================================
+# PR-165a: TeamInvitationViewSet
+# ==============================================================================
+
+class TeamInvitationViewSet(OrgTenantMixin, mixins.ListModelMixin, mixins.CreateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
+    """
+    GET    /api/p1/orgs/{org_id}/invitations/team/       — list (owner/coach)
+    POST   /api/p1/orgs/{org_id}/invitations/team/       — create (owner only)
+    DELETE /api/p1/orgs/{org_id}/invitations/team/{pk}/  — revoke pending (owner only)
+    """
+
+    _OWNER_ROLES = {"owner"}
+    _LIST_ROLES  = {"owner", "coach"}  # coaches can see but not create
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        self.resolve_membership(kwargs["org_id"])
+
+    def get_queryset(self):
+        return TeamInvitation.objects.filter(organization=self.organization)
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return TeamInvitationCreateSerializer
+        return TeamInvitationSerializer
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx["organization"] = self.organization
+        return ctx
+
+    def list(self, request, *args, **kwargs):
+        if self.membership.role not in self._LIST_ROLES:
+            raise PermissionDenied("Solo el owner o coach puede ver las invitaciones.")
+        return super().list(request, *args, **kwargs)
+
+    def create(self, request, *args, **kwargs):
+        if self.membership.role not in self._OWNER_ROLES:
+            raise PermissionDenied("Solo el owner puede crear invitaciones de equipo.")
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        invitation = serializer.save()
+
+        frontend_url = getattr(__import__("django.conf", fromlist=["settings"]).settings, "FRONTEND_URL", "https://app.quantoryn.com")
+        join_url = f"{frontend_url}/join/team/{invitation.token}"
+
+        logger.info(
+            "team_invitation_created",
+            extra={
+                "organization_id": self.organization.id,
+                "user_id": request.user.id,
+                "role": invitation.role,
+                "invitation_token": str(invitation.token),
+            },
+        )
+
+        read_data = TeamInvitationSerializer(invitation, context=self.get_serializer_context()).data
+        read_data["join_url"] = join_url
+        return Response(read_data, status=status.HTTP_201_CREATED)
+
+    def destroy(self, request, *args, **kwargs):
+        if self.membership.role not in self._OWNER_ROLES:
+            raise PermissionDenied("Solo el owner puede revocar invitaciones.")
+
+        invitation = self.get_object()
+        if invitation.status != TeamInvitation.Status.PENDING:
+            return Response(
+                {"detail": "Solo se pueden eliminar invitaciones pendientes."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        logger.info(
+            "team_invitation_revoked",
+            extra={
+                "organization_id": self.organization.id,
+                "user_id": request.user.id,
+                "invitation_token": str(invitation.token),
+            },
+        )
+        invitation.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ==============================================================================
+# PR-165a Fix 2: TeamMembersView — list non-athlete memberships
+# ==============================================================================
+
+_TEAM_ROLES = {"owner", "coach", "staff"}
+_TEAM_ADMIN_ROLES = {"owner", "admin"}
+
+
+class TeamMembersView(APIView):
+    """
+    GET /api/p1/orgs/{org_id}/team-members/
+    Returns all non-athlete memberships (owner, coach, staff) for the org.
+    Restricted to owner/admin role.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, org_id):
+        # Fail-closed tenancy: caller must be owner or admin of the org
+        caller = Membership.objects.filter(
+            user=request.user,
+            organization_id=org_id,
+            role__in=list(_TEAM_ADMIN_ROLES),
+            is_active=True,
+        ).first()
+        if not caller:
+            return Response(
+                {"detail": "No tienes permiso para ver los miembros del equipo."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        members = (
+            Membership.objects
+            .filter(organization_id=org_id, role__in=list(_TEAM_ROLES), is_active=True)
+            .select_related("user")
+            .order_by("role", "user__first_name")
+        )
+
+        data = []
+        for m in members:
+            name = (
+                f"{m.user.first_name} {m.user.last_name}".strip()
+                or m.user.username
+                or m.user.email
+            )
+            data.append({
+                "id": m.id,
+                "user_id": m.user_id,
+                "name": name,
+                "email": m.user.email,
+                "role": m.role,
+                "joined_at": m.joined_at,
+            })
+
+        return Response(data)

@@ -12,6 +12,7 @@ from .models import (
     WorkoutAssignment,
     ActivityStream,
     WorkoutReconciliation,
+    TeamInvitation,
 )
 
 # ==============================================================================
@@ -317,3 +318,8 @@ class WorkoutReconciliationAdmin(admin.ModelAdmin):
         "match_confidence",
     )
     raw_id_fields = ("assignment", "completed_activity")
+
+
+@admin.register(TeamInvitation)
+class TeamInvitationAdmin(admin.ModelAdmin):
+    list_display = ("token", "organization", "role", "status", "created_at", "expires_at")

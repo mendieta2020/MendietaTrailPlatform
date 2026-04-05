@@ -28,6 +28,7 @@ from core.models import (
     Membership,
     OrgOAuthCredential,
     RaceEvent,
+    TeamInvitation,
 )
 from core.serializers_onboarding import (
     GoogleAuthSerializer,
@@ -514,3 +515,138 @@ class OnboardingCompleteView(APIView):
             {"redirect_url": init_point},
             status=status.HTTP_201_CREATED,
         )
+
+
+# ==============================================================================
+# PR-165a: TeamJoinView — public endpoint to preview and accept a team invite
+# ==============================================================================
+
+class TeamJoinView(APIView):
+    """
+    GET  /api/team-join/{token}/  — public; returns invitation info (org, role, status).
+    POST /api/team-join/{token}/  — accepts first_name, last_name, email, password.
+                                    Creates User + Membership. Returns JWT pair.
+                                    If user is already authenticated (JWT header present),
+                                    only creates the Membership — no registration needed.
+
+    Note: authentication_classes uses DEFAULT (JWT) so an authenticated user's token
+    is recognised. permission_classes = AllowAny so unauthenticated requests still work.
+    """
+
+    permission_classes = [AllowAny]
+    # Do NOT set authentication_classes = [] here — we need JWT auth to resolve
+    # request.user for the "already logged in" path.
+
+    def _get_invitation(self, token):
+        try:
+            return TeamInvitation.objects.select_related("organization").get(token=token)
+        except TeamInvitation.DoesNotExist:
+            return None
+
+    def _validate_invitation(self, invitation, email=None):
+        """Return (None, error_response) or (invitation, None)."""
+        if invitation is None:
+            return None, Response(
+                {"detail": "Invitación no encontrada.", "code": "not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if invitation.status == TeamInvitation.Status.ACCEPTED:
+            return None, Response(
+                {"detail": "Esta invitación ya fue usada.", "code": "already_used"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if invitation.is_expired or invitation.status == TeamInvitation.Status.EXPIRED:
+            return None, Response(
+                {"detail": "Esta invitación ha expirado.", "code": "expired"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if email and invitation.email and invitation.email.lower() != email.lower():
+            return None, Response(
+                {"detail": "Este enlace no está destinado a tu email.", "code": "email_mismatch"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return invitation, None
+
+    def get(self, request, token):
+        invitation = self._get_invitation(token)
+        inv, err = self._validate_invitation(invitation)
+        if err:
+            return err
+        return Response({
+            "org_name": inv.organization.name,
+            "role": inv.role,
+            "status": inv.status,
+            "expires_at": inv.expires_at,
+        })
+
+    def post(self, request, token):
+        invitation = self._get_invitation(token)
+        # Only validate email match when the user is NOT authenticated
+        # (authenticated users are identified by their session/token, not by email in body)
+        email = "" if (request.user and request.user.is_authenticated) else request.data.get("email", "").lower().strip()
+        inv, err = self._validate_invitation(invitation, email=email)
+        if err:
+            return err
+
+        with transaction.atomic():
+            # Authenticated user path: just create membership
+            if request.user and request.user.is_authenticated:
+                user = request.user
+            else:
+                # Registration path
+                first_name = request.data.get("first_name", "").strip()
+                last_name  = request.data.get("last_name", "").strip()
+                password   = request.data.get("password", "")
+
+                if not email or not password:
+                    return Response(
+                        {"detail": "email y password son requeridos."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                existing = User.objects.filter(email=email).first()
+                if existing:
+                    # User exists — verify password and log them in
+                    if not existing.check_password(password):
+                        return Response(
+                            {"detail": "Credenciales incorrectas."},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    user = existing
+                else:
+                    user = User.objects.create_user(
+                        username=f"{email.split('@')[0]}_{uuid.uuid4().hex[:6]}",
+                        email=email,
+                        first_name=first_name,
+                        last_name=last_name,
+                        password=password,
+                    )
+
+            # Create Membership (idempotent — skip if already exists)
+            membership, created = Membership.objects.get_or_create(
+                user=user,
+                organization=inv.organization,
+                defaults={"role": inv.role},
+            )
+            if not created and membership.role != inv.role:
+                # Update role to invited role if membership already existed with different role
+                membership.role = inv.role
+                membership.save(update_fields=["role"])
+
+            # Mark invitation as accepted
+            inv.status = TeamInvitation.Status.ACCEPTED
+            inv.accepted_by = user
+            inv.accepted_at = timezone.now()
+            inv.save(update_fields=["status", "accepted_by", "accepted_at"])
+
+        logger.info(
+            "team_invitation_accepted",
+            extra={
+                "organization_id": inv.organization.id,
+                "user_id": user.id,
+                "role": inv.role,
+                "invitation_token": str(inv.token),
+            },
+        )
+
+        return Response(_jwt_pair(user), status=status.HTTP_200_OK)

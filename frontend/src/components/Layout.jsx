@@ -154,44 +154,71 @@ const Layout = ({ children }) => {
   };
 
   const isAdminOrOwner = userRole === 'owner' || userRole === 'admin';
+  const isStaff = userRole === 'staff';
+  const isCoach = userRole === 'coach';
 
-  const menuGroups = [
-    {
-      label: 'DIARIO',
-      items: [
-        { text: 'Inicio',      icon: <Dashboard />,            path: '/dashboard' },
-        { text: 'Calendario',  icon: <CalendarMonth />,         path: '/calendar' },
-        { text: 'Alumnos',     icon: <People />,                path: '/athletes' },
-        { text: 'Analytics',   icon: <BarChart2 size={20} />,   path: '/coach/analytics' },
-      ],
-    },
-    {
-      label: 'HERRAMIENTAS',
-      items: [
-        { text: 'Librería',  icon: <LibraryBooksIcon />, path: '/library' },
-        { text: 'Plantilla', icon: <GridView />,          path: '/plantilla' },
-        { text: 'Grupos',    icon: <Groups />,             path: '/teams' },
-      ],
-    },
-    {
-      label: 'CONFIGURACIÓN',
-      items: [
-        { text: 'Finanzas',         icon: <Payment />,   path: '/finance',        adminOnly: true },
-        { text: 'Conexiones',       icon: <LinkIcon />,  path: '/connections' },
-        { text: 'Mi Organización',  icon: <Business />,  path: '/coach-dashboard' },
-      ],
-    },
-  ];
+  // Role-aware sidebar groups
+  const menuGroups = isStaff
+    ? [
+        {
+          label: 'GESTIÓN',
+          items: [
+            { text: 'Alumnos', icon: <People />,  path: '/athletes' },
+            { text: 'Grupos',  icon: <Groups />,  path: '/teams' },
+          ],
+        },
+      ]
+    : [
+        {
+          label: 'DIARIO',
+          items: [
+            { text: 'Inicio',      icon: <Dashboard />,            path: '/dashboard' },
+            { text: 'Calendario',  icon: <CalendarMonth />,         path: '/calendar' },
+            { text: 'Alumnos',     icon: <People />,                path: '/athletes' },
+            { text: 'Analytics',   icon: <BarChart2 size={20} />,   path: '/coach/analytics' },
+          ],
+        },
+        {
+          label: 'HERRAMIENTAS',
+          items: [
+            { text: 'Librería',  icon: <LibraryBooksIcon />, path: '/library' },
+            { text: 'Plantilla', icon: <GridView />,          path: '/plantilla' },
+            { text: 'Grupos',    icon: <Groups />,             path: '/teams' },
+          ],
+        },
+        {
+          label: 'CONFIGURACIÓN',
+          items: [
+            ...(!isCoach ? [{ text: 'Finanzas', icon: <Payment />, path: '/finance', adminOnly: true }] : []),
+            { text: 'Conexiones',      icon: <LinkIcon />,  path: '/connections' },
+            ...(!isCoach ? [{ text: 'Mi Organización', icon: <Business />, path: '/coach-dashboard' }] : []),
+          ],
+        },
+      ];
 
-  // "Más" drawer items — tools + config sections (not in bottom tabs)
-  const moreItems = [
-    { text: 'Librería',         icon: <LibraryBooksIcon />, path: '/library' },
-    { text: 'Plantilla',        icon: <GridView />,          path: '/plantilla' },
-    { text: 'Grupos',           icon: <Groups />,             path: '/teams' },
-    { text: 'Finanzas',         icon: <Payment />,            path: '/finance',        adminOnly: true },
-    { text: 'Conexiones',       icon: <LinkIcon />,           path: '/connections' },
-    { text: 'Mi Organización',  icon: <Business />,           path: '/coach-dashboard' },
-  ];
+  // "Más" drawer items — role-aware
+  const moreItems = isStaff
+    ? [
+        { text: 'Alumnos', icon: <People />,  path: '/athletes' },
+        { text: 'Grupos',  icon: <Groups />,  path: '/teams' },
+      ]
+    : [
+        { text: 'Librería',   icon: <LibraryBooksIcon />, path: '/library' },
+        { text: 'Plantilla',  icon: <GridView />,          path: '/plantilla' },
+        { text: 'Grupos',     icon: <Groups />,             path: '/teams' },
+        ...(!isCoach ? [{ text: 'Finanzas', icon: <Payment />, path: '/finance', adminOnly: true }] : []),
+        { text: 'Conexiones', icon: <LinkIcon />,           path: '/connections' },
+        ...(!isCoach ? [{ text: 'Mi Organización', icon: <Business />, path: '/coach-dashboard' }] : []),
+      ];
+
+  // Role-aware mobile bottom tabs
+  const bottomTabs = isStaff
+    ? [
+        { label: 'Alumnos', icon: <People sx={{ fontSize: 22 }} />,   value: '/athletes' },
+        { label: 'Grupos',  icon: <Groups sx={{ fontSize: 22 }} />,   value: '/teams' },
+        { label: 'Más',     icon: <MoreHoriz sx={{ fontSize: 22 }} />, value: 'mas' },
+      ]
+    : COACH_BOTTOM_TABS;
 
   const drawer = (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#0D1117', color: 'white' }}>
@@ -346,7 +373,7 @@ const Layout = ({ children }) => {
   }
 
   // Determine active bottom tab value
-  const activeBottomTab = COACH_BOTTOM_TABS.find(
+  const activeBottomTab = bottomTabs.find(
     (t) => t.value !== 'mas' && location.pathname.startsWith(t.value)
   )?.value ?? false;
 
@@ -440,7 +467,7 @@ const Layout = ({ children }) => {
             }}
             sx={bottomNavSx}
           >
-            {COACH_BOTTOM_TABS.map((tab) => (
+            {bottomTabs.map((tab) => (
               <BottomNavigationAction
                 key={tab.value}
                 label={tab.label}

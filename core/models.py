@@ -3571,6 +3571,67 @@ class AthleteInvitation(models.Model):
 
 
 # ==============================================================================
+# PR-165a: TeamInvitation — token-based invite for coaches and staff
+# ==============================================================================
+
+class TeamInvitation(models.Model):
+    """
+    Token-based invitation for coaches and staff to join an organization.
+    PR-165a.
+    """
+
+    class Status(models.TextChoices):
+        PENDING  = "pending",  "Pendiente"
+        ACCEPTED = "accepted", "Aceptada"
+        EXPIRED  = "expired",  "Expirada"
+
+    token        = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    organization = models.ForeignKey(
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="team_invitations",
+    )
+    role         = models.CharField(
+        max_length=20,
+        choices=Membership.Role.choices,
+        help_text="Role the invitee will get upon acceptance.",
+    )
+    email        = models.EmailField(
+        blank=True,
+        default="",
+        help_text="Optional — if set, only this email can accept.",
+    )
+    status       = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    created_by   = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="created_team_invitations",
+    )
+    created_at   = models.DateTimeField(auto_now_add=True)
+    expires_at   = models.DateTimeField()
+    accepted_by  = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="accepted_team_invitations",
+    )
+    accepted_at  = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"TeamInvite {self.token} → {self.role} @ {self.organization}"
+
+    @property
+    def is_expired(self):
+        from django.utils import timezone
+        return self.expires_at < timezone.now()
+
+
+# ==============================================================================
 # PR-150: OrganizationInviteLink — universal reusable invite link per org
 # ==============================================================================
 
