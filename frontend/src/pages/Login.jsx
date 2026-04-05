@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { 
-    Box, Button, TextField, Typography, Paper, Alert 
+import {
+    Box, Button, TextField, Typography, Paper, Alert
 } from '@mui/material';
 import { styled } from '@mui/system';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import QuantorynLogo from '../components/QuantorynLogo';
 
 // Estilos personalizados
 const BackgroundBox = styled(Box)({
@@ -12,7 +13,7 @@ const BackgroundBox = styled(Box)({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)',
+    background: 'linear-gradient(135deg, #0D1117 0%, #1A2332 100%)',
     backgroundSize: 'cover',
 });
 
@@ -36,7 +37,7 @@ const Login = () => {
     const handleLogin = async (e) => {
         e.preventDefault();
         setError('');
-        
+
         try {
             const result = await login(username, password);
             if (!result?.success) {
@@ -58,16 +59,19 @@ const Login = () => {
     return (
         <BackgroundBox>
             <LoginPaper elevation={10}>
-                <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 1, color: '#333' }}>
-                    Mendieta Trail 🏔️
+                <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1.5 }}>
+                    <QuantorynLogo size={48} />
+                </Box>
+                <Typography variant="h5" sx={{ fontWeight: 800, mb: 0.5, color: '#0D1117', letterSpacing: '0.08em' }}>
+                    QUANTORYN
                 </Typography>
                 <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
-                    Plataforma de Alto Rendimiento
+                    Coaching Deportivo Basado en Evidencia
                 </Typography>
 
                 <Box component="form" onSubmit={handleLogin}>
                     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-                    
+
                     <TextField
                         fullWidth
                         label="Usuario"
@@ -86,12 +90,12 @@ const Login = () => {
                         onChange={(e) => setPassword(e.target.value)}
                     />
 
-                    <Button 
-                        type="submit" 
-                        fullWidth 
-                        variant="contained" 
+                    <Button
+                        type="submit"
+                        fullWidth
+                        variant="contained"
                         size="large"
-                        sx={{ mt: 3, mb: 2, bgcolor: '#ff6b00', '&:hover': { bgcolor: '#e65100' } }}
+                        sx={{ mt: 3, mb: 2, bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 700, '&:hover': { bgcolor: '#00BF99' } }}
                     >
                         Ingresar
                     </Button>

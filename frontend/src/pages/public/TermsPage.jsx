@@ -10,7 +10,7 @@ const TermsPage = () => (
     <Box sx={{ maxWidth: 860, mx: 'auto', px: { xs: 2, md: 4 }, py: { xs: 4, md: 8 } }}>
       <Typography
         variant="overline"
-        sx={{ color: '#F57C00', fontWeight: 700, letterSpacing: '0.1em', display: 'block', mb: 0.5 }}
+        sx={{ color: '#00D4AA', fontWeight: 700, letterSpacing: '0.1em', display: 'block', mb: 0.5 }}
       >
         Legal
       </Typography>

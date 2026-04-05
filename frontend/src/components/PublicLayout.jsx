@@ -20,18 +20,17 @@ const NAV_LINKS = [
   { label: 'Privacy', to: '/privacy' },
   { label: 'Terms', to: '/terms' },
   { label: 'Security', to: '/security' },
-  { label: 'Vendor Docs', to: '/vendor' },
 ];
 
 const navLinkStyle = (isActive) => ({
-  color: isActive ? '#F57C00' : '#1A2027',
+  color: isActive ? '#00D4AA' : '#0D1117',
   fontWeight: isActive ? 700 : 500,
   textDecoration: 'none',
   fontSize: '0.9rem',
   padding: '6px 12px',
   borderRadius: '8px',
   transition: 'background 0.15s',
-  '&:hover': { bgcolor: 'rgba(245,124,0,0.08)' },
+  '&:hover': { bgcolor: 'rgba(0, 212, 170,0.08)' },
 });
 
 /**
@@ -46,21 +45,8 @@ const PublicLayout = ({ children }) => {
 
   const drawer = (
     <Box sx={{ width: 260 }} role="presentation" onClick={() => setDrawerOpen(false)}>
-      <Box sx={{ p: 2.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Box
-          sx={{
-            width: 28,
-            height: 28,
-            borderRadius: '8px',
-            bgcolor: '#F57C00',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Typography sx={{ color: '#fff', fontWeight: 900, fontSize: '0.75rem', lineHeight: 1 }}>Q</Typography>
-        </Box>
-        <Typography sx={{ fontWeight: 800, fontSize: '1.1rem', color: '#1A2027' }}>Quantoryn</Typography>
+      <Box sx={{ p: 2.5 }}>
+        <img src="/quantoryn-full.svg" alt="Quantoryn" height={28} style={{ display: 'block' }} />
       </Box>
       <Divider />
       <List>
@@ -71,7 +57,7 @@ const PublicLayout = ({ children }) => {
               to={to}
               selected={location.pathname.startsWith(to)}
               sx={{
-                '&.Mui-selected': { color: '#F57C00', fontWeight: 700 },
+                '&.Mui-selected': { color: '#00D4AA', fontWeight: 700 },
               }}
             >
               <ListItemText primary={label} />
@@ -86,7 +72,7 @@ const PublicLayout = ({ children }) => {
           to="/login"
           variant="contained"
           fullWidth
-          sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' } }}
+          sx={{ bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 700, '&:hover': { bgcolor: '#00BF99' } }}
         >
           Login
         </Button>
@@ -103,7 +89,7 @@ const PublicLayout = ({ children }) => {
         sx={{
           bgcolor: '#fff',
           borderBottom: '1px solid #e8e8e8',
-          color: '#1A2027',
+          color: '#0D1117',
         }}
       >
         <Toolbar sx={{ gap: 1, px: { xs: 2, md: 4 } }}>
@@ -114,29 +100,12 @@ const PublicLayout = ({ children }) => {
             sx={{
               display: 'flex',
               alignItems: 'center',
-              gap: 1,
               textDecoration: 'none',
               mr: 3,
               flexShrink: 0,
             }}
           >
-            <Box
-              sx={{
-                width: 32,
-                height: 32,
-                borderRadius: '10px',
-                bgcolor: '#F57C00',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <Typography sx={{ color: '#fff', fontWeight: 900, fontSize: '0.85rem', lineHeight: 1 }}>Q</Typography>
-            </Box>
-            <Typography sx={{ fontWeight: 800, fontSize: '1.15rem', color: '#1A2027', letterSpacing: '-0.01em' }}>
-              Quantoryn
-            </Typography>
+            <img src="/quantoryn-full.svg" alt="Quantoryn" height={32} style={{ display: 'block' }} />
           </Box>
 
           {/* Desktop nav links */}
@@ -166,11 +135,11 @@ const PublicLayout = ({ children }) => {
               variant="outlined"
               size="small"
               sx={{
-                borderColor: '#F57C00',
-                color: '#F57C00',
+                borderColor: '#00D4AA',
+                color: '#00D4AA',
                 fontWeight: 600,
                 borderRadius: '8px',
-                '&:hover': { bgcolor: 'rgba(245,124,0,0.06)', borderColor: '#F57C00' },
+                '&:hover': { bgcolor: 'rgba(0, 212, 170,0.06)', borderColor: '#00D4AA' },
               }}
             >
               Login
@@ -182,7 +151,7 @@ const PublicLayout = ({ children }) => {
             <IconButton
               edge="end"
               onClick={() => setDrawerOpen(true)}
-              sx={{ color: '#1A2027' }}
+              sx={{ color: '#0D1117' }}
               aria-label="open navigation menu"
             >
               <MenuIcon />
@@ -205,7 +174,7 @@ const PublicLayout = ({ children }) => {
       <Box
         component="footer"
         sx={{
-          bgcolor: '#1A2027',
+          bgcolor: '#0D1117',
           color: 'rgba(255,255,255,0.7)',
           py: 4,
           px: { xs: 2, md: 4 },
@@ -247,7 +216,7 @@ const PublicLayout = ({ children }) => {
                 <Box
                   component="a"
                   href={`mailto:${email}`}
-                  sx={{ color: '#F57C00', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+                  sx={{ color: '#00D4AA', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
                 >
                   {email}
                 </Box>
@@ -259,13 +228,12 @@ const PublicLayout = ({ children }) => {
               { label: 'Privacy', to: '/privacy' },
               { label: 'Terms', to: '/terms' },
               { label: 'Security', to: '/security' },
-              { label: 'Vendor Docs', to: '/vendor' },
             ].map(({ label, to }) => (
               <Box
                 key={to}
                 component={Link}
                 to={to}
-                sx={{ color: 'rgba(255,255,255,0.65)', textDecoration: 'none', fontSize: '0.8rem', '&:hover': { color: '#F57C00' } }}
+                sx={{ color: 'rgba(255,255,255,0.65)', textDecoration: 'none', fontSize: '0.8rem', '&:hover': { color: '#00D4AA' } }}
               >
                 {label}
               </Box>

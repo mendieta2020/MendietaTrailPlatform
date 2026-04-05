@@ -73,7 +73,7 @@ function avatarLetters(name = '') {
   return (parts[0]?.[0] ?? '?').toUpperCase();
 }
 
-const AVATAR_COLORS = ['#F57C00', '#2563EB', '#059669', '#7C3AED', '#DC2626', '#0891B2'];
+const AVATAR_COLORS = ['#00D4AA', '#2563EB', '#059669', '#7C3AED', '#DC2626', '#0891B2'];
 function avatarColor(name = '') {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
@@ -266,7 +266,7 @@ const MessagesDrawer = ({
         <Typography variant="subtitle1" sx={{ fontWeight: 700, flexGrow: 1, color: '#1E293B' }}>
           Mensajes
           {totalUnread > 0 && (
-            <Box component="span" sx={{ ml: 1, bgcolor: '#F57C00', color: 'white', borderRadius: '10px', px: 0.8, py: 0.1, fontSize: '0.68rem', fontWeight: 700, verticalAlign: 'middle' }}>
+            <Box component="span" sx={{ ml: 1, bgcolor: '#00D4AA', color: 'white', borderRadius: '10px', px: 0.8, py: 0.1, fontSize: '0.68rem', fontWeight: 700, verticalAlign: 'middle' }}>
               {totalUnread}
             </Box>
           )}
@@ -276,7 +276,7 @@ const MessagesDrawer = ({
             size="small"
             title="Nuevo mensaje"
             onClick={() => setComposing((v) => !v)}
-            sx={{ color: composing ? '#F57C00' : '#64748B', mr: 0.5 }}
+            sx={{ color: composing ? '#00D4AA' : '#64748B', mr: 0.5 }}
           >
             <EditIcon fontSize="small" />
           </IconButton>
@@ -316,7 +316,7 @@ const MessagesDrawer = ({
             fullWidth size="small" variant="contained"
             disabled={!newContactId}
             onClick={startNewConversation}
-            sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#E65100' }, fontSize: '0.78rem', textTransform: 'none' }}
+            sx={{ bgcolor: '#00D4AA', '&:hover': { bgcolor: '#00BF99' }, fontSize: '0.78rem', textTransform: 'none' }}
           >
             Abrir conversación
           </Button>
@@ -332,8 +332,8 @@ const MessagesDrawer = ({
           sx={{
             minHeight: 36,
             '& .MuiTab-root': { minHeight: 36, fontSize: '0.75rem', fontWeight: 600, py: 0, textTransform: 'none' },
-            '& .Mui-selected': { color: '#F57C00' },
-            '& .MuiTabs-indicator': { bgcolor: '#F57C00' },
+            '& .Mui-selected': { color: '#00D4AA' },
+            '& .MuiTabs-indicator': { bgcolor: '#00D4AA' },
           }}
         >
           <Tab label="Todos" value="all" />
@@ -350,7 +350,7 @@ const MessagesDrawer = ({
             </Typography>
             {filterTab === 'all' && hasContacts && (
               <Button size="small" variant="outlined"
-                sx={{ mt: 2, fontSize: '0.78rem', borderColor: '#F57C00', color: '#F57C00', textTransform: 'none' }}
+                sx={{ mt: 2, fontSize: '0.78rem', borderColor: '#00D4AA', color: '#00D4AA', textTransform: 'none' }}
                 onClick={() => setComposing(true)} startIcon={<EditIcon fontSize="small" />}
               >
                 Iniciar conversación
@@ -460,7 +460,7 @@ const MessagesDrawer = ({
                   <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: isFromMe ? 'flex-end' : 'flex-start' }}>
                     <Box sx={{
                       maxWidth: '82%',
-                      bgcolor: isFromMe ? '#F57C00' : 'white',
+                      bgcolor: isFromMe ? '#00D4AA' : 'white',
                       color: isFromMe ? 'white' : '#1E293B',
                       borderRadius: isFromMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
                       px: 1.5, py: 0.875,
@@ -485,8 +485,8 @@ const MessagesDrawer = ({
                             '&:hover': { bgcolor: isFromMe ? 'rgba(255,255,255,0.3)' : '#E2E8F0' },
                           }}
                         >
-                          <OpenInNewIcon sx={{ fontSize: '0.72rem', color: isFromMe ? 'rgba(255,255,255,0.9)' : '#F57C00' }} />
-                          <Typography variant="caption" sx={{ fontSize: '0.72rem', fontWeight: 600, color: isFromMe ? 'rgba(255,255,255,0.9)' : '#F57C00' }}>
+                          <OpenInNewIcon sx={{ fontSize: '0.72rem', color: isFromMe ? 'rgba(255,255,255,0.9)' : '#00D4AA' }} />
+                          <Typography variant="caption" sx={{ fontSize: '0.72rem', fontWeight: 600, color: isFromMe ? 'rgba(255,255,255,0.9)' : '#00D4AA' }}>
                             Ver sesión
                           </Typography>
                         </Box>
@@ -500,7 +500,7 @@ const MessagesDrawer = ({
                       </Typography>
                       {isFromMe && (
                         isRead ? (
-                          <DoneAllIcon sx={{ fontSize: '0.85rem', color: '#F57C00' }} titleAccess="Leído" />
+                          <DoneAllIcon sx={{ fontSize: '0.85rem', color: '#00D4AA' }} titleAccess="Leído" />
                         ) : (
                           <DoneIcon sx={{ fontSize: '0.85rem', color: '#CBD5E1' }} titleAccess="Enviado" />
                         )
@@ -538,8 +538,8 @@ const MessagesDrawer = ({
             disabled={sending || !canSend}
             size="small"
             sx={{
-              bgcolor: '#F57C00', color: 'white',
-              '&:hover': { bgcolor: '#E65100' },
+              bgcolor: '#00D4AA', color: 'white',
+              '&:hover': { bgcolor: '#00BF99' },
               '&.Mui-disabled': { bgcolor: '#E5E7EB', color: '#9CA3AF' },
               width: 36, height: 36, flexShrink: 0,
             }}

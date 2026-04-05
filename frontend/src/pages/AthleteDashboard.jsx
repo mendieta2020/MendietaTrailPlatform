@@ -12,6 +12,7 @@ import AthleteLayout from '../components/AthleteLayout';
 import useWeather from '../hooks/useWeather';
 import client from '../api/client';
 import { getBillingStatus, getMySubscription } from '../api/billing';
+import { listAthleteGoals } from '../api/p1';
 import {
   getDeviceStatus,
   dismissDevicePreference,
@@ -43,10 +44,10 @@ const WorkoutCard = ({ workout, loading }) => {
 
   if (!workout) {
     return (
-      <Paper sx={{ p: 3, borderRadius: 2, borderLeft: '4px solid #10B981' }}>
+      <Paper sx={{ p: 3, borderRadius: 2, borderLeft: '4px solid #00D4AA' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-          <CheckCircle sx={{ color: '#10B981' }} />
-          <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#10B981' }}>
+          <CheckCircle sx={{ color: '#00D4AA' }} />
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#00D4AA' }}>
             DÍA DE RECUPERACIÓN
           </Typography>
         </Box>
@@ -61,10 +62,10 @@ const WorkoutCard = ({ workout, loading }) => {
   }
 
   return (
-    <Paper sx={{ p: 3, borderRadius: 2, borderLeft: '4px solid #F57C00' }}>
+    <Paper sx={{ p: 3, borderRadius: 2, borderLeft: '4px solid #00D4AA' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-        <DirectionsRun sx={{ color: '#F57C00' }} />
-        <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#F57C00', letterSpacing: 0.5 }}>
+        <DirectionsRun sx={{ color: '#00D4AA' }} />
+        <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#00D4AA', letterSpacing: 0.5 }}>
           ENTRENAMIENTO DE HOY
         </Typography>
       </Box>
@@ -80,7 +81,7 @@ const WorkoutCard = ({ workout, loading }) => {
         size="small"
         endIcon={<ArrowForward />}
         onClick={() => navigate('/athlete/training')}
-        sx={{ color: '#F57C00', fontWeight: 600, px: 0, '&:hover': { background: 'none', textDecoration: 'underline' } }}
+        sx={{ color: '#00D4AA', fontWeight: 600, px: 0, '&:hover': { background: 'none', textDecoration: 'underline' } }}
       >
         Ver detalle completo
       </Button>
@@ -103,15 +104,15 @@ const WelcomeFlow = ({ hasDevice, orgName, firstName, onDismiss }) => {
           </Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 3, alignItems: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CheckCircle sx={{ color: '#10B981', fontSize: 22 }} />
+              <CheckCircle sx={{ color: '#00D4AA', fontSize: 22 }} />
               <Typography variant="body2" sx={{ color: '#334155', fontWeight: 500 }}>Perfil completado</Typography>
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CheckCircle sx={{ color: '#10B981', fontSize: 22 }} />
+              <CheckCircle sx={{ color: '#00D4AA', fontSize: 22 }} />
               <Typography variant="body2" sx={{ color: '#334155', fontWeight: 500 }}>Dispositivo conectado</Typography>
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CheckCircle sx={{ color: '#10B981', fontSize: 22 }} />
+              <CheckCircle sx={{ color: '#00D4AA', fontSize: 22 }} />
               <Typography variant="body2" sx={{ color: '#334155', fontWeight: 500 }}>Listo para entrenar</Typography>
             </Box>
           </Box>
@@ -119,7 +120,7 @@ const WelcomeFlow = ({ hasDevice, orgName, firstName, onDismiss }) => {
             Tu coach ya puede ver tu perfil y asignarte entrenamientos.
           </Typography>
           <Button variant="contained" fullWidth onClick={onDismiss}
-            sx={{ bgcolor: '#10B981', '&:hover': { bgcolor: '#059669' }, borderRadius: 3, textTransform: 'none', fontWeight: 700, py: 1.5, fontSize: '1rem' }}>
+            sx={{ bgcolor: '#00D4AA', color: '#0D1117', '&:hover': { bgcolor: '#00BF99' }, borderRadius: 3, textTransform: 'none', fontWeight: 700, py: 1.5, fontSize: '1rem' }}>
             ¡Empezar a entrenar! →
           </Button>
         </Paper>
@@ -139,7 +140,7 @@ const WelcomeFlow = ({ hasDevice, orgName, firstName, onDismiss }) => {
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {/* Step 1: Profile ✅ */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: 2, bgcolor: 'white', borderRadius: 3, border: '1px solid #E0E7FF' }}>
-            <CheckCircle sx={{ color: '#10B981', fontSize: 24 }} />
+            <CheckCircle sx={{ color: '#00D4AA', fontSize: 24 }} />
             <Typography variant="body1" sx={{ fontWeight: 500, color: '#64748B' }}>
               Perfil completado
             </Typography>
@@ -203,8 +204,8 @@ const SubscriptionCard = ({ billing, loading }) => {
   }
 
   return (
-    <Paper sx={{ p: 2.5, borderRadius: 2, display: 'flex', alignItems: 'center', gap: 2, borderLeft: `4px solid ${isActive ? '#10B981' : '#EF4444'}` }}>
-      <CreditCard sx={{ color: isActive ? '#10B981' : '#EF4444' }} />
+    <Paper sx={{ p: 2.5, borderRadius: 2, display: 'flex', alignItems: 'center', gap: 2, borderLeft: `4px solid ${isActive ? '#00D4AA' : '#EF4444'}` }}>
+      <CreditCard sx={{ color: isActive ? '#00D4AA' : '#EF4444' }} />
       <Box sx={{ flexGrow: 1 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography variant="body2" sx={{ fontWeight: 600, color: '#1E293B' }}>
@@ -415,6 +416,7 @@ const AthleteDashboard = ({ user }) => {
   const [deviceStatus, setDeviceStatus] = useState(null);
   const [pendingNotifications, setPendingNotifications] = useState([]);
   const [mySub, setMySub] = useState(null);
+  const [goals, setGoals] = useState([]);
   const [welcomeDismissed, setWelcomeDismissed] = useState(
     () => localStorage.getItem('quantoryn_welcome_done') === 'true'
   );
@@ -475,7 +477,16 @@ const AthleteDashboard = ({ user }) => {
     getMySubscription()
       .then(res => setMySub(res.data))
       .catch(() => setMySub(null));
-  }, []);
+
+    // PR-164b: Fetch athlete goals for countdown card
+    const orgId = user?.memberships?.[0]?.org_id || user?.org_id || null;
+    const athleteId = user?.athlete_id ?? user?.id;
+    if (orgId && athleteId) {
+      listAthleteGoals(orgId, athleteId)
+        .then(res => setGoals(res.data?.results ?? res.data ?? []))
+        .catch(() => setGoals([]));
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // PR-151: Welcome flow dismiss — stores in localStorage, shows only once
   const handleWelcomeDismiss = () => {
@@ -550,13 +561,13 @@ const AthleteDashboard = ({ user }) => {
       {welcomeDismissed && !hasDevice && !onboardingBannerDismissed && (
         <Paper sx={{
           p: 2.5, mb: 3, borderRadius: 2,
-          borderLeft: '4px solid #F57C00',
+          borderLeft: '4px solid #00D4AA',
           bgcolor: '#FFF7ED',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           flexWrap: 'wrap', gap: 2,
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1 }}>
-            <DevicesOther sx={{ color: '#F57C00', flexShrink: 0 }} />
+            <DevicesOther sx={{ color: '#00D4AA', flexShrink: 0 }} />
             <Box>
               <Typography variant="body2" sx={{ color: '#9A3412', fontWeight: 600 }}>
                 Conecta Strava para sincronizar tus entrenamientos
@@ -571,7 +582,7 @@ const AthleteDashboard = ({ user }) => {
               size="small"
               variant="contained"
               onClick={() => window.location.href = '/connections'}
-              sx={{ bgcolor: '#F57C00', textTransform: 'none', fontWeight: 600, '&:hover': { bgcolor: '#E65100' } }}
+              sx={{ bgcolor: '#00D4AA', color: '#0D1117', textTransform: 'none', fontWeight: 600, '&:hover': { bgcolor: '#00BF99' } }}
             >
               Conectar Strava
             </Button>
@@ -635,6 +646,53 @@ const AthleteDashboard = ({ user }) => {
           </Box>
 
           {/* Welcome flow moved to top-level blocking mode (PR-151) */}
+
+          {/* ── PR-164b: Psychological hooks ── */}
+          {/* 8a. Streak counter */}
+          {!todayLoading && (() => {
+            const streak = todayData?.consecutive_days_active ?? 0;
+            if (streak > 0) {
+              return (
+                <Box sx={{ mb: 2, p: 2, bgcolor: '#FFF7ED', borderRadius: 2, border: '1px solid #FED7AA', display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography sx={{ fontSize: '1.5rem' }}>
+                    {streak >= 8 ? '🔥🔥🔥' : streak >= 4 ? '🔥🔥' : '🔥'}
+                  </Typography>
+                  <Box>
+                    <Typography sx={{ fontWeight: 700, fontSize: '0.95rem', color: '#92400E' }}>
+                      {streak} día{streak !== 1 ? 's' : ''} consecutivo{streak !== 1 ? 's' : ''}
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.75rem', color: '#B45309' }}>¡Seguí así, no rompas la racha!</Typography>
+                  </Box>
+                </Box>
+              );
+            }
+            return (
+              <Box sx={{ mb: 2, p: 2, bgcolor: '#F8FAFC', borderRadius: 2, border: '1px solid #E2E8F0' }}>
+                <Typography sx={{ fontSize: '0.85rem', color: '#64748B' }}>💪 Empezá tu racha hoy — completá tu primer sesión</Typography>
+              </Box>
+            );
+          })()}
+
+          {/* 8b. Goal countdown */}
+          {goals?.length > 0 && (() => {
+            const nearest = goals.filter(g => g.days_remaining >= 0).sort((a, b) => a.days_remaining - b.days_remaining)[0];
+            if (!nearest) return null;
+            return (
+              <Box sx={{ mb: 2, p: 2, bgcolor: '#F0FDF4', borderRadius: 2, border: '1px solid #BBF7D0', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Typography sx={{ fontSize: '1.5rem' }}>🏔️</Typography>
+                <Box sx={{ flexGrow: 1 }}>
+                  <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: '#166534' }}>
+                    {nearest.name}
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.75rem', color: '#15803D' }}>
+                    {nearest.days_remaining <= 7
+                      ? '🔥 ¡Tu carrera es esta semana!'
+                      : `en ${nearest.days_remaining} días`}
+                  </Typography>
+                </Box>
+              </Box>
+            );
+          })()}
         </Grid>
 
         <Grid size={{ xs: 12, md: 4 }}>
@@ -643,9 +701,9 @@ const AthleteDashboard = ({ user }) => {
 
           {/* ── PR-150: Coach plan subscription widget ── */}
           {mySub?.has_subscription && (
-            <Paper sx={{ p: 2.5, borderRadius: 2, mt: 2, borderLeft: `4px solid ${mySub.status === 'active' ? '#10B981' : mySub.status === 'overdue' ? '#EF4444' : '#F59E0B'}` }}>
+            <Paper sx={{ p: 2.5, borderRadius: 2, mt: 2, borderLeft: `4px solid ${mySub.status === 'active' ? '#00D4AA' : mySub.status === 'overdue' ? '#EF4444' : '#F59E0B'}` }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <CreditCard sx={{ color: mySub.status === 'active' ? '#10B981' : '#F59E0B', fontSize: 20 }} />
+                <CreditCard sx={{ color: mySub.status === 'active' ? '#00D4AA' : '#F59E0B', fontSize: 20 }} />
                 <Typography variant="body2" sx={{ fontWeight: 700, color: '#1E293B' }}>
                   Mi suscripción
                 </Typography>

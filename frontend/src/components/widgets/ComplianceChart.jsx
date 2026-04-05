@@ -35,7 +35,7 @@ const ComplianceChart = () => {
             />
             <Bar dataKey="valor" radius={[5, 5, 0, 0]} barSize={30}>
               {data.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.valor > 75 ? '#2e7d32' : entry.valor > 40 ? '#F57C00' : '#d32f2f'} />
+                <Cell key={`cell-${index}`} fill={entry.valor > 75 ? '#2e7d32' : entry.valor > 40 ? '#00D4AA' : '#d32f2f'} />
               ))}
             </Bar>
           </BarChart>

@@ -74,7 +74,7 @@ const StatGauge = ({ title, value, target, unit, icon: Icon, color }) => {
       </Box>
 
       {/* Estado Texto */}
-      <Typography variant="caption" fontWeight="700" sx={{ color: percentage >= 100 ? '#10B981' : color, fontSize: '0.7rem' }}>
+      <Typography variant="caption" fontWeight="700" sx={{ color: percentage >= 100 ? '#00D4AA' : color, fontSize: '0.7rem' }}>
         {percentage}% Completado
       </Typography>
     </Paper>

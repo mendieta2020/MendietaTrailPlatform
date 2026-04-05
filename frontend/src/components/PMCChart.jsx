@@ -82,7 +82,7 @@ function rampRateSign(rate) {
 const LEGEND_ITEMS = [
   { key: 'ctl',          label: 'CTL — Forma',     humanLabel: 'Fitness',   color: '#3b82f6', dash: false },
   { key: 'atl',          label: 'ATL — Fatiga',    humanLabel: 'Fatiga',    color: '#f97316', dash: false },
-  { key: 'tsb',          label: 'TSB — Balance',   humanLabel: 'Forma',     color: '#10b981', dash: false },
+  { key: 'tsb',          label: 'TSB — Balance',   humanLabel: 'Forma',     color: '#00D4AA', dash: false },
   { key: 'ctlProjected', label: 'Proyección CTL',  humanLabel: null,        color: '#93c5fd', dash: true  },
 ]
 
@@ -221,7 +221,7 @@ const PMCChart = ({ days = [], projection = [], rampRate7d = null, height = 320,
           type="monotone"
           dataKey="tsbPos"
           stroke="none"
-          fill="#10b981"
+          fill="#00D4AA"
           fillOpacity={hoveredLine === 'tsb' ? 0.35 : hoveredLine ? 0.08 : 0.2}
           legendType="none"
           name=""
@@ -305,7 +305,7 @@ const PMCChart = ({ days = [], projection = [], rampRate7d = null, height = 320,
           yAxisId="right"
           type="monotone"
           dataKey="tsb"
-          stroke="#10b981"
+          stroke="#00D4AA"
           strokeWidth={lineStyle('tsb').strokeWidth}
           opacity={lineStyle('tsb').opacity}
           dot={false}

@@ -12,7 +12,7 @@ import { updateGoal, deleteGoal } from '../api/athlete'
 import { useOrg } from '../context/OrgContext'
 
 const PRIORITY_COLORS = {
-  A: { bg: 'rgba(245,124,0,0.12)', color: '#F57C00', label: 'A — Principal' },
+  A: { bg: 'rgba(0, 212, 170,0.12)', color: '#00D4AA', label: 'A — Principal' },
   B: { bg: 'rgba(59,130,246,0.1)', color: '#2563eb', label: 'B — Secundario' },
   C: { bg: 'rgba(100,116,139,0.1)', color: '#64748b', label: 'C — Desarrollo' },
 }
@@ -144,7 +144,7 @@ export default function AthleteGoalsTab({ membershipId }) {
                   fullWidth
                   value={editDraft.title}
                   onChange={e => setEditDraft(d => ({ ...d, title: e.target.value }))}
-                  sx={{ '& .MuiOutlinedInput-root': { '&.Mui-focused fieldset': { borderColor: '#F57C00' } } }}
+                  sx={{ '& .MuiOutlinedInput-root': { '&.Mui-focused fieldset': { borderColor: '#00D4AA' } } }}
                 />
                 <Box sx={{ display: 'flex', gap: 1 }}>
                   <TextField
@@ -204,7 +204,7 @@ export default function AthleteGoalsTab({ membershipId }) {
                     variant="contained"
                     onClick={() => saveEdit(goal.id)}
                     disabled={savingId === goal.id || !editDraft.title}
-                    sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' }, fontSize: '0.75rem' }}
+                    sx={{ bgcolor: '#00D4AA', '&:hover': { bgcolor: '#00BF99' }, fontSize: '0.75rem' }}
                   >
                     {savingId === goal.id ? <CircularProgress size={12} sx={{ color: '#fff' }} /> : 'Guardar'}
                   </Button>
@@ -243,7 +243,7 @@ export default function AthleteGoalsTab({ membershipId }) {
                             variant="caption"
                             sx={{
                               fontWeight: 700,
-                              color: isUrgent ? '#dc2626' : isUpcoming ? '#F57C00' : '#94a3b8',
+                              color: isUrgent ? '#dc2626' : isUpcoming ? '#00D4AA' : '#94a3b8',
                             }}
                           >
                             {goal.days_remaining === 0

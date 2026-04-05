@@ -16,6 +16,7 @@ import {
   ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
+import QuantorynLogo from './QuantorynLogo';
 import { logoutSession } from '../api/authClient';
 import { getMessages, markMessageRead } from '../api/messages';
 import { useOrg } from '../context/OrgContext';
@@ -34,19 +35,15 @@ const menuItems = [
   { text: 'Perfil', icon: <Person />, path: '/athlete/profile' },
 ];
 
-// Bottom tabs for athlete (xs only)
-const ATHLETE_BOTTOM_TABS = [
-  { label: 'Hoy',      icon: <Home sx={{ fontSize: 22 }} />,         value: '/dashboard' },
-  { label: 'Entreno',  icon: <CalendarMonth sx={{ fontSize: 22 }} />, value: '/athlete/training' },
-  { label: 'Progreso', icon: <BarChart sx={{ fontSize: 22 }} />,      value: '/athlete/progress' },
-  { label: 'Perfil',   icon: <Person sx={{ fontSize: 22 }} />,        value: '/athlete/profile' },
-];
+// Bottom tabs for athlete (xs only) — defined inside component to support dynamic Entreno badge
 
 const AthleteLayout = ({ children, user }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false); // eslint-disable-line no-unused-vars
+  // TODO: wire todayHasPending to /api/athlete/today/ — set true when has_workout && !completed
+  const [todayHasPending, setTodayHasPending] = useState(false); // eslint-disable-line no-unused-vars
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem(LS_KEY) === 'true'; } catch { return false; }
   });
@@ -121,17 +118,16 @@ const AthleteLayout = ({ children, user }) => {
     : user?.username ?? '';
 
   const drawer = (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#1A2027', color: 'white' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#0D1117', color: 'white' }}>
       <Toolbar sx={{ display: 'flex', justifyContent: 'center', py: 2, minHeight: 56 }}>
-        {collapsed ? (
-          <Typography variant="h6" noWrap sx={{ fontWeight: 'bold', color: '#F57C00', fontSize: '1rem' }}>
-            SM
-          </Typography>
-        ) : (
-          <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 'bold', letterSpacing: 1, color: '#F57C00' }}>
-            SENDERO <span style={{ color: 'white' }}>MENDIETA</span>
-          </Typography>
-        )}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 1 }}>
+          <QuantorynLogo size={collapsed ? 28 : 32} />
+          {!collapsed && (
+            <Typography noWrap sx={{ fontWeight: 800, fontSize: '0.95rem', letterSpacing: '0.08em', color: '#fff' }}>
+              QUANTORYN
+            </Typography>
+          )}
+        </Box>
       </Toolbar>
 
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
@@ -140,7 +136,7 @@ const AthleteLayout = ({ children, user }) => {
       {!collapsed && (
         <>
           <Box sx={{ px: 2, py: 2, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Avatar sx={{ bgcolor: '#F57C00', fontWeight: 'bold', width: 36, height: 36, fontSize: '0.85rem' }}>
+            <Avatar sx={{ bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 'bold', width: 36, height: 36, fontSize: '0.85rem' }}>
               {initials}
             </Avatar>
             <Box>
@@ -168,16 +164,16 @@ const AthleteLayout = ({ children, user }) => {
                     justifyContent: collapsed ? 'center' : 'flex-start',
                     px: collapsed ? 1 : 2,
                     '&.Mui-selected': {
-                      bgcolor: 'rgba(245, 124, 0, 0.15)',
-                      borderLeft: collapsed ? 'none' : '4px solid #F57C00',
-                      color: '#F57C00',
+                      bgcolor: 'rgba(0, 212, 170, 0.15)',
+                      borderLeft: collapsed ? 'none' : '4px solid #00D4AA',
+                      color: '#00D4AA',
                     },
                     '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
                   }}
                 >
                   <ListItemIcon sx={{
                     minWidth: collapsed ? 0 : 40,
-                    color: isActive ? '#F57C00' : '#94A3B8',
+                    color: isActive ? '#00D4AA' : '#94A3B8',
                     justifyContent: 'center',
                   }}>
                     {item.icon}
@@ -230,7 +226,7 @@ const AthleteLayout = ({ children, user }) => {
           <IconButton
             size="small"
             onClick={toggleCollapsed}
-            sx={{ color: '#64748B', '&:hover': { color: '#F57C00' } }}
+            sx={{ color: '#64748B', '&:hover': { color: '#00D4AA' } }}
           >
             {collapsed ? <ChevronRightIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" />}
           </IconButton>
@@ -239,11 +235,149 @@ const AthleteLayout = ({ children, user }) => {
     </div>
   );
 
+  // Build athlete bottom tabs with dynamic Entreno badge
+  const ATHLETE_BOTTOM_TABS = [
+    { label: 'Hoy',      icon: <Home sx={{ fontSize: 22 }} />,         value: '/dashboard' },
+    {
+      label: 'Entreno',
+      icon: (
+        <Badge badgeContent={todayHasPending ? '' : null} variant="dot" color="error" overlap="circular">
+          <CalendarMonth sx={{ fontSize: 22 }} />
+        </Badge>
+      ),
+      value: '/athlete/training',
+    },
+    { label: 'Progreso', icon: <BarChart sx={{ fontSize: 22 }} />,      value: '/athlete/progress' },
+    { label: 'Perfil',   icon: <Person sx={{ fontSize: 22 }} />,        value: '/athlete/profile' },
+  ];
+
   // Determine active bottom tab value
   const activeBottomTab = ATHLETE_BOTTOM_TABS.find(
     (t) => location.pathname.startsWith(t.value)
   )?.value ?? false;
 
+  const bottomNavSx = {
+    height: 'auto',
+    minHeight: 64,
+    bgcolor: 'transparent',
+    '& .MuiBottomNavigationAction-root': {
+      minWidth: 0,
+      padding: '6px 4px',
+      color: '#8B949E',
+    },
+    '& .MuiBottomNavigationAction-root.Mui-selected': {
+      color: '#00D4AA',
+    },
+    '& .MuiBottomNavigationAction-label': {
+      opacity: '1 !important',
+      fontSize: '0.65rem',
+      fontWeight: 600,
+      marginTop: 2,
+    },
+    '& .MuiBottomNavigationAction-root.Mui-selected .MuiBottomNavigationAction-label': {
+      opacity: '1 !important',
+      fontSize: '0.65rem',
+      fontWeight: 700,
+    },
+  };
+
+  const bottomTabItems = ATHLETE_BOTTOM_TABS.map((tab) => (
+    <BottomNavigationAction
+      key={tab.value}
+      label={tab.label}
+      value={tab.value}
+      icon={tab.icon}
+      sx={{
+        '&.Mui-selected svg': {
+          transform: 'scale(1.05)',
+          transition: 'transform 100ms ease',
+        },
+      }}
+    />
+  ));
+
+  // ── MOBILE: flex-column layout — header + scroll area + bottom nav ──
+  if (isMobile) {
+    return (
+      <Box sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100dvh',
+        overflow: 'hidden',
+      }}>
+        {/* HEADER — static, never scrolls */}
+        <AppBar position="static" elevation={0} sx={{
+          bgcolor: 'white',
+          color: '#1E293B',
+          borderBottom: '1px solid #e2e8f0',
+          flexShrink: 0,
+        }}>
+          <Toolbar sx={{ minHeight: 48, px: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+              <QuantorynLogo size={24} color="#00D4AA" />
+              <Typography noWrap sx={{ fontWeight: 800, fontSize: '0.85rem', letterSpacing: '0.08em', color: '#0D1117' }}>
+                QUANTORYN
+              </Typography>
+            </Box>
+            <Box sx={{ flexGrow: 1 }} />
+            <IconButton color="inherit" size="small" onClick={handleOpenMessages} sx={{ mr: 0.5 }}>
+              <Badge badgeContent={unreadCount > 0 ? unreadCount : null} color="error">
+                <NotificationsIcon fontSize="small" />
+              </Badge>
+            </IconButton>
+            <Avatar
+              sx={{ bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 'bold', width: 30, height: 30, fontSize: '0.75rem', cursor: 'pointer' }}
+              onClick={() => navigate('/athlete/profile')}
+            >
+              {initials}
+            </Avatar>
+          </Toolbar>
+        </AppBar>
+
+        {/* SCROLLABLE CONTENT — this is the only thing that scrolls */}
+        <Box sx={{
+          flex: 1,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          WebkitOverflowScrolling: 'touch',
+          bgcolor: '#F1F5F9',
+        }}>
+          {children}
+        </Box>
+
+        {/* BOTTOM NAV — static, never scrolls */}
+        <Box sx={{
+          flexShrink: 0,
+          borderTop: '1px solid #e2e8f0',
+          bgcolor: '#FFFFFF',
+          boxShadow: '0 -2px 8px rgba(0,0,0,0.08)',
+          paddingBottom: 'env(safe-area-inset-bottom)',
+        }}>
+          <BottomNavigation
+            value={activeBottomTab}
+            onChange={(_, newValue) => { if (newValue) navigate(newValue); }}
+            sx={bottomNavSx}
+          >
+            {bottomTabItems}
+          </BottomNavigation>
+        </Box>
+
+        <PWAInstallPrompt />
+        <MessagesDrawer
+          open={openMessages}
+          onClose={() => setOpenMessages(false)}
+          messages={messages}
+          contacts={coaches}
+          orgId={orgId}
+          currentUserId={user?.id}
+          onMessageSent={fetchMessages}
+          onSessionClick={handleAthleteSessionClick}
+        />
+      </Box>
+    );
+  }
+
+  // ── DESKTOP: sidebar + fixed appbar layout ──
   return (
     <Box sx={{ display: 'flex' }}>
       {/* APPBAR */}
@@ -258,62 +392,31 @@ const AthleteLayout = ({ children, user }) => {
           transition: 'width 0.2s ease, margin-left 0.2s ease',
         }}
       >
-        <Toolbar sx={{ minHeight: { xs: 48, sm: 64 }, px: { xs: 2, sm: 3 } }}>
-          {isMobile ? (
-            /* Mobile compact header */
-            <>
-              <Typography
-                noWrap
-                sx={{ fontWeight: 800, fontSize: '0.9rem', letterSpacing: 1, color: '#F57C00' }}
-              >
-                S. <span style={{ color: '#1E293B' }}>MENDIETA</span>
-              </Typography>
-              <Box sx={{ flexGrow: 1 }} />
-              <IconButton color="inherit" size="small" onClick={handleOpenMessages} sx={{ mr: 0.5 }}>
-                <Badge badgeContent={unreadCount > 0 ? unreadCount : null} color="error">
-                  <NotificationsIcon fontSize="small" />
-                </Badge>
-              </IconButton>
-              <Avatar
-                sx={{ bgcolor: '#F57C00', fontWeight: 'bold', width: 30, height: 30, fontSize: '0.75rem' }}
-                onClick={() => navigate('/athlete/profile')}
-              >
-                {initials}
-              </Avatar>
-            </>
-          ) : (
-            /* Desktop header */
-            <>
-              <IconButton color="inherit" edge="start" onClick={() => setMobileOpen(!mobileOpen)} sx={{ mr: 2, display: { sm: 'none' } }}>
-                {/* Not shown — xs only and we use bottom nav */}
-              </IconButton>
-              <Typography variant="h6" noWrap sx={{ flexGrow: 1, fontWeight: 700, fontSize: '1.1rem' }}>
-                Panel del Atleta
-              </Typography>
-              <IconButton color="inherit" onClick={handleOpenMessages} sx={{ mr: 1 }}>
-                <Badge badgeContent={unreadCount > 0 ? unreadCount : null} color="error">
-                  <NotificationsIcon />
-                </Badge>
-              </IconButton>
-              <Avatar sx={{ bgcolor: '#F57C00', fontWeight: 'bold', width: 32, height: 32, fontSize: '0.8rem' }}>
-                {initials}
-              </Avatar>
-            </>
-          )}
+        <Toolbar sx={{ minHeight: 64, px: 3 }}>
+          <Typography variant="h6" noWrap sx={{ flexGrow: 1, fontWeight: 700, fontSize: '1.1rem' }}>
+            Panel del Atleta
+          </Typography>
+          <IconButton color="inherit" onClick={handleOpenMessages} sx={{ mr: 1 }}>
+            <Badge badgeContent={unreadCount > 0 ? unreadCount : null} color="error">
+              <NotificationsIcon />
+            </Badge>
+          </IconButton>
+          <Avatar sx={{ bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 'bold', width: 32, height: 32, fontSize: '0.8rem' }}>
+            {initials}
+          </Avatar>
         </Toolbar>
       </AppBar>
 
       {/* PWA install prompt (mobile only) */}
       <PWAInstallPrompt />
 
-      {/* SIDEBAR — hidden on mobile (xs), shown on sm+ */}
+      {/* SIDEBAR */}
       <Box
         component="nav"
         sx={{
           width: { sm: drawerWidth },
           flexShrink: { sm: 0 },
           transition: 'width 0.2s ease',
-          display: { xs: 'none', sm: 'block' },
         }}
       >
         <Drawer
@@ -322,7 +425,7 @@ const AthleteLayout = ({ children, user }) => {
             '& .MuiDrawer-paper': {
               width: drawerWidth,
               borderRight: 'none',
-              bgcolor: '#1A2027',
+              bgcolor: '#0D1117',
               overflowX: 'hidden',
               transition: 'width 0.2s ease',
             },
@@ -338,76 +441,15 @@ const AthleteLayout = ({ children, user }) => {
         component="main"
         sx={{
           flexGrow: 1,
-          p: { xs: 2, sm: 3 },
+          p: 3,
           width: { sm: `calc(100% - ${drawerWidth}px)` },
           bgcolor: '#F1F5F9',
           minHeight: '100vh',
           transition: 'width 0.2s ease',
-          pb: { xs: '80px', sm: 3 },
         }}
       >
-        <Toolbar sx={{ minHeight: { xs: 48, sm: 64 } }} />
+        <Toolbar sx={{ minHeight: 64 }} />
         {children}
-      </Box>
-
-      {/* BOTTOM NAVIGATION — xs only */}
-      <Box
-        sx={{
-          display: { xs: 'block', sm: 'none' },
-          position: 'fixed',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          zIndex: 1200,
-          borderTop: '1px solid #e2e8f0',
-          bgcolor: 'white',
-          boxShadow: '0 -2px 8px rgba(0,0,0,0.08)',
-        }}
-      >
-        <BottomNavigation
-          value={activeBottomTab}
-          onChange={(_, newValue) => {
-            if (newValue) navigate(newValue);
-          }}
-          sx={{
-            height: 'auto',
-            minHeight: 56,
-            paddingBottom: 'env(safe-area-inset-bottom)',
-            bgcolor: 'transparent',
-            '& .MuiBottomNavigationAction-root': {
-              minWidth: 0,
-              padding: '6px 4px',
-              color: '#94a3b8',
-            },
-            '& .MuiBottomNavigationAction-root.Mui-selected': {
-              color: '#F57C00',
-            },
-            '& .MuiBottomNavigationAction-label': {
-              fontSize: '0.62rem',
-              fontWeight: 500,
-              marginTop: 2,
-            },
-            '& .MuiBottomNavigationAction-root.Mui-selected .MuiBottomNavigationAction-label': {
-              fontSize: '0.62rem',
-              fontWeight: 700,
-            },
-          }}
-        >
-          {ATHLETE_BOTTOM_TABS.map((tab) => (
-            <BottomNavigationAction
-              key={tab.value}
-              label={tab.label}
-              value={tab.value}
-              icon={tab.icon}
-              sx={{
-                '&.Mui-selected svg': {
-                  transform: 'scale(1.05)',
-                  transition: 'transform 100ms ease',
-                },
-              }}
-            />
-          ))}
-        </BottomNavigation>
       </Box>
 
       <MessagesDrawer

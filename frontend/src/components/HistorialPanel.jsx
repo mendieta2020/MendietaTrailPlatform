@@ -106,7 +106,7 @@ export default function HistorialPanel({ orgId, teamId, targetWeek, onCopyWeek }
         <Box sx={{ px: 2, pb: 1.5 }}>
           {loading && (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-              <CircularProgress size={20} sx={{ color: '#F57C00' }} />
+              <CircularProgress size={20} sx={{ color: '#00D4AA' }} />
             </Box>
           )}
 
@@ -166,7 +166,7 @@ export default function HistorialPanel({ orgId, teamId, targetWeek, onCopyWeek }
                               <IconButton
                                 size="small"
                                 onClick={(e) => { e.stopPropagation(); onCopyWeek(wk.week_start); }}
-                                sx={{ color: '#F57C00', p: 0.25 }}
+                                sx={{ color: '#00D4AA', p: 0.25 }}
                               >
                                 <ContentCopyIcon sx={{ fontSize: 13 }} />
                               </IconButton>

@@ -4,18 +4,18 @@ const theme = createTheme({
   palette: {
     mode: 'light', // Fondo claro profesional
     primary: {
-      main: '#F57C00', // 🔥 NARANJA MENDIETA (Color del Logo)
-      contrastText: '#fff',
+      main: '#00D4AA', // 🌊 QUANTORYN TEAL (Brand Color)
+      contrastText: '#0D1117',
     },
     secondary: {
-      main: '#1A2027', // Azul Oscuro Profundo (Para barras laterales)
+      main: '#0D1117', // Fondo oscuro (Para barras laterales)
     },
     background: {
       default: '#f3f4f6', // Gris muy suave (para que resalten las tarjetas blancas)
       paper: '#ffffff',   // Blanco puro para las tarjetas
     },
     text: {
-      primary: '#1A2027',
+      primary: '#0D1117',
       secondary: '#6E7781',
     },
   },

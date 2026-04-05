@@ -281,8 +281,8 @@ const CoachAthletePMC = () => {
             onChange={(_, v) => setActiveTab(v)}
             sx={{
               '& .MuiTab-root': { fontSize: '0.85rem', fontWeight: 500, minWidth: 100, textTransform: 'none' },
-              '& .Mui-selected': { color: '#F57C00', fontWeight: 700 },
-              '& .MuiTabs-indicator': { bgcolor: '#F57C00' },
+              '& .Mui-selected': { color: '#00D4AA', fontWeight: 700 },
+              '& .MuiTabs-indicator': { bgcolor: '#00D4AA' },
             }}
           >
             <Tab label="Rendimiento" />

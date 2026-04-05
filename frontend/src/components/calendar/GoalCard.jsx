@@ -29,11 +29,11 @@ export default function GoalCard({ goal, onClick }) {
       component={Box}
       onClick={(e) => { e.stopPropagation(); onClick?.(goal); }}
       sx={{
-        bgcolor: '#FFF8E1',
+        bgcolor: '#F0FDF4',
         borderRadius: 2,
         boxShadow: 'none',
         border: '1px solid #e2e8f0',
-        borderLeftColor: '#FFB300',
+        borderLeftColor: '#00D4AA',
         borderLeftWidth: 3,
         borderLeftStyle: 'solid',
         px: 0.75,

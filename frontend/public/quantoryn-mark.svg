@@ -1,0 +1,17 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Halo atmosférico -->
+  <circle cx="256" cy="256" r="200" fill="#00D4AA" opacity="0.04"/>
+  <!-- Anillo interior de precisión -->
+  <circle cx="256" cy="256" r="146" fill="none" stroke="#00D4AA" stroke-width="3" opacity="0.22"/>
+  <!-- Q arc: 290° visible, gap 70° en zona inferior-derecha -->
+  <!-- r=180, C=1130.97, visible=912, gap=218, dashoffset=-283 -->
+  <circle cx="256" cy="256" r="180" fill="none" stroke="#00D4AA"
+          stroke-width="18" stroke-linecap="round"
+          stroke-dasharray="912 218" stroke-dashoffset="-283"/>
+  <!-- Tail: desde fin del arco hacia arriba-derecha -->
+  <line x1="421" y1="317" x2="461" y2="218"
+        stroke="#00D4AA" stroke-width="18" stroke-linecap="round"/>
+  <!-- Data point en el pico -->
+  <circle cx="461" cy="218" r="23" fill="#00D4AA"/>
+  <circle cx="461" cy="218" r="9.2" fill="#FFFFFF"/>
+</svg>

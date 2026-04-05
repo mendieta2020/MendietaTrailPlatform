@@ -196,7 +196,7 @@ const AthleteProgress = () => {
 
   return (
     <AthleteLayout user={user}>
-      <div className="p-6 space-y-6 max-w-2xl mx-auto">
+      <div className="p-4 sm:p-6 space-y-6 max-w-2xl mx-auto overflow-x-hidden">
 
         {/* HEADER */}
         <div className="flex items-center justify-between">
@@ -205,14 +205,14 @@ const AthleteProgress = () => {
 
         {/* SECTION 1: READINESS HERO */}
         {loadingPMC ? (
-          <div className={`rounded-2xl border p-8 animate-pulse bg-slate-50 border-slate-200 text-center`}>
+          <div className={`rounded-2xl border p-5 sm:p-8 animate-pulse bg-slate-50 border-slate-200 text-center`}>
             <div className="h-8 w-24 bg-slate-200 rounded mx-auto mb-3" />
             <div className="h-16 w-32 bg-slate-200 rounded mx-auto mb-3" />
             <div className="h-2 w-48 bg-slate-200 rounded mx-auto mb-3" />
             <div className="h-5 w-28 bg-slate-200 rounded mx-auto" />
           </div>
         ) : (
-          <div className={`rounded-2xl border p-8 text-center ${colors.bg} ${colors.border}`}>
+          <div className={`rounded-2xl border p-5 sm:p-8 text-center ${colors.bg} ${colors.border}`}>
             <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">¿CÓMO ESTÁS HOY?</p>
             <p className="text-6xl font-bold text-slate-800 mb-3">{readinessScore}<span className="text-2xl text-slate-400 font-normal"> / 100</span></p>
             <div className="w-64 mx-auto mb-3">
@@ -327,7 +327,7 @@ const AthleteProgress = () => {
           </div>
         )}
         {!loadingPMC && hasData && (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5" style={{ minHeight: 320 }}>
             <div className="flex items-center justify-between mb-1">
               <h2 className="text-base font-semibold text-slate-900">Tu Evolución</h2>
               <div className="flex gap-1.5">

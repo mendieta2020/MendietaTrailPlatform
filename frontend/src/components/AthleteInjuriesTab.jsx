@@ -313,7 +313,7 @@ export default function AthleteInjuriesTab({ membershipId }) {
             if (showForm) { setShowForm(false); setEditingId(null); setForm(emptyForm()) }
             else { setShowForm(true); setEditingId(null); setForm(emptyForm()) }
           }}
-          sx={{ borderColor: '#F57C00', color: '#F57C00', fontSize: '0.75rem' }}
+          sx={{ borderColor: '#00D4AA', color: '#00D4AA', fontSize: '0.75rem' }}
         >
           {showForm ? 'Cancelar' : '+ Agregar lesión'}
         </Button>
@@ -375,7 +375,7 @@ export default function AthleteInjuriesTab({ membershipId }) {
               variant="contained"
               onClick={handleSave}
               disabled={saving}
-              sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' } }}
+              sx={{ bgcolor: '#00D4AA', '&:hover': { bgcolor: '#00BF99' } }}
             >
               {saving ? <CircularProgress size={12} sx={{ color: '#fff' }} /> : 'Guardar'}
             </Button>

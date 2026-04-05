@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Paper, Button, CircularProgress, Alert, TextField,
+  useTheme, useMediaQuery,
 } from '@mui/material';
+import { LogoutOutlined } from '@mui/icons-material';
 import { MapPin } from 'lucide-react';
 import AthleteLayout from '../components/AthleteLayout';
 import { AthleteProfileCards } from '../components/AthleteProfileCards';
@@ -12,6 +14,7 @@ import {
   updateInjury, deleteInjury, getAvailability, updateAvailability,
   getGoals, createGoal, updateGoal, deleteGoal, updateAthleteRecord,
 } from '../api/athlete';
+import { logoutSession } from '../api/authClient';
 import client from '../api/client';
 
 const PERSONAL_FIELDS = [
@@ -32,7 +35,14 @@ const CARD_FIELDS = { personal: PERSONAL_FIELDS, physical: PHYSICAL_FIELDS, heal
 const AthleteProfile = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const orgId = user?.memberships?.[0]?.org_id;
+
+  const handleLogout = async () => {
+    await logoutSession();
+    window.location.href = '/';
+  };
 
   const [profile, setProfile] = useState(null);
   const [injuries, setInjuries] = useState([]);
@@ -313,7 +323,7 @@ const AthleteProfile = () => {
                   variant="contained"
                   onClick={handleSaveLocation}
                   disabled={savingLocation}
-                  sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' }, textTransform: 'none', minWidth: 80 }}
+                  sx={{ bgcolor: '#00D4AA', '&:hover': { bgcolor: '#00BF99' }, textTransform: 'none', minWidth: 80 }}
                 >
                   {savingLocation ? <CircularProgress size={12} sx={{ color: '#fff' }} /> : 'Guardar'}
                 </Button>
@@ -326,7 +336,7 @@ const AthleteProfile = () => {
                 <Typography variant="body2" sx={{ color: '#1e293b', fontWeight: 500 }}>
                   {locationCity || '—'}
                 </Typography>
-                <Button size="small" onClick={() => setEditingLocation(true)} sx={{ color: '#F57C00', fontSize: '0.75rem', minWidth: 'auto', p: 0.5 }}>
+                <Button size="small" onClick={() => setEditingLocation(true)} sx={{ color: '#00D4AA', fontSize: '0.75rem', minWidth: 'auto', p: 0.5 }}>
                   Editar
                 </Button>
               </Box>
@@ -340,6 +350,18 @@ const AthleteProfile = () => {
             Gestionar conexiones de dispositivo
           </Button>
         </Paper>
+
+        {/* Mobile-only logout button */}
+        {isMobile && (
+          <Button
+            onClick={handleLogout}
+            startIcon={<LogoutOutlined />}
+            fullWidth
+            sx={{ color: '#DC2626', mt: 1, mb: 2, textTransform: 'none', fontWeight: 600 }}
+          >
+            Cerrar Sesión
+          </Button>
+        )}
       </Box>
     </AthleteLayout>
   );

@@ -57,7 +57,7 @@ function weekLabel(weekStart) {
 
 function SportChip({ sport }) {
   const colors = {
-    TRAIL: '#F57C00', RUNNING: '#3b82f6', CYCLING: '#16a34a',
+    TRAIL: '#00D4AA', RUNNING: '#3b82f6', CYCLING: '#16a34a',
     SWIM: '#06b6d4', STRENGTH: '#8b5cf6', OTHER: '#64748b',
   };
   const color = colors[sport] || colors.OTHER;
@@ -252,7 +252,7 @@ export default function GroupPlanningView({
         </Tooltip>
         <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#e2e8f0' }}>
           Planificador de grupo —{' '}
-          <span style={{ color: '#F57C00' }}>{weekStart ? weekLabel(weekStart) : ''}</span>
+          <span style={{ color: '#00D4AA' }}>{weekStart ? weekLabel(weekStart) : ''}</span>
         </Typography>
         {template?.team_name && (
           <Chip
@@ -268,7 +268,7 @@ export default function GroupPlanningView({
               <IconButton
                 size="small"
                 onClick={() => onNavigateWeek(addWeeksDays(weekStart, -1))}
-                sx={{ color: '#94a3b8', '&:hover': { color: '#F57C00' } }}
+                sx={{ color: '#94a3b8', '&:hover': { color: '#00D4AA' } }}
               >
                 <ArrowBackIcon fontSize="small" />
               </IconButton>
@@ -280,7 +280,7 @@ export default function GroupPlanningView({
               <IconButton
                 size="small"
                 onClick={() => onNavigateWeek(addWeeksDays(weekStart, 1))}
-                sx={{ color: '#94a3b8', '&:hover': { color: '#F57C00' } }}
+                sx={{ color: '#94a3b8', '&:hover': { color: '#00D4AA' } }}
               >
                 <ArrowBackIcon fontSize="small" sx={{ transform: 'rotate(180deg)' }} />
               </IconButton>
@@ -300,7 +300,7 @@ export default function GroupPlanningView({
       {/* Loading template */}
       {loadingTemplate && (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-          <CircularProgress size={20} sx={{ color: '#F57C00' }} />
+          <CircularProgress size={20} sx={{ color: '#00D4AA' }} />
         </Box>
       )}
 
@@ -330,10 +330,10 @@ export default function GroupPlanningView({
                 onDrop={handleDrop(day.date)}
                 sx={{
                   border: isOver
-                    ? '2px dashed #F57C00'
+                    ? '2px dashed #00D4AA'
                     : '1px solid rgba(255,255,255,0.08)',
                   borderRadius: 1.5,
-                  bgcolor: isOver ? 'rgba(245,124,0,0.06)' : '#0f1621',
+                  bgcolor: isOver ? 'rgba(0, 212, 170,0.06)' : '#0f1621',
                   p: 1,
                   display: 'flex',
                   flexDirection: 'column',
@@ -406,14 +406,14 @@ export default function GroupPlanningView({
                     key={`p-${j}`}
                     onClick={() => setDrawerWorkout(wo)}
                     sx={{
-                      bgcolor: 'rgba(245,124,0,0.08)',
-                      border: '1px dashed #F57C00',
+                      bgcolor: 'rgba(0, 212, 170,0.08)',
+                      border: '1px dashed #00D4AA',
                       borderRadius: 1,
                       px: 0.75,
                       py: 0.5,
                       position: 'relative',
                       cursor: 'pointer',
-                      '&:hover': { bgcolor: 'rgba(245,124,0,0.14)' },
+                      '&:hover': { bgcolor: 'rgba(0, 212, 170,0.14)' },
                     }}
                   >
                     <IconButton
@@ -424,7 +424,7 @@ export default function GroupPlanningView({
                         top: 2,
                         right: 2,
                         p: 0.1,
-                        color: '#F57C00',
+                        color: '#00D4AA',
                       }}
                     >
                       <CloseIcon sx={{ fontSize: 11 }} />
@@ -493,7 +493,7 @@ export default function GroupPlanningView({
           {pendingTss > 0 && (
             <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.67rem' }}>
               TSS pendiente:{' '}
-              <strong style={{ color: '#F57C00' }}>{Math.round(pendingTss)}</strong>
+              <strong style={{ color: '#00D4AA' }}>{Math.round(pendingTss)}</strong>
             </Typography>
           )}
           {pendingCount > 0 && (
@@ -519,7 +519,7 @@ export default function GroupPlanningView({
             disabled={pendingCount === 0 || saving}
             startIcon={saving ? <CircularProgress size={12} sx={{ color: 'inherit' }} /> : null}
             sx={{
-              bgcolor: '#F57C00',
+              bgcolor: '#00D4AA',
               color: '#fff',
               fontWeight: 700,
               fontSize: '0.72rem',

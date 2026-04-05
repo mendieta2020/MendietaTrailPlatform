@@ -119,7 +119,7 @@ const TeamDetail = () => {
         </Button>
         <Button
           variant="contained"
-          sx={{ bgcolor: '#F57C00' }}
+          sx={{ bgcolor: '#00D4AA' }}
           startIcon={<PersonAdd />}
           onClick={() => setOpenAddModal(true)}
         >
@@ -163,7 +163,7 @@ const TeamDetail = () => {
                     }}
                   >
                     <ListItemAvatar>
-                      <Avatar sx={{ bgcolor: '#1976d2' }}>
+                      <Avatar sx={{ bgcolor: '#00D4AA' }}>
                         {athlete.name ? athlete.name.charAt(0) : '?'}
                       </Avatar>
                     </ListItemAvatar>
@@ -198,7 +198,7 @@ const TeamDetail = () => {
                   justifyContent: 'center',
                   bgcolor: 'white',
                   transition: 'all 0.3s ease',
-                  '&:hover': { borderColor: '#F57C00', bgcolor: '#fff7ed' }
+                  '&:hover': { borderColor: '#00D4AA', bgcolor: '#fff7ed' }
                 }}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={handleDrop}

@@ -81,8 +81,8 @@ export default function PWAInstallPrompt() {
         gap: 1.5,
         px: 2,
         py: 1.25,
-        bgcolor: '#1A2027',
-        borderBottom: '1px solid rgba(245,124,0,0.3)',
+        bgcolor: '#0D1117',
+        borderBottom: '1px solid rgba(0, 212, 170,0.3)',
         boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
       }}
     >
@@ -93,7 +93,7 @@ export default function PWAInstallPrompt() {
         size="small"
         onClick={handleInstall}
         sx={{
-          bgcolor: '#F57C00',
+          bgcolor: '#00D4AA',
           color: 'white',
           fontSize: '0.75rem',
           fontWeight: 700,

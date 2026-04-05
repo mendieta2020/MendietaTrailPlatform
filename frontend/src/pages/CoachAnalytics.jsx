@@ -83,7 +83,7 @@ function LastActivityCell({ days }) {
 const MiniSparkline = ({ data = [], zone }) => {
   const color = {
     fresh: '#64748b',
-    optimal: '#10b981',
+    optimal: '#00D4AA',
     productive: '#f59e0b',
     fatigued: '#f97316',
     overreaching: '#ef4444',
@@ -114,16 +114,16 @@ const SUMMARY_CARDS_CONFIG = [
 ]
 
 const SummaryCards = ({ summary = {} }) => (
-  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+  <div className="grid grid-cols-3 gap-2 sm:gap-4 lg:grid-cols-5">
     {SUMMARY_CARDS_CONFIG.map(({ key, bg, borderColor, accentColor, numColor, label, sub }) => (
       <div
         key={key}
-        className="rounded-xl p-4"
+        className="rounded-xl p-2.5 sm:p-4"
         style={{ background: bg, border: `1px solid ${borderColor}`, borderLeft: `4px solid ${accentColor}` }}
       >
-        <p className="text-3xl font-bold" style={{ color: numColor }}>{summary[key] ?? 0}</p>
-        <p className="text-sm font-semibold text-slate-700 mt-1">{label}</p>
-        <p className="text-xs text-slate-500">{sub}</p>
+        <p className="text-xl sm:text-3xl font-bold leading-none" style={{ color: numColor }}>{summary[key] ?? 0}</p>
+        <p className="text-xs sm:text-sm font-semibold text-slate-700 mt-1">{label}</p>
+        <p className="text-xs text-slate-500 hidden sm:block">{sub}</p>
       </div>
     ))}
   </div>
@@ -133,11 +133,11 @@ const SummaryCards = ({ summary = {} }) => (
 const COLUMNS = [
   { key: 'name',                    label: 'ATLETA',       sortFn: (a, b) => a.name.localeCompare(b.name) },
   { key: 'ctl',                     label: 'CTL',          sortFn: (a, b) => b.ctl - a.ctl },
-  { key: 'atl',                     label: 'ATL',          sortFn: (a, b) => b.atl - a.atl },
+  { key: 'atl',                     label: 'ATL',          sortFn: (a, b) => b.atl - a.atl,                                                            hideMobile: true },
   { key: 'tsb',                     label: 'TSB',          sortFn: (a, b) => b.tsb - a.tsb },
   { key: 'tsb_zone',                label: 'ESTADO',       sortFn: (a, b) => a.tsb_zone.localeCompare(b.tsb_zone) },
-  { key: 'avg_gap_formatted',       label: 'GAP',          sortFn: (a, b) => (a.avg_gap_formatted ?? '—').localeCompare(b.avg_gap_formatted ?? '—') },
-  { key: 'ramp_rate_7d',            label: 'RAMP 7D',      sortFn: (a, b) => (b.ramp_rate_7d ?? -999) - (a.ramp_rate_7d ?? -999) },
+  { key: 'avg_gap_formatted',       label: 'GAP',          sortFn: (a, b) => (a.avg_gap_formatted ?? '—').localeCompare(b.avg_gap_formatted ?? '—'),    hideMobile: true },
+  { key: 'ramp_rate_7d',            label: 'RAMP 7D',      sortFn: (a, b) => (b.ramp_rate_7d ?? -999) - (a.ramp_rate_7d ?? -999),                      hideMobile: true },
   { key: 'tendencia',               label: 'TENDENCIA',    sortFn: (a, b) => (b.ramp_rate_7d ?? 0) - (a.ramp_rate_7d ?? 0) },
   { key: 'last_activity_days_ago',  label: 'ÚLTIMA ACT.',  sortFn: (a, b) => (a.last_activity_days_ago ?? 999) - (b.last_activity_days_ago ?? 999) },
   { key: '_nav',                    label: '',             sortFn: null },
@@ -235,7 +235,7 @@ const CoachAnalytics = () => {
                           <th
                             key={col.key}
                             onClick={() => handleSort(col)}
-                            className={`text-xs uppercase tracking-wide text-slate-500 px-4 py-3 text-left font-medium whitespace-nowrap select-none ${col.sortFn ? 'cursor-pointer hover:text-slate-700' : ''}`}
+                            className={`text-xs uppercase tracking-wide text-slate-500 px-2 sm:px-4 py-3 text-left font-medium whitespace-nowrap select-none ${col.sortFn ? 'cursor-pointer hover:text-slate-700' : ''} ${col.key === 'name' ? 'sticky left-0 bg-white z-10' : ''} ${col.hideMobile ? 'hidden sm:table-cell' : ''}`}
                           >
                             {col.label}
                             <SortIcon col={col} sortKey={sortKey} sortDir={sortDir} />
@@ -250,32 +250,32 @@ const CoachAnalytics = () => {
                           className="hover:bg-slate-50 cursor-pointer border-b border-slate-50 transition-colors"
                           onClick={() => navigate(`/coach/athletes/${a.membership_id}/pmc`)}
                         >
-                          <td className="px-4 py-4 font-medium text-slate-900 text-sm">{a.name}</td>
-                          <td className="px-4 py-4 text-blue-600 font-semibold text-sm">{Math.round(a.ctl)}</td>
-                          <td className="px-4 py-4 text-orange-500 font-semibold text-sm">{Math.round(a.atl)}</td>
-                          <td className={`px-4 py-4 font-semibold text-sm ${tsbColor(a.tsb)}`}>
+                          <td className="px-2 sm:px-4 py-3 sm:py-4 font-medium text-slate-900 text-xs sm:text-sm sticky left-0 bg-white z-10 shadow-[1px_0_0_#f1f5f9]">{a.name}</td>
+                          <td className="px-2 sm:px-4 py-3 sm:py-4 text-blue-600 font-semibold text-xs sm:text-sm">{Math.round(a.ctl)}</td>
+                          <td className={`px-2 sm:px-4 py-3 sm:py-4 text-orange-500 font-semibold text-xs sm:text-sm hidden sm:table-cell`}>{Math.round(a.atl)}</td>
+                          <td className={`px-2 sm:px-4 py-3 sm:py-4 font-semibold text-xs sm:text-sm ${tsbColor(a.tsb)}`}>
                             {tsbSign(a.tsb)}
                           </td>
-                          <td className="px-4 py-4">
-                            <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${tsbBadgeClass(a.tsb_zone)}`}>
+                          <td className="px-2 sm:px-4 py-3 sm:py-4">
+                            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tsbBadgeClass(a.tsb_zone)}`}>
                               {tsbZoneLabel(a.tsb_zone)}
                             </span>
                           </td>
-                          <td className="px-4 py-4 text-sm text-slate-600 font-mono">
+                          <td className="px-2 sm:px-4 py-3 sm:py-4 text-xs sm:text-sm text-slate-600 font-mono hidden sm:table-cell">
                             {a.avg_gap_formatted ?? '—'}
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-2 sm:px-4 py-3 sm:py-4 hidden sm:table-cell">
                             <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${rampBadgeClass(a.ramp_rate_7d)}`}>
                               {rampSign(a.ramp_rate_7d)}
                             </span>
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-2 sm:px-4 py-3 sm:py-4">
                             <TendenciaCell ramp={a.ramp_rate_7d} />
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-2 sm:px-4 py-3 sm:py-4">
                             <LastActivityCell days={a.last_activity_days_ago} />
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-2 sm:px-4 py-3 sm:py-4">
                             <ChevronRight className="w-4 h-4 text-slate-300" />
                           </td>
                         </tr>

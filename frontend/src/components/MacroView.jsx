@@ -283,7 +283,7 @@ function AutoPeriodizeModal({ open, onClose, orgId, teams, onSuccess }) {
             variant="contained"
             onClick={handleSubmit}
             disabled={saving}
-            sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' } }}
+            sx={{ bgcolor: '#00D4AA', '&:hover': { bgcolor: '#00BF99' } }}
           >
             {saving ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : 'Auto-periodizar'}
           </Button>
@@ -499,7 +499,7 @@ function BulkAssignModal({ open, onClose, orgId, weekStart, athletes }) {
           variant="contained"
           onClick={handleAssign}
           disabled={selectedWorkouts.length === 0 || selectedDays.length === 0 || saving}
-          sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' } }}
+          sx={{ bgcolor: '#00D4AA', '&:hover': { bgcolor: '#00BF99' } }}
         >
           {saving ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : 'Asignar'}
         </Button>
@@ -613,7 +613,7 @@ export default function MacroView({ orgId, onNavigateToWeek }) {
           size="small"
           onClick={load}
           disabled={loading}
-          sx={{ borderColor: '#F57C00', color: '#F57C00' }}
+          sx={{ borderColor: '#00D4AA', color: '#00D4AA' }}
         >
           Actualizar
         </Button>
@@ -663,7 +663,7 @@ export default function MacroView({ orgId, onNavigateToWeek }) {
 
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-          <CircularProgress sx={{ color: '#F57C00' }} />
+          <CircularProgress sx={{ color: '#00D4AA' }} />
         </Box>
       ) : (
         <TableContainer component={Paper} sx={{ borderRadius: 2 }}>
@@ -690,7 +690,7 @@ export default function MacroView({ orgId, onNavigateToWeek }) {
                         sx={{
                           cursor: 'pointer',
                           px: 2, py: 1,
-                          '&:hover': { color: '#F57C00', textDecoration: 'underline' },
+                          '&:hover': { color: '#00D4AA', textDecoration: 'underline' },
                         }}
                       >
                         {formatWeekLabel(w)}

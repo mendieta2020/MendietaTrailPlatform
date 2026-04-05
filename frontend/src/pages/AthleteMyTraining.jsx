@@ -104,7 +104,7 @@ function AthleteGoalEditDialog({ goal, orgId, onClose, onSaved }) {
           variant="contained"
           onClick={handleSave}
           disabled={saving}
-          sx={{ textTransform: 'none', bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' } }}
+          sx={{ textTransform: 'none', bgcolor: '#00D4AA', '&:hover': { bgcolor: '#00BF99' } }}
         >
           {saving ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : 'Guardar'}
         </Button>

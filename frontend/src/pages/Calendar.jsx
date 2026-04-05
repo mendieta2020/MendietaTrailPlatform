@@ -10,6 +10,7 @@ import {
   startOfMonth,
   endOfMonth,
   parseISO,
+  addDays,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
@@ -40,7 +41,10 @@ import {
   ToggleButtonGroup,
   TextField,
   Grid,
+  Fab,
+  SwipeableDrawer,
 } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import MenuOpenIcon from '@mui/icons-material/MenuOpen';
 import MenuIcon from '@mui/icons-material/Menu';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -87,7 +91,7 @@ const COMPLIANCE_HEX = {
 // PR-154: Menstrual cycle phase helpers
 const MENSTRUAL_PHASES = [
   { name: 'Menstrual',  color: '#EF4444', tip: 'Fase menstrual — escuchá a tu cuerpo' },
-  { name: 'Folicular',  color: '#10B981', tip: 'Fase folicular — ideal para alta intensidad' },
+  { name: 'Folicular',  color: '#00D4AA', tip: 'Fase folicular — ideal para alta intensidad' },
   { name: 'Ovulación',  color: '#F59E0B', tip: 'Ovulación — pico de energía' },
   { name: 'Lútea',      color: '#F97316', tip: 'Fase lútea — reducir intensidad' },
 ];
@@ -180,7 +184,7 @@ function fetchReducer(state, action) {
 
 // ── Draggable workout card ────────────────────────────────────────────────────
 
-function WorkoutCard({ workout, onDragStart, onDragEnd }) {
+function WorkoutCard({ workout, onDragStart, onDragEnd, onSelect }) {
   const [isDragging, setIsDragging] = React.useState(false);
 
   const handleDragStart = (e) => {
@@ -199,28 +203,29 @@ function WorkoutCard({ workout, onDragStart, onDragEnd }) {
       draggable
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onClick={onSelect ? () => onSelect(workout) : undefined}
       sx={{
         p: 1.5,
         mb: 1,
         borderRadius: 1.5,
-        bgcolor: isDragging ? 'rgba(245, 124, 0, 0.12)' : '#1c2230',
+        bgcolor: isDragging ? 'rgba(0, 212, 170, 0.12)' : '#1c2230',
         border: '1px solid',
-        borderColor: isDragging ? '#F57C00' : 'rgba(255,255,255,0.07)',
-        cursor: 'grab',
+        borderColor: isDragging ? '#00D4AA' : 'rgba(255,255,255,0.07)',
+        cursor: onSelect ? 'pointer' : 'grab',
         transition: 'border-color 0.15s, background-color 0.15s',
         opacity: isDragging ? 0.45 : 1,
         '&:hover': {
-          borderColor: '#F57C00',
-          bgcolor: 'rgba(245, 124, 0, 0.07)',
+          borderColor: '#00D4AA',
+          bgcolor: 'rgba(0, 212, 170, 0.07)',
         },
       }}
     >
       <Typography
         variant="caption"
-        sx={{ color: '#F57C00', fontWeight: 600, display: 'block', lineHeight: 1 }}
+        sx={{ color: '#00D4AA', fontWeight: 600, display: 'block', lineHeight: 1 }}
       >
         <FitnessCenterIcon sx={{ fontSize: 10, mr: 0.5, verticalAlign: 'middle' }} />
-        arrastrar
+        {onSelect ? 'toca para asignar' : 'arrastrar'}
       </Typography>
       <Typography variant="body2" sx={{ color: '#e2e8f0', fontWeight: 500, mt: 0.4 }}>
         {workout.name}
@@ -240,7 +245,7 @@ function WorkoutCard({ workout, onDragStart, onDragEnd }) {
 
 // ── Library sidebar ───────────────────────────────────────────────────────────
 
-function LibrarySidebar({ orgId, onDragStart, onDragEnd }) {
+function LibrarySidebar({ orgId, onDragStart, onDragEnd, onSelect }) {
   const [libState, libDispatch] = useReducer(fetchReducer, {
     data: [],
     loading: false,
@@ -282,7 +287,7 @@ function LibrarySidebar({ orgId, onDragStart, onDragEnd }) {
   if (libState.loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-        <CircularProgress size={22} sx={{ color: '#F57C00' }} />
+        <CircularProgress size={22} sx={{ color: '#00D4AA' }} />
       </Box>
     );
   }
@@ -344,7 +349,7 @@ function LibrarySidebar({ orgId, onDragStart, onDragEnd }) {
           <AccordionDetails sx={{ p: 1, pt: 0 }}>
             {loadingWorkouts[lib.id] ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
-                <CircularProgress size={16} sx={{ color: '#F57C00' }} />
+                <CircularProgress size={16} sx={{ color: '#00D4AA' }} />
               </Box>
             ) : (workoutsByLib[lib.id] ?? []).length === 0 ? (
               <Typography variant="caption" sx={{ color: '#4a5568' }}>
@@ -357,6 +362,7 @@ function LibrarySidebar({ orgId, onDragStart, onDragEnd }) {
                   workout={wo}
                   onDragStart={onDragStart}
                   onDragEnd={onDragEnd}
+                  onSelect={onSelect}
                 />
               ))
             )}
@@ -514,7 +520,7 @@ function GoalEditDialog({ goal, orgId, onClose, onSaved }) {
           variant="contained"
           onClick={handleSave}
           disabled={saving}
-          sx={{ textTransform: 'none', bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' } }}
+          sx={{ textTransform: 'none', bgcolor: '#00D4AA', '&:hover': { bgcolor: '#00BF99' } }}
         >
           {saving ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : 'Guardar'}
         </Button>
@@ -540,6 +546,9 @@ export default function CalendarPage() {
   const { activeOrg } = useOrg();
   const orgId = activeOrg?.org_id ?? null;
   const navigate = useNavigate();
+  const [libDrawerOpen, setLibDrawerOpen] = useState(false);
+  const [mobileAssignWorkout, setMobileAssignWorkout] = useState(null);
+  const [mobileAssignDialogOpen, setMobileAssignDialogOpen] = useState(false);
 
   // Athletes + Teams
   const [athleteState, athleteDispatch] = useReducer(fetchReducer, {
@@ -872,6 +881,33 @@ export default function CalendarPage() {
   const handleDragEnd = useCallback(() => {
     draggingWorkoutRef.current = null;
   }, []);
+
+  // Mobile FAB: tap workout in library → date picker dialog
+  const handleMobileWorkoutSelect = useCallback((workout) => {
+    setLibDrawerOpen(false);
+    setMobileAssignWorkout(workout);
+    setMobileAssignDialogOpen(true);
+  }, []);
+
+  const handleMobileAssign = useCallback((dateStr) => {
+    const target = parseTarget(selectedTarget);
+    if (!target || target.type !== 'a') return;
+    setMobileAssignDialogOpen(false);
+    setMobileAssignWorkout(null);
+    createAssignment(orgId, {
+      planned_workout_id: mobileAssignWorkout.id,
+      athlete_id: target.id,
+      scheduled_date: dateStr,
+    }).then(() => {
+      const params = { athleteId: target.id, dateFrom, dateTo };
+      listAssignments(orgId, params)
+        .then((res) => {
+          const data = res.data?.results ?? res.data ?? [];
+          eventsDispatch({ type: 'FETCH_SUCCESS', data: toEvents(data) });
+        })
+        .catch(() => {});
+    }).catch(() => {});
+  }, [orgId, selectedTarget, mobileAssignWorkout, dateFrom, dateTo]);
 
   // Called by react-big-calendar to get a preview event while dragging over slots
   const dragFromOutsideItem = useCallback(() => {
@@ -1384,7 +1420,7 @@ export default function CalendarPage() {
       return {
         title,
         style: {
-          backgroundColor: '#F57C00',
+          backgroundColor: '#00D4AA',
           borderRadius: '5px',
           borderLeft: `3px solid ${borderColor}`,
           paddingLeft: '6px',
@@ -1456,7 +1492,7 @@ export default function CalendarPage() {
 
           {saving && (
             <Tooltip title="Guardando asignación…">
-              <CircularProgress size={20} sx={{ color: '#F57C00' }} />
+              <CircularProgress size={20} sx={{ color: '#00D4AA' }} />
             </Tooltip>
           )}
 
@@ -1494,11 +1530,11 @@ export default function CalendarPage() {
           sx={{
             display: calendarView === 'macro' ? 'none' : 'flex',
             gap: 2,
-            height: 'calc(100vh - 220px)',
-            minHeight: 560,
+            height: { sm: 'calc(100vh - 220px)' },
+            minHeight: { sm: 560 },
           }}
         >
-          {/* Sidebar */}
+          {/* Sidebar — hidden on mobile (xs), shown on sm+ */}
           {sidebarOpen && (
             <Paper
               sx={{
@@ -1508,7 +1544,7 @@ export default function CalendarPage() {
                 borderRadius: 2,
                 p: 1.5,
                 overflowY: 'auto',
-                display: 'flex',
+                display: { xs: 'none', sm: 'flex' },
                 flexDirection: 'column',
                 gap: 1,
               }}
@@ -1548,18 +1584,18 @@ export default function CalendarPage() {
                   onDragEnd={handleDragEnd}
                 />
               ) : (
-                <CircularProgress size={20} sx={{ color: '#F57C00' }} />
+                <CircularProgress size={20} sx={{ color: '#00D4AA' }} />
               )}
             </Paper>
           )}
 
-          {/* Sidebar toggle when collapsed */}
+          {/* Sidebar toggle when collapsed — desktop only */}
           {!sidebarOpen && (
             <Tooltip title="Abrir librería">
               <IconButton
                 size="small"
                 onClick={() => setSidebarOpen(true)}
-                sx={{ alignSelf: 'flex-start', mt: 0.5, color: '#F57C00' }}
+                sx={{ alignSelf: 'flex-start', mt: 0.5, color: '#00D4AA', display: { xs: 'none', sm: 'flex' } }}
               >
                 <MenuIcon />
               </IconButton>
@@ -1946,6 +1982,118 @@ export default function CalendarPage() {
               sx={{ textTransform: 'none', bgcolor: '#6366F1', '&:hover': { bgcolor: '#4F46E5' } }}
             >
               Planificar igual
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* FAB — mobile only: opens library as bottom drawer */}
+        <Fab
+          size="medium"
+          onClick={() => setLibDrawerOpen(true)}
+          sx={{
+            display: { xs: 'flex', sm: 'none' },
+            position: 'fixed',
+            bottom: 72,
+            right: 16,
+            zIndex: 1100,
+            bgcolor: '#00D4AA',
+            color: '#0D1117',
+            '&:hover': { bgcolor: '#00BF99' },
+          }}
+        >
+          <AddIcon />
+        </Fab>
+
+        {/* Mobile library drawer */}
+        <SwipeableDrawer
+          anchor="bottom"
+          open={libDrawerOpen}
+          onOpen={() => setLibDrawerOpen(true)}
+          onClose={() => setLibDrawerOpen(false)}
+          disableSwipeToOpen
+          sx={{
+            display: { xs: 'block', sm: 'none' },
+            '& .MuiDrawer-paper': {
+              borderRadius: '16px 16px 0 0',
+              bgcolor: '#0f1621',
+              pb: 'env(safe-area-inset-bottom)',
+              maxHeight: '70vh',
+              p: 2,
+            },
+          }}
+        >
+          <Box sx={{ display: 'flex', justifyContent: 'center', pt: 0.5, pb: 1.5 }}>
+            <Box sx={{ width: 32, height: 4, bgcolor: 'rgba(255,255,255,0.2)', borderRadius: 2 }} />
+          </Box>
+          <Typography variant="caption" sx={{ color: '#718096', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 700, mb: 1.5, display: 'block' }}>
+            Librería
+          </Typography>
+          {orgId ? (
+            <LibrarySidebar
+              orgId={orgId}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onSelect={handleMobileWorkoutSelect}
+            />
+          ) : (
+            <CircularProgress size={20} sx={{ color: '#00D4AA' }} />
+          )}
+        </SwipeableDrawer>
+
+        {/* Mobile assign date picker dialog */}
+        <Dialog
+          open={mobileAssignDialogOpen}
+          onClose={() => { setMobileAssignDialogOpen(false); setMobileAssignWorkout(null); }}
+          maxWidth="xs"
+          fullWidth
+        >
+          <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 0.5 }}>
+            Asignar entrenamiento
+          </DialogTitle>
+          <DialogContent>
+            {mobileAssignWorkout && (
+              <Typography variant="body2" sx={{ mb: 2, color: '#475569' }}>
+                {mobileAssignWorkout.name}
+              </Typography>
+            )}
+            {!parseTarget(selectedTarget) || parseTarget(selectedTarget)?.type !== 'a' ? (
+              <Typography variant="body2" sx={{ color: '#f59e0b' }}>
+                Seleccioná un atleta en el filtro antes de asignar.
+              </Typography>
+            ) : (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                {Array.from({ length: 7 }, (_, i) => {
+                  const d = addDays(new Date(), i);
+                  const dateStr = format(d, 'yyyy-MM-dd');
+                  const label = format(d, 'EEE d', { locale: es });
+                  return (
+                    <Button
+                      key={dateStr}
+                      variant="outlined"
+                      size="small"
+                      onClick={() => handleMobileAssign(dateStr)}
+                      sx={{
+                        borderColor: '#00D4AA',
+                        color: '#00D4AA',
+                        textTransform: 'capitalize',
+                        fontWeight: 600,
+                        '&:hover': { bgcolor: 'rgba(0,212,170,0.08)', borderColor: '#00D4AA' },
+                      }}
+                    >
+                      {label}
+                    </Button>
+                  );
+                })}
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button
+              variant="text"
+              onClick={() => { setMobileAssignDialogOpen(false); setMobileAssignWorkout(null); }}
+              sx={{ textTransform: 'none', color: '#64748B' }}
+            >
+              Cancelar
             </Button>
           </DialogActions>
         </Dialog>

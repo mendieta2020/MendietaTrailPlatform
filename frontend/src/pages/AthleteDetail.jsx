@@ -111,7 +111,7 @@ const AthleteDetail = () => {
         <Grid container spacing={3} alignItems="center">
           <Grid>
             <Avatar
-              sx={{ width: 100, height: 100, bgcolor: '#F57C00', fontSize: 40, boxShadow: '0 4px 12px rgba(245, 124, 0, 0.3)' }}
+              sx={{ width: 100, height: 100, bgcolor: '#00D4AA', fontSize: 40, boxShadow: '0 4px 12px rgba(0, 212, 170, 0.3)' }}
             >
               {athlete.first_name ? athlete.first_name.charAt(0) : '?'}
             </Avatar>

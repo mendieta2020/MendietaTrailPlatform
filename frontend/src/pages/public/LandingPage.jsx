@@ -52,7 +52,7 @@ const PillarCard = ({ icon, title, body }) => (
     }}
   >
     <Typography sx={{ fontSize: '1.8rem', mb: 1.5, lineHeight: 1 }}>{icon}</Typography>
-    <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, color: '#1A2027' }}>
+    <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, color: '#0D1117' }}>
       {title}
     </Typography>
     <Typography variant="body2" sx={{ color: '#555', lineHeight: 1.7 }}>
@@ -66,7 +66,7 @@ const LandingPage = () => (
     {/* ── HERO ─────────────────────────────────────────── */}
     <Box
       sx={{
-        background: 'linear-gradient(135deg, #1A2027 0%, #2d3748 100%)',
+        background: 'linear-gradient(135deg, #0D1117 0%, #2d3748 100%)',
         color: '#fff',
         py: { xs: 8, md: 12 },
         px: { xs: 2, md: 4 },
@@ -79,16 +79,16 @@ const LandingPage = () => (
             display: 'inline-flex',
             alignItems: 'center',
             gap: 0.75,
-            bgcolor: 'rgba(245,124,0,0.15)',
-            border: '1px solid rgba(245,124,0,0.3)',
+            bgcolor: 'rgba(0, 212, 170,0.15)',
+            border: '1px solid rgba(0, 212, 170,0.3)',
             borderRadius: '20px',
             px: 2,
             py: 0.5,
             mb: 3,
           }}
         >
-          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#F57C00' }} />
-          <Typography sx={{ fontSize: '0.8rem', color: '#F57C00', fontWeight: 600, letterSpacing: '0.05em' }}>
+          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#00D4AA' }} />
+          <Typography sx={{ fontSize: '0.8rem', color: '#00D4AA', fontWeight: 600, letterSpacing: '0.05em' }}>
             ENDURANCE TRAINING PLATFORM · CÓRDOBA, ARGENTINA
           </Typography>
         </Box>
@@ -110,13 +110,14 @@ const LandingPage = () => (
 
         <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
           <Button
-            component="a"
-            href="https://app.quantoryn.com"
+            component={Link}
+            to="/login"
             variant="contained"
             size="large"
             sx={{
-              bgcolor: '#F57C00',
-              '&:hover': { bgcolor: '#e65100' },
+              bgcolor: '#00D4AA',
+              color: '#0D1117',
+              '&:hover': { bgcolor: '#00BF99' },
               px: 4,
               fontWeight: 700,
               borderRadius: '10px',
@@ -135,7 +136,7 @@ const LandingPage = () => (
               px: 4,
               fontWeight: 600,
               borderRadius: '10px',
-              '&:hover': { borderColor: '#F57C00', color: '#F57C00', bgcolor: 'transparent' },
+              '&:hover': { borderColor: '#00D4AA', color: '#00D4AA', bgcolor: 'transparent' },
             }}
           >
             Vendor Documentation
@@ -160,7 +161,7 @@ const LandingPage = () => (
         ].map(({ name, status, color }) => (
           <Box key={name} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
             <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: color }} />
-            <Typography sx={{ fontSize: '0.85rem', fontWeight: 600, color: '#1A2027' }}>{name}</Typography>
+            <Typography sx={{ fontSize: '0.85rem', fontWeight: 600, color: '#0D1117' }}>{name}</Typography>
             <Typography sx={{ fontSize: '0.75rem', color: color }}>{status}</Typography>
           </Box>
         ))}
@@ -171,7 +172,7 @@ const LandingPage = () => (
     <Box sx={{ maxWidth: 1100, mx: 'auto', px: { xs: 2, md: 4 }, py: { xs: 6, md: 10 } }}>
       <Typography
         variant="h4"
-        sx={{ fontWeight: 800, textAlign: 'center', mb: 1, color: '#1A2027' }}
+        sx={{ fontWeight: 800, textAlign: 'center', mb: 1, color: '#0D1117' }}
       >
         Architecture Principles
       </Typography>
@@ -201,7 +202,7 @@ const LandingPage = () => (
         textAlign: 'center',
       }}
     >
-      <Typography variant="h5" sx={{ fontWeight: 700, mb: 1, color: '#1A2027' }}>
+      <Typography variant="h5" sx={{ fontWeight: 700, mb: 1, color: '#0D1117' }}>
         API & Vendor Partnerships
       </Typography>
       <Typography sx={{ color: '#666', mb: 4, maxWidth: 560, mx: 'auto' }}>
@@ -213,7 +214,7 @@ const LandingPage = () => (
           component={Link}
           to="/vendor"
           variant="contained"
-          sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' }, borderRadius: '10px', fontWeight: 700, px: 3 }}
+          sx={{ bgcolor: '#00D4AA', '&:hover': { bgcolor: '#00BF99' }, borderRadius: '10px', fontWeight: 700, px: 3 }}
         >
           View Vendor Kit
         </Button>
@@ -221,7 +222,7 @@ const LandingPage = () => (
           component={Link}
           to="/privacy"
           variant="outlined"
-          sx={{ borderColor: '#e0e0e0', color: '#555', borderRadius: '10px', px: 3, '&:hover': { borderColor: '#F57C00', color: '#F57C00' } }}
+          sx={{ borderColor: '#e0e0e0', color: '#555', borderRadius: '10px', px: 3, '&:hover': { borderColor: '#00D4AA', color: '#00D4AA' } }}
         >
           Privacy Policy
         </Button>
@@ -229,7 +230,7 @@ const LandingPage = () => (
           component={Link}
           to="/terms"
           variant="outlined"
-          sx={{ borderColor: '#e0e0e0', color: '#555', borderRadius: '10px', px: 3, '&:hover': { borderColor: '#F57C00', color: '#F57C00' } }}
+          sx={{ borderColor: '#e0e0e0', color: '#555', borderRadius: '10px', px: 3, '&:hover': { borderColor: '#00D4AA', color: '#00D4AA' } }}
         >
           Terms of Service
         </Button>
@@ -237,7 +238,7 @@ const LandingPage = () => (
           component={Link}
           to="/security"
           variant="outlined"
-          sx={{ borderColor: '#e0e0e0', color: '#555', borderRadius: '10px', px: 3, '&:hover': { borderColor: '#F57C00', color: '#F57C00' } }}
+          sx={{ borderColor: '#e0e0e0', color: '#555', borderRadius: '10px', px: 3, '&:hover': { borderColor: '#00D4AA', color: '#00D4AA' } }}
         >
           Security Policy
         </Button>

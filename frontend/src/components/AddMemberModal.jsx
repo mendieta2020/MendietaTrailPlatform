@@ -118,7 +118,7 @@ const AddMemberModal = ({ open, onClose, teamId, orgId, onMembersAdded }) => {
                   }
                 >
                   <ListItemAvatar>
-                    <Avatar sx={{ bgcolor: isSelected ? '#F57C00' : '#bdbdbd' }}>
+                    <Avatar sx={{ bgcolor: isSelected ? '#00D4AA' : '#bdbdbd' }}>
                       {(athlete.first_name || '?').charAt(0)}{(athlete.last_name || '').charAt(0)}
                     </Avatar>
                   </ListItemAvatar>
@@ -144,7 +144,7 @@ const AddMemberModal = ({ open, onClose, teamId, orgId, onMembersAdded }) => {
             onClick={handleSave}
             variant="contained"
             disabled={selected.length === 0 || loading}
-            sx={{ bgcolor: '#F57C00', color: 'white' }}
+            sx={{ bgcolor: '#00D4AA', color: 'white' }}
           >
             {loading ? "Guardando..." : "Agregar Seleccionados"}
           </Button>

@@ -114,7 +114,7 @@ function getMenstrualPhase(lastPeriodDate, cycleDays) {
   const daysSince = Math.floor((today - lastPeriod) / 86400000);
   const dayInCycle = ((daysSince % cycleDays) + cycleDays) % cycleDays;
   if (dayInCycle <= 5) return { name: 'Menstrual', emoji: '🔴', color: '#EF4444', tip: 'Hormonas en nivel bajo. Escuchá a tu cuerpo.' };
-  if (dayInCycle <= 13) return { name: 'Folicular', emoji: '🟢', color: '#10B981', tip: 'Momento ideal para alta intensidad y fuerza.' };
+  if (dayInCycle <= 13) return { name: 'Folicular', emoji: '🟢', color: '#00D4AA', tip: 'Momento ideal para alta intensidad y fuerza.' };
   if (dayInCycle <= 15) return { name: 'Ovulación', emoji: '🟡', color: '#F59E0B', tip: 'Pico de energía. Aprovechá para sesiones exigentes.' };
   return { name: 'Lútea', emoji: '🟠', color: '#F97316', tip: 'Reducí intensidad. Priorizá trabajo aeróbico y recuperación.' };
 }
@@ -423,7 +423,7 @@ export function AthleteProfileCards({
       {/* Card 2: Datos Físicos & Deportivos */}
       <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
         <CardHeader
-          icon={<Activity className="w-5 h-5" style={{ color: '#10B981' }} />}
+          icon={<Activity className="w-5 h-5" style={{ color: '#00D4AA' }} />}
           title="Datos Físicos & Deportivos"
           cardName="physical"
           editingCard={editingCard}
@@ -638,7 +638,7 @@ export function AthleteProfileCards({
                   <div className="flex flex-col gap-2">
                     <TextField size="small" label="Nombre" fullWidth value={goalEditDraft.title}
                       onChange={e => setGoalEditDraft(d => ({ ...d, title: e.target.value }))}
-                      sx={{ '& .MuiOutlinedInput-root': { '&.Mui-focused fieldset': { borderColor: '#F57C00' } } }} />
+                      sx={{ '& .MuiOutlinedInput-root': { '&.Mui-focused fieldset': { borderColor: '#00D4AA' } } }} />
                     <div className="flex gap-2">
                       <TextField size="small" type="date" label="Fecha" fullWidth InputLabelProps={{ shrink: true }}
                         value={goalEditDraft.target_date}
@@ -661,7 +661,7 @@ export function AthleteProfileCards({
                       <Button size="small" onClick={cancelGoalEdit} sx={{ color: '#64748b', textTransform: 'none', fontSize: '0.75rem' }}>Cancelar</Button>
                       <Button size="small" variant="contained" onClick={() => saveGoalEdit(g.id)}
                         disabled={goalEditSaving || !goalEditDraft.title}
-                        sx={{ bgcolor: '#F57C00', '&:hover': { bgcolor: '#e65100' }, textTransform: 'none', fontSize: '0.75rem' }}>
+                        sx={{ bgcolor: '#00D4AA', '&:hover': { bgcolor: '#00BF99' }, textTransform: 'none', fontSize: '0.75rem' }}>
                         {goalEditSaving ? 'Guardando…' : 'Guardar'}
                       </Button>
                     </div>
@@ -908,7 +908,7 @@ export function AthleteProfileCards({
                 <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
                 <Line type="monotone" dataKey="sleep_quality"   name="Sueño"    stroke="#6366f1" dot={false} strokeWidth={1.5} />
                 <Line type="monotone" dataKey="mood"            name="Ánimo"    stroke="#f59e0b" dot={false} strokeWidth={1.5} />
-                <Line type="monotone" dataKey="energy"          name="Energía"  stroke="#10b981" dot={false} strokeWidth={1.5} />
+                <Line type="monotone" dataKey="energy"          name="Energía"  stroke="#00D4AA" dot={false} strokeWidth={1.5} />
                 <Line type="monotone" dataKey="muscle_soreness" name="Dolor"    stroke="#ef4444" dot={false} strokeWidth={1.5} />
                 <Line type="monotone" dataKey="stress"          name="Estrés"   stroke="#8b5cf6" dot={false} strokeWidth={1.5} />
               </LineChart>
