@@ -184,6 +184,21 @@ const Dashboard = () => {
       {/* HEADER */}
       <Box sx={{ mb: 4, p: { xs: 2, sm: 3 }, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+            <Box sx={{
+              width: 28, height: 28, borderRadius: 1, bgcolor: '#00D4AA',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '0.75rem', fontWeight: 800, color: '#0D1117', flexShrink: 0,
+            }}>
+              {(activeOrg?.name?.[0] ?? 'Q').toUpperCase()}
+            </Box>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: '#00D4AA', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+              {activeOrg?.name}
+            </Typography>
+            <Box sx={{ px: 1, py: 0.25, borderRadius: 1, bgcolor: 'rgba(59,130,246,0.1)' }}>
+              <Typography variant="caption" sx={{ color: '#3b82f6', fontWeight: 700, fontSize: '0.65rem' }}>Coach</Typography>
+            </Box>
+          </Box>
           <Typography variant="h5" sx={{ fontWeight: 700, color: '#0F172A' }}>Panel de Control</Typography>
           <Typography variant="body2" sx={{ color: '#64748B' }}>Visión científica de tu equipo en tiempo real.</Typography>
         </Box>

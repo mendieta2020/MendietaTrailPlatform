@@ -1197,3 +1197,59 @@ class MySubscriptionView(APIView):
                 "city": org.city,
             },
         })
+
+
+# ==============================================================================
+# PR-165c: MyCoachProfileView — GET/PATCH authenticated user's Coach record
+# ==============================================================================
+
+class MyCoachProfileView(APIView):
+    """
+    GET  /api/me/coach-profile/?org_id=<id>  — Returns coach profile fields.
+    PATCH /api/me/coach-profile/              — Updates bio, specialties, certifications,
+                                               years_experience. org_id in request body.
+
+    Security: caller must be the coach (user FK match). Never exposes other coaches.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def _resolve_coach(self, user, org_id):
+        if not org_id:
+            return None
+        return Coach.objects.filter(
+            user=user, organization_id=org_id
+        ).first()
+
+    def get(self, request):
+        org_id = request.query_params.get("org_id")
+        coach = self._resolve_coach(request.user, org_id)
+        if not coach:
+            return Response({"detail": "No sos coach en esta organización."}, status=404)
+        return Response({
+            "id": coach.pk,
+            "bio": coach.bio,
+            "specialties": coach.specialties,
+            "certifications": coach.certifications,
+            "years_experience": coach.years_experience,
+        })
+
+    def patch(self, request):
+        org_id = request.data.get("org_id") or request.query_params.get("org_id")
+        coach = self._resolve_coach(request.user, org_id)
+        if not coach:
+            return Response({"detail": "No sos coach en esta organización."}, status=404)
+        for field in ["bio", "specialties", "certifications", "years_experience"]:
+            if field in request.data:
+                setattr(coach, field, request.data[field])
+        coach.save()
+        logger.info(
+            "coach_profile_updated",
+            extra={
+                "organization_id": coach.organization_id,
+                "coach_id": coach.pk,
+                "user_id": request.user.pk,
+                "outcome": "success",
+            },
+        )
+        return Response({"status": "updated"})

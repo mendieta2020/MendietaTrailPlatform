@@ -633,6 +633,15 @@ class TeamJoinView(APIView):
                 membership.role = inv.role
                 membership.save(update_fields=["role"])
 
+            # Auto-create Coach record when role is 'coach' (PR-165c)
+            if inv.role == "coach":
+                from core.models import Coach
+                Coach.objects.get_or_create(
+                    user=user,
+                    organization=inv.organization,
+                    defaults={"is_active": True},
+                )
+
             # Mark invitation as accepted
             inv.status = TeamInvitation.Status.ACCEPTED
             inv.accepted_by = user

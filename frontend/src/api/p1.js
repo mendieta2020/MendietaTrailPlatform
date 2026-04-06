@@ -199,3 +199,11 @@ export const updateOrgProfile = (orgId, data) =>
 
 export const getMySubscriptionWithCoach = (orgId) =>
   client.get(`/api/me/subscription/?org_id=${orgId}`);
+
+// ── PR-165c: Coach profile (self-edit) ────────────────────────────────────────
+
+export const getCoachProfile = (orgId) =>
+  client.get(`/api/me/coach-profile/?org_id=${orgId}`);
+
+export const updateCoachProfile = (data) =>
+  client.patch('/api/me/coach-profile/', data);

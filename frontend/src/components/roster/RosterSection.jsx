@@ -3,7 +3,7 @@ import {
   Tabs, Tab, Box, Grid, CircularProgress, Alert, Typography,
   Button, Avatar, Chip,
 } from '@mui/material';
-import { Users, UserCheck, Users2 } from 'lucide-react';
+import { Users, UserCheck, Users2, Briefcase } from 'lucide-react';
 import { listAthletes, listCoaches, listTeamInvitations, listTeamMembers, deleteTeamInvitation } from '../../api/p1';
 import AthleteCard from './AthleteCard';
 import CoachCard from './CoachCard';
@@ -124,13 +124,29 @@ export default function RosterSection({ orgId, onSelectAthlete, userRole }) {
     return <Alert severity="error" sx={{ mt: 2 }}>{state.error}</Alert>;
   }
 
+  // Derive staff list from teamMembers (role === 'staff')
+  const staffMembers = state.teamMembers.filter((m) => m.role === 'staff');
+
   const standardTabs = [
     { label: 'Atletas', items: state.athletes, Card: AthleteCard, prop: 'athlete', emptyTitle: 'No hay atletas aún', emptySubtitle: 'Agrega atletas a la organización usando "Gestionar Conexiones".', EmptyIcon: Users },
     { label: 'Coaches', items: state.coaches, Card: CoachCard, prop: 'coach', emptyTitle: 'No hay coaches aún', emptySubtitle: 'Los coaches asignados a esta organización aparecerán aquí.', EmptyIcon: UserCheck },
-    ...(isOwner ? [{ label: 'Equipo', items: null, Card: null, prop: null, emptyTitle: '', emptySubtitle: '', EmptyIcon: null }] : []),
+    ...(isOwner ? [
+      {
+        label: 'Staff',
+        items: staffMembers,
+        Card: null,
+        prop: null,
+        emptyTitle: 'Sin staff asignado',
+        emptySubtitle: 'Invita staff desde la pestaña Equipo.',
+        EmptyIcon: Briefcase,
+        isStaffTab: true,
+      },
+      { label: 'Equipo', items: null, Card: null, prop: null, emptyTitle: '', emptySubtitle: '', EmptyIcon: null },
+    ] : []),
   ];
 
   const equipoTabIndex = standardTabs.findIndex((t) => t.label === 'Equipo');
+  const staffTabIndex = standardTabs.findIndex((t) => t.label === 'Staff');
   const activeTab = standardTabs[tab];
 
   return (
@@ -140,6 +156,32 @@ export default function RosterSection({ orgId, onSelectAthlete, userRole }) {
           <Tab key={t.label} label={t.label} />
         ))}
       </Tabs>
+
+      {/* Staff tab */}
+      {isOwner && staffTabIndex !== -1 && tab === staffTabIndex ? (
+        <Box>
+          {staffMembers.length === 0 ? (
+            <Box sx={{ py: 8, textAlign: 'center' }}>
+              <Briefcase style={{ width: 48, height: 48, color: '#cbd5e1', marginBottom: 16 }} />
+              <Typography variant="h6" fontWeight={600} sx={{ color: '#374151' }}>Sin staff asignado</Typography>
+              <Typography variant="body2" sx={{ color: '#6b7280', mt: 0.5 }}>Invita staff desde la pestaña Equipo.</Typography>
+            </Box>
+          ) : (
+            staffMembers.map((m) => (
+              <Box key={m.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1.5, borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+                <Avatar sx={{ width: 36, height: 36, bgcolor: '#8b5cf6', fontSize: 14, fontWeight: 700 }}>
+                  {(m.name || '?')[0].toUpperCase()}
+                </Avatar>
+                <Box sx={{ flexGrow: 1 }}>
+                  <Typography variant="body2" fontWeight={600}>{m.name}</Typography>
+                  <Typography variant="caption" sx={{ color: '#64748b' }}>{m.staff_title || m.email}</Typography>
+                </Box>
+                <Chip label="Staff" size="small" sx={{ bgcolor: 'rgba(139,92,246,0.1)', color: '#8b5cf6', fontWeight: 700, fontSize: '0.65rem' }} />
+              </Box>
+            ))
+          )}
+        </Box>
+      ) : null}
 
       {/* Equipo tab */}
       {isOwner && tab === equipoTabIndex ? (
@@ -262,8 +304,8 @@ export default function RosterSection({ orgId, onSelectAthlete, userRole }) {
           )}
         </Box>
       ) : (
-        /* Standard tab rendering */
-        activeTab && activeTab.items !== null && (
+        /* Standard tab rendering — skip if staff tab or equipo tab are active */
+        activeTab && activeTab.items !== null && !activeTab.isStaffTab && (
           activeTab.items.length === 0 ? (
             <Box
               sx={{
