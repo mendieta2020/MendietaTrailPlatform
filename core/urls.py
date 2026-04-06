@@ -87,13 +87,15 @@ from core.views_athlete import (  # PR-139 / PR-141 / PR-156
     AthleteWeeklySummaryView,
     AthleteWellnessTodayView,
 )
-from core.views_p1_roster import (  # PR-129 / PR-141 / PR-148 / PR-165a
+from core.views_p1_roster import (  # PR-129 / PR-141 / PR-148 / PR-165a / PR-165b
     AthleteCoachAssignmentViewSet,
     AthleteRosterViewSet,
     CoachBriefingView,
     CoachNotifyAthleteDeviceView,
     CoachViewSet,
     MembershipViewSet,
+    MySubscriptionView,
+    OrgProfileView,
     TeamInvitationViewSet,
     TeamMembersView,
     TeamViewSet,
@@ -758,6 +760,10 @@ urlpatterns = [
     path('p1/orgs/<int:org_id>/team-members/', TeamMembersView.as_view(), name='team-members'),
     # PR-165a: Public team join endpoint (preview GET + accept POST)
     path('team-join/<uuid:token>/', TeamJoinView.as_view(), name='team-join'),
+
+    # PR-165b: Org profile (read + update) + athlete subscription with coach info
+    path('p1/orgs/<int:org_id>/profile/', OrgProfileView.as_view(), name='org-profile'),
+    path('me/subscription/', MySubscriptionView.as_view(), name='my-subscription'),
 
     # PR-147: Internal Messages & Smart Alerts
     # URL: /api/p1/orgs/<org_id>/messages/

@@ -393,13 +393,15 @@ def test_coach_briefing_endpoint():
     for u, a in athletes[:3]:
         _assignment(org, a, workout_dur, date=YESTERDAY)
 
-    # 1 athlete overloaded (compliance_color="blue"): train this week with huge actual
-    # The overloaded athlete is athlete[0] — also trained yesterday (day_order=1).
-    # Use day_order=2 to avoid the UniqueConstraint(athlete, scheduled_date, day_order)
-    # collision when WEEK_START+2 happens to equal YESTERDAY (e.g. on Thursdays).
+    # 1 athlete overloaded (compliance_color="blue"): use TODAY so it always falls
+    # within scheduled_date__range=(week_start, today) that the endpoint queries.
+    # WEEK_START+2 was a future date on Mondays; YESTERDAY was outside the range on
+    # Mondays (Sunday is prior week). TODAY is always in range and never future.
+    # day_order=2 is safe: athletes[0]'s YESTERDAY assignment uses day_order=1,
+    # and TODAY != YESTERDAY, so no UniqueConstraint collision.
     _assignment(
         org, athletes[0][1], workout_small,
-        date=WEEK_START + datetime.timedelta(days=2),
+        date=TODAY,
         actual_duration_s=7200,  # 7200/60 = 120× → blue
         day_order=2,
     )

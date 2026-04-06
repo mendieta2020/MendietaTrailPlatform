@@ -6,15 +6,16 @@ import {
   CircularProgress,
   Chip,
   Button,
+  Tooltip,
 } from '@mui/material';
-import LinkIcon from '@mui/icons-material/Link';
+import EditIcon from '@mui/icons-material/Edit';
 import { Building2 } from 'lucide-react';
 import Layout from '../components/Layout';
 import RosterSection from '../components/roster/RosterSection';
 import AssignmentCalendar from '../components/AssignmentCalendar';
-import ManageConnectionsModal from '../components/roster/ManageConnectionsModal';
+import OrgProfileEditModal from '../components/OrgProfileEditModal';
 import { useOrg } from '../context/OrgContext';
-import { listExternalIdentities } from '../api/p1';
+import { getOrgProfile } from '../api/p1';
 import { getCoachBriefing } from '../api/teams';
 
 // ── Coach Briefing Card (PR-148) ──────────────────────────────────────────────
@@ -82,18 +83,23 @@ function CoachBriefingCard({ orgId }) {
 export default function CoachDashboard() {
   const { activeOrg, orgLoading } = useOrg();
   const [selectedAthleteId, setSelectedAthleteId] = useState(null);
-  const [connectionsOpen, setConnectionsOpen] = useState(false);
-  const [activeConnectionCount, setActiveConnectionCount] = useState(null);
+  const [orgProfile, setOrgProfile] = useState(null);
+  const [profileEditOpen, setProfileEditOpen] = useState(false);
+
+  // can_edit comes from the API — backend is source of truth for permissions
+  const canEdit = orgProfile?.can_edit ?? false;
+
+  const loadOrgProfile = () => {
+    if (!activeOrg?.org_id) return;
+    getOrgProfile(activeOrg.org_id)
+      .then((res) => setOrgProfile(res.data))
+      .catch(() => {});
+  };
 
   useEffect(() => {
     if (!activeOrg) return;
-    listExternalIdentities(activeOrg.org_id)
-      .then((res) => {
-        const identities = res.data?.results ?? res.data ?? [];
-        setActiveConnectionCount(identities.filter((i) => i.status === 'linked').length);
-      })
-      .catch(() => setActiveConnectionCount(null));
-  }, [activeOrg]);
+    loadOrgProfile();
+  }, [activeOrg]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (orgLoading) {
     return (
@@ -132,67 +138,134 @@ export default function CoachDashboard() {
 
   return (
     <Layout>
-      {/* Org header */}
+      {/* PR-165b: Org profile header */}
       <Paper
         sx={{
-          p: 3,
-          mb: 3,
-          borderRadius: 3,
-          border: '1px solid',
-          borderColor: 'divider',
-          boxShadow: '0 1px 3px 0 rgba(0,0,0,0.06)',
+          mb: 3, borderRadius: 3,
+          background: 'linear-gradient(135deg, #0D1117 0%, #1a2332 100%)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          boxShadow: '0 4px 12px 0 rgba(0,0,0,0.15)',
+          overflow: 'hidden',
         }}
       >
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 2,
-            flexWrap: 'wrap',
-            justifyContent: 'space-between',
-          }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-            <Typography variant="h5" fontWeight={700}>
-              {activeOrg.org_name}
-            </Typography>
-            <Chip
-              label={activeOrg.role}
-              size="small"
-              variant="outlined"
-              sx={{ borderColor: '#00D4AA', color: '#00D4AA', fontWeight: 600 }}
-            />
-          </Box>
-
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            {activeConnectionCount !== null && (
-              <Chip
-                label={
-                  activeConnectionCount > 0
-                    ? `${activeConnectionCount} conexión${activeConnectionCount !== 1 ? 'es' : ''} activa${activeConnectionCount !== 1 ? 's' : ''}`
-                    : 'Sin conexiones activas'
-                }
-                size="small"
-                color={activeConnectionCount > 0 ? 'success' : 'default'}
-                variant="outlined"
-              />
-            )}
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<LinkIcon />}
-              onClick={() => setConnectionsOpen(true)}
+        <Box sx={{ p: 3 }}>
+          {/* Top row: logo + name + role + edit */}
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, mb: orgProfile?.description ? 1.5 : 0 }}>
+            {/* Logo placeholder */}
+            <Box
               sx={{
-                color: '#00D4AA',
-                borderColor: '#00D4AA',
-                '&:hover': { borderColor: '#00BF99', bgcolor: 'rgba(0, 212, 170,0.04)' },
+                width: 52, height: 52, borderRadius: 2, flexShrink: 0,
+                bgcolor: '#00D4AA', display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
             >
-              Gestionar Conexiones
-            </Button>
+              <Typography sx={{ color: '#0D1117', fontWeight: 800, fontSize: '1.1rem' }}>
+                {(activeOrg.org_name || 'O').slice(0, 2).toUpperCase()}
+              </Typography>
+            </Box>
+
+            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#F8FAFC' }}>
+                  {activeOrg.org_name}
+                </Typography>
+                <Chip
+                  label={activeOrg.role}
+                  size="small"
+                  variant="outlined"
+                  sx={{ borderColor: '#00D4AA', color: '#00D4AA', fontWeight: 600 }}
+                />
+              </Box>
+              {orgProfile?.description && (
+                <Typography variant="body2" sx={{ color: '#94A3B8', mt: 0.5 }}>
+                  {orgProfile.description}
+                </Typography>
+              )}
+              {/* Brand info row: city / disciplines / year / instagram / website */}
+              {orgProfile && (orgProfile.city || orgProfile.disciplines || orgProfile.founded_year || orgProfile.instagram || orgProfile.website) && (
+                <Box sx={{ display: 'flex', gap: 2, mt: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>
+                  {orgProfile.city && (
+                    <Typography variant="caption" sx={{ color: '#64748B' }}>
+                      📍 {orgProfile.city}
+                    </Typography>
+                  )}
+                  {orgProfile.disciplines && (
+                    <Typography variant="caption" sx={{ color: '#64748B' }}>
+                      🏃 {orgProfile.disciplines}
+                    </Typography>
+                  )}
+                  {orgProfile.founded_year && (
+                    <Typography variant="caption" sx={{ color: '#64748B' }}>
+                      📅 Desde {orgProfile.founded_year}
+                    </Typography>
+                  )}
+                  {orgProfile.instagram && (
+                    <Typography variant="caption" sx={{ color: '#64748B' }}>
+                      📷 @{orgProfile.instagram.replace(/^@/, '')}
+                    </Typography>
+                  )}
+                  {orgProfile.website && (
+                    <Typography
+                      component="a"
+                      href={orgProfile.website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      variant="caption"
+                      sx={{ color: '#00D4AA', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+                    >
+                      🌐 {orgProfile.website.replace(/^https?:\/\//, '')}
+                    </Typography>
+                  )}
+                </Box>
+              )}
+              {/* Operational info: contact_email + phone — only present for owner/admin/coach */}
+              {orgProfile && (orgProfile.contact_email || orgProfile.phone) && (
+                <Box sx={{ display: 'flex', gap: 2, mt: 0.5, flexWrap: 'wrap' }}>
+                  {orgProfile.contact_email && (
+                    <Typography variant="caption" sx={{ color: '#64748B' }}>
+                      📧 {orgProfile.contact_email}
+                    </Typography>
+                  )}
+                  {orgProfile.phone && (
+                    <Typography variant="caption" sx={{ color: '#64748B' }}>
+                      📞 {orgProfile.phone}
+                    </Typography>
+                  )}
+                </Box>
+              )}
+            </Box>
+
+            {/* Actions — shown only when backend confirms can_edit */}
+            {canEdit && (
+              <Box sx={{ flexShrink: 0 }}>
+                <Tooltip title="Editar perfil">
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<EditIcon />}
+                    onClick={() => setProfileEditOpen(true)}
+                    sx={{
+                      color: '#94A3B8', borderColor: 'rgba(255,255,255,0.15)',
+                      textTransform: 'none', fontSize: '0.75rem',
+                      '&:hover': { borderColor: '#00D4AA', color: '#00D4AA' },
+                    }}
+                  >
+                    Editar perfil
+                  </Button>
+                </Tooltip>
+              </Box>
+            )}
           </Box>
         </Box>
       </Paper>
+
+      {/* Org profile edit modal */}
+      <OrgProfileEditModal
+        open={profileEditOpen}
+        onClose={() => setProfileEditOpen(false)}
+        orgId={activeOrg.org_id}
+        initialData={orgProfile}
+        onSaved={loadOrgProfile}
+      />
 
       {/* PR-148: Morning briefing card */}
       <CoachBriefingCard orgId={activeOrg.org_id} />
@@ -204,11 +277,6 @@ export default function CoachDashboard() {
         <AssignmentCalendar athleteId={selectedAthleteId} orgId={activeOrg.org_id} />
       )}
 
-      <ManageConnectionsModal
-        open={connectionsOpen}
-        onClose={() => setConnectionsOpen(false)}
-        orgId={activeOrg.org_id}
-      />
     </Layout>
   );
 }

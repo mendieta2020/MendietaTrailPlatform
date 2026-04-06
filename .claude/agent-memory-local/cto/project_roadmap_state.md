@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-05 · PR-165a Team Invite + Role-Based Sidebar_
+_Last updated: 2026-04-05 · PR-165b Org Profile + Payment Visibility + Coach Card + Trial Paywall_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -375,5 +375,20 @@ Coach B2C:     Athlete pays Coach via MercadoPago (AthleteSubscription)
 - Risk: MEDIUM — RESOLVED
 - Next: PR-165b — org profile, photo upload, athlete payment visibility, trial paywall
 
+### PR-165b — Org Profile + Payment Visibility + Coach Card + Trial Paywall ✅ 2026-04-05
+- Organization model: +8 profile fields (description, city, disciplines, contact_email, phone, instagram, website, founded_year)
+- Migration: 0108_org_profile_fields.py
+- OrgProfileView: GET (any member) + PATCH (owner/admin) at /api/p1/orgs/{id}/profile/
+- MySubscriptionView: /api/me/subscription/?org_id= returns coach info + subscription + org branding
+- AthleteSubscriptionListView: adds athlete_phone + trial_ends_at to subscription list
+- CoachDashboard: dark gradient org header with logo placeholder, description, city/disciplines/year, "Editar perfil" button
+- OrgProfileEditModal: MUI Dialog for editing org profile fields
+- Finanzas: 4th KPI "En trial", trial filter tab, overdue/trial row colors + day counts, "Recordar" WhatsApp button
+- AthleteDashboard: CoachInfoCard + CoachPlanCard (SubscriptionCard) + TrialBanner (<5 days) + TrialPaywall (expired)
+- 17 backend tests in core/tests_pr165b_org_profile.py — all pass
+- Frontend: lint 0 errors, build success
+- Risk: MEDIUM — RESOLVED
+- Next: PR-166 — Onboarding Experience (checklist + empty states)
+
 ## Test Baseline
-~1369+ tests | CI: backend ✅ frontend ✅
+~1386+ tests | CI: backend ✅ frontend ✅

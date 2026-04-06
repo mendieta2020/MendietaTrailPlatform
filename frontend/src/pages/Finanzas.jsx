@@ -454,14 +454,20 @@ const Finanzas = () => {
   };
 
   // ── KPI calculations ──────────────────────────────────────────────────────
+  const now = new Date();
   const activeSubscriptions = subscriptions.filter(s => s.status === 'active');
   const overdueSubscriptions = subscriptions.filter(s => s.status === 'overdue');
+  const trialSubscriptions = subscriptions.filter(
+    s => s.trial_ends_at && new Date(s.trial_ends_at) > now && s.status !== 'active',
+  );
   const monthlyRevenue = activeSubscriptions.reduce((sum, s) => sum + parseFloat(s.price_ars || 0), 0);
   const overdueRevenue = overdueSubscriptions.reduce((sum, s) => sum + parseFloat(s.price_ars || 0), 0);
 
   // ── Filtered subscriptions ────────────────────────────────────────────────
   const filteredSubs = subFilter === 'all' ? subscriptions
-    : subscriptions.filter(s => s.status === subFilter);
+    : subFilter === 'trial'
+      ? trialSubscriptions
+      : subscriptions.filter(s => s.status === subFilter);
 
   const handleActivated = (subId) => {
     setSubscriptions(prev => prev.map(s => s.id === subId ? { ...s, status: 'active' } : s));
@@ -655,7 +661,7 @@ const Finanzas = () => {
           )}
 
           {/* ── SECCIÓN 1: KPIs ─────────────────────────────────────────── */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
             <KpiCard
               icon={TrendingUp}
               label="Ingresos del mes"
@@ -676,6 +682,13 @@ const Finanzas = () => {
               value={overdueSubscriptions.length}
               subtext={overdueSubscriptions.length > 0 ? `${formatARS(overdueRevenue)} pendiente` : 'Sin atrasos'}
               accent={overdueSubscriptions.length > 0 ? 'bg-red-500' : 'bg-slate-400'}
+            />
+            <KpiCard
+              icon={AlertTriangle}
+              label="En trial"
+              value={trialSubscriptions.length}
+              subtext={trialSubscriptions.length > 0 ? 'Período de prueba activo' : 'Sin trials activos'}
+              accent={trialSubscriptions.length > 0 ? 'bg-amber-400' : 'bg-slate-400'}
             />
           </div>
 
@@ -740,10 +753,10 @@ const Finanzas = () => {
               {/* Filter tabs */}
               <div className="flex items-center bg-slate-100 rounded-lg p-1 gap-0.5">
                 {[
-                  { key: 'all', label: 'Todos' },
-                  { key: 'active', label: 'Activos' },
-                  { key: 'pending', label: 'Pendientes' },
-                  { key: 'overdue', label: 'Atrasados' },
+                  { key: 'all', label: `Todos (${subscriptions.length})` },
+                  { key: 'active', label: `Activos (${activeSubscriptions.length})` },
+                  { key: 'overdue', label: `Vencidos (${overdueSubscriptions.length})` },
+                  { key: 'trial', label: `Trial (${trialSubscriptions.length})` },
                 ].map(({ key, label }) => (
                   <button key={key} onClick={() => setSubFilter(key)}
                     className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${subFilter === key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
@@ -772,43 +785,88 @@ const Finanzas = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredSubs.map(sub => (
-                      <tr key={sub.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-700">
-                              {(sub.athlete_first_name || '?').charAt(0)}{(sub.athlete_last_name || '').charAt(0)}
+                    {filteredSubs.map(sub => {
+                      const isOverdue = sub.status === 'overdue';
+                      const isTrial = sub.trial_ends_at && new Date(sub.trial_ends_at) > now && sub.status !== 'active';
+                      const overdueDays = isOverdue && sub.next_payment_at
+                        ? Math.max(0, Math.floor((now - new Date(sub.next_payment_at)) / 86400000))
+                        : 0;
+                      const trialDaysLeft = isTrial
+                        ? Math.max(0, Math.ceil((new Date(sub.trial_ends_at) - now) / 86400000))
+                        : 0;
+
+                      const rowBg = isOverdue ? 'bg-red-50' : isTrial ? 'bg-amber-50' : '';
+                      const whatsappName = encodeURIComponent(`${sub.athlete_first_name || ''} ${sub.athlete_last_name || ''}`.trim());
+                      const whatsappPlan = encodeURIComponent(sub.coach_plan_name || 'tu plan');
+                      const whatsappMsg = `Hola%20${whatsappName},%20tu%20cuota%20de%20${whatsappPlan}%20está%20pendiente.%20¿Podés%20regularizarla?`;
+
+                      return (
+                        <tr key={sub.id} className={`hover:brightness-95 transition-colors ${rowBg}`}>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-700">
+                                {(sub.athlete_first_name || '?').charAt(0)}{(sub.athlete_last_name || '').charAt(0)}
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-slate-900">{sub.athlete_first_name} {sub.athlete_last_name}</p>
+                                <p className="text-xs text-slate-400">{sub.athlete_email}</p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-sm font-semibold text-slate-900">{sub.athlete_first_name} {sub.athlete_last_name}</p>
-                              <p className="text-xs text-slate-400">{sub.athlete_email}</p>
+                          </td>
+                          <td className="px-4 py-4">
+                            <p className="text-sm text-slate-700">{sub.coach_plan_name}</p>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="flex flex-col gap-0.5">
+                              <StatusBadge status={sub.status} config={STATUS_CONFIG} />
+                              {isOverdue && overdueDays > 0 && (
+                                <span className="text-xs text-red-600 font-medium">Vencido ({overdueDays}d)</span>
+                              )}
+                              {isTrial && (
+                                <span className="text-xs text-amber-600 font-medium">Trial ({trialDaysLeft}d)</span>
+                              )}
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4">
-                          <p className="text-sm text-slate-700">{sub.coach_plan_name}</p>
-                        </td>
-                        <td className="px-4 py-4">
-                          <StatusBadge status={sub.status} config={STATUS_CONFIG} />
-                        </td>
-                        <td className="px-4 py-4">
-                          <p className="text-sm font-semibold text-slate-900">{formatARS(sub.price_ars)}</p>
-                        </td>
-                        <td className="px-4 py-4">
-                          <p className="text-sm text-slate-500">{formatDate(sub.next_payment_at)}</p>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          {(sub.status === 'pending' || sub.status === 'overdue') && (
-                            <Tooltip title="Activar sin pago MercadoPago (efectivo/transferencia)">
-                              <button onClick={() => setActivateTarget(sub)}
-                                className="px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors">
-                                Activar manualmente
-                              </button>
-                            </Tooltip>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="px-4 py-4">
+                            <p className="text-sm font-semibold text-slate-900">{formatARS(sub.price_ars)}</p>
+                          </td>
+                          <td className="px-4 py-4">
+                            <p className="text-sm text-slate-500">{formatDate(sub.next_payment_at)}</p>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              {isOverdue && (
+                                sub.athlete_phone ? (
+                                  <Tooltip title="Enviar recordatorio por WhatsApp">
+                                    <a
+                                      href={`https://wa.me/${sub.athlete_phone.replace(/\D/g, '')}?text=${whatsappMsg}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors">
+                                      Recordar
+                                    </a>
+                                  </Tooltip>
+                                ) : (
+                                  <Tooltip title="Sin teléfono registrado">
+                                    <span className="px-3 py-1.5 text-xs font-medium text-slate-400 bg-slate-100 rounded-lg cursor-not-allowed">
+                                      Recordar
+                                    </span>
+                                  </Tooltip>
+                                )
+                              )}
+                              {(sub.status === 'pending' || sub.status === 'overdue') && (
+                                <Tooltip title="Activar sin pago MercadoPago (efectivo/transferencia)">
+                                  <button onClick={() => setActivateTarget(sub)}
+                                    className="px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors">
+                                    Activar manualmente
+                                  </button>
+                                </Tooltip>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

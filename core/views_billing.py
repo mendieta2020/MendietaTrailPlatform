@@ -1043,7 +1043,7 @@ class AthleteSubscriptionListView(BillingOrgMixin, APIView):
         subscriptions = (
             AthleteSubscription.objects
             .filter(organization=org)
-            .select_related("athlete__user", "coach_plan")
+            .select_related("athlete__user", "athlete", "coach_plan")
             .order_by("status", "-created_at")
         )
         data = [
@@ -1053,6 +1053,7 @@ class AthleteSubscriptionListView(BillingOrgMixin, APIView):
                 "athlete_first_name": sub.athlete.user.first_name,
                 "athlete_last_name": sub.athlete.user.last_name,
                 "athlete_email": sub.athlete.user.email,
+                "athlete_phone": sub.athlete.phone_number,
                 "coach_plan_id": sub.coach_plan_id,
                 "coach_plan_name": sub.coach_plan.name,
                 "price_ars": str(sub.coach_plan.price_ars),
@@ -1060,6 +1061,7 @@ class AthleteSubscriptionListView(BillingOrgMixin, APIView):
                 "mp_preapproval_id": sub.mp_preapproval_id,
                 "last_payment_at": sub.last_payment_at.isoformat() if sub.last_payment_at else None,
                 "next_payment_at": sub.next_payment_at.isoformat() if sub.next_payment_at else None,
+                "trial_ends_at": sub.trial_ends_at.isoformat() if sub.trial_ends_at else None,
                 "created_at": sub.created_at.isoformat(),
             }
             for sub in subscriptions
