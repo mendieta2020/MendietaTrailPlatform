@@ -126,3 +126,89 @@ def test_my_coach_profile_cannot_access_other_org(api_client, coach_user):
     url = f"/api/me/coach-profile/?org_id={org2.pk}"
     response = api_client.get(url)
     assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_coach_profile_extended_fields(api_client, org, coach_user):
+    """PATCH accepts and persists extended profile fields (phone, instagram, etc.)."""
+    Membership.objects.create(user=coach_user, organization=org, role="coach", is_active=True)
+    Coach.objects.create(user=coach_user, organization=org, is_active=True)
+    api_client.force_authenticate(user=coach_user)
+    response = api_client.patch(
+        "/api/me/coach-profile/",
+        {"org_id": org.pk, "phone": "+5491112345678", "instagram": "@maria_trails"},
+        format="json",
+    )
+    assert response.status_code == 200
+    coach = Coach.objects.get(user=coach_user, organization=org)
+    assert coach.phone == "+5491112345678"
+    assert coach.instagram == "@maria_trails"
+
+
+# ── Fix B.5: DeleteMembershipView ────────────────────────────────────────────
+
+@pytest.mark.django_db
+def test_owner_can_delete_coach_membership(api_client, org, owner_user):
+    """Owner can soft-delete a coach membership."""
+    coach = User.objects.create_user(username="coachdel", email="coachdel@test.com", password="pw")
+    m = Membership.objects.create(user=coach, organization=org, role="coach", is_active=True)
+    api_client.force_authenticate(user=owner_user)
+    url = f"/api/p1/orgs/{org.pk}/memberships/{m.pk}/delete/"
+    response = api_client.delete(url)
+    assert response.status_code == 200
+    m.refresh_from_db()
+    assert m.is_active is False
+    assert m.left_at is not None
+
+
+@pytest.mark.django_db
+def test_owner_cannot_delete_own_membership(api_client, org, owner_user):
+    """Owner cannot delete their own membership."""
+    own_m = Membership.objects.get(user=owner_user, organization=org)
+    api_client.force_authenticate(user=owner_user)
+    url = f"/api/p1/orgs/{org.pk}/memberships/{own_m.pk}/delete/"
+    response = api_client.delete(url)
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_coach_cannot_delete_membership(api_client, org, owner_user, coach_user):
+    """Non-owner cannot call delete membership."""
+    staff = User.objects.create_user(username="staff2", email="staff2@test.com", password="pw")
+    m = Membership.objects.create(user=staff, organization=org, role="staff", is_active=True)
+    Membership.objects.create(user=coach_user, organization=org, role="coach", is_active=True)
+    api_client.force_authenticate(user=coach_user)
+    url = f"/api/p1/orgs/{org.pk}/memberships/{m.pk}/delete/"
+    response = api_client.delete(url)
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_delete_coach_membership_also_deactivates_coach_record(api_client, org, owner_user):
+    """When owner removes a coach, Coach record is also deactivated."""
+    coach = User.objects.create_user(username="coachrm", email="coachrm@test.com", password="pw")
+    m = Membership.objects.create(user=coach, organization=org, role="coach", is_active=True)
+    Coach.objects.create(user=coach, organization=org, is_active=True)
+    api_client.force_authenticate(user=owner_user)
+    url = f"/api/p1/orgs/{org.pk}/memberships/{m.pk}/delete/"
+    api_client.delete(url)
+    assert not Coach.objects.filter(user=coach, organization=org, is_active=True).exists()
+
+
+# ── Fix B.1: Backfill migration ───────────────────────────────────────────────
+
+@pytest.mark.django_db
+def test_backfill_coach_management_command(api_client, org, owner_user):
+    """backfill_coaches command creates missing Coach records for coach memberships."""
+    from django.core.management import call_command
+    from io import StringIO
+
+    coach = User.objects.create_user(username="needscoach", email="nc@test.com", password="pw")
+    Membership.objects.create(user=coach, organization=org, role="coach", is_active=True)
+    assert not Coach.objects.filter(user=coach, organization=org).exists()
+
+    out = StringIO()
+    call_command("backfill_coaches", stdout=out)
+
+    assert Coach.objects.filter(user=coach, organization=org, is_active=True).exists()
+    assert "Created: 1" in out.getvalue() or "Created:" in out.getvalue()

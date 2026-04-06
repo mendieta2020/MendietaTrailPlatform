@@ -29,27 +29,53 @@ class CoachSerializer(serializers.ModelSerializer):
     user_id is writable on create (owner assigns a User to the coach role)
     and read-only on update (a Coach record cannot be reassigned to a different user).
     organization is not exposed — injected by CoachViewSet in perform_create.
+
+    first_name / last_name / email / username are read-only, derived from coach.user.
     """
 
     user_id = serializers.PrimaryKeyRelatedField(
         source="user",
         queryset=User.objects.all(),
     )
+    first_name = serializers.SerializerMethodField()
+    last_name = serializers.SerializerMethodField()
+    email = serializers.SerializerMethodField()
+    username = serializers.SerializerMethodField()
+
+    def get_first_name(self, obj):
+        return obj.user.first_name if obj.user_id else ""
+
+    def get_last_name(self, obj):
+        return obj.user.last_name if obj.user_id else ""
+
+    def get_email(self, obj):
+        return obj.user.email if obj.user_id else ""
+
+    def get_username(self, obj):
+        return obj.user.username if obj.user_id else ""
 
     class Meta:
         model = Coach
         fields = [
             "id",
             "user_id",
+            "first_name",
+            "last_name",
+            "email",
+            "username",
             "bio",
             "certifications",
             "specialties",
             "years_experience",
+            "phone",
+            "birth_date",
+            "photo_url",
+            "instagram",
             "is_active",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["id", "first_name", "last_name", "email", "username", "created_at", "updated_at"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

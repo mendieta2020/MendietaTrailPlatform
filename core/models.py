@@ -1126,6 +1126,11 @@ class Membership(models.Model):
         max_length=60, blank=True, default="",
         help_text="e.g. physiotherapist, nutritionist, doctor, admin"
     )
+    # PR-165c: staff profile fields (phone, birth_date, photo_url, instagram)
+    phone = models.CharField(max_length=30, blank=True, default="")
+    birth_date = models.DateField(null=True, blank=True)
+    photo_url = models.URLField(blank=True, default="")
+    instagram = models.CharField(max_length=100, blank=True, default="")
     team = models.ForeignKey(
         "Team",
         on_delete=models.SET_NULL,
@@ -1187,6 +1192,11 @@ class Coach(models.Model):
     certifications = models.TextField(blank=True, default="")
     specialties = models.CharField(max_length=300, blank=True, default="")
     years_experience = models.PositiveIntegerField(default=0)
+    # PR-165c: extended profile fields
+    phone = models.CharField(max_length=30, blank=True, default="")
+    birth_date = models.DateField(null=True, blank=True)
+    photo_url = models.URLField(blank=True, default="")
+    instagram = models.CharField(max_length=100, blank=True, default="")
     is_active = models.BooleanField(default=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

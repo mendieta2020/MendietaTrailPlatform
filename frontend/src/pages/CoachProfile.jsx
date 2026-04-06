@@ -21,6 +21,10 @@ export default function CoachProfile() {
   const [specialties, setSpecialties] = useState('');
   const [certifications, setCertifications] = useState('');
   const [yearsExperience, setYearsExperience] = useState('');
+  const [phone, setPhone] = useState('');
+  const [birthDate, setBirthDate] = useState('');
+  const [photoUrl, setPhotoUrl] = useState('');
+  const [instagram, setInstagram] = useState('');
 
   useEffect(() => {
     if (!orgId) return;
@@ -31,6 +35,10 @@ export default function CoachProfile() {
         setSpecialties(res.data.specialties || '');
         setCertifications(res.data.certifications || '');
         setYearsExperience(res.data.years_experience ?? '');
+        setPhone(res.data.phone || '');
+        setBirthDate(res.data.birth_date || '');
+        setPhotoUrl(res.data.photo_url || '');
+        setInstagram(res.data.instagram || '');
       })
       .catch(() => setError('No se pudo cargar el perfil de coach.'))
       .finally(() => setLoading(false));
@@ -46,6 +54,10 @@ export default function CoachProfile() {
         specialties,
         certifications,
         years_experience: yearsExperience === '' ? 0 : Number(yearsExperience),
+        phone,
+        birth_date: birthDate || null,
+        photo_url: photoUrl,
+        instagram,
       });
       setToast({ open: true, message: 'Perfil actualizado correctamente', severity: 'success' });
     } catch {
@@ -122,6 +134,44 @@ export default function CoachProfile() {
                 fullWidth
                 size="small"
                 inputProps={{ min: 0, max: 50 }}
+              />
+
+              <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', mt: 0.5 }}>
+                Contacto y redes
+              </Typography>
+
+              <TextField
+                label="Teléfono"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Ej: +5491112345678"
+                fullWidth
+                size="small"
+              />
+              <TextField
+                label="Instagram"
+                value={instagram}
+                onChange={(e) => setInstagram(e.target.value)}
+                placeholder="Ej: @maria_trails"
+                fullWidth
+                size="small"
+              />
+              <TextField
+                label="Fecha de nacimiento"
+                type="date"
+                value={birthDate}
+                onChange={(e) => setBirthDate(e.target.value)}
+                fullWidth
+                size="small"
+                InputLabelProps={{ shrink: true }}
+              />
+              <TextField
+                label="URL de foto de perfil"
+                value={photoUrl}
+                onChange={(e) => setPhotoUrl(e.target.value)}
+                placeholder="https://..."
+                fullWidth
+                size="small"
               />
 
               <Button

@@ -4,7 +4,7 @@ import {
   Button, Avatar, Chip,
 } from '@mui/material';
 import { Users, UserCheck, Users2, Briefcase } from 'lucide-react';
-import { listAthletes, listCoaches, listTeamInvitations, listTeamMembers, deleteTeamInvitation } from '../../api/p1';
+import { listAthletes, listCoaches, listTeamInvitations, listTeamMembers, deleteTeamInvitation, deleteMembership } from '../../api/p1';
 import AthleteCard from './AthleteCard';
 import CoachCard from './CoachCard';
 import InviteTeamModal from './InviteTeamModal';
@@ -44,6 +44,8 @@ function rosterReducer(state, action) {
       return { ...state, pendingInvites: [action.invite, ...state.pendingInvites] };
     case 'REMOVE_INVITE':
       return { ...state, pendingInvites: state.pendingInvites.filter((i) => i.id !== action.id) };
+    case 'REMOVE_MEMBER':
+      return { ...state, teamMembers: state.teamMembers.filter((m) => m.id !== action.id) };
     default:
       return state;
   }
@@ -100,6 +102,16 @@ export default function RosterSection({ orgId, onSelectAthlete, userRole }) {
 
   const handleInviteCreated = (invite) => {
     dispatch({ type: 'ADD_INVITE', invite });
+  };
+
+  const handleDeleteMember = async (member) => {
+    if (!window.confirm(`¿Eliminar a ${member.name || member.email} del equipo?`)) return;
+    try {
+      await deleteMembership(orgId, member.id);
+      dispatch({ type: 'REMOVE_MEMBER', id: member.id });
+    } catch {
+      // silently ignore — backend will 400/403 for invalid cases
+    }
   };
 
   const handleRevokeInvite = async (invId) => {
@@ -237,6 +249,17 @@ export default function RosterSection({ orgId, onSelectAthlete, userRole }) {
                   </Box>
                   <Chip label={m.role} size="small" sx={{ bgcolor: `${ROLE_COLORS[m.role]}20`, color: ROLE_COLORS[m.role], fontWeight: 700, fontSize: '0.65rem' }} />
                   <Chip label="Activo" size="small" sx={{ bgcolor: '#dcfce7', color: '#16a34a', fontWeight: 700, fontSize: '0.65rem' }} />
+                  {m.role !== 'owner' && (
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={() => handleDeleteMember(m)}
+                      sx={{ textTransform: 'none', fontSize: '0.9rem', color: '#ef4444', minWidth: 0, px: 0.5, lineHeight: 1 }}
+                      title="Eliminar miembro"
+                    >
+                      ×
+                    </Button>
+                  )}
                 </Box>
               ))}
             </Box>

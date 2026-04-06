@@ -207,3 +207,9 @@ export const getCoachProfile = (orgId) =>
 
 export const updateCoachProfile = (data) =>
   client.patch('/api/me/coach-profile/', data);
+
+export const deleteMembership = (orgId, membershipId) =>
+  client.delete(`${p1Base(orgId)}/memberships/${membershipId}/delete/`);
+
+export const updateAthleteCoach = (orgId, athleteId, coachId) =>
+  client.patch(`${p1Base(orgId)}/roster/athletes/${athleteId}/`, { coach_id: coachId });

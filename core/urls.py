@@ -93,6 +93,7 @@ from core.views_p1_roster import (  # PR-129 / PR-141 / PR-148 / PR-165a / PR-16
     CoachBriefingView,
     CoachNotifyAthleteDeviceView,
     CoachViewSet,
+    DeleteMembershipView,
     MembershipViewSet,
     MyCoachProfileView,
     MySubscriptionView,
@@ -175,6 +176,9 @@ urlpatterns = [
 
     # PR-165c: Coach profile (self-edit)
     path('me/coach-profile/', MyCoachProfileView.as_view(), name='my-coach-profile'),
+
+    # PR-165c: Owner soft-deletes coach/staff from org
+    path('p1/orgs/<int:org_id>/memberships/<int:membership_id>/delete/', DeleteMembershipView.as_view(), name='p1-delete-membership'),
 
     # PR-131: MercadoPago subscription webhook (B2B — Quantoryn org billing)
     path('webhooks/mercadopago/', mercadopago_webhook, name='mp-webhook'),

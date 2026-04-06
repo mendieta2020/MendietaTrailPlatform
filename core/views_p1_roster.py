@@ -1239,7 +1239,11 @@ class MyCoachProfileView(APIView):
         coach = self._resolve_coach(request.user, org_id)
         if not coach:
             return Response({"detail": "No sos coach en esta organización."}, status=404)
-        for field in ["bio", "specialties", "certifications", "years_experience"]:
+        _EDITABLE = [
+            "bio", "specialties", "certifications", "years_experience",
+            "phone", "birth_date", "photo_url", "instagram",
+        ]
+        for field in _EDITABLE:
             if field in request.data:
                 setattr(coach, field, request.data[field])
         coach.save()
@@ -1253,3 +1257,79 @@ class MyCoachProfileView(APIView):
             },
         )
         return Response({"status": "updated"})
+
+
+# ==============================================================================
+# PR-165c: DeleteMembershipView — owner soft-deletes a coach or staff member
+# ==============================================================================
+
+class DeleteMembershipView(APIView):
+    """
+    DELETE /api/p1/orgs/<org_id>/memberships/<membership_id>/delete/
+
+    Soft-deletes a Membership (is_active=False, left_at=now()).
+    Also deactivates the Coach record if role was 'coach'.
+
+    Constraints:
+    - Caller must be owner of the org.
+    - Cannot remove own membership.
+    - Cannot remove another owner membership (ownership transfer is out of scope).
+    - Cannot remove athlete memberships (use athlete management instead).
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, org_id, membership_id):
+        from django.utils import timezone
+
+        # Resolve caller's membership — must be owner
+        try:
+            caller = Membership.objects.get(
+                user=request.user, organization_id=org_id, is_active=True
+            )
+        except Membership.DoesNotExist:
+            raise PermissionDenied("No tenés acceso a esta organización.")
+
+        if caller.role != "owner":
+            raise PermissionDenied("Solo el owner puede eliminar miembros del equipo.")
+
+        # Resolve target membership (same org)
+        try:
+            target = Membership.objects.get(
+                pk=membership_id, organization_id=org_id
+            )
+        except Membership.DoesNotExist:
+            return Response({"detail": "Membership no encontrada."}, status=404)
+
+        # Guards
+        if target.user == request.user:
+            return Response({"detail": "No podés eliminarte a vos mismo."}, status=400)
+        if target.role == "owner":
+            return Response({"detail": "No podés eliminar otro owner."}, status=400)
+        if target.role == "athlete":
+            return Response({"detail": "Para atletas, usá la gestión de atletas."}, status=400)
+        if not target.is_active:
+            return Response({"detail": "El miembro ya fue eliminado."}, status=400)
+
+        # Soft-delete
+        target.is_active = False
+        target.left_at = timezone.now()
+        target.save(update_fields=["is_active", "left_at"])
+
+        # Also deactivate Coach record if applicable
+        if target.role == "coach":
+            Coach.objects.filter(
+                user=target.user, organization_id=org_id, is_active=True
+            ).update(is_active=False)
+
+        logger.info(
+            "membership_deleted",
+            extra={
+                "organization_id": org_id,
+                "target_user_id": target.user_id,
+                "target_role": target.role,
+                "caller_user_id": request.user.pk,
+                "outcome": "success",
+            },
+        )
+        return Response({"status": "deleted"}, status=200)

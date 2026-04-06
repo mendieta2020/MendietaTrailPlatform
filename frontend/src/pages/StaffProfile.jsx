@@ -17,6 +17,10 @@ export default function StaffProfile() {
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
 
   const [staffTitle, setStaffTitle] = useState('');
+  const [phone, setPhone] = useState('');
+  const [birthDate, setBirthDate] = useState('');
+  const [photoUrl, setPhotoUrl] = useState('');
+  const [instagram, setInstagram] = useState('');
 
   useEffect(() => {
     if (!orgId) return;
@@ -24,9 +28,14 @@ export default function StaffProfile() {
     client.get(`/api/p1/orgs/${orgId}/memberships/`)
       .then((res) => {
         const items = res.data?.results ?? res.data ?? [];
-        // Find own membership
         const own = items.find((m) => m.is_self);
-        if (own) setStaffTitle(own.staff_title || '');
+        if (own) {
+          setStaffTitle(own.staff_title || '');
+          setPhone(own.phone || '');
+          setBirthDate(own.birth_date || '');
+          setPhotoUrl(own.photo_url || '');
+          setInstagram(own.instagram || '');
+        }
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -36,7 +45,13 @@ export default function StaffProfile() {
     if (!orgId) return;
     setSaving(true);
     try {
-      await client.patch(`/api/p1/orgs/${orgId}/memberships/me/`, { staff_title: staffTitle });
+      await client.patch(`/api/p1/orgs/${orgId}/memberships/me/`, {
+        staff_title: staffTitle,
+        phone,
+        birth_date: birthDate || null,
+        photo_url: photoUrl,
+        instagram,
+      });
       setToast({ open: true, message: 'Perfil actualizado correctamente', severity: 'success' });
     } catch {
       setToast({ open: true, message: 'Error al guardar el perfil', severity: 'error' });
@@ -78,6 +93,44 @@ export default function StaffProfile() {
                 value={staffTitle}
                 onChange={(e) => setStaffTitle(e.target.value)}
                 placeholder="Ej: Coordinadora de equipo, Nutricionista, Fisioterapeuta..."
+                fullWidth
+                size="small"
+              />
+
+              <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', mt: 0.5 }}>
+                Contacto y redes
+              </Typography>
+
+              <TextField
+                label="Teléfono"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Ej: +5491112345678"
+                fullWidth
+                size="small"
+              />
+              <TextField
+                label="Instagram"
+                value={instagram}
+                onChange={(e) => setInstagram(e.target.value)}
+                placeholder="Ej: @nombre"
+                fullWidth
+                size="small"
+              />
+              <TextField
+                label="Fecha de nacimiento"
+                type="date"
+                value={birthDate}
+                onChange={(e) => setBirthDate(e.target.value)}
+                fullWidth
+                size="small"
+                InputLabelProps={{ shrink: true }}
+              />
+              <TextField
+                label="URL de foto de perfil"
+                value={photoUrl}
+                onChange={(e) => setPhotoUrl(e.target.value)}
+                placeholder="https://..."
                 fullWidth
                 size="small"
               />
