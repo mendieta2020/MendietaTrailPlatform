@@ -172,6 +172,47 @@ class TestOrgProfileView:
         assert self.org.slug == original_slug
         assert self.org.is_active is True
 
+    def test_athlete_does_not_see_contact_email_or_phone(self):
+        """Operational data must be hidden from athletes."""
+        self.org.contact_email = "contact@org.com"
+        self.org.phone = "+54 9 11 9999-9999"
+        self.org.save()
+        client = _auth_client(self.athlete_user)
+        res = client.get(self._url())
+        assert res.status_code == status.HTTP_200_OK
+        assert "contact_email" not in res.data
+        assert "phone" not in res.data
+
+    def test_coach_sees_contact_email_and_phone(self):
+        """Coaches need operational data to coordinate with the org owner."""
+        self.org.contact_email = "contact@org.com"
+        self.org.phone = "+54 9 11 9999-9999"
+        self.org.save()
+        client = _auth_client(self.coach)
+        res = client.get(self._url())
+        assert res.status_code == status.HTTP_200_OK
+        assert res.data["contact_email"] == "contact@org.com"
+        assert res.data["phone"] == "+54 9 11 9999-9999"
+
+    def test_owner_sees_all_fields_and_can_edit_true(self):
+        """Owner gets full profile and can_edit=True."""
+        self.org.contact_email = "contact@org.com"
+        self.org.phone = "+54 9 11 9999-9999"
+        self.org.save()
+        client = _auth_client(self.owner)
+        res = client.get(self._url())
+        assert res.status_code == status.HTTP_200_OK
+        assert res.data["contact_email"] == "contact@org.com"
+        assert res.data["phone"] == "+54 9 11 9999-9999"
+        assert res.data["can_edit"] is True
+
+    def test_athlete_gets_can_edit_false(self):
+        """Athletes must never see the edit button."""
+        client = _auth_client(self.athlete_user)
+        res = client.get(self._url())
+        assert res.status_code == status.HTTP_200_OK
+        assert res.data["can_edit"] is False
+
 
 # ---------------------------------------------------------------------------
 # MySubscriptionView

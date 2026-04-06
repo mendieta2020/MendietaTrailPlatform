@@ -86,7 +86,8 @@ export default function CoachDashboard() {
   const [orgProfile, setOrgProfile] = useState(null);
   const [profileEditOpen, setProfileEditOpen] = useState(false);
 
-  const isOwnerOrAdmin = activeOrg?.role === 'owner' || activeOrg?.role === 'admin';
+  // can_edit comes from the API — backend is source of truth for permissions
+  const canEdit = orgProfile?.can_edit ?? false;
 
   const loadOrgProfile = () => {
     if (!activeOrg?.org_id) return;
@@ -179,7 +180,7 @@ export default function CoachDashboard() {
                   {orgProfile.description}
                 </Typography>
               )}
-              {/* City / disciplines / year / instagram / website row */}
+              {/* Brand info row: city / disciplines / year / instagram / website */}
               {orgProfile && (orgProfile.city || orgProfile.disciplines || orgProfile.founded_year || orgProfile.instagram || orgProfile.website) && (
                 <Box sx={{ display: 'flex', gap: 2, mt: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>
                   {orgProfile.city && (
@@ -216,10 +217,25 @@ export default function CoachDashboard() {
                   )}
                 </Box>
               )}
+              {/* Operational info: contact_email + phone — only present for owner/admin/coach */}
+              {orgProfile && (orgProfile.contact_email || orgProfile.phone) && (
+                <Box sx={{ display: 'flex', gap: 2, mt: 0.5, flexWrap: 'wrap' }}>
+                  {orgProfile.contact_email && (
+                    <Typography variant="caption" sx={{ color: '#64748B' }}>
+                      📧 {orgProfile.contact_email}
+                    </Typography>
+                  )}
+                  {orgProfile.phone && (
+                    <Typography variant="caption" sx={{ color: '#64748B' }}>
+                      📞 {orgProfile.phone}
+                    </Typography>
+                  )}
+                </Box>
+              )}
             </Box>
 
-            {/* Actions */}
-            {isOwnerOrAdmin && (
+            {/* Actions — shown only when backend confirms can_edit */}
+            {canEdit && (
               <Box sx={{ flexShrink: 0 }}>
                 <Tooltip title="Editar perfil">
                   <Button

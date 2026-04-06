@@ -1039,8 +1039,12 @@ _PROFILE_FIELDS = [
 
 class OrgProfileView(APIView):
     """
-    GET  /api/p1/orgs/{org_id}/profile/ — any member reads org profile
+    GET  /api/p1/orgs/{org_id}/profile/ — any member reads org profile (role-filtered)
     PATCH /api/p1/orgs/{org_id}/profile/ — owner/admin only
+
+    Brand data (name, description, city, disciplines, instagram, website) is visible
+    to all members.  Operational data (contact_email, phone) is restricted to
+    owner/admin/coach.  The 'can_edit' flag signals edit permission to the frontend.
     """
     permission_classes = [IsAuthenticated]
 
@@ -1053,19 +1057,29 @@ class OrgProfileView(APIView):
         if not membership:
             return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
         org = Organization.objects.get(id=org_id)
-        return Response({
+
+        # Brand data — visible to all members
+        data = {
             "id": org.id,
             "name": org.name,
             "slug": org.slug,
             "description": org.description,
-            "contact_email": org.contact_email,
-            "phone": org.phone,
-            "instagram": org.instagram,
-            "website": org.website,
             "city": org.city,
             "disciplines": org.disciplines,
             "founded_year": org.founded_year,
-        })
+            "instagram": org.instagram,
+            "website": org.website,
+        }
+
+        # Operational data — restricted to owner/admin/coach
+        if membership.role in ("owner", "admin", "coach"):
+            data["contact_email"] = org.contact_email
+            data["phone"] = org.phone
+
+        # Edit permission flag — frontend uses this; source of truth stays backend
+        data["can_edit"] = membership.role in ("owner", "admin")
+
+        return Response(data)
 
     def patch(self, request, org_id):
         membership = Membership.objects.filter(
