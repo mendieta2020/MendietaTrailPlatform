@@ -251,21 +251,21 @@ const DeviceBanner = ({ deviceStatus, onDismiss }) => {
 
   const message = unread_notifications > 0
     ? 'Tu coach te invita a conectar tu dispositivo de entrenamiento'
-    : 'Conecta tu dispositivo para sincronizar tus entrenamientos automáticamente';
+    : 'Conectá tu dispositivo (Strava, Garmin, etc.) para sincronizar tus entrenamientos automáticamente';
 
   return (
     <Paper
       sx={{
         p: 2.5, mb: 3, borderRadius: 2,
-        borderLeft: '4px solid #0EA5E9',
-        bgcolor: '#F0F9FF',
+        borderLeft: '4px solid #00D4AA',
+        bgcolor: '#F0FDF9',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         flexWrap: 'wrap', gap: 2,
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1 }}>
-        <DevicesOther sx={{ color: '#0EA5E9', flexShrink: 0 }} />
-        <Typography variant="body2" sx={{ color: '#0C4A6E', fontWeight: 500 }}>
+        <DevicesOther sx={{ color: '#00D4AA', flexShrink: 0 }} />
+        <Typography variant="body2" sx={{ color: '#0F4C3A', fontWeight: 500 }}>
           {message}
         </Typography>
       </Box>
@@ -274,9 +274,9 @@ const DeviceBanner = ({ deviceStatus, onDismiss }) => {
           size="small"
           variant="contained"
           onClick={() => navigate('/connections')}
-          sx={{ bgcolor: '#0EA5E9', textTransform: 'none', fontWeight: 600, '&:hover': { bgcolor: '#0284C7' } }}
+          sx={{ bgcolor: '#00D4AA', color: '#0D1117', textTransform: 'none', fontWeight: 600, '&:hover': { bgcolor: '#00BF99' } }}
         >
-          Conectar dispositivo
+          Conectar
         </Button>
         <Button
           size="small"
@@ -284,7 +284,7 @@ const DeviceBanner = ({ deviceStatus, onDismiss }) => {
           onClick={onDismiss}
           sx={{ color: '#64748B', textTransform: 'none' }}
         >
-          No tengo dispositivo
+          Más tarde
         </Button>
       </Box>
     </Paper>
@@ -425,9 +425,6 @@ const AthleteDashboard = ({ user }) => {
   const [welcomeDismissed, setWelcomeDismissed] = useState(
     () => localStorage.getItem('quantoryn_welcome_done') === 'true'
   );
-  const [onboardingBannerDismissed, setOnboardingBannerDismissed] = useState(
-    () => localStorage.getItem('quantoryn_onboarding_banner_done') === 'true'
-  );
   // PR-154: Wellness check-in overlay — show once per day (localStorage gate)
   const [wellnessVisible, setWellnessVisible] = useState(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -505,11 +502,6 @@ const AthleteDashboard = ({ user }) => {
   const handleWelcomeDismiss = () => {
     localStorage.setItem('quantoryn_welcome_done', 'true');
     setWelcomeDismissed(true);
-  };
-
-  const handleOnboardingBannerDismiss = () => {
-    localStorage.setItem('quantoryn_onboarding_banner_done', 'true');
-    setOnboardingBannerDismissed(true);
   };
 
   const handleDismissBanner = async () => {
@@ -596,54 +588,15 @@ const AthleteDashboard = ({ user }) => {
         />
       )}
 
-      {/* ── PR-165b: Coach info card ── */}
-      {mySubWithCoach?.coach && (
+      {/* ── PR-165b/c: Coach info card — shows placeholder when no coach assigned ── */}
+      {mySubWithCoach && (
         <CoachInfoCard
-          coach={mySubWithCoach.coach}
+          coach={mySubWithCoach.coach ?? null}
           orgName={mySubWithCoach.organization?.name}
         />
       )}
 
-      {/* ── Onboarding banner: shown after welcome dismissed, no device yet ── */}
-      {welcomeDismissed && !hasDevice && !onboardingBannerDismissed && (
-        <Paper sx={{
-          p: 2.5, mb: 3, borderRadius: 2,
-          borderLeft: '4px solid #00D4AA',
-          bgcolor: '#FFF7ED',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          flexWrap: 'wrap', gap: 2,
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1 }}>
-            <DevicesOther sx={{ color: '#00D4AA', flexShrink: 0 }} />
-            <Box>
-              <Typography variant="body2" sx={{ color: '#9A3412', fontWeight: 600 }}>
-                Conecta Strava para sincronizar tus entrenamientos
-              </Typography>
-              <Typography variant="caption" sx={{ color: '#C2410C' }}>
-                Sin dispositivo conectado tus datos no se sincronizan automáticamente.
-              </Typography>
-            </Box>
-          </Box>
-          <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
-            <Button
-              size="small"
-              variant="contained"
-              onClick={() => window.location.href = '/connections'}
-              sx={{ bgcolor: '#00D4AA', color: '#0D1117', textTransform: 'none', fontWeight: 600, '&:hover': { bgcolor: '#00BF99' } }}
-            >
-              Conectar Strava
-            </Button>
-            <Button
-              size="small"
-              variant="text"
-              onClick={handleOnboardingBannerDismiss}
-              sx={{ color: '#64748B', textTransform: 'none' }}
-            >
-              Más tarde
-            </Button>
-          </Box>
-        </Paper>
-      )}
+      {/* Onboarding banner removed — DeviceBanner below handles device connection CTA */}
 
       {/* ── Header: greeting + weather ── */}
       <Box sx={{ mb: 4, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>

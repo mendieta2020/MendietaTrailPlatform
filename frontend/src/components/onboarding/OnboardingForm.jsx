@@ -248,6 +248,25 @@ export default function OnboardingForm({ invitationToken, joinSlug, invite, sele
           {GENDERS.map((g) => <MenuItem key={g.value} value={g.value}>{g.label}</MenuItem>)}
         </TextField>
 
+        <div className="grid grid-cols-2 gap-3">
+          <TextField size="small" label="Provincia" value={province} onChange={(e) => setProvince(e.target.value)} fullWidth />
+          <TextField size="small" label="Localidad" value={city} onChange={(e) => setCity(e.target.value)} fullWidth />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <TextField size="small" label="Código postal" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} fullWidth />
+          <TextField size="small" label="Profesión" value={profession} onChange={(e) => setProfession(e.target.value)} fullWidth />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <TextField size="small" select label="Talle remera" value={clothingSize} onChange={(e) => setClothingSize(e.target.value)} fullWidth>
+            {CLOTHING_SIZES.map((cs) => <MenuItem key={cs} value={cs}>{cs || 'Sin especificar'}</MenuItem>)}
+          </TextField>
+          <TextField size="small" select label="Grupo sanguíneo" value={bloodType} onChange={(e) => setBloodType(e.target.value)} fullWidth>
+            {BLOOD_TYPES.map((bt) => <MenuItem key={bt} value={bt}>{bt || 'Sin especificar'}</MenuItem>)}
+          </TextField>
+        </div>
+
         {/* Availability */}
         <AvailabilityGrid value={availability} onChange={setAvailability} />
       </div>
@@ -259,7 +278,7 @@ export default function OnboardingForm({ invitationToken, joinSlug, invite, sele
           <AccordionSummary expandIcon={<ChevronDown className="w-4 h-4" />}>
             <div className="flex items-center gap-2">
               <Activity className="w-4 h-4 text-indigo-500" />
-              <span className="text-sm font-medium text-slate-700">Datos deportivos (opcional)</span>
+              <span className="text-sm font-medium text-slate-700">Datos deportivos avanzados (opcional)</span>
             </div>
           </AccordionSummary>
           <AccordionDetails>
@@ -281,28 +300,18 @@ export default function OnboardingForm({ invitationToken, joinSlug, invite, sele
           </AccordionDetails>
         </Accordion>
 
-        {/* Datos Personales */}
+        {/* Contacto de emergencia (opcional) */}
         <Accordion disableGutters elevation={0} sx={{ border: '1px solid #e2e8f0', borderRadius: '12px !important', '&:before': { display: 'none' }, overflow: 'hidden' }}>
           <AccordionSummary expandIcon={<ChevronDown className="w-4 h-4" />}>
             <div className="flex items-center gap-2">
               <User className="w-4 h-4 text-indigo-500" />
-              <span className="text-sm font-medium text-slate-700">Datos personales (opcional)</span>
+              <span className="text-sm font-medium text-slate-700">Contacto de emergencia + redes (opcional)</span>
             </div>
           </AccordionSummary>
           <AccordionDetails>
             <div className="grid grid-cols-2 gap-3">
-              <TextField size="small" label="Provincia" value={province} onChange={(e) => setProvince(e.target.value)} fullWidth />
-              <TextField size="small" label="Localidad" value={city} onChange={(e) => setCity(e.target.value)} fullWidth />
-              <TextField size="small" label="Código postal" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} fullWidth />
               <TextField size="small" label="Instagram" placeholder="@usuario" value={instagramHandle} onChange={(e) => setInstagramHandle(e.target.value)} fullWidth />
-              <TextField size="small" label="Profesión" value={profession} onChange={(e) => setProfession(e.target.value)} fullWidth />
-              <TextField size="small" select label="Grupo sanguíneo" value={bloodType} onChange={(e) => setBloodType(e.target.value)} fullWidth>
-                {BLOOD_TYPES.map((bt) => <MenuItem key={bt} value={bt}>{bt || 'Sin especificar'}</MenuItem>)}
-              </TextField>
-              <TextField size="small" select label="Talle remera" value={clothingSize} onChange={(e) => setClothingSize(e.target.value)} fullWidth>
-                {CLOTHING_SIZES.map((cs) => <MenuItem key={cs} value={cs}>{cs || 'Sin especificar'}</MenuItem>)}
-              </TextField>
-              <div /> {/* spacer */}
+              <div />
               <TextField size="small" label="Contacto emergencia (nombre)" value={emergencyName} onChange={(e) => setEmergencyName(e.target.value)} fullWidth />
               <TextField size="small" label="Contacto emergencia (tel)" value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} fullWidth />
             </div>

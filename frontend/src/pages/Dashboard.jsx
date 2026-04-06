@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Grid, Paper, Typography, Box, CircularProgress, Alert, Divider,
   MenuItem, Select, FormControl, InputLabel, Table, TableBody,
-  TableCell, TableHead, TableRow, Chip, Skeleton, IconButton,
+  TableCell, TableHead, TableRow, Chip, Skeleton, IconButton, Avatar,
 } from '@mui/material';
 import {
   MonitorHeart, TrendingUp, LocalHospital, OpenInNew, CheckCircle,
@@ -181,6 +181,32 @@ const Dashboard = () => {
 
   return (
     <Layout>
+      {/* ORG IDENTITY CARD — gives coach a sense of belonging */}
+      <Box sx={{
+        mx: { xs: 2, sm: 3 }, mt: { xs: 2, sm: 3 }, mb: 2,
+        display: 'flex', alignItems: 'center', gap: 2,
+        bgcolor: 'rgba(0,212,170,0.06)',
+        border: '1px solid rgba(0,212,170,0.18)',
+        borderRadius: 3, px: 3, py: 2,
+      }}>
+        <Avatar sx={{ bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 800, width: 44, height: 44 }}>
+          {(activeOrg?.name?.[0] ?? 'Q').toUpperCase()}
+        </Avatar>
+        <Box sx={{ flexGrow: 1 }}>
+          <Typography variant="caption" sx={{ color: '#64748b', display: 'block' }}>
+            Trabajás como coach en
+          </Typography>
+          <Typography variant="h6" sx={{ fontWeight: 700, color: '#0F172A', lineHeight: 1.2 }}>
+            {activeOrg?.name}
+          </Typography>
+        </Box>
+        <Chip
+          label={activeOrg?.role === 'owner' ? 'Owner' : 'Coach'}
+          size="small"
+          sx={{ bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 700, fontSize: '0.72rem' }}
+        />
+      </Box>
+
       {/* HEADER */}
       <Box sx={{ mb: 4, p: { xs: 2, sm: 3 }, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Box>

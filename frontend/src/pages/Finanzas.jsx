@@ -991,6 +991,19 @@ const Finanzas = () => {
                 <textarea value={editingPlan.description || ''} onChange={e => setEditingPlan({ ...editingPlan, description: e.target.value })} rows={2}
                   className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none" />
               </div>
+              <div className="flex items-center justify-between px-1">
+                <div>
+                  <p className="text-sm font-medium text-slate-700">Estado del plan</p>
+                  <p className="text-xs text-slate-400">Los atletas solo ven planes activos</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingPlan({ ...editingPlan, is_active: !editingPlan.is_active })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${editingPlan.is_active ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                >
+                  <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${editingPlan.is_active ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
             </div>
           </DialogContent>
           <DialogActions className="px-6 pb-5 gap-2">

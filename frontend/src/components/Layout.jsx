@@ -24,6 +24,7 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
   MoreHoriz,
+  Person,
 } from '@mui/icons-material';
 import { BarChart2 } from 'lucide-react';
 import QuantorynLogo from './QuantorynLogo';
@@ -165,6 +166,7 @@ const Layout = ({ children }) => {
           items: [
             { text: 'Alumnos', icon: <People />,  path: '/athletes' },
             { text: 'Grupos',  icon: <Groups />,  path: '/teams' },
+            { text: 'Mi Perfil', icon: <Person />, path: '/staff/profile' },
           ],
         },
       ]
@@ -192,6 +194,7 @@ const Layout = ({ children }) => {
             ...(!isCoach ? [{ text: 'Finanzas', icon: <Payment />, path: '/finance', adminOnly: true }] : []),
             { text: 'Conexiones',      icon: <LinkIcon />,  path: '/connections' },
             ...(!isCoach ? [{ text: 'Mi Organización', icon: <Business />, path: '/coach-dashboard' }] : []),
+            ...(isCoach ? [{ text: 'Mi Perfil', icon: <Person />, path: '/coach/profile' }] : []),
           ],
         },
       ];
@@ -199,8 +202,9 @@ const Layout = ({ children }) => {
   // "Más" drawer items — role-aware
   const moreItems = isStaff
     ? [
-        { text: 'Alumnos', icon: <People />,  path: '/athletes' },
-        { text: 'Grupos',  icon: <Groups />,  path: '/teams' },
+        { text: 'Alumnos',  icon: <People />,  path: '/athletes' },
+        { text: 'Grupos',   icon: <Groups />,  path: '/teams' },
+        { text: 'Mi Perfil', icon: <Person />, path: '/staff/profile' },
       ]
     : [
         { text: 'Librería',   icon: <LibraryBooksIcon />, path: '/library' },
@@ -209,6 +213,7 @@ const Layout = ({ children }) => {
         ...(!isCoach ? [{ text: 'Finanzas', icon: <Payment />, path: '/finance', adminOnly: true }] : []),
         { text: 'Conexiones', icon: <LinkIcon />,           path: '/connections' },
         ...(!isCoach ? [{ text: 'Mi Organización', icon: <Business />, path: '/coach-dashboard' }] : []),
+        ...(isCoach ? [{ text: 'Mi Perfil', icon: <Person />, path: '/coach/profile' }] : []),
       ];
 
   // Role-aware mobile bottom tabs
@@ -432,7 +437,7 @@ const Layout = ({ children }) => {
               </Badge>
             </IconButton>
             <Avatar sx={{ bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 'bold', width: 30, height: 30, fontSize: '0.75rem' }}>
-              {userInfo?.first_name?.[0] ?? 'C'}{userInfo?.last_name?.[0] ?? ''}
+              {(userInfo?.first_name?.[0] ?? userInfo?.username?.[0] ?? '?').toUpperCase()}{userInfo?.last_name?.[0]?.toUpperCase() ?? ''}
             </Avatar>
           </Toolbar>
         </AppBar>
@@ -601,7 +606,7 @@ const Layout = ({ children }) => {
             </Badge>
           </IconButton>
           <Avatar sx={{ bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 'bold' }}>
-            {userInfo?.first_name?.[0] ?? 'C'}{userInfo?.last_name?.[0] ?? ''}
+            {(userInfo?.first_name?.[0] ?? userInfo?.username?.[0] ?? '?').toUpperCase()}{userInfo?.last_name?.[0]?.toUpperCase() ?? ''}
           </Avatar>
         </Toolbar>
       </AppBar>

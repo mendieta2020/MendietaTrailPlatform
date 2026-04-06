@@ -4,12 +4,13 @@ import {
   Box, Paper, Typography, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Avatar, Chip, IconButton, Button, TextField, InputAdornment,
   CircularProgress, Alert, Tooltip, Snackbar, LinearProgress, useTheme, useMediaQuery,
+  Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, Select, FormControl, InputLabel,
 } from '@mui/material';
 import { Search, Edit, Add, NavigateNext, NotificationsActive, CheckCircle } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import RiskBadge from '../components/RiskBadge';
 import { useOrg } from '../context/OrgContext';
-import { listAthletes } from '../api/p1';
+import { listAthletes, listCoaches, updateAthleteCoach } from '../api/p1';
 import { getAthleteSubscriptions } from '../api/billing';
 import { notifyAthleteDevice } from '../api/roster';
 import { getTeamReadiness } from '../api/pmc';
@@ -62,6 +63,11 @@ const Athletes = () => {
   // PR-141: track notify state per athlete (membership_id → 'idle'|'sent'|'duplicate')
   const [notifyState, setNotifyState] = useState({});
   const [toast, setToast] = useState({ open: false, message: '' });
+  // A.1: Coach assignment modal
+  const [assignModal, setAssignModal] = useState(null); // null | { athleteId, currentCoachId }
+  const [coaches, setCoaches] = useState([]);
+  const [selectedCoachId, setSelectedCoachId] = useState('');
+  const [assignSaving, setAssignSaving] = useState(false);
 
   useEffect(() => {
     if (!activeOrg) return;
@@ -99,6 +105,36 @@ const Athletes = () => {
     fetchFitness();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOrg?.org_id]);
+
+  const openAssignModal = async (athlete) => {
+    setSelectedCoachId(athlete.coach_id ?? '');
+    setAssignModal({ athleteId: athlete.id, currentCoachId: athlete.coach_id });
+    if (coaches.length === 0) {
+      try {
+        const res = await listCoaches(activeOrg.org_id);
+        setCoaches(res.data?.results ?? res.data ?? []);
+      } catch {
+        // keep empty
+      }
+    }
+  };
+
+  const handleAssignCoach = async () => {
+    if (!assignModal) return;
+    setAssignSaving(true);
+    try {
+      await updateAthleteCoach(activeOrg.org_id, assignModal.athleteId, selectedCoachId || null);
+      setAthletes((prev) =>
+        prev.map((a) => a.id === assignModal.athleteId ? { ...a, coach_id: selectedCoachId || null } : a)
+      );
+      setToast({ open: true, message: 'Coach asignado correctamente' });
+      setAssignModal(null);
+    } catch {
+      setToast({ open: true, message: 'Error al asignar coach' });
+    } finally {
+      setAssignSaving(false);
+    }
+  };
 
   const handleNotify = useCallback(async (membershipId) => {
     if (!membershipId || notifyState[membershipId]) return;
@@ -255,7 +291,7 @@ const Athletes = () => {
               <TableCell sx={{ fontWeight: 600, color: '#475569' }}>ATLETA</TableCell>
               <TableCell sx={{ fontWeight: 600, color: '#475569' }}>ESTADO</TableCell>
               <TableCell sx={{ fontWeight: 600, color: '#475569' }}>SUSCRIPCIÓN</TableCell>
-              <TableCell sx={{ fontWeight: 600, color: '#475569' }}>PLAN</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: '#475569' }}>COACH</TableCell>
               <TableCell sx={{ fontWeight: 600, color: '#475569' }}>FITNESS</TableCell>
               <TableCell sx={{ fontWeight: 600, color: '#475569' }}>RIESGO</TableCell>
               <TableCell sx={{ fontWeight: 600, color: '#475569' }}>DISPOSITIVO</TableCell>
@@ -296,10 +332,17 @@ const Athletes = () => {
                 <TableCell>
                     <SubBadge status={subscriptionMap[athlete.id]} />
                 </TableCell>
-                <TableCell>
-                    <Typography variant="body2" sx={{ color: '#475569' }}>
-                        Trail Elite
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Typography variant="body2" sx={{ color: athlete.coach_id ? '#0F172A' : '#94A3B8', fontSize: '0.82rem' }}>
+                      {athlete.coach_name || (athlete.coach_id ? `Coach #${athlete.coach_id}` : '—')}
                     </Typography>
+                    <Tooltip title="Asignar coach">
+                      <IconButton size="small" onClick={() => openAssignModal(athlete)} sx={{ color: '#94A3B8', '&:hover': { color: '#3b82f6' } }}>
+                        <Edit sx={{ fontSize: 14 }} />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
                 </TableCell>
                 <TableCell>
                     {(() => {
@@ -389,6 +432,40 @@ const Athletes = () => {
           </TableBody>
         </Table>
       </TableContainer>
+
+      {/* Assign coach modal */}
+      <Dialog open={!!assignModal} onClose={() => setAssignModal(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>Asignar Coach</DialogTitle>
+        <DialogContent>
+          <FormControl fullWidth size="small" sx={{ mt: 1 }}>
+            <InputLabel>Coach</InputLabel>
+            <Select
+              value={selectedCoachId}
+              label="Coach"
+              onChange={(e) => setSelectedCoachId(e.target.value)}
+            >
+              <MenuItem value="">Sin asignar</MenuItem>
+              {coaches.map((c) => {
+                const name = `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || c.email || `Coach #${c.id}`;
+                return <MenuItem key={c.id} value={c.id}>{name}</MenuItem>;
+              })}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setAssignModal(null)} sx={{ textTransform: 'none', color: '#64748b' }}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleAssignCoach}
+            disabled={assignSaving}
+            sx={{ textTransform: 'none', bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 700, '&:hover': { bgcolor: '#00BF99' } }}
+          >
+            {assignSaving ? <CircularProgress size={16} sx={{ color: '#0D1117' }} /> : 'Guardar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar
         open={toast.open}

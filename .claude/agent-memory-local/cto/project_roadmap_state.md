@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-05 · PR-165b Org Profile + Payment Visibility + Coach Card + Trial Paywall_
+_Last updated: 2026-04-06 · PR-165c Pre-Launch Hotfix — Coach/Staff Profiles + UX Polish_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -252,6 +252,24 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - No backend changes, no migrations required
 - Frontend: lint 0 errors, build success
 - Risk: MEDIUM (major frontend refactor) — RESOLVED
+
+### PR-165c — Pre-Launch Hotfix: Coach/Staff Profiles + UX Polish ✅ 2026-04-06
+- Auto-create Coach record when user joins via TeamJoinView with role='coach' (fixes empty COACHES tab)
+- MyCoachProfileView: GET/PATCH /api/me/coach-profile/ — coach self-edit (bio, specialties, certifications, years_exp)
+- CoachProfile.jsx: new page at /coach/profile (linked from sidebar)
+- StaffProfile.jsx: new page at /staff/profile (linked from sidebar)
+- Layout.jsx: 'Mi Perfil' item added to coach CONFIGURACIÓN section and staff GESTIÓN section (desktop + mobile)
+- Avatar fix: top-right avatar now shows actual user initials (was hardcoded 'C')
+- Dashboard.jsx: org name chip + role badge shown above "Panel de Control" heading
+- CoachInfoCard: shows placeholder "Tu coach será asignado pronto" when no coach assigned
+- AthleteDashboard: removed duplicate device-connection onboarding banner; DeviceBanner unified to teal (#00D4AA)
+- Finanzas EditPlanModal: toggle switch for is_active/Activo state added
+- RosterSection: Staff tab added (owner-only) — shows team members filtered by role='staff'
+- OnboardingForm: province/city/postal/profession/clothing_size/blood_type promoted to required section; optional accordion renamed to "Datos deportivos avanzados"
+- 6 backend tests (tests_pr165c_hotfix.py) — all pass
+- frontend lint: 0 errors; build: success
+- No migrations required
+- Risk: MEDIUM — RESOLVED
 
 ### PR-162 — Production Ready: Security + Saves rotos + Onboarding polish ✅ 2026-04-03
 - Fix 0 (CRITICAL SECURITY): DashboardRouter now uses activeOrg.role from OrgContext (not memberships[0].role) → athletes always see AthleteDashboard

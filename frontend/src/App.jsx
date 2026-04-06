@@ -39,6 +39,8 @@ import AthleteProfile from './pages/AthleteProfile';
 import CoachAnalytics from './pages/CoachAnalytics';
 import CoachAthletePMC from './pages/CoachAthletePMC';
 import Plantilla from './pages/Plantilla';
+import CoachProfile from './pages/CoachProfile';
+import StaffProfile from './pages/StaffProfile';
 
 
 // --- ATHLETE DETAIL REDIRECT: /athletes/:id → /coach/athletes/:id/pmc ---
@@ -295,6 +297,24 @@ function App() {
                 <CoachRoute>
                   <CoachAthletePMC />
                 </CoachRoute>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* PR-165c: Coach and Staff profile pages */}
+          <Route
+            path="/coach/profile"
+            element={
+              <ProtectedRoute>
+                <CoachProfile />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/staff/profile"
+            element={
+              <ProtectedRoute>
+                <StaffProfile />
               </ProtectedRoute>
             }
           />
