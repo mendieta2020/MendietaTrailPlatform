@@ -1,10 +1,8 @@
 import React from 'react';
-import { Box, Typography, Paper, Button } from '@mui/material';
+import { Box, Typography, Paper, Button, Tooltip } from '@mui/material';
 import { MessageSquare } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 
 export default function CoachInfoCard({ coach, orgName }) {
-  const navigate = useNavigate();
   if (!coach) return null;
 
   const initials = coach.name
@@ -58,24 +56,25 @@ export default function CoachInfoCard({ coach, orgName }) {
           )}
         </Box>
 
-        {/* Message button */}
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={<MessageSquare size={14} />}
-          onClick={() => navigate('/athlete/messages')}
-          sx={{
-            flexShrink: 0,
-            color: '#00D4AA',
-            borderColor: '#00D4AA',
-            textTransform: 'none',
-            fontWeight: 600,
-            fontSize: '0.75rem',
-            '&:hover': { borderColor: '#00BF99', bgcolor: 'rgba(0,212,170,0.04)' },
-          }}
-        >
-          Mensaje
-        </Button>
+        {/* Message button — disabled until PR-167 */}
+        <Tooltip title="Próximamente" arrow>
+          <span>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<MessageSquare size={14} />}
+              disabled
+              sx={{
+                flexShrink: 0,
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: '0.75rem',
+              }}
+            >
+              Mensaje
+            </Button>
+          </span>
+        </Tooltip>
       </Box>
     </Paper>
   );

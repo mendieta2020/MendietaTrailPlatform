@@ -46,8 +46,8 @@ export default function SubscriptionCard({ subscription, orgName, onUpdatePaymen
     <Paper
       sx={{
         mb: 2, borderRadius: 3,
-        borderLeft: '4px solid #00D4AA',
         border: '1px solid', borderColor: 'divider',
+        borderLeft: '4px solid #00D4AA',
         boxShadow: '0 1px 3px 0 rgba(0,0,0,0.06)',
       }}
     >

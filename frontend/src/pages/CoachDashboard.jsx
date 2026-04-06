@@ -8,16 +8,14 @@ import {
   Button,
   Tooltip,
 } from '@mui/material';
-import LinkIcon from '@mui/icons-material/Link';
 import EditIcon from '@mui/icons-material/Edit';
 import { Building2 } from 'lucide-react';
 import Layout from '../components/Layout';
 import RosterSection from '../components/roster/RosterSection';
 import AssignmentCalendar from '../components/AssignmentCalendar';
-import ManageConnectionsModal from '../components/roster/ManageConnectionsModal';
 import OrgProfileEditModal from '../components/OrgProfileEditModal';
 import { useOrg } from '../context/OrgContext';
-import { listExternalIdentities, getOrgProfile } from '../api/p1';
+import { getOrgProfile } from '../api/p1';
 import { getCoachBriefing } from '../api/teams';
 
 // ── Coach Briefing Card (PR-148) ──────────────────────────────────────────────
@@ -85,8 +83,6 @@ function CoachBriefingCard({ orgId }) {
 export default function CoachDashboard() {
   const { activeOrg, orgLoading } = useOrg();
   const [selectedAthleteId, setSelectedAthleteId] = useState(null);
-  const [connectionsOpen, setConnectionsOpen] = useState(false);
-  const [activeConnectionCount, setActiveConnectionCount] = useState(null);
   const [orgProfile, setOrgProfile] = useState(null);
   const [profileEditOpen, setProfileEditOpen] = useState(false);
 
@@ -101,12 +97,6 @@ export default function CoachDashboard() {
 
   useEffect(() => {
     if (!activeOrg) return;
-    listExternalIdentities(activeOrg.org_id)
-      .then((res) => {
-        const identities = res.data?.results ?? res.data ?? [];
-        setActiveConnectionCount(identities.filter((i) => i.status === 'linked').length);
-      })
-      .catch(() => setActiveConnectionCount(null));
     loadOrgProfile();
   }, [activeOrg]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -189,9 +179,9 @@ export default function CoachDashboard() {
                   {orgProfile.description}
                 </Typography>
               )}
-              {/* City / disciplines / year row */}
-              {orgProfile && (orgProfile.city || orgProfile.disciplines || orgProfile.founded_year) && (
-                <Box sx={{ display: 'flex', gap: 2, mt: 0.75, flexWrap: 'wrap' }}>
+              {/* City / disciplines / year / instagram / website row */}
+              {orgProfile && (orgProfile.city || orgProfile.disciplines || orgProfile.founded_year || orgProfile.instagram || orgProfile.website) && (
+                <Box sx={{ display: 'flex', gap: 2, mt: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>
                   {orgProfile.city && (
                     <Typography variant="caption" sx={{ color: '#64748B' }}>
                       📍 {orgProfile.city}
@@ -207,13 +197,30 @@ export default function CoachDashboard() {
                       📅 Desde {orgProfile.founded_year}
                     </Typography>
                   )}
+                  {orgProfile.instagram && (
+                    <Typography variant="caption" sx={{ color: '#64748B' }}>
+                      📷 @{orgProfile.instagram.replace(/^@/, '')}
+                    </Typography>
+                  )}
+                  {orgProfile.website && (
+                    <Typography
+                      component="a"
+                      href={orgProfile.website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      variant="caption"
+                      sx={{ color: '#00D4AA', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+                    >
+                      🌐 {orgProfile.website.replace(/^https?:\/\//, '')}
+                    </Typography>
+                  )}
                 </Box>
               )}
             </Box>
 
             {/* Actions */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0, flexWrap: 'wrap' }}>
-              {isOwnerOrAdmin && (
+            {isOwnerOrAdmin && (
+              <Box sx={{ flexShrink: 0 }}>
                 <Tooltip title="Editar perfil">
                   <Button
                     size="small"
@@ -229,33 +236,8 @@ export default function CoachDashboard() {
                     Editar perfil
                   </Button>
                 </Tooltip>
-              )}
-              {activeConnectionCount !== null && (
-                <Chip
-                  label={
-                    activeConnectionCount > 0
-                      ? `${activeConnectionCount} conexión${activeConnectionCount !== 1 ? 'es' : ''} activa${activeConnectionCount !== 1 ? 's' : ''}`
-                      : 'Sin conexiones activas'
-                  }
-                  size="small"
-                  color={activeConnectionCount > 0 ? 'success' : 'default'}
-                  variant="outlined"
-                  sx={{ borderColor: 'rgba(255,255,255,0.2)', color: '#94A3B8' }}
-                />
-              )}
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={<LinkIcon />}
-                onClick={() => setConnectionsOpen(true)}
-                sx={{
-                  color: '#00D4AA', borderColor: '#00D4AA',
-                  '&:hover': { borderColor: '#00BF99', bgcolor: 'rgba(0,212,170,0.08)' },
-                }}
-              >
-                Conexiones
-              </Button>
-            </Box>
+              </Box>
+            )}
           </Box>
         </Box>
       </Paper>
@@ -279,11 +261,6 @@ export default function CoachDashboard() {
         <AssignmentCalendar athleteId={selectedAthleteId} orgId={activeOrg.org_id} />
       )}
 
-      <ManageConnectionsModal
-        open={connectionsOpen}
-        onClose={() => setConnectionsOpen(false)}
-        orgId={activeOrg.org_id}
-      />
     </Layout>
   );
 }
