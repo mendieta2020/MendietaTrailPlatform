@@ -37,7 +37,9 @@ from rest_framework.views import APIView
 from core.models import (
     Alumno,
     Athlete,
+    AthleteCoachAssignment,
     AthleteHRProfile,
+    Coach,
     CompletedActivity,
     DailyLoad,
     Membership,
@@ -492,11 +494,31 @@ class TeamReadinessView(APIView):
 
         today = timezone.now().date()
 
-        # Get all active athlete memberships in this org
-        athlete_memberships = (
-            Membership.objects.select_related("user")
-            .filter(organization=org, role=Membership.Role.ATHLETE, is_active=True)
-        )
+        # A.1 — coach-scoped filter: coaches only see their assigned athletes.
+        if coach_membership.role == Membership.Role.COACH:
+            coach_obj = Coach.objects.filter(user=request.user, organization=org).first()
+            if coach_obj:
+                assigned_pks = set(
+                    AthleteCoachAssignment.objects.filter(
+                        organization=org, coach=coach_obj, ended_at__isnull=True
+                    ).values_list("athlete_id", flat=True)
+                )
+                assigned_user_ids = set(
+                    Athlete.objects.filter(pk__in=assigned_pks).values_list("user_id", flat=True)
+                )
+            else:
+                assigned_user_ids = set()
+            athlete_memberships = (
+                Membership.objects.select_related("user")
+                .filter(organization=org, role=Membership.Role.ATHLETE, is_active=True,
+                        user_id__in=assigned_user_ids)
+            )
+        else:
+            # Get all active athlete memberships in this org (owner/admin sees all)
+            athlete_memberships = (
+                Membership.objects.select_related("user")
+                .filter(organization=org, role=Membership.Role.ATHLETE, is_active=True)
+            )
 
         # Get latest DailyLoad for each athlete (use today's or most recent)
         summary = {

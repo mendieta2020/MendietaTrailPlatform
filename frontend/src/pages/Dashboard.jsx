@@ -194,7 +194,7 @@ const Dashboard = () => {
         </Avatar>
         <Box sx={{ flexGrow: 1 }}>
           <Typography variant="caption" sx={{ color: '#64748b', display: 'block' }}>
-            Trabajás como coach en
+            {activeOrg?.role === 'owner' ? 'Organización' : 'Trabajás como coach en'}
           </Typography>
           <Typography variant="h6" sx={{ fontWeight: 700, color: '#0F172A', lineHeight: 1.2 }}>
             {activeOrg?.name}

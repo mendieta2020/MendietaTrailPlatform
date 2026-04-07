@@ -47,6 +47,8 @@ class UserIdentityView(APIView):
             "id": user.id,
             "username": user.username,
             "email": user.email or "",
+            "first_name": user.first_name or "",
+            "last_name": user.last_name or "",
         }
 
         # --- P1 Membership check (takes precedence over legacy Alumno) ---
