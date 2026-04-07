@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-06 · PR-165c Pre-Launch Hotfix — Coach/Staff Profiles + UX Polish_
+_Last updated: 2026-04-06 · PR-165e Final Pre-Launch — Password Recovery + Tenancy + UX Polish_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -406,7 +406,45 @@ Coach B2C:     Athlete pays Coach via MercadoPago (AthleteSubscription)
 - 17 backend tests in core/tests_pr165b_org_profile.py — all pass
 - Frontend: lint 0 errors, build success
 - Risk: MEDIUM — RESOLVED
+
+### PR-165c — Coach/Staff Profiles + UX Polish + Backfill ✅ 2026-04-06
+- CoachProfile page: reads/writes bio, specialties, certifications, years_experience, phone, birth_date, photo_url, instagram via /api/me/coach-profile/
+- StaffProfile page: reads/writes staff_title, phone, birth_date, photo_url, instagram via /api/me/staff-profile/
+- backfill_coaches management command added
+- Frontend: lint 0 errors, build success
+- Risk: LOW — RESOLVED
+
+### PR-165d — Pre-launch blockers (12 bugs) ✅ 2026-04-06
+- A.1: CoachBriefingView + TeamReadinessView scoped to AthleteCoachAssignment (was showing all org athletes)
+- A.2: RegisterView checks email uniqueness before serializer (returns recovery hint)
+- A.3: MyUserProfileView GET/PATCH /api/me/user/ (first_name, last_name)
+- A.4: MyStaffProfileView GET/PATCH /api/me/staff-profile/
+- A.5: CoachPricingPlanDetailView.delete() blocks if active subscriptions exist
+- A.6: UserIdentityView returns first_name, last_name (was missing, caused avatar "F" bug)
+- B.1: StaffDashboard for staff role in DashboardRouter
+- B.2: OwnerProfile page (redirects to /coach-dashboard in 165e)
+- B.3: Finanzas handleDeletePlan shows 400 error message
+- B.4: RegistrationStep handles email_exists code with login link
+- 7 new tests in core/tests_pr165d_prelaunch.py — all pass
+- Fixed tests_pr128a_pmc + tests_pr148_compliance to create AthleteCoachAssignment
+- Frontend: lint 0 errors, build success
+- Risk: MEDIUM — RESOLVED
+
+### PR-165e — Final Pre-Launch: Password Recovery + Tenancy + Sidebar + UX ✅ 2026-04-06
+- Password recovery: PasswordResetToken model (SHA-256, single-use, 1h expiry), Resend backend
+  ForgotPassword + ResetPassword pages, anti-enumeration 200, strength meter, Login link
+- Group 2: AthleteRosterViewSet scoped to coach-assigned athletes (was returning all org athletes)
+- Group 3: MyCoachProfileView.get() now returns phone, birth_date, photo_url, instagram
+- Group 4: Dashboard activeOrg.org_name fix (was undefined)
+- Group 5: Owner sidebar unified into CoachDashboard 3-tab (Organización / Mi Perfil / Equipo)
+- Group 6: Wellness first-checkin retention toast "✨ ¡Listo! Tu coach acaba de recibirlo."
+- Group 7: Spanish vos cleanup (TrainingDetailModal, JoinTeamPage, Teams)
+- Migration: 0111_password_reset_token.py
+- 9 new tests in core/tests_pr165e_final.py — all pass
+- Frontend: lint 0 errors, build success
+- Risk: MEDIUM — IN REVIEW (branch: pr-165e-final-prelaunch-v2)
 - Next: PR-166 — Onboarding Experience (checklist + empty states)
+- Post-merge: set RESEND_API_KEY in Railway, configure DKIM/SPF for noreply@quantoryn.com
 
 ## Test Baseline
-~1386+ tests | CI: backend ✅ frontend ✅
+~1395+ tests | CI: backend ✅ frontend ✅

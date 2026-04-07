@@ -483,10 +483,12 @@ ANALYTICS_MAX_RANGE_DAYS = int(
 )
 
 # ==============================================================================
-#  EMAIL (DESARROLLO)
+#  EMAIL (RESEND — prod) / CONSOLE (dev)
 # ==============================================================================
+RESEND_API_KEY = get_env_variable("RESEND_API_KEY", default="", required=False)
+DEFAULT_FROM_EMAIL = get_env_variable("DEFAULT_FROM_EMAIL", default="Quantoryn <noreply@quantoryn.com>", required=False)
+# Use console backend when RESEND_API_KEY is not set (local dev / CI)
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-DEFAULT_FROM_EMAIL = 'Quantoryn <noreply@quantoryn.com>'
 
 # ==============================================================================
 #  CORS & SEGURIDAD WEBHOOKS

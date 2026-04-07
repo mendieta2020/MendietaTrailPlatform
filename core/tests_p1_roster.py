@@ -199,6 +199,10 @@ class TestAthleteRosterViewSet:
 
         self.coach = _coach(self.coach_user, self.org)
         self.athlete = _athlete(self.athlete_user, self.org)
+        # Tenancy: coach must be assigned to see the athlete (PR-165e fix)
+        AthleteCoachAssignment.objects.create(
+            athlete=self.athlete, coach=self.coach, organization=self.org
+        )
 
     def _list(self):
         return _url(self.org.id, "roster/athletes/")

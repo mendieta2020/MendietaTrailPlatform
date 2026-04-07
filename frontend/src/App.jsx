@@ -41,8 +41,9 @@ import CoachAthletePMC from './pages/CoachAthletePMC';
 import Plantilla from './pages/Plantilla';
 import CoachProfile from './pages/CoachProfile';
 import StaffProfile from './pages/StaffProfile';
-import OwnerProfile from './pages/OwnerProfile';
 import StaffDashboard from './pages/StaffDashboard';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 
 
 // --- ATHLETE DETAIL REDIRECT: /athletes/:id → /coach/athletes/:id/pmc ---
@@ -323,14 +324,12 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/owner/profile"
-            element={
-              <ProtectedRoute>
-                <OwnerProfile />
-              </ProtectedRoute>
-            }
-          />
+          {/* /owner/profile now lives as Tab 1 of /coach-dashboard */}
+          <Route path="/owner/profile" element={<Navigate to="/coach-dashboard" replace />} />
+
+          {/* PR-165e: Password recovery (public — no auth) */}
+          <Route path="/auth/forgot-password" element={<ForgotPassword />} />
+          <Route path="/auth/reset-password/:token" element={<ResetPassword />} />
 
           {/* RUTA COMODÍN: Cualquier dirección desconocida redirige al Login */}
           <Route path="*" element={<Navigate to="/login" replace />} />

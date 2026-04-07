@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Box, Typography, Paper, Grid, CircularProgress, Chip,
   List, ListItem, ListItemIcon, ListItemText, Button, Alert,
-  LinearProgress,
+  LinearProgress, Snackbar,
 } from '@mui/material';
 import {
   CheckCircle, RadioButtonUnchecked, DirectionsRun, WbSunny,
@@ -430,6 +430,7 @@ const AthleteDashboard = ({ user }) => {
     const today = new Date().toISOString().split('T')[0];
     return localStorage.getItem('quantoryn_wellness_date') !== today;
   });
+  const [wellnessToast, setWellnessToast] = useState({ open: false, first: false });
 
   const greeting = getGreeting();
   const displayName = user?.first_name || user?.username || 'Atleta';
@@ -552,12 +553,33 @@ const AthleteDashboard = ({ user }) => {
             orgId={wellnessOrgId}
             athleteId={user?.athlete_id ?? user?.id}
             onDismissSession={() => {
+              const isFirst = !localStorage.getItem('quantoryn_wellness_ever');
               localStorage.setItem('quantoryn_wellness_date', new Date().toISOString().split('T')[0]);
+              localStorage.setItem('quantoryn_wellness_ever', '1');
               setWellnessVisible(false);
+              setWellnessToast({ open: true, first: isFirst });
             }}
           />
         </Box>
       )}
+
+      {/* PR-165e: Wellness submission toast — first check-in gets special message */}
+      <Snackbar
+        open={wellnessToast.open}
+        autoHideDuration={4000}
+        onClose={() => setWellnessToast(t => ({ ...t, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          severity="success"
+          onClose={() => setWellnessToast(t => ({ ...t, open: false }))}
+          sx={wellnessToast.first ? { bgcolor: '#00D4AA', color: '#0D1117', '& .MuiAlert-icon': { color: '#0D1117' } } : {}}
+        >
+          {wellnessToast.first
+            ? '✨ ¡Listo! Tu coach acaba de recibirlo.'
+            : 'Wellness guardado.'}
+        </Alert>
+      </Snackbar>
 
       {/* ── PR-165b: Trial Paywall (full-screen, zIndex 1250) ── */}
       {mySubWithCoach?.subscription && (() => {

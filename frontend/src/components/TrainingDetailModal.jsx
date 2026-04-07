@@ -237,7 +237,7 @@ const TrainingDetailModal = ({ open, onClose, training, onFeedbackSaved }) => {
           {/* AVISOS DE ESTADO (User Experience) */}
           {mode === 'VIEW' && isFutureTraining && (
               <Alert severity="info" icon={<LockClock />} sx={{ mb: 2, borderRadius: 2 }}>
-                  Entrenamiento programado. Puedes ver los detalles, pero aún no puedes completarlo.
+                  Entrenamiento programado. Podés ver los detalles, pero todavía no podés completarlo.
               </Alert>
           )}
           {mode === 'VIEW' && isCompleted && (

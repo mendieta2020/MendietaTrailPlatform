@@ -7,6 +7,11 @@ import {
   Chip,
   Button,
   Tooltip,
+  Tabs,
+  Tab,
+  TextField,
+  Snackbar,
+  Alert,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import { Building2 } from 'lucide-react';
@@ -15,7 +20,7 @@ import RosterSection from '../components/roster/RosterSection';
 import AssignmentCalendar from '../components/AssignmentCalendar';
 import OrgProfileEditModal from '../components/OrgProfileEditModal';
 import { useOrg } from '../context/OrgContext';
-import { getOrgProfile } from '../api/p1';
+import { getOrgProfile, getUserProfile, updateUserProfile } from '../api/p1';
 import { getCoachBriefing } from '../api/teams';
 
 // ── Coach Briefing Card (PR-148) ──────────────────────────────────────────────
@@ -85,6 +90,12 @@ export default function CoachDashboard() {
   const [selectedAthleteId, setSelectedAthleteId] = useState(null);
   const [orgProfile, setOrgProfile] = useState(null);
   const [profileEditOpen, setProfileEditOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileToast, setProfileToast] = useState({ open: false, msg: '', sev: 'success' });
+  const isOwner = activeOrg?.role === 'owner';
 
   // can_edit comes from the API — backend is source of truth for permissions
   const canEdit = orgProfile?.can_edit ?? false;
@@ -99,7 +110,27 @@ export default function CoachDashboard() {
   useEffect(() => {
     if (!activeOrg) return;
     loadOrgProfile();
+    if (isOwner) {
+      getUserProfile().then((res) => {
+        setFirstName(res.data.first_name || '');
+        setLastName(res.data.last_name || '');
+      }).catch(() => {});
+    }
   }, [activeOrg]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleProfileSave = async () => {
+    setProfileSaving(true);
+    try {
+      const res = await updateUserProfile({ first_name: firstName, last_name: lastName });
+      setFirstName(res.data.first_name || '');
+      setLastName(res.data.last_name || '');
+      setProfileToast({ open: true, msg: 'Perfil actualizado', sev: 'success' });
+    } catch {
+      setProfileToast({ open: true, msg: 'Error al guardar', sev: 'error' });
+    } finally {
+      setProfileSaving(false);
+    }
+  };
 
   if (orgLoading) {
     return (
@@ -267,14 +298,61 @@ export default function CoachDashboard() {
         onSaved={loadOrgProfile}
       />
 
-      {/* PR-148: Morning briefing card */}
-      <CoachBriefingCard orgId={activeOrg.org_id} />
+      {/* PR-165e: Owner 3-tab navigation (Organización / Mi Perfil / Equipo) */}
+      {isOwner && (
+        <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)}
+          sx={{ borderBottom: 1, borderColor: 'divider', mb: 3, px: { xs: 2, sm: 3 } }}>
+          <Tab label="🏢 Organización" />
+          <Tab label="👤 Mi Perfil" />
+          <Tab label="👥 Equipo" />
+        </Tabs>
+      )}
 
-      {/* Roster */}
-      <RosterSection orgId={activeOrg.org_id} onSelectAthlete={setSelectedAthleteId} userRole={activeOrg.role} />
+      {/* Tab 0 — Organización / default for non-owners */}
+      {(!isOwner || activeTab === 0) && (
+        <>
+          <CoachBriefingCard orgId={activeOrg.org_id} />
+          {!isOwner && (
+            <>
+              <RosterSection orgId={activeOrg.org_id} onSelectAthlete={setSelectedAthleteId} userRole={activeOrg.role} />
+              {selectedAthleteId !== null && (
+                <AssignmentCalendar athleteId={selectedAthleteId} orgId={activeOrg.org_id} />
+              )}
+            </>
+          )}
+        </>
+      )}
 
-      {selectedAthleteId !== null && (
-        <AssignmentCalendar athleteId={selectedAthleteId} orgId={activeOrg.org_id} />
+      {/* Tab 1 — Mi Perfil (owner only) */}
+      {isOwner && activeTab === 1 && (
+        <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 500 }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#0F172A' }}>Mi Perfil</Typography>
+          <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid #e2e8f0' }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <TextField label="Nombre" value={firstName} onChange={(e) => setFirstName(e.target.value)} fullWidth size="small" />
+                <TextField label="Apellido" value={lastName} onChange={(e) => setLastName(e.target.value)} fullWidth size="small" />
+              </Box>
+              <Button variant="contained" onClick={handleProfileSave} disabled={profileSaving}
+                sx={{ bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 700, alignSelf: 'flex-start', '&:hover': { bgcolor: '#00b894' } }}>
+                {profileSaving ? <CircularProgress size={20} sx={{ color: '#0D1117' }} /> : 'Guardar cambios'}
+              </Button>
+            </Box>
+          </Paper>
+          <Snackbar open={profileToast.open} autoHideDuration={4000} onClose={() => setProfileToast(t => ({ ...t, open: false }))}>
+            <Alert severity={profileToast.sev}>{profileToast.msg}</Alert>
+          </Snackbar>
+        </Box>
+      )}
+
+      {/* Tab 2 — Equipo (owner) */}
+      {isOwner && activeTab === 2 && (
+        <>
+          <RosterSection orgId={activeOrg.org_id} onSelectAthlete={setSelectedAthleteId} userRole={activeOrg.role} />
+          {selectedAthleteId !== null && (
+            <AssignmentCalendar athleteId={selectedAthleteId} orgId={activeOrg.org_id} />
+          )}
+        </>
       )}
 
     </Layout>

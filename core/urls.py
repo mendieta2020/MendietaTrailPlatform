@@ -115,6 +115,10 @@ from core.views_onboarding import (  # PR-149 / PR-165a
     OnboardingCompleteView,
     TeamJoinView,
 )
+from core.auth_views import (  # PR-165e
+    PasswordResetRequestView,
+    PasswordResetConfirmView,
+)
 from core.views_periodization import (  # PR-157
     AutoPeriodizeAthleteView,
     AutoPeriodizeGroupView,
@@ -767,6 +771,8 @@ urlpatterns = [
     # PR-149: Athlete registration + onboarding
     path('auth/register/', RegisterView.as_view(), name='auth-register'),
     path('auth/google/', GoogleAuthView.as_view(), name='auth-google'),
+    path('auth/password-reset/request/', PasswordResetRequestView.as_view(), name='password-reset-request'),
+    path('auth/password-reset/confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
     path('onboarding/complete/', OnboardingCompleteView.as_view(), name='onboarding-complete'),
 
     # PR-165a: Team invitations (owner creates/revokes; owner+coach lists)

@@ -195,7 +195,6 @@ const Layout = ({ children }) => {
             { text: 'Conexiones',      icon: <LinkIcon />,  path: '/connections' },
             ...(!isCoach ? [{ text: 'Mi Organización', icon: <Business />, path: '/coach-dashboard' }] : []),
             ...(isCoach ? [{ text: 'Mi Perfil', icon: <Person />, path: '/coach/profile' }] : []),
-            ...(!isCoach ? [{ text: 'Mi Perfil', icon: <Person />, path: '/owner/profile' }] : []),
           ],
         },
       ];

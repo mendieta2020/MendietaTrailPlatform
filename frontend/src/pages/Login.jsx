@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import {
-    Box, Button, TextField, Typography, Paper, Alert
+    Box, Button, TextField, Typography, Paper, Alert,
 } from '@mui/material';
 import { styled } from '@mui/system';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import QuantorynLogo from '../components/QuantorynLogo';
 
@@ -95,10 +95,15 @@ const Login = () => {
                         fullWidth
                         variant="contained"
                         size="large"
-                        sx={{ mt: 3, mb: 2, bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 700, '&:hover': { bgcolor: '#00BF99' } }}
+                        sx={{ mt: 3, mb: 1, bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 700, '&:hover': { bgcolor: '#00BF99' } }}
                     >
                         Ingresar
                     </Button>
+                    <Box sx={{ textAlign: 'right', mt: 1 }}>
+                        <Link to="/auth/forgot-password" style={{ fontSize: 14, color: '#00D4AA', textDecoration: 'none' }}>
+                            ¿Olvidaste tu contraseña?
+                        </Link>
+                    </Box>
                 </Box>
             </LoginPaper>
         </BackgroundBox>

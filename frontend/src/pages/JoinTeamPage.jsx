@@ -98,7 +98,7 @@ export default function JoinTeamPage() {
   }
 
   if (state === 'already_used') {
-    return <ErrorCard icon={CheckCircle} color="#16a34a" title="Invitación ya usada" subtitle="Esta invitación ya fue aceptada. Si no eres tú, contacta al administrador." />;
+    return <ErrorCard icon={CheckCircle} color="#16a34a" title="Invitación ya usada" subtitle="Esta invitación ya fue aceptada. Si no sos vos, contactá al administrador." />;
   }
 
   if (state === 'not_found' || state === 'error') {
