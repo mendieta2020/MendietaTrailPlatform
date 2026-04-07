@@ -1373,6 +1373,9 @@ class MyStaffProfileView(APIView):
             if field in request.data:
                 setattr(m, field, request.data[field] or ("" if field != "birth_date" else None))
         m.save()
+        # Django does not auto-convert string assignments on DateField in-memory.
+        # Refresh so birth_date becomes a real date object before .isoformat() below.
+        m.refresh_from_db()
         logger.info(
             "staff_profile_updated",
             extra={

@@ -144,6 +144,33 @@ def test_my_staff_profile_save_and_refetch(db, org):
     assert get_res.data["staff_title"] == "Coordinadora"
 
 
+@pytest.mark.django_db
+def test_my_staff_profile_patch_with_birth_date_returns_isoformat(db, org):
+    """Regression: PATCH with birth_date must not crash on .isoformat() in response.
+
+    Django does not auto-convert string assignments on DateField in-memory; without
+    refresh_from_db() the in-memory attribute remains a str and .isoformat() raises
+    AttributeError. See Sentry PYTHON-DJANGO-6.
+    """
+    u = User.objects.create_user(
+        username="staffbd", email="staffbd@test.com", password="pw"
+    )
+    Membership.objects.create(
+        user=u, organization=org, role=Membership.Role.STAFF,
+        is_active=True, staff_title="",
+    )
+    client = APIClient()
+    client.force_authenticate(user=u)
+
+    res = client.patch(
+        "/api/me/staff-profile/",
+        {"org_id": org.pk, "birth_date": "1995-03-15"},
+        format="json",
+    )
+    assert res.status_code == 200
+    assert res.data["birth_date"] == "1995-03-15"
+
+
 # ---------------------------------------------------------------------------
 # B.3 — Delete plan with active subscriptions must fail 400
 # ---------------------------------------------------------------------------
