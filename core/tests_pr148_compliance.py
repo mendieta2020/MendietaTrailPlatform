@@ -26,6 +26,7 @@ from rest_framework.test import APIClient
 
 from core.models import (
     Athlete,
+    AthleteCoachAssignment,
     Coach,
     InternalMessage,
     Membership,
@@ -383,11 +384,17 @@ def test_coach_briefing_endpoint():
     workout_small = _workout(org, lib, duration_s=60)
 
     athletes = []
+    coach_obj = Coach.objects.get(user=coach_user, organization=org)
     for i in range(5):
         u = _user(f"ath_brief_{i}")
         _membership(u, org, "athlete")
         a = _athlete(u, org)
         athletes.append((u, a))
+        # A.1 fix: assign each athlete to the coach so the briefing counts them.
+        AthleteCoachAssignment.objects.create(
+            athlete=a, coach=coach_obj, organization=org,
+            role=AthleteCoachAssignment.Role.PRIMARY,
+        )
 
     # 3 athletes trained yesterday
     for u, a in athletes[:3]:

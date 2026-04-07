@@ -21,7 +21,9 @@ from core.models import (
     ActivityLoad,
     Alumno,
     Athlete,
+    AthleteCoachAssignment,
     AthleteHRProfile,
+    Coach,
     CompletedActivity,
     DailyLoad,
     Membership,
@@ -300,6 +302,14 @@ class PMCAPITenancyTests(TestCase):
             self.org, "api_athlete"
         )
         self.alumno = _make_alumno(self.org, self.coach_user)
+        # A.1 fix: create Coach + AthleteCoachAssignment so the coach sees this athlete.
+        self.coach_obj = Coach.objects.create(user=self.coach_user, organization=self.org)
+        AthleteCoachAssignment.objects.create(
+            athlete=self.athlete,
+            coach=self.coach_obj,
+            organization=self.org,
+            role=AthleteCoachAssignment.Role.PRIMARY,
+        )
 
         # Create DailyLoad records for the athlete
         today = timezone.now().date()
