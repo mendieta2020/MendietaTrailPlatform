@@ -17,6 +17,7 @@ export default function StaffProfile() {
   const [error, setError] = useState(null);
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
 
+  const [email, setEmail] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [staffTitle, setStaffTitle] = useState('');
@@ -35,6 +36,7 @@ export default function StaffProfile() {
         setBirthDate(staffRes.data.birth_date || '');
         setPhotoUrl(staffRes.data.photo_url || '');
         setInstagram(staffRes.data.instagram || '');
+        setEmail(userRes.data.email || '');
         setFirstName(userRes.data.first_name || '');
         setLastName(userRes.data.last_name || '');
       })
@@ -94,6 +96,14 @@ export default function StaffProfile() {
         ) : (
           <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid #e2e8f0' }}>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+              <TextField
+                label="Email"
+                value={email}
+                fullWidth
+                size="small"
+                disabled
+                helperText="El email no se puede modificar desde aquí."
+              />
               <Box sx={{ display: 'flex', gap: 2 }}>
                 <TextField
                   label="Nombre"
