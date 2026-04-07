@@ -45,7 +45,9 @@ export default function RegistrationStep({ onComplete }) {
       onComplete();
     } catch (err) {
       const detail = err?.response?.data;
-      if (detail?.email) {
+      if (detail?.code === 'email_exists') {
+        setError('email_exists');
+      } else if (detail?.email) {
         setError(Array.isArray(detail.email) ? detail.email[0] : detail.email);
       } else if (detail?.password) {
         setError(Array.isArray(detail.password) ? detail.password[0] : detail.password);
@@ -69,11 +71,18 @@ export default function RegistrationStep({ onComplete }) {
         Registrate para unirte al equipo
       </p>
 
-      {error && (
+      {error && error === 'email_exists' ? (
+        <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
+          Ya existe una cuenta con ese email.{' '}
+          <a href="/login" style={{ fontWeight: 700, color: 'inherit', textDecoration: 'underline' }}>
+            Iniciá sesión aquí.
+          </a>
+        </Alert>
+      ) : error ? (
         <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
           {error}
         </Alert>
-      )}
+      ) : null}
 
       {loading && (
         <div className="flex items-center justify-center py-8">

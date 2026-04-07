@@ -211,5 +211,21 @@ export const updateCoachProfile = (data) =>
 export const deleteMembership = (orgId, membershipId) =>
   client.delete(`${p1Base(orgId)}/memberships/${membershipId}/delete/`);
 
+// ── PR-165d: User profile (all roles, personal data) ─────────────────────────
+
+export const getUserProfile = () =>
+  client.get('/api/me/user/');
+
+export const updateUserProfile = (data) =>
+  client.patch('/api/me/user/', data);
+
+// ── PR-165d: Staff profile (self-edit) ───────────────────────────────────────
+
+export const getStaffProfile = (orgId) =>
+  client.get(`/api/me/staff-profile/?org_id=${orgId}`);
+
+export const updateStaffProfile = (data) =>
+  client.patch('/api/me/staff-profile/', data);
+
 export const updateAthleteCoach = (orgId, athleteId, coachId) =>
   client.patch(`${p1Base(orgId)}/roster/athletes/${athleteId}/`, { coach_id: coachId });

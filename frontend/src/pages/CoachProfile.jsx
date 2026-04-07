@@ -6,7 +6,7 @@ import {
 import { Person } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { useOrg } from '../context/OrgContext';
-import { getCoachProfile, updateCoachProfile } from '../api/p1';
+import { getCoachProfile, updateCoachProfile, getUserProfile, updateUserProfile } from '../api/p1';
 
 export default function CoachProfile() {
   const { activeOrg } = useOrg();
@@ -17,6 +17,8 @@ export default function CoachProfile() {
   const [error, setError] = useState(null);
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
 
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [bio, setBio] = useState('');
   const [specialties, setSpecialties] = useState('');
   const [certifications, setCertifications] = useState('');
@@ -26,19 +28,25 @@ export default function CoachProfile() {
   const [photoUrl, setPhotoUrl] = useState('');
   const [instagram, setInstagram] = useState('');
 
+  const applyCoachData = (data) => {
+    setBio(data.bio || '');
+    setSpecialties(data.specialties || '');
+    setCertifications(data.certifications || '');
+    setYearsExperience(data.years_experience ?? '');
+    setPhone(data.phone || '');
+    setBirthDate(data.birth_date || '');
+    setPhotoUrl(data.photo_url || '');
+    setInstagram(data.instagram || '');
+  };
+
   useEffect(() => {
     if (!orgId) return;
     setLoading(true);
-    getCoachProfile(orgId)
-      .then((res) => {
-        setBio(res.data.bio || '');
-        setSpecialties(res.data.specialties || '');
-        setCertifications(res.data.certifications || '');
-        setYearsExperience(res.data.years_experience ?? '');
-        setPhone(res.data.phone || '');
-        setBirthDate(res.data.birth_date || '');
-        setPhotoUrl(res.data.photo_url || '');
-        setInstagram(res.data.instagram || '');
+    Promise.all([getCoachProfile(orgId), getUserProfile()])
+      .then(([coachRes, userRes]) => {
+        applyCoachData(coachRes.data);
+        setFirstName(userRes.data.first_name || '');
+        setLastName(userRes.data.last_name || '');
       })
       .catch(() => setError('No se pudo cargar el perfil de coach.'))
       .finally(() => setLoading(false));
@@ -48,17 +56,25 @@ export default function CoachProfile() {
     if (!orgId) return;
     setSaving(true);
     try {
-      await updateCoachProfile({
-        org_id: orgId,
-        bio,
-        specialties,
-        certifications,
-        years_experience: yearsExperience === '' ? 0 : Number(yearsExperience),
-        phone,
-        birth_date: birthDate || null,
-        photo_url: photoUrl,
-        instagram,
-      });
+      await Promise.all([
+        updateCoachProfile({
+          org_id: orgId,
+          bio,
+          specialties,
+          certifications,
+          years_experience: yearsExperience === '' ? 0 : Number(yearsExperience),
+          phone,
+          birth_date: birthDate || null,
+          photo_url: photoUrl,
+          instagram,
+        }),
+        updateUserProfile({ first_name: firstName, last_name: lastName }),
+      ]);
+      // Refetch to confirm persistence (A.4)
+      const [coachRes, userRes] = await Promise.all([getCoachProfile(orgId), getUserProfile()]);
+      applyCoachData(coachRes.data);
+      setFirstName(userRes.data.first_name || '');
+      setLastName(userRes.data.last_name || '');
       setToast({ open: true, message: 'Perfil actualizado correctamente', severity: 'success' });
     } catch {
       setToast({ open: true, message: 'Error al guardar el perfil', severity: 'error' });
@@ -97,6 +113,22 @@ export default function CoachProfile() {
         ) : (
           <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid #e2e8f0' }}>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <TextField
+                  label="Nombre"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  fullWidth
+                  size="small"
+                />
+                <TextField
+                  label="Apellido"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  fullWidth
+                  size="small"
+                />
+              </Box>
               <TextField
                 label="Bio"
                 multiline

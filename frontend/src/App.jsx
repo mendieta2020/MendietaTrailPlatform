@@ -41,6 +41,8 @@ import CoachAthletePMC from './pages/CoachAthletePMC';
 import Plantilla from './pages/Plantilla';
 import CoachProfile from './pages/CoachProfile';
 import StaffProfile from './pages/StaffProfile';
+import OwnerProfile from './pages/OwnerProfile';
+import StaffDashboard from './pages/StaffDashboard';
 
 
 // --- ATHLETE DETAIL REDIRECT: /athletes/:id → /coach/athletes/:id/pmc ---
@@ -56,6 +58,9 @@ const DashboardRouter = () => {
   if (loading || orgLoading) return null;
   if (activeOrg?.role === 'athlete') {
     return <AthleteDashboard user={user} />;
+  }
+  if (activeOrg?.role === 'staff') {
+    return <StaffDashboard />;
   }
   return <Dashboard />;
 };
@@ -315,6 +320,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <StaffProfile />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/owner/profile"
+            element={
+              <ProtectedRoute>
+                <OwnerProfile />
               </ProtectedRoute>
             }
           />

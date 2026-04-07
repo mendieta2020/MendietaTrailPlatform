@@ -1008,6 +1008,17 @@ class CoachPricingPlanDetailView(BillingOrgMixin, APIView):
         if error:
             return error
 
+        from core.models import AthleteSubscription
+        active_count = AthleteSubscription.objects.filter(
+            coach_plan=plan,
+            status=AthleteSubscription.Status.ACTIVE,
+        ).count()
+        if active_count > 0:
+            return Response(
+                {"detail": f"No se puede eliminar: tiene {active_count} atleta(s) suscripto(s). Desactivalo en vez de eliminar."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # Soft-delete: deactivate instead of removing (preserves subscription references)
         plan.is_active = False
         plan.save(update_fields=["is_active", "updated_at"])

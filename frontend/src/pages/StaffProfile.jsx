@@ -6,7 +6,7 @@ import {
 import { Person } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { useOrg } from '../context/OrgContext';
-import client from '../api/client';
+import { getStaffProfile, updateStaffProfile, getUserProfile, updateUserProfile } from '../api/p1';
 
 export default function StaffProfile() {
   const { activeOrg } = useOrg();
@@ -14,8 +14,11 @@ export default function StaffProfile() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
 
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [staffTitle, setStaffTitle] = useState('');
   const [phone, setPhone] = useState('');
   const [birthDate, setBirthDate] = useState('');
@@ -25,19 +28,17 @@ export default function StaffProfile() {
   useEffect(() => {
     if (!orgId) return;
     setLoading(true);
-    client.get(`/api/p1/orgs/${orgId}/memberships/`)
-      .then((res) => {
-        const items = res.data?.results ?? res.data ?? [];
-        const own = items.find((m) => m.is_self);
-        if (own) {
-          setStaffTitle(own.staff_title || '');
-          setPhone(own.phone || '');
-          setBirthDate(own.birth_date || '');
-          setPhotoUrl(own.photo_url || '');
-          setInstagram(own.instagram || '');
-        }
+    Promise.all([getStaffProfile(orgId), getUserProfile()])
+      .then(([staffRes, userRes]) => {
+        setStaffTitle(staffRes.data.staff_title || '');
+        setPhone(staffRes.data.phone || '');
+        setBirthDate(staffRes.data.birth_date || '');
+        setPhotoUrl(staffRes.data.photo_url || '');
+        setInstagram(staffRes.data.instagram || '');
+        setFirstName(userRes.data.first_name || '');
+        setLastName(userRes.data.last_name || '');
       })
-      .catch(() => {})
+      .catch(() => setError('No se pudo cargar el perfil.'))
       .finally(() => setLoading(false));
   }, [orgId]);
 
@@ -45,13 +46,16 @@ export default function StaffProfile() {
     if (!orgId) return;
     setSaving(true);
     try {
-      await client.patch(`/api/p1/orgs/${orgId}/memberships/me/`, {
-        staff_title: staffTitle,
-        phone,
-        birth_date: birthDate || null,
-        photo_url: photoUrl,
-        instagram,
-      });
+      await Promise.all([
+        updateStaffProfile({ org_id: orgId, staff_title: staffTitle, phone, birth_date: birthDate || null, photo_url: photoUrl, instagram }),
+        updateUserProfile({ first_name: firstName, last_name: lastName }),
+      ]);
+      // Refetch to confirm persistence
+      const [staffRes, userRes] = await Promise.all([getStaffProfile(orgId), getUserProfile()]);
+      setStaffTitle(staffRes.data.staff_title || '');
+      setPhone(staffRes.data.phone || '');
+      setFirstName(userRes.data.first_name || '');
+      setLastName(userRes.data.last_name || '');
       setToast({ open: true, message: 'Perfil actualizado correctamente', severity: 'success' });
     } catch {
       setToast({ open: true, message: 'Error al guardar el perfil', severity: 'error' });
@@ -81,6 +85,8 @@ export default function StaffProfile() {
           />
         </Box>
 
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', mt: 6 }}>
             <CircularProgress sx={{ color: '#8b5cf6' }} />
@@ -88,6 +94,22 @@ export default function StaffProfile() {
         ) : (
           <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid #e2e8f0' }}>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <TextField
+                  label="Nombre"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  fullWidth
+                  size="small"
+                />
+                <TextField
+                  label="Apellido"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  fullWidth
+                  size="small"
+                />
+              </Box>
               <TextField
                 label="Cargo / Posición"
                 value={staffTitle}

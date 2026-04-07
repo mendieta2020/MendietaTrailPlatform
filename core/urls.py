@@ -87,7 +87,7 @@ from core.views_athlete import (  # PR-139 / PR-141 / PR-156
     AthleteWeeklySummaryView,
     AthleteWellnessTodayView,
 )
-from core.views_p1_roster import (  # PR-129 / PR-141 / PR-148 / PR-165a / PR-165b / PR-165c
+from core.views_p1_roster import (  # PR-129 / PR-141 / PR-148 / PR-165a / PR-165b / PR-165c / PR-165d
     AthleteCoachAssignmentViewSet,
     AthleteRosterViewSet,
     CoachBriefingView,
@@ -96,6 +96,8 @@ from core.views_p1_roster import (  # PR-129 / PR-141 / PR-148 / PR-165a / PR-16
     DeleteMembershipView,
     MembershipViewSet,
     MyCoachProfileView,
+    MyStaffProfileView,
+    MyUserProfileView,
     MySubscriptionView,
     OrgProfileView,
     TeamInvitationViewSet,
@@ -176,6 +178,12 @@ urlpatterns = [
 
     # PR-165c: Coach profile (self-edit)
     path('me/coach-profile/', MyCoachProfileView.as_view(), name='my-coach-profile'),
+
+    # PR-165d: Personal user profile (all roles)
+    path('me/user/', MyUserProfileView.as_view(), name='my-user-profile'),
+
+    # PR-165d: Staff profile (self-edit)
+    path('me/staff-profile/', MyStaffProfileView.as_view(), name='my-staff-profile'),
 
     # PR-165c: Owner soft-deletes coach/staff from org
     path('p1/orgs/<int:org_id>/memberships/<int:membership_id>/delete/', DeleteMembershipView.as_view(), name='p1-delete-membership'),

@@ -59,6 +59,17 @@ class RegisterView(APIView):
     authentication_classes = []
 
     def post(self, request):
+        email = request.data.get("email", "").strip().lower()
+        if email and User.objects.filter(email__iexact=email).exists():
+            return Response(
+                {
+                    "detail": "Ya existe una cuenta con este email.",
+                    "code": "email_exists",
+                    "action": "login",
+                    "login_url": "/login",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()

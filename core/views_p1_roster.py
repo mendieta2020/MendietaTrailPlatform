@@ -815,17 +815,36 @@ class CoachBriefingView(OrgTenantMixin, APIView):
         week_start = today - datetime.timedelta(days=today.weekday())
         four_days_ago = today - datetime.timedelta(days=4)
 
-        # Total athletes in org visible to the coach (same set as Plantilla roster).
-        athletes_total = Membership.objects.filter(
-            organization=org,
-            role=Membership.Role.ATHLETE,
-            is_active=True,
-        ).count()
+        # A.1 — coach-scoped athlete filter: coaches only see their assigned athletes.
+        # Owners see all athletes in the org (coach_athlete_pks=None means no filter).
+        coach_athlete_pks = None
+        if self.membership.role == "coach":
+            coach_obj = Coach.objects.filter(user=request.user, organization=org).first()
+            if coach_obj:
+                coach_athlete_pks = set(
+                    AthleteCoachAssignment.objects.filter(
+                        organization=org, coach=coach_obj, ended_at__isnull=True
+                    ).values_list("athlete_id", flat=True)
+                )
+            else:
+                coach_athlete_pks = set()
+
+        # Total athletes visible to the requester.
+        if coach_athlete_pks is None:
+            athletes_total = Membership.objects.filter(
+                organization=org, role=Membership.Role.ATHLETE, is_active=True
+            ).count()
+        else:
+            athletes_total = len(coach_athlete_pks)
+
+        # Base queryset for WorkoutAssignment — scoped by coach assignment when applicable.
+        wa_base = WorkoutAssignment.objects.filter(organization=org)
+        if coach_athlete_pks is not None:
+            wa_base = wa_base.filter(athlete_id__in=coach_athlete_pks)
 
         # Athletes who completed at least 1 assignment yesterday.
         athletes_trained_yesterday = (
-            WorkoutAssignment.objects.filter(
-                organization=org,
+            wa_base.filter(
                 scheduled_date=yesterday,
                 status=WorkoutAssignment.Status.COMPLETED,
             )
@@ -836,8 +855,7 @@ class CoachBriefingView(OrgTenantMixin, APIView):
 
         # Athletes with at least 1 blue (≥120% effort) assignment this week.
         athletes_overloaded = (
-            WorkoutAssignment.objects.filter(
-                organization=org,
+            wa_base.filter(
                 scheduled_date__range=(week_start, today),
                 status=WorkoutAssignment.Status.COMPLETED,
                 compliance_color="blue",
@@ -849,17 +867,17 @@ class CoachBriefingView(OrgTenantMixin, APIView):
 
         # Athletes with no COMPLETED assignment in the last 4 days.
         active_4d_ids = set(
-            WorkoutAssignment.objects.filter(
-                organization=org,
+            wa_base.filter(
                 scheduled_date__range=(four_days_ago, today),
                 status=WorkoutAssignment.Status.COMPLETED,
             )
             .values_list("athlete_id", flat=True)
             .distinct()
         )
-        all_athlete_ids = set(
-            Athlete.objects.filter(organization=org, is_active=True).values_list("pk", flat=True)
-        )
+        all_athlete_qs = Athlete.objects.filter(organization=org, is_active=True)
+        if coach_athlete_pks is not None:
+            all_athlete_qs = all_athlete_qs.filter(pk__in=coach_athlete_pks)
+        all_athlete_ids = set(all_athlete_qs.values_list("pk", flat=True))
         athletes_inactive_4d = len(all_athlete_ids - active_4d_ids)
 
         # Unread InternalMessages addressed to the requesting user in this org.
@@ -1257,6 +1275,104 @@ class MyCoachProfileView(APIView):
             },
         )
         return Response({"status": "updated"})
+
+
+# ==============================================================================
+# PR-165d: MyUserProfileView — authenticated user edits their own User record
+# ==============================================================================
+
+class MyUserProfileView(APIView):
+    """
+    GET  /api/me/user/  — Returns first_name, last_name, email for the logged-in user.
+    PATCH /api/me/user/ — Updates first_name and last_name on auth_user.
+
+    Security: always scoped to request.user — no cross-user access possible.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        u = request.user
+        return Response({
+            "first_name": u.first_name or "",
+            "last_name": u.last_name or "",
+            "email": u.email or "",
+        })
+
+    def patch(self, request):
+        u = request.user
+        for field in ["first_name", "last_name"]:
+            if field in request.data:
+                setattr(u, field, (request.data[field] or "").strip())
+        u.save(update_fields=["first_name", "last_name"])
+        return Response({
+            "first_name": u.first_name,
+            "last_name": u.last_name,
+            "email": u.email or "",
+        })
+
+
+# ==============================================================================
+# PR-165d: MyStaffProfileView — staff edits their own Membership profile fields
+# ==============================================================================
+
+class MyStaffProfileView(APIView):
+    """
+    GET  /api/me/staff-profile/?org_id=<id>  — Returns staff profile fields.
+    PATCH /api/me/staff-profile/             — Updates staff_title, phone, birth_date,
+                                               photo_url, instagram. org_id in body.
+
+    Security: caller must have a staff Membership in the given org.
+    Never exposes other members' data.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def _resolve_membership(self, user, org_id):
+        if not org_id:
+            return None
+        return Membership.objects.filter(
+            user=user, organization_id=org_id, role=Membership.Role.STAFF, is_active=True
+        ).first()
+
+    def get(self, request):
+        org_id = request.query_params.get("org_id")
+        m = self._resolve_membership(request.user, org_id)
+        if not m:
+            return Response({"detail": "No sos staff en esta organización."}, status=404)
+        return Response({
+            "staff_title": m.staff_title or "",
+            "phone": m.phone or "",
+            "birth_date": m.birth_date.isoformat() if m.birth_date else None,
+            "photo_url": m.photo_url or "",
+            "instagram": m.instagram or "",
+        })
+
+    def patch(self, request):
+        org_id = request.data.get("org_id") or request.query_params.get("org_id")
+        m = self._resolve_membership(request.user, org_id)
+        if not m:
+            return Response({"detail": "No sos staff en esta organización."}, status=404)
+        for field in ["staff_title", "phone", "birth_date", "photo_url", "instagram"]:
+            if field in request.data:
+                setattr(m, field, request.data[field] or ("" if field != "birth_date" else None))
+        m.save()
+        logger.info(
+            "staff_profile_updated",
+            extra={
+                "organization_id": m.organization_id,
+                "membership_id": m.pk,
+                "user_id": request.user.pk,
+                "outcome": "success",
+            },
+        )
+        return Response({
+            "staff_title": m.staff_title or "",
+            "phone": m.phone or "",
+            "birth_date": m.birth_date.isoformat() if m.birth_date else None,
+            "photo_url": m.photo_url or "",
+            "instagram": m.instagram or "",
+        })
 
 
 # ==============================================================================

@@ -448,8 +448,9 @@ const Finanzas = () => {
       await deleteCoachPricingPlan(planId);
       setPlans(prev => prev.filter(p => p.id !== planId));
       showToast('Plan desactivado.');
-    } catch {
-      showToast('Error al desactivar el plan.', 'error');
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      showToast(detail || 'Error al desactivar el plan.', 'error');
     }
   };
 
