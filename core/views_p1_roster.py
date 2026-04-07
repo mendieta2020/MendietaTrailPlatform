@@ -170,6 +170,18 @@ class AthleteRosterViewSet(OrgTenantMixin, viewsets.ModelViewSet):
         qs = Athlete.objects.filter(organization=self.organization).order_by("id")
         if self.membership.role == "athlete":
             qs = qs.filter(user=self.request.user)
+        elif self.membership.role == "coach":
+            # Group 2 tenancy fix: coaches only see assigned athletes (Law #1)
+            coach_obj = Coach.objects.filter(
+                user=self.request.user, organization=self.organization
+            ).first()
+            if coach_obj:
+                assigned_ids = AthleteCoachAssignment.objects.filter(
+                    coach=coach_obj, organization=self.organization, ended_at__isnull=True
+                ).values_list("athlete_id", flat=True)
+                qs = qs.filter(pk__in=assigned_ids)
+            else:
+                return Athlete.objects.none()
         return qs
 
     def get_serializer_context(self):
@@ -1250,6 +1262,10 @@ class MyCoachProfileView(APIView):
             "specialties": coach.specialties,
             "certifications": coach.certifications,
             "years_experience": coach.years_experience,
+            "phone": coach.phone or "",
+            "birth_date": coach.birth_date.isoformat() if coach.birth_date else None,
+            "photo_url": coach.photo_url or "",
+            "instagram": coach.instagram or "",
         })
 
     def patch(self, request):

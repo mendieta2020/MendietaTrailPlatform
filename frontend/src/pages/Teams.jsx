@@ -102,7 +102,7 @@ const Teams = () => {
       ) : safeTeams.length === 0 ? (
         <Paper sx={{ p: 6, textAlign: 'center', borderRadius: 4, border: '2px dashed #CBD5E1', bgcolor: '#F8FAFC' }}>
           <Groups sx={{ fontSize: 60, color: '#94A3B8', mb: 2 }} />
-          <Typography variant="h6" color="textSecondary" sx={{ fontWeight: 600 }}>No tienes grupos creados</Typography>
+          <Typography variant="h6" color="textSecondary" sx={{ fontWeight: 600 }}>No tenés grupos creados</Typography>
           <Typography variant="body2" color="textSecondary" sx={{ mb: 3, maxWidth: 400, mx: 'auto' }}>
             Crea tu primer grupo (ej: "Inicial Montaña") para asignar planes a múltiples atletas a la vez.
           </Typography>

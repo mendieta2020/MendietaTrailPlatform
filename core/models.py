@@ -4115,3 +4115,59 @@ class AthleteReport(models.Model):
 
     def __str__(self):
         return f"AthleteReport(athlete={self.athlete_user_id}, token={self.token[:8]}...)"
+
+
+# ==============================================================================
+# PR-165e: PasswordResetToken — OWASP-compliant, hashed, single-use
+# ==============================================================================
+
+import secrets
+import hashlib
+
+
+class PasswordResetToken(models.Model):
+    """
+    Hashed, single-use password reset token.
+
+    Security properties (OWASP):
+    - Only the SHA-256 hash is stored — raw token is returned once and discarded.
+    - 1-hour expiration.
+    - Single-use (used_at set on consume).
+    - Anti-enumeration: request endpoint always returns 200.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="password_reset_tokens",
+    )
+    token_hash = models.CharField(max_length=64, unique=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    @classmethod
+    def create_for_user(cls, user):
+        """Generate token; return RAW token to caller (only this once)."""
+        raw_token = secrets.token_urlsafe(48)
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        cls.objects.create(user=user, token_hash=token_hash)
+        return raw_token
+
+    @classmethod
+    def consume(cls, raw_token):
+        """Validate + mark used. Returns User or None."""
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        try:
+            obj = cls.objects.select_related("user").get(
+                token_hash=token_hash, used_at__isnull=True
+            )
+        except cls.DoesNotExist:
+            return None
+        if obj.created_at < timezone.now() - timedelta(hours=1):
+            return None
+        obj.used_at = timezone.now()
+        obj.save(update_fields=["used_at"])
+        return obj.user
+
+    class Meta:
+        ordering = ["-created_at"]

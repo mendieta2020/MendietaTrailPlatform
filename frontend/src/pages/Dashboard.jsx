@@ -190,14 +190,14 @@ const Dashboard = () => {
         borderRadius: 3, px: 3, py: 2,
       }}>
         <Avatar sx={{ bgcolor: '#00D4AA', color: '#0D1117', fontWeight: 800, width: 44, height: 44 }}>
-          {(activeOrg?.name?.[0] ?? 'Q').toUpperCase()}
+          {(activeOrg?.org_name?.[0] ?? 'Q').toUpperCase()}
         </Avatar>
         <Box sx={{ flexGrow: 1 }}>
           <Typography variant="caption" sx={{ color: '#64748b', display: 'block' }}>
             {activeOrg?.role === 'owner' ? 'Organización' : 'Trabajás como coach en'}
           </Typography>
           <Typography variant="h6" sx={{ fontWeight: 700, color: '#0F172A', lineHeight: 1.2 }}>
-            {activeOrg?.name}
+            {activeOrg?.org_name}
           </Typography>
         </Box>
         <Chip
