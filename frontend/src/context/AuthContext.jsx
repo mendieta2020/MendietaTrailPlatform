@@ -49,10 +49,10 @@ export const AuthProvider = ({ children }) => {
         return () => unsub();
     }, []);
 
-    const login = async (username, password) => {
+    const login = async (email, password) => {
         setUser(null);
         try {
-            await loginWithCredentials({ username, password });
+            await loginWithCredentials({ email, password });
 
             const { data } = await fetchSession();
             setUser(data);

@@ -15,7 +15,10 @@ export default function ForgotPassword() {
     setLoading(true);
     setError(null);
     try {
-      await requestPasswordReset(email.trim().toLowerCase());
+      const normalizedEmail = email.trim().toLowerCase();
+      await requestPasswordReset(normalizedEmail);
+      // Store email so ResetPassword can pre-fill the login form after reset
+      sessionStorage.setItem('qtn_reset_email', normalizedEmail);
       setSent(true);
     } catch {
       setError('No se pudo enviar el email. Intentá de nuevo.');

@@ -38,7 +38,12 @@ export default function ResetPassword() {
     setError(null);
     try {
       await confirmPasswordReset(token, password);
-      navigate('/login', { state: { resetSuccess: true } });
+      const storedEmail = sessionStorage.getItem('qtn_reset_email') || '';
+      sessionStorage.removeItem('qtn_reset_email');
+      const dest = storedEmail
+        ? `/login?email=${encodeURIComponent(storedEmail)}`
+        : '/login';
+      navigate(dest, { state: { resetSuccess: true } });
     } catch (err) {
       setError(err?.response?.data?.detail || 'Link inválido o expirado. Pedí un nuevo link.');
     } finally {
