@@ -65,6 +65,17 @@ def create_preapproval_plan(
         headers=headers,
         timeout=10,
     )
+    if not response.ok:
+        logger.error(
+            "mp.preapproval_plan.error",
+            extra={
+                "status_code": response.status_code,
+                "mp_response_body": response.text,
+                "payload_reason": payload.get("reason"),
+                "payload_back_url": payload.get("back_url"),
+                "outcome": "error",
+            },
+        )
     response.raise_for_status()
     result = response.json()
     logger.info(
@@ -106,6 +117,19 @@ def create_coach_athlete_preapproval(
         headers=headers,
         timeout=10,
     )
+    if not response.ok:
+        logger.error(
+            "mp.coach_preapproval.error",
+            extra={
+                "status_code": response.status_code,
+                "mp_response_body": response.text,
+                "mp_plan_id": mp_plan_id,
+                "payload_payer_email": payer_email,
+                "payload_back_url": back_url,
+                "payload_reason": reason,
+                "outcome": "error",
+            },
+        )
     response.raise_for_status()
     result = response.json()
     logger.info(

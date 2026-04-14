@@ -222,6 +222,7 @@ def _create_mp_preapproval(invitation, user_email, coach_plan=None):
                 "organization_id": invitation.organization_id,
                 "invitation_id": invitation.pk,
                 "error_type": type(exc).__name__,
+                "error_message": str(exc),
                 "outcome": "error",
             },
         )
