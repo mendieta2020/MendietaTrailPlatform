@@ -24,6 +24,7 @@ class ThrottlingSecurityTests(APITestCase):
         self.client.defaults["REMOTE_ADDR"] = "203.0.113.10"
         self.user = get_user_model().objects.create_user(
             username="coach",
+            email="coach@test.com",
             password="test-pass-123",
         )
 
@@ -62,13 +63,13 @@ class ThrottlingSecurityTests(APITestCase):
             )
             response_ok = self.client.post(
                 "/api/token/",
-                {"username": "coach", "password": "test-pass-123"},
+                {"email": "coach@test.com", "password": "test-pass-123"},
                 format="json",
                 HTTP_X_FORWARDED_FOR="203.0.113.10",
             )
             response_limited = self.client.post(
                 "/api/token/",
-                {"username": "coach", "password": "test-pass-123"},
+                {"email": "coach@test.com", "password": "test-pass-123"},
                 format="json",
                 HTTP_X_FORWARDED_FOR="203.0.113.10",
             )
