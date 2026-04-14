@@ -3,7 +3,7 @@ import {
     Box, Button, TextField, Typography, Paper, Alert,
 } from '@mui/material';
 import { styled } from '@mui/system';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import QuantorynLogo from '../components/QuantorynLogo';
 
@@ -27,7 +27,12 @@ const LoginPaper = styled(Paper)({
 });
 
 const Login = () => {
-    const [username, setUsername] = useState('');
+    const [searchParams] = useSearchParams();
+    // Pre-fill email from ?email= query param (post password-recovery redirect)
+    const [email, setEmail] = useState(() => {
+        const prefill = searchParams.get('email');
+        return prefill ? decodeURIComponent(prefill) : '';
+    });
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const navigate = useNavigate();
@@ -39,9 +44,9 @@ const Login = () => {
         setError('');
 
         try {
-            const result = await login(username, password);
+            const result = await login(email, password);
             if (!result?.success) {
-                setError(result?.error || '❌ Usuario o contraseña incorrectos.');
+                setError(result?.error || '❌ Email o contraseña incorrectos.');
                 return;
             }
 
@@ -52,7 +57,7 @@ const Login = () => {
 
         } catch (err) {
             console.error(err);
-            setError('❌ Usuario o contraseña incorrectos.');
+            setError('❌ Email o contraseña incorrectos.');
         }
     };
 
@@ -69,16 +74,24 @@ const Login = () => {
                     Coaching Deportivo Basado en Evidencia
                 </Typography>
 
+                {location.state?.resetSuccess && (
+                    <Alert severity="success" sx={{ mb: 2 }}>
+                        ¡Contraseña actualizada! Ingresá con tu nueva contraseña.
+                    </Alert>
+                )}
+
                 <Box component="form" onSubmit={handleLogin}>
                     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
                     <TextField
                         fullWidth
-                        label="Usuario"
+                        label="Email"
+                        type="email"
                         variant="outlined"
                         margin="normal"
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        autoComplete="email"
                     />
                     <TextField
                         fullWidth
@@ -88,6 +101,7 @@ const Login = () => {
                         margin="normal"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
+                        autoComplete="current-password"
                     />
 
                     <Button

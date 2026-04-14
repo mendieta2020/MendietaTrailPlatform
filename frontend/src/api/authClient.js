@@ -2,8 +2,8 @@ import client from './client';
 import { tokenStore } from './tokenStore';
 import { USE_COOKIE_AUTH } from './authMode';
 
-export async function loginWithCredentials({ username, password }) {
-  const response = await client.post('/api/token/', { username, password });
+export async function loginWithCredentials({ email, password }) {
+  const response = await client.post('/api/token/', { email, password });
   tokenStore.setTokens({ access: response.data?.access, refresh: response.data?.refresh });
   return response;
 }

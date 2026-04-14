@@ -626,7 +626,7 @@ class TeamJoinView(APIView):
                     user = existing
                 else:
                     user = User.objects.create_user(
-                        username=f"{email.split('@')[0]}_{uuid.uuid4().hex[:6]}",
+                        username=email,
                         email=email,
                         first_name=first_name,
                         last_name=last_name,
@@ -668,5 +668,21 @@ class TeamJoinView(APIView):
                 "invitation_token": str(inv.token),
             },
         )
+
+        # Send welcome email (fire-and-forget; errors are logged, not raised)
+        if user.email:
+            try:
+                from core.auth_views import _send_welcome_email
+                _send_welcome_email(
+                    to_email=user.email,
+                    first_name=user.first_name or user.email.split("@")[0],
+                    org_name=inv.organization.name,
+                    role=inv.role,
+                )
+            except Exception as _exc:
+                logger.error(
+                    "welcome_email.dispatch_failed",
+                    extra={"user_id": user.id, "exc": str(_exc), "outcome": "error"},
+                )
 
         return Response(_jwt_pair(user), status=status.HTTP_200_OK)

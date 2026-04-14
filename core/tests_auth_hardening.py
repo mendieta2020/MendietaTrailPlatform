@@ -9,6 +9,7 @@ class AuthHardeningTests(APITestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(
             username="coach",
+            email="coach@test.com",
             password="test-pass-123",
         )
 
@@ -23,7 +24,7 @@ class AuthHardeningTests(APITestCase):
     def test_login_sets_cookie_auth_tokens(self):
         response = self.client.post(
             "/api/token/",
-            {"username": "coach", "password": "test-pass-123"},
+            {"email": "coach@test.com", "password": "test-pass-123"},
             format="json",
         )
 
@@ -49,7 +50,7 @@ class AuthHardeningTests(APITestCase):
     def test_refresh_uses_cookie_and_sets_new_access(self):
         login = self.client.post(
             "/api/token/",
-            {"username": "coach", "password": "test-pass-123"},
+            {"email": "coach@test.com", "password": "test-pass-123"},
             format="json",
         )
         self.assertEqual(login.status_code, 200)
@@ -72,7 +73,7 @@ class AuthHardeningTests(APITestCase):
     def test_logout_expires_auth_cookies(self):
         login = self.client.post(
             "/api/token/",
-            {"username": "coach", "password": "test-pass-123"},
+            {"email": "coach@test.com", "password": "test-pass-123"},
             format="json",
         )
         self.client.cookies["mt_access"] = login.cookies["mt_access"].value
@@ -87,7 +88,7 @@ class AuthHardeningTests(APITestCase):
     def test_legacy_login_returns_tokens_without_cookies(self):
         response = self.client.post(
             "/api/token/",
-            {"username": "coach", "password": "test-pass-123"},
+            {"email": "coach@test.com", "password": "test-pass-123"},
             format="json",
         )
 
@@ -111,9 +112,14 @@ class SessionStatusMembershipsTests(APITestCase):
     SESSION_URL = "/api/auth/session/"
 
     def _login(self, user, password="pass-123"):
+        # Ensure user has an email for the email-based login endpoint.
+        # Tests that create users without email get a deterministic fallback.
+        if not user.email:
+            user.email = f"{user.username}@test.local"
+            user.save(update_fields=["email"])
         response = self.client.post(
             "/api/token/",
-            {"username": user.username, "password": password},
+            {"email": user.email, "password": password},
             format="json",
         )
         self.assertEqual(response.status_code, 200)

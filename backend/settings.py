@@ -80,6 +80,8 @@ CSRF_COOKIE_SECURE = COOKIE_AUTH_SECURE
 CSRF_COOKIE_SAMESITE = COOKIE_AUTH_SAMESITE
 CSRF_COOKIE_DOMAIN = COOKIE_AUTH_DOMAIN
 SESSION_COOKIE_SECURE = COOKIE_AUTH_SECURE  # W012: required by check --deploy
+SESSION_COOKIE_AGE = 2592000           # 30 days — session survives browser close
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False  # persist session even when browser closes
 
 # --- CONFIGURACIÓN DE HOSTS (Ngrok Ready) ---
 if DEBUG:

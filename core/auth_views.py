@@ -1,13 +1,19 @@
 from django.conf import settings
+from django.contrib.auth import authenticate as _django_authenticate
+from django.contrib.auth import get_user_model as _get_user_model_early
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import ensure_csrf_cookie
+from rest_framework import serializers as _drf_serializers
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
 from rest_framework.views import APIView
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from core.models import Membership
+
+_EarlyUser = _get_user_model_early()
 
 
 def _get_lifetime_seconds(lifetime):
@@ -66,9 +72,56 @@ def _clear_auth_cookies(response):
     )
 
 
+class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """
+    Drop-in replacement for SimpleJWT's default serializer.
+
+    Accepts ``email`` + ``password`` instead of ``username`` + ``password``.
+    Looks up the user by email, authenticates with Django's ModelBackend
+    (which requires the opaque ``username``), then issues the token pair.
+
+    Backward compat: Fernando's account (and any legacy username-based accounts)
+    continue to work because the lookup is done via email — the stored username
+    is never exposed to the caller.
+    """
+    username_field = "email"
+
+    def validate(self, attrs):
+        email = attrs.get("email", "").strip().lower()
+        password = attrs.get("password", "")
+
+        # 1. Look up user by email
+        try:
+            user_obj = _EarlyUser.objects.get(email__iexact=email)
+        except _EarlyUser.DoesNotExist:
+            raise _drf_serializers.ValidationError(
+                {"detail": "No active account found with the given credentials"}
+            )
+
+        # 2. Authenticate via Django backend (requires username, not email)
+        user = _django_authenticate(
+            request=self.context.get("request"),
+            username=user_obj.username,
+            password=password,
+        )
+        if user is None or not user.is_active:
+            raise _drf_serializers.ValidationError(
+                {"detail": "No active account found with the given credentials"}
+            )
+
+        # 3. Issue JWT pair
+        self.user = user
+        refresh = self.get_token(user)
+        return {
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+        }
+
+
 class CookieTokenObtainPairView(TokenObtainPairView):
     permission_classes = [AllowAny]
     throttle_classes = api_settings.DEFAULT_THROTTLE_CLASSES
+    serializer_class = EmailTokenObtainPairSerializer
 
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
@@ -198,6 +251,57 @@ def _build_reset_html(name, reset_url):
 <p style="font-size:14px;color:#6B7280;">⏱️ Este enlace expira en 1 hora.</p>
 <hr style="border:none;border-top:1px solid #E5E7EB;margin:24px 0;">
 <p style="font-size:13px;color:#9CA3AF;">Si no fuiste vos quien pidió esto, ignorá este email. Tu contraseña sigue igual.</p>
+<p style="font-size:13px;color:#9CA3AF;">— Equipo Quantoryn</p>
+</body></html>"""
+
+
+def _send_welcome_email(to_email, first_name, org_name, role):
+    """Send post-registration welcome email via Resend if configured, else console."""
+    role_labels = {
+        "athlete": "atleta",
+        "coach": "coach",
+        "owner": "administrador",
+        "staff": "staff",
+    }
+    role_label = role_labels.get(role, role)
+    subject = f"¡Bienvenido a {org_name}!"
+    html_body = _build_welcome_html(first_name, org_name, role_label)
+
+    if _settings.RESEND_API_KEY:
+        try:
+            import resend
+            resend.api_key = _settings.RESEND_API_KEY
+            resend.Emails.send({
+                "from": _settings.DEFAULT_FROM_EMAIL,
+                "to": [to_email],
+                "subject": subject,
+                "html": html_body,
+            })
+        except Exception as exc:
+            _logger.error("welcome_email.send_failed", extra={"exc": str(exc), "outcome": "error"})
+    else:
+        print(f"\n[DEV] WELCOME EMAIL for {to_email} ({org_name}):\n{subject}\n")
+
+
+def _build_welcome_html(first_name, org_name, role_label):
+    return f"""<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="font-family:-apple-system,sans-serif;max-width:500px;margin:40px auto;padding:20px;color:#1F2937;">
+<h1 style="color:#00D4AA;font-size:22px;">¡Hola {first_name}!</h1>
+<p style="font-size:16px;line-height:1.5;">
+  Ya estás dentro de <strong>{org_name}</strong> como <strong>{role_label}</strong>.
+  Tu equipo ya puede verte.
+</p>
+<p style="font-size:16px;line-height:1.5;">
+  Conectá tu dispositivo para que tus actividades se sincronicen automáticamente y
+  tu coach pueda ver tu progreso en tiempo real.
+</p>
+<div style="margin:32px 0;text-align:center;">
+  <a href="https://app.quantoryn.com/dashboard"
+     style="background:#00D4AA;color:white;padding:16px 32px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block;">
+    Ir a mi dashboard
+  </a>
+</div>
+<hr style="border:none;border-top:1px solid #E5E7EB;margin:24px 0;">
 <p style="font-size:13px;color:#9CA3AF;">— Equipo Quantoryn</p>
 </body></html>"""
 
