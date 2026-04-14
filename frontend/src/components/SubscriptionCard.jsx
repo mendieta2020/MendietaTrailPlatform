@@ -33,8 +33,30 @@ function formatDate(iso) {
 export default function SubscriptionCard({ subscription, orgName, onUpdatePayment }) {
   if (!subscription) return null;
 
-  const { status, plan_name, plan_price, next_payment_at, mp_preapproval_id } = subscription;
-  const colors = STATUS_COLOR[status] || STATUS_COLOR.pending;
+  const { status, plan_name, plan_price, next_payment_at, mp_preapproval_id, trial_ends_at } = subscription;
+
+  // BUG-9 fix: determine trial state so we don't pressure day-1 users with "Actualizar pago"
+  const now = new Date();
+  const trialEnd = trial_ends_at ? new Date(trial_ends_at) : null;
+  const trialActive = trialEnd && trialEnd > now;
+  const trialDaysLeft = trialActive
+    ? Math.ceil((trialEnd - now) / (1000 * 60 * 60 * 24))
+    : 0;
+
+  // Effective status for display: show trial state instead of "pending" while trial is active
+  const displayStatus = (status === 'pending' && trialActive) ? 'trial' : status;
+  const trialStatusLabel =
+    trialDaysLeft >= 5 ? `Trial activo — ${trialDaysLeft} días` :
+    trialDaysLeft >= 3 ? 'Trial termina pronto' :
+    trialDaysLeft >= 1 ? 'Último día de trial' :
+    STATUS_LABEL[status] || status;
+  const trialStatusColors =
+    trialDaysLeft >= 5 ? { bg: '#DCFCE7', text: '#166534' } :
+    trialDaysLeft >= 3 ? { bg: '#FEF3C7', text: '#92400E' } :
+    { bg: '#FEE2E2', text: '#991B1B' };
+
+  const colors = displayStatus === 'trial' ? trialStatusColors : (STATUS_COLOR[status] || STATUS_COLOR.pending);
+  const statusLabel = displayStatus === 'trial' ? trialStatusLabel : (STATUS_LABEL[status] || status);
   const nextPayment = formatDate(next_payment_at);
 
   const handleUpdatePayment = () => {
@@ -73,7 +95,7 @@ export default function SubscriptionCard({ subscription, orgName, onUpdatePaymen
               <Typography component="span" variant="caption" sx={{ color: '#94A3B8' }}>/mes</Typography>
             </Typography>
             <Chip
-              label={STATUS_LABEL[status] || status}
+              label={statusLabel}
               size="small"
               sx={{ bgcolor: colors.bg, color: colors.text, fontWeight: 600, height: 20, fontSize: '0.7rem', mt: 0.25 }}
             />
@@ -94,7 +116,49 @@ export default function SubscriptionCard({ subscription, orgName, onUpdatePaymen
               </Typography>
             )}
           </Box>
-          {(status === 'overdue' || status === 'pending') && (
+          {/* Don't show payment CTA while trial is active (≥ 5 days) — BUG-9 fix */}
+          {status === 'overdue' && (
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={handleUpdatePayment}
+              sx={{
+                color: '#F59E0B', borderColor: '#F59E0B', textTransform: 'none',
+                fontWeight: 600, fontSize: '0.75rem',
+                '&:hover': { borderColor: '#D97706', bgcolor: 'rgba(245,158,11,0.04)' },
+              }}
+            >
+              Actualizar pago
+            </Button>
+          )}
+          {status === 'pending' && trialActive && trialDaysLeft >= 3 && trialDaysLeft < 5 && (
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={handleUpdatePayment}
+              sx={{
+                color: '#F59E0B', borderColor: '#F59E0B', textTransform: 'none',
+                fontWeight: 600, fontSize: '0.75rem',
+                '&:hover': { borderColor: '#D97706', bgcolor: 'rgba(245,158,11,0.04)' },
+              }}
+            >
+              Ver planes
+            </Button>
+          )}
+          {status === 'pending' && trialActive && trialDaysLeft < 3 && (
+            <Button
+              size="small"
+              variant="contained"
+              onClick={handleUpdatePayment}
+              sx={{
+                bgcolor: '#EF4444', '&:hover': { bgcolor: '#DC2626' }, textTransform: 'none',
+                fontWeight: 600, fontSize: '0.75rem',
+              }}
+            >
+              Activar plan →
+            </Button>
+          )}
+          {status === 'pending' && !trialActive && (
             <Button
               size="small"
               variant="outlined"
