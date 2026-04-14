@@ -191,7 +191,7 @@ def _create_mp_preapproval(invitation, user_email, coach_plan=None):
                 f"Quantoryn {plan.name} "
                 f"— {invitation.organization.name}"
             ),
-            back_url=f"{frontend_url}/invite/{invitation.token}/callback",
+            back_url=f"{frontend_url}/payment/callback",
         )
     except Exception as exc:
         logger.error(

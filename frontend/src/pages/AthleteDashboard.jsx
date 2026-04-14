@@ -726,6 +726,14 @@ const AthleteDashboard = ({ user }) => {
             <CoachPlanCard
               subscription={mySubWithCoach.subscription}
               orgName={mySubWithCoach.organization?.name}
+              onUpdatePayment={async () => {
+                try {
+                  const { getPaymentLink } = await import('../api/athlete');
+                  const { data } = await getPaymentLink();
+                  if (data.init_point) { window.location.href = data.init_point; return; }
+                } catch { /* fall through */ }
+                window.alert('Contactá a tu coach para activar tu plan.');
+              }}
             />
           ) : (
             /* ── PR-150 fallback: original inline subscription widget ── */

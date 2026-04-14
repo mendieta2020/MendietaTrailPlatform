@@ -44,6 +44,7 @@ import StaffProfile from './pages/StaffProfile';
 import StaffDashboard from './pages/StaffDashboard';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import PaymentCallback from './pages/PaymentCallback';
 
 
 // --- ATHLETE DETAIL REDIRECT: /athletes/:id → /coach/athletes/:id/pmc ---
@@ -120,6 +121,7 @@ function App() {
           <Route path="/invite/:token" element={<InvitePage />} />
           <Route path="/join/:slug" element={<JoinPage />} />
           <Route path="/join/team/:token" element={<JoinTeamPage />} />
+          <Route path="/payment/callback" element={<PaymentCallback />} />
 
           {/* --- RUTAS PRIVADAS (ÁREA SEGURA) --- */}
 
