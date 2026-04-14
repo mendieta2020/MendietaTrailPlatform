@@ -30,7 +30,6 @@ from analytics.health_views import (
     healthz_strava,
 )
 from core.views_reports import public_report_view  # PR-154
-from core.views_cleanup_dryrun import cleanup_dryrun_view, cleanup_execute_view  # ONE-SHOT — delete after use
 
 # Configuración de la vista de documentación API
 schema_view = get_schema_view(
@@ -46,10 +45,6 @@ schema_view = get_schema_view(
 )
 
 urlpatterns = [
-    # ONE-SHOT endpoints — DELETE after use
-    path('ops/cleanup-dryrun/', cleanup_dryrun_view, name='cleanup_dryrun'),
-    path('ops/cleanup-execute/', cleanup_execute_view, name='cleanup_execute'),
-
     # 0. Landing institucional (sin auth, sin datos privados) — PR16
     path('', landing, name='landing'),
 
