@@ -1,11 +1,14 @@
 """
-ONE-SHOT temporary endpoint — cleanup dry-run viewer.
+ONE-SHOT temporary endpoints — cleanup dry-run + real execute.
 
 DELETE THIS FILE immediately after use.
 
-Security: protected by a long opaque token in the query string.
-Usage: GET /ops/cleanup-dryrun/?token=mtp-xK9pQ3vR7wZ2sL8nF5hD4bY1
-Returns: text/plain output of `cleanup_prelaunch` in dry-run mode.
+Security: both endpoints require token=mtp-xK9pQ3vR7wZ2sL8nF5hD4bY1
+Execute endpoint also requires confirm=yes.
+
+Usage:
+  GET /ops/cleanup-dryrun/?token=mtp-xK9pQ3vR7wZ2sL8nF5hD4bY1
+  GET /ops/cleanup-execute/?token=mtp-xK9pQ3vR7wZ2sL8nF5hD4bY1&confirm=yes
 """
 
 import io
@@ -15,7 +18,6 @@ from django.http import HttpResponse, HttpResponseForbidden
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
 
-# Change this token before deploying if you want extra security.
 _VALID_TOKEN = "mtp-xK9pQ3vR7wZ2sL8nF5hD4bY1"
 
 
@@ -32,5 +34,25 @@ def cleanup_dryrun_view(request):
     except Exception as exc:
         buf.write(f"\n\nERROR: {exc}\n")
 
-    output = buf.getvalue()
-    return HttpResponse(output, content_type="text/plain; charset=utf-8")
+    return HttpResponse(buf.getvalue(), content_type="text/plain; charset=utf-8")
+
+
+@csrf_exempt
+@require_GET
+def cleanup_execute_view(request):
+    token = request.GET.get("token", "")
+    confirm = request.GET.get("confirm", "")
+
+    if token != _VALID_TOKEN:
+        return HttpResponseForbidden("Invalid or missing token.")
+
+    if confirm != "yes":
+        return HttpResponseForbidden("Missing confirm=yes parameter.")
+
+    buf = io.StringIO()
+    try:
+        call_command("cleanup_prelaunch", no_dry_run=True, force=True, stdout=buf, stderr=buf)
+    except Exception as exc:
+        buf.write(f"\n\nERROR: {exc}\n")
+
+    return HttpResponse(buf.getvalue(), content_type="text/plain; charset=utf-8")
