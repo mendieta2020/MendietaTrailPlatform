@@ -50,10 +50,13 @@ def process_athlete_subscription_webhook(payload: dict) -> dict:
     if sub.status == new_status:
         return {"outcome": "noop", "preapproval_id": preapproval_id}
 
+    from datetime import timedelta
     sub.status = new_status
     if new_status == "active":
-        sub.last_payment_at = timezone.now()
-    sub.save(update_fields=["status", "last_payment_at", "updated_at"])
+        now = timezone.now()
+        sub.last_payment_at = now
+        sub.next_payment_at = now + timedelta(days=30)
+    sub.save(update_fields=["status", "last_payment_at", "next_payment_at", "updated_at"])
 
     logger.info(
         "athlete_subscription_updated",
