@@ -1,6 +1,7 @@
 import logging
+import requests as _requests
 from django.conf import settings
-from .client import mp_get, mp_post, mp_put
+from .client import mp_get, mp_post, mp_put, MP_API_BASE
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,53 @@ def create_subscription(mp_plan_id: str, payer_email: str, reason: str) -> dict:
         extra={
             "mp_plan_id": mp_plan_id,
             "preapproval_id": result.get("id"),
+            "outcome": "created",
+        },
+    )
+    return result
+
+
+def create_preapproval_plan(
+    access_token: str,
+    name: str,
+    price_ars,
+    back_url: str = "",
+) -> dict:
+    """
+    Creates a MercadoPago preapproval_plan in the coach's account (using their access_token).
+    Called lazily the first time an athlete attempts to pay for a plan that has no mp_plan_id.
+    Law 6: access_token never logged.
+    """
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "reason": name,
+        "auto_recurring": {
+            "frequency": 1,
+            "frequency_type": "months",
+            "transaction_amount": float(price_ars),
+            "currency_id": "ARS",
+        },
+        "back_url": back_url,
+        "payment_methods_allowed": {
+            "payment_types": [{"id": "credit_card"}, {"id": "debit_card"}],
+        },
+        "status": "active",
+    }
+    response = _requests.post(
+        f"{MP_API_BASE}/preapproval_plan",
+        json=payload,
+        headers=headers,
+        timeout=10,
+    )
+    response.raise_for_status()
+    result = response.json()
+    logger.info(
+        "mp.preapproval_plan.created",
+        extra={
+            "plan_id": result.get("id"),
             "outcome": "created",
         },
     )
@@ -52,7 +100,6 @@ def create_coach_athlete_preapproval(
         "back_url": back_url,
         "status": "pending",
     }
-    import requests as _requests
     response = _requests.post(
         f"{MP_API_BASE}/preapproval",
         json=payload,

@@ -172,15 +172,37 @@ def _create_mp_preapproval(invitation, user_email, coach_plan=None):
             status=status.HTTP_402_PAYMENT_REQUIRED,
         )
 
-    if not plan.mp_plan_id:
-        return None, Response(
-            {"detail": "El plan del coach no está configurado en MercadoPago."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
     frontend_url = getattr(
         django_settings, "FRONTEND_URL", "http://localhost:3000"
     )
+
+    if not plan.mp_plan_id:
+        # Lazy creation: the coach's plan hasn't been registered in MP yet.
+        # Create the preapproval_plan now using the coach's access_token.
+        from integrations.mercadopago.subscriptions import create_preapproval_plan
+        try:
+            mp_plan = create_preapproval_plan(
+                access_token=cred.access_token,
+                name=plan.name,
+                price_ars=plan.price_ars,
+                back_url=f"{frontend_url}/payment/callback",
+            )
+            plan.mp_plan_id = mp_plan["id"]
+            plan.save(update_fields=["mp_plan_id", "updated_at"])
+        except Exception as exc:
+            logger.error(
+                "onboarding.mp_plan_create_error",
+                extra={
+                    "organization_id": invitation.organization_id,
+                    "plan_id": plan.pk,
+                    "error_type": type(exc).__name__,
+                    "outcome": "error",
+                },
+            )
+            return None, Response(
+                {"detail": "Error al configurar el plan en MercadoPago."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
 
     try:
         mp_data = create_coach_athlete_preapproval(
