@@ -167,11 +167,18 @@ class AthleteRosterViewSet(OrgTenantMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         if not getattr(self, "organization", None):
             return Athlete.objects.none()
-        qs = Athlete.objects.filter(organization=self.organization).order_by("id")
+        qs = (
+            Athlete.objects
+            .filter(organization=self.organization)
+            .select_related("user", "coach__user")
+            .order_by("id")
+        )
         if self.membership.role == "athlete":
             qs = qs.filter(user=self.request.user)
         elif self.membership.role == "coach":
-            # Group 2 tenancy fix: coaches only see assigned athletes (Law #1)
+            # BUG-12 fix: a coach sees athletes linked via AthleteCoachAssignment
+            # OR via the direct Athlete.coach FK (set by the Owner's "assign coach" modal).
+            from django.db.models import Q  # noqa: PLC0415
             coach_obj = Coach.objects.filter(
                 user=self.request.user, organization=self.organization
             ).first()
@@ -179,7 +186,7 @@ class AthleteRosterViewSet(OrgTenantMixin, viewsets.ModelViewSet):
                 assigned_ids = AthleteCoachAssignment.objects.filter(
                     coach=coach_obj, organization=self.organization, ended_at__isnull=True
                 ).values_list("athlete_id", flat=True)
-                qs = qs.filter(pk__in=assigned_ids)
+                qs = qs.filter(Q(pk__in=assigned_ids) | Q(coach=coach_obj))
             else:
                 return Athlete.objects.none()
         return qs

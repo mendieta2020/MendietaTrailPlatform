@@ -85,16 +85,14 @@ const AthleteLayout = ({ children, user }) => {
   const handleOpenMessages = () => {
     setOpenMessages(true);
     const unread = messages.filter((m) => !m.read_at);
+    if (unread.length === 0) return;
+    // BUG-7 fix: reset badge immediately (optimistic) before API round-trips complete.
+    const now = new Date().toISOString();
+    setMessages((prev) =>
+      prev.map((m) => (!m.read_at ? { ...m, read_at: now } : m))
+    );
     unread.forEach((m) => {
-      markMessageRead(orgId, m.id)
-        .then(() => {
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === m.id ? { ...msg, read_at: new Date().toISOString() } : msg
-            )
-          );
-        })
-        .catch(() => {});
+      markMessageRead(orgId, m.id).catch(() => {});
     });
   };
 

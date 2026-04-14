@@ -249,13 +249,14 @@ def _build_narratives(ramp_rate_7d, acwr, compliance_pct, readiness_score):
                 f"⚠️ Compliance {compliance_pct}% — baja adherencia al plan. Hablar con tu coach."
             )
 
-    # Readiness
-    if readiness_score <= 25:
-        narratives.append("🔴 Readiness bajo — recuperación recomendada antes de sesiones intensas.")
-    elif readiness_score <= 50:
-        narratives.append("🟡 Readiness moderado — entrenar con precaución.")
-    elif readiness_score >= 75:
-        narratives.append("🟢 Readiness alto — listo para entrenar fuerte.")
+    # Readiness — may be None when athlete has no data yet (BUG-8 fix)
+    if readiness_score is not None:
+        if readiness_score <= 25:
+            narratives.append("🔴 Readiness bajo — recuperación recomendada antes de sesiones intensas.")
+        elif readiness_score <= 50:
+            narratives.append("🟡 Readiness moderado — entrenar con precaución.")
+        elif readiness_score >= 75:
+            narratives.append("🟢 Readiness alto — listo para entrenar fuerte.")
 
     return narratives
 

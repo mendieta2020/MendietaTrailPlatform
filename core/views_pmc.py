@@ -232,18 +232,17 @@ def _validate_days(request) -> int:
     return days
 
 
-def _compute_readiness(athlete_user, org, current_tsb: float) -> tuple[int, str, str]:
+def _compute_readiness(athlete_user, org, current_tsb: float) -> tuple:
     """
     Compute a 0-100 readiness score combining load (TSB) and latest wellness check-in.
 
-    Returns (score, label, recommendation). Defaults to neutral (50) when no wellness data exists.
+    Returns (score, label, recommendation).
+    Returns (None, None, None) when neither wellness check-in nor activity load exists,
+    so the UI can show an "add your first check-in" prompt instead of a misleading 50/100.
     """
-    # Load component: map TSB from [-30, +30] → [0, 100]
-    tsb_clamped = max(-30.0, min(30.0, float(current_tsb or 0)))
-    load_score = ((tsb_clamped + 30) / 60) * 100
-
     # Wellness component: latest check-in average (1-5) scaled to 0-100
-    wellness_score = 50.0  # neutral default
+    wellness_score = None  # None = no data yet
+    has_checkin = False
     athlete_obj = Athlete.objects.filter(user=athlete_user, organization=org).first()
     if athlete_obj:
         checkin = (
@@ -253,11 +252,26 @@ def _compute_readiness(athlete_user, org, current_tsb: float) -> tuple[int, str,
             .first()
         )
         if checkin:
+            has_checkin = True
             avg = (
                 checkin.sleep_quality + checkin.mood + checkin.energy
                 + checkin.muscle_soreness + checkin.stress
             ) / 5.0
             wellness_score = avg * 20.0  # scale 1-5 → 20-100
+
+    # BUG-8 fix: TSB = 0.0 means no activities have been processed yet.
+    has_load_data = bool(current_tsb)
+
+    if not has_checkin and not has_load_data:
+        # No data at all — return None so the UI shows an onboarding prompt.
+        return None, None, None
+
+    if wellness_score is None:
+        wellness_score = 50.0  # neutral fallback when we have load but no wellness
+
+    # Load component: map TSB from [-30, +30] → [0, 100]
+    tsb_clamped = max(-30.0, min(30.0, float(current_tsb or 0)))
+    load_score = ((tsb_clamped + 30) / 60) * 100
 
     score = int(round(wellness_score * 0.5 + load_score * 0.5))
     score = max(0, min(100, score))

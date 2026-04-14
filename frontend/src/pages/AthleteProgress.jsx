@@ -176,10 +176,11 @@ const AthleteProgress = () => {
   }, [])
 
   const current = pmcData?.current ?? {}
-  const readinessScore = current.readiness_score ?? 0
+  // BUG-8 fix: readiness_score may be null when athlete has no check-in + no activities
+  const readinessScore = current.readiness_score ?? null
   const readinessLabel = current.readiness_label ?? ''
   const readinessRec = current.readiness_recommendation ?? ''
-  const colors = readinessColors(readinessScore)
+  const colors = readinessColors(readinessScore ?? 50)
   const hasData = pmcData?.days?.length > 0
 
   // Trend text for PMC chart
@@ -212,24 +213,29 @@ const AthleteProgress = () => {
             <div className="h-5 w-28 bg-slate-200 rounded mx-auto" />
           </div>
         ) : (
-          <div className={`rounded-2xl border p-5 sm:p-8 text-center ${colors.bg} ${colors.border}`}>
+          <div className={`rounded-2xl border p-5 sm:p-8 text-center ${readinessScore !== null ? colors.bg : 'bg-slate-50'} ${readinessScore !== null ? colors.border : 'border-slate-200'}`}>
             <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">¿CÓMO ESTÁS HOY?</p>
-            <p className="text-6xl font-bold text-slate-800 mb-3">{readinessScore}<span className="text-2xl text-slate-400 font-normal"> / 100</span></p>
-            <div className="w-64 mx-auto mb-3">
-              <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
-                <div className={`h-2 rounded-full transition-all duration-500 ${colors.bar}`} style={{ width: `${readinessScore}%` }} />
-              </div>
-            </div>
-            {readinessLabel && (
-              <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold mb-2 ${colors.chip}`}>
-                {readinessLabel}
-              </span>
-            )}
-            {readinessRec && (
-              <p className="text-sm text-slate-600 mt-1">{readinessRec}</p>
-            )}
-            {!hasData && !loadingPMC && (
-              <p className="text-xs text-slate-400 mt-2">Conectá tu dispositivo para mejorar la precisión</p>
+            {readinessScore !== null ? (
+              <>
+                <p className="text-6xl font-bold text-slate-800 mb-3">{readinessScore}<span className="text-2xl text-slate-400 font-normal"> / 100</span></p>
+                <div className="w-64 mx-auto mb-3">
+                  <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                    <div className={`h-2 rounded-full transition-all duration-500 ${colors.bar}`} style={{ width: `${readinessScore}%` }} />
+                  </div>
+                </div>
+                {readinessLabel && (
+                  <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold mb-2 ${colors.chip}`}>
+                    {readinessLabel}
+                  </span>
+                )}
+                {readinessRec && (
+                  <p className="text-sm text-slate-600 mt-1">{readinessRec}</p>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-slate-500 mt-2">
+                Completá tu check-in diario para calcular tu Readiness
+              </p>
             )}
           </div>
         )}

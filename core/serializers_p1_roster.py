@@ -115,6 +115,7 @@ class AthleteRosterSerializer(serializers.ModelSerializer):
     first_name = serializers.SerializerMethodField()
     last_name = serializers.SerializerMethodField()
     email = serializers.SerializerMethodField()
+    coach_name = serializers.SerializerMethodField()
     devices = serializers.SerializerMethodField()
     membership_id = serializers.SerializerMethodField()
 
@@ -126,6 +127,17 @@ class AthleteRosterSerializer(serializers.ModelSerializer):
 
     def get_email(self, obj):
         return obj.user.email if obj.user_id else ""
+
+    def get_coach_name(self, obj):
+        """BUG-13 fix: return coach's full name so the UI doesn't fall back to 'Coach #N'."""
+        if not obj.coach_id:
+            return None
+        try:
+            u = obj.coach.user
+            name = f"{u.first_name} {u.last_name}".strip()
+            return name or u.email or None
+        except Exception:
+            return None
 
     def get_devices(self, obj):
         """Return up to 2 connected providers for this athlete (org-scoped via alumno)."""
@@ -172,6 +184,7 @@ class AthleteRosterSerializer(serializers.ModelSerializer):
             "last_name",
             "email",
             "coach_id",
+            "coach_name",
             "team_id",
             "notes",
             "is_active",
