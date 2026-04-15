@@ -164,6 +164,34 @@ def create_coach_athlete_preapproval(
     return result
 
 
+def get_preapproval_plan(access_token: str, plan_id: str) -> dict:
+    """
+    GET /preapproval_plan/{plan_id} using the coach's access_token.
+    Returns the plan object, which includes init_point (checkout URL).
+    """
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+    response = _requests.get(
+        f"{MP_API_BASE}/preapproval_plan/{plan_id}",
+        headers=headers,
+        timeout=10,
+    )
+    if not response.ok:
+        logger.error(
+            "mp.preapproval_plan.get_error",
+            extra={
+                "plan_id": plan_id,
+                "status_code": response.status_code,
+                "mp_response_body": response.text,
+                "outcome": "error",
+            },
+        )
+    response.raise_for_status()
+    return response.json()
+
+
 def get_subscription(preapproval_id: str) -> dict:
     return mp_get(f"/preapproval/{preapproval_id}")
 

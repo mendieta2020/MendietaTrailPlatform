@@ -166,13 +166,12 @@ def test_payment_link_requires_auth():
 # ─── Test 5: back_url uses /payment/callback ────────────────────────────────
 
 @pytest.mark.django_db
-def test_create_mp_preapproval_back_url_is_payment_callback(org_with_mp):
+def test_create_mp_preapproval_returns_init_point_from_plan(org_with_mp):
     """
-    _create_mp_preapproval sends back_url = {FRONTEND_URL}/payment/callback,
-    not /invite/{token}/callback.
+    _create_mp_preapproval now returns init_point from the preapproval_plan (GET),
+    instead of creating a /preapproval (which requires card_token_id).
     """
-    from unittest.mock import MagicMock
-    from core.models import AthleteInvitation, Membership
+    from core.models import AthleteInvitation
     import uuid as _uuid
 
     org, owner, plan = org_with_mp
@@ -186,25 +185,22 @@ def test_create_mp_preapproval_back_url_is_payment_callback(org_with_mp):
         expires_at=_tz.now() + _td(days=30),
     )
 
-    captured_back_url = {}
-
-    def fake_create_preapproval(access_token, mp_plan_id, payer_email, reason, back_url=""):
-        captured_back_url["value"] = back_url
+    def fake_get_plan(access_token, plan_id):
         return {
-            "id": "fake_preapproval_id",
-            "init_point": "https://mp.com/fake",
-            "status": "pending",
+            "id": plan_id,
+            "init_point": "https://mp.com/checkout/plan",
+            "status": "active",
         }
 
     with patch(
-        "integrations.mercadopago.subscriptions.create_coach_athlete_preapproval",
-        side_effect=fake_create_preapproval,
+        "integrations.mercadopago.subscriptions.get_preapproval_plan",
+        side_effect=fake_get_plan,
     ):
         from core.views_onboarding import _create_mp_preapproval
         mp_data, error = _create_mp_preapproval(invitation, "invited@test.com", coach_plan=plan)
 
     assert error is None
     assert mp_data is not None
-    assert "/payment/callback" in captured_back_url["value"]
-    # Must NOT contain the invitation token
-    assert str(invitation.token) not in captured_back_url["value"]
+    assert mp_data.get("init_point") == "https://mp.com/checkout/plan"
+    # No preapproval_id — it will arrive via webhook when athlete pays
+    assert mp_data.get("id") is None

@@ -150,10 +150,6 @@ def _create_mp_preapproval(invitation, user_email, coach_plan=None):
     Returns (mp_data, error_response). On success error_response is None.
     coach_plan can be passed explicitly (athlete-selected) or read from invitation.
     """
-    from integrations.mercadopago.subscriptions import (
-        create_coach_athlete_preapproval,
-    )
-
     plan = coach_plan or invitation.coach_plan
     if not plan:
         return None, Response(
@@ -203,35 +199,48 @@ def _create_mp_preapproval(invitation, user_email, coach_plan=None):
                 {"detail": "Error al configurar el plan en MercadoPago."},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
+        init_point = mp_plan.get("init_point")
+    else:
+        # Plan already exists in MP — fetch it to get the init_point (checkout URL).
+        from integrations.mercadopago.subscriptions import get_preapproval_plan
+        try:
+            mp_plan = get_preapproval_plan(
+                access_token=cred.access_token,
+                plan_id=plan.mp_plan_id,
+            )
+            init_point = mp_plan.get("init_point")
+        except Exception as exc:
+            logger.error(
+                "onboarding.mp_plan_fetch_error",
+                extra={
+                    "organization_id": invitation.organization_id,
+                    "plan_id": plan.pk,
+                    "mp_plan_id": plan.mp_plan_id,
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc),
+                    "outcome": "error",
+                },
+            )
+            return None, Response(
+                {"detail": "Error al obtener el link de pago de MercadoPago."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
 
-    try:
-        mp_data = create_coach_athlete_preapproval(
-            access_token=cred.access_token,
-            mp_plan_id=plan.mp_plan_id,
-            payer_email=user_email,
-            reason=(
-                f"Quantoryn {plan.name} "
-                f"— {invitation.organization.name}"
-            ),
-            back_url=f"{frontend_url}/payment/callback",
-        )
-    except Exception as exc:
+    if not init_point:
         logger.error(
-            "onboarding.mp_preapproval_error",
+            "onboarding.mp_init_point_missing",
             extra={
                 "organization_id": invitation.organization_id,
-                "invitation_id": invitation.pk,
-                "error_type": type(exc).__name__,
-                "error_message": str(exc),
+                "mp_plan_id": plan.mp_plan_id,
                 "outcome": "error",
             },
         )
         return None, Response(
-            {"detail": "Error al crear la suscripción en MercadoPago."},
+            {"detail": "MercadoPago no retornó un link de pago."},
             status=status.HTTP_502_BAD_GATEWAY,
         )
 
-    return mp_data, None
+    return {"init_point": init_point}, None
 
 
 class OnboardingCompleteView(APIView):
