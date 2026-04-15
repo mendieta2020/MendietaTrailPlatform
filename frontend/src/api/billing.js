@@ -82,3 +82,7 @@ export function getAvailablePlans() {
 export function changePlan(newPlanId) {
   return client.post('/api/athlete/change-plan/', { new_plan_id: newPlanId });
 }
+
+export function syncAthleteSubscriptions() {
+  return client.post('/api/billing/athlete-subscriptions/sync/');
+}

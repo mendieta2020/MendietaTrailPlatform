@@ -42,6 +42,7 @@ from core.views_billing import (  # PR-131 / PR-132 / PR-134 / PR-135 / PR-136 /
     AthletePaymentLinkView,
     AthleteAvailablePlansView,
     AthleteChangePlanView,
+    AthleteSubscriptionSyncView,
 )
 from core.views_p1 import (  # PR-115/116/117/119/128/X4/149/PR-128-real-pmc/PR-129
     AthleteAdherenceViewSet,
@@ -217,6 +218,7 @@ urlpatterns = [
     # PR-137: Athlete subscriptions list + manual activation
     path('billing/athlete-subscriptions/', AthleteSubscriptionListView.as_view(), name='billing-athlete-subscriptions'),
     path('billing/athlete-subscriptions/<int:pk>/activate/', AthleteSubscriptionActivateView.as_view(), name='billing-athlete-subscription-activate'),
+    path('billing/athlete-subscriptions/sync/', AthleteSubscriptionSyncView.as_view(), name='billing-athlete-subscriptions-sync'),
 
     # PR-135: AthleteInvitation — create/list, detail, accept, reject, resend
     path('billing/invitations/', InvitationCreateView.as_view(), name='billing-invitation-create'),

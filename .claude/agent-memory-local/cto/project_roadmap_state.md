@@ -446,5 +446,19 @@ Coach B2C:     Athlete pays Coach via MercadoPago (AthleteSubscription)
 - Next: PR-166 — Onboarding Experience (checklist + empty states)
 - Post-merge: set RESEND_API_KEY in Railway, configure DKIM/SPF for noreply@quantoryn.com
 
+### PR-167d — Hotfix: MP Webhook Reconciliation + Sentry org_id fix + Athlete Refresh UX ✅ 2026-04-15
+- Root cause: `_create_mp_preapproval` returned only `{init_point}` — no `id` field → `mp_preapproval_id` stored as None → webhook lookup failed → subscription stayed "pending" forever
+- Fix 1 (Sentry crash): `MySubscriptionView.get()` — `int(org_id)` with 400 on TypeError/ValueError (was 500 ValueError for `?org_id=undefined`)
+- Fix 2 (webhook fallback): `athlete_webhook.process_athlete_subscription_webhook()` — when fast-path lookup fails, fetches preapproval from MP API using each OrgOAuthCredential(provider="mercadopago"), matches by `payer_email` + `preapproval_plan_id`, stamps real `mp_preapproval_id` on sub, applies STATUS_MAP. Logs `mp.athlete_webhook.reconciled`.
+- Fix 3 (sync endpoint): `AthleteSubscriptionSyncView` POST `/api/billing/athlete-subscriptions/sync/` — owner/admin only; fetches MP status for all pending/overdue subs with `mp_preapproval_id` set; returns `{reconciled, errors}`
+- Fix 4 (athlete UX): `AthleteDashboard` polls `/api/me/subscription/` every 10s (max 6 attempts) when redirected back from MP with `?mp_return=1`; shows "¡Suscripción activada!" toast on activation
+- Fix 5 (callback): `PaymentCallback.jsx` adds `?mp_return=1` to all `/dashboard` redirects (approved + pending paths)
+- Fix 6 (Finanzas): "Sincronizar con MercadoPago" button next to "Actualizar" — calls sync endpoint, toasts count
+- Fix 7 (API): `syncAthleteSubscriptions()` added to `frontend/src/api/billing.js`
+- 8 new tests in `tests_pr167d_my_subscription.py` + `tests_pr167d_webhook_reconcile.py` + `tests_pr167d_sync_endpoint.py` — all pass
+- Django system check: 0 issues; Frontend lint: 0 errors; Frontend build: success (8m 13s)
+- Post-deploy action: run POST /api/billing/athlete-subscriptions/sync/ to reconcile Natalia's test sub ($100 "Regalo")
+- Risk: HIGH (billing critical path) — RESOLVED
+
 ## Test Baseline
-~1395+ tests | CI: backend ✅ frontend ✅
+~1403+ tests | CI: backend ✅ frontend ✅

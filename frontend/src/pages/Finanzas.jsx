@@ -26,6 +26,7 @@ import {
   getAthleteSubscriptions,
   activateAthleteManually,
   resendInvitation,
+  syncAthleteSubscriptions,
 } from '../api/billing';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -346,6 +347,7 @@ const Finanzas = () => {
   const [mpConnecting, setMpConnecting] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const showToast = (message, severity = 'success') => setToast({ open: true, message, severity });
 
@@ -493,6 +495,20 @@ const Finanzas = () => {
     }
   };
 
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await syncAthleteSubscriptions();
+      const count = res.data?.reconciled?.length ?? 0;
+      showToast(`${count} suscripción${count !== 1 ? 'es' : ''} actualizada${count !== 1 ? 's' : ''}.`);
+      await loadData();
+    } catch {
+      showToast('No se pudo sincronizar con MercadoPago.', 'error');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   // ── Guard: role check (owner/admin) ───────────────────────────────────────
   const userRole = activeOrg?.role;
   const isAdminOrOwner = userRole === 'owner' || userRole === 'admin';
@@ -538,11 +554,21 @@ const Finanzas = () => {
           <h1 className="text-2xl font-bold text-slate-900">Finanzas</h1>
           <p className="text-sm text-slate-500 mt-0.5">Estado financiero y gestión de suscripciones.</p>
         </div>
-        <button onClick={loadData}
-          className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
-          <RefreshCw className="w-4 h-4" />
-          Actualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="flex items-center gap-2 px-3 py-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors disabled:opacity-50"
+          >
+            {syncing ? <CircularProgress size={14} /> : <RefreshCw className="w-4 h-4" />}
+            Sincronizar con MercadoPago
+          </button>
+          <button onClick={loadData}
+            className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+            <RefreshCw className="w-4 h-4" />
+            Actualizar
+          </button>
+        </div>
       </div>
 
       {error && (

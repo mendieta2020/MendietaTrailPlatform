@@ -1,5 +1,6 @@
 import json
 import logging
+import requests as http_requests
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from django.http import HttpResponse, JsonResponse
@@ -1472,3 +1473,90 @@ class AthleteChangePlanView(APIView):
             },
             "message": f"Plan actualizado de {old_plan_name} a {new_plan.name}",
         })
+
+
+class AthleteSubscriptionSyncView(BillingOrgMixin, APIView):
+    """
+    POST /api/billing/athlete-subscriptions/sync/
+
+    Safety-net reconciliation: fetches the real status from MP for each
+    AthleteSubscription in the org that is still "pending" or "overdue"
+    AND already has a mp_preapproval_id set.
+
+    Skips subs without mp_preapproval_id — those must be resolved by
+    the webhook fallback path (Law 5 idempotency).
+
+    Owner / admin only (via BillingOrgMixin.get_org).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from core.models import AthleteSubscription, OrgOAuthCredential
+
+        org = self.get_org(request)
+        if org is None:
+            return Response({"detail": "No organization context."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Only owner/admin can trigger manual sync
+        from core.models import Membership
+        membership = Membership.objects.filter(
+            user=request.user, organization=org, is_active=True, role__in=["owner", "admin"],
+        ).first()
+        if not membership:
+            return Response({"detail": "Permiso denegado."}, status=status.HTTP_403_FORBIDDEN)
+
+        cred = OrgOAuthCredential.objects.filter(
+            organization=org, provider="mercadopago"
+        ).first()
+        if not cred:
+            return Response({"detail": "MercadoPago no conectado para esta organización."}, status=status.HTTP_400_BAD_REQUEST)
+
+        subs = list(
+            AthleteSubscription.objects.filter(
+                organization=org,
+                status__in=["pending", "overdue"],
+                mp_preapproval_id__isnull=False,
+            ).select_related("coach_plan")
+        )
+
+        reconciled = []
+        errors = []
+
+        from integrations.mercadopago.athlete_webhook import STATUS_MAP, _apply_status_transition
+
+        for sub in subs:
+            try:
+                resp = http_requests.get(
+                    f"https://api.mercadopago.com/preapproval/{sub.mp_preapproval_id}",
+                    headers={"Authorization": f"Bearer {cred.access_token}"},
+                    timeout=8,
+                )
+                if resp.status_code != 200:
+                    errors.append({"sub_id": sub.pk, "error": f"MP returned {resp.status_code}"})
+                    continue
+
+                mp_data = resp.json()
+                mp_status = mp_data.get("status")
+                old_status = sub.status
+                outcome = _apply_status_transition(sub, mp_status, sub.mp_preapproval_id)
+                if outcome == "updated":
+                    reconciled.append({
+                        "sub_id": sub.pk,
+                        "old_status": old_status,
+                        "new_status": sub.status,
+                    })
+            except Exception as exc:
+                errors.append({"sub_id": sub.pk, "error": str(exc)})
+
+        logger.info(
+            "billing.athlete_sync.completed",
+            extra={
+                "event_name": "billing.athlete_sync.completed",
+                "organization_id": org.pk,
+                "reconciled_count": len(reconciled),
+                "error_count": len(errors),
+                "outcome": "ok",
+            },
+        )
+
+        return Response({"reconciled": reconciled, "errors": errors})

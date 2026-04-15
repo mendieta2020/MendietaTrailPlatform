@@ -1147,9 +1147,13 @@ class MySubscriptionView(APIView):
     def get(self, request):
         from django.utils import timezone as tz
 
-        org_id = request.query_params.get("org_id")
-        if not org_id:
+        org_id_raw = request.query_params.get("org_id")
+        if not org_id_raw:
             return Response({"detail": "org_id required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            org_id = int(org_id_raw)
+        except (TypeError, ValueError):
+            return Response({"detail": "org_id inválido"}, status=status.HTTP_400_BAD_REQUEST)
 
         membership = Membership.objects.filter(
             user=request.user,
