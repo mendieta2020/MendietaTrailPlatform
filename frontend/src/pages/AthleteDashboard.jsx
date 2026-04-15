@@ -774,6 +774,16 @@ const AthleteDashboard = ({ user }) => {
                     />
                   </Box>
                 </Box>
+                <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => setChangePlanOpen(true)}
+                    sx={{ color: '#6366F1', textTransform: 'none', fontWeight: 600, fontSize: '0.75rem', '&:hover': { bgcolor: 'rgba(99,102,241,0.06)' } }}
+                  >
+                    Cambiar plan
+                  </Button>
+                </Box>
               </Paper>
             )
           )}
