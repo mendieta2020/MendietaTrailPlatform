@@ -23,6 +23,7 @@ import CoachInfoCard from '../components/CoachInfoCard';
 import CoachPlanCard from '../components/SubscriptionCard';
 import TrialBannerWidget from '../components/TrialBanner';
 import TrialPaywall from '../components/TrialPaywall';
+import ChangePlanModal from '../components/ChangePlanModal';
 import { useNavigate } from 'react-router-dom';
 
 // ─── Greeting based on time of day ────────────────────────────────────────────
@@ -431,6 +432,8 @@ const AthleteDashboard = ({ user }) => {
     return localStorage.getItem('quantoryn_wellness_date') !== today;
   });
   const [wellnessToast, setWellnessToast] = useState({ open: false, first: false });
+  const [changePlanOpen, setChangePlanOpen] = useState(false);
+  const [planChangedToast, setPlanChangedToast] = useState('');
 
   const greeting = getGreeting();
   const displayName = user?.first_name || user?.username || 'Atleta';
@@ -734,6 +737,7 @@ const AthleteDashboard = ({ user }) => {
                 } catch { /* fall through */ }
                 window.alert('Contactá a tu coach para activar tu plan.');
               }}
+              onChangePlan={() => setChangePlanOpen(true)}
             />
           ) : (
             /* ── PR-150 fallback: original inline subscription widget ── */
@@ -775,6 +779,28 @@ const AthleteDashboard = ({ user }) => {
           )}
         </Grid>
       </Grid>
+
+      {/* ── PR-167b: Change plan modal ── */}
+      <ChangePlanModal
+        open={changePlanOpen}
+        onClose={() => setChangePlanOpen(false)}
+        onPlanChanged={(data) => {
+          setPlanChangedToast(`Plan actualizado a ${data.new_plan.name}`);
+          // Refresh subscription data
+          getMySubscriptionWithCoach().then(({ data: fresh }) => setMySubWithCoach(fresh)).catch(() => {});
+        }}
+      />
+
+      <Snackbar
+        open={!!planChangedToast}
+        autoHideDuration={4000}
+        onClose={() => setPlanChangedToast('')}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="success" onClose={() => setPlanChangedToast('')}>
+          {planChangedToast}
+        </Alert>
+      </Snackbar>
     </AthleteLayout>
   );
 };

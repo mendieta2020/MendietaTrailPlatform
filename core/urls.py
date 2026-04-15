@@ -40,6 +40,8 @@ from core.views_billing import (  # PR-131 / PR-132 / PR-134 / PR-135 / PR-136 /
     AthleteMySubscriptionView,
     CoachPricingPlanDetailView,
     AthletePaymentLinkView,
+    AthleteAvailablePlansView,
+    AthleteChangePlanView,
 )
 from core.views_p1 import (  # PR-115/116/117/119/128/X4/149/PR-128-real-pmc/PR-129
     AthleteAdherenceViewSet,
@@ -767,6 +769,8 @@ urlpatterns = [
     path('billing/join/<str:slug>/', JoinDetailView.as_view(), name='billing-join-detail'),
     path('athlete/subscription/', AthleteMySubscriptionView.as_view(), name='athlete-subscription'),
     path('athlete/payment-link/', AthletePaymentLinkView.as_view(), name='athlete-payment-link'),
+    path('athlete/available-plans/', AthleteAvailablePlansView.as_view(), name='athlete-available-plans'),
+    path('athlete/change-plan/', AthleteChangePlanView.as_view(), name='athlete-change-plan'),
 
     # PR-149: Athlete registration + onboarding
     path('auth/register/', RegisterView.as_view(), name='auth-register'),
