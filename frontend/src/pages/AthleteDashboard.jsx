@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box, Typography, Paper, Grid, CircularProgress, Chip,
   List, ListItem, ListItemIcon, ListItemText, Button, Alert,
@@ -24,7 +24,7 @@ import CoachPlanCard from '../components/SubscriptionCard';
 import TrialBannerWidget from '../components/TrialBanner';
 import TrialPaywall from '../components/TrialPaywall';
 import ChangePlanModal from '../components/ChangePlanModal';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 // ─── Greeting based on time of day ────────────────────────────────────────────
 function getGreeting() {
@@ -434,6 +434,9 @@ const AthleteDashboard = ({ user }) => {
   const [wellnessToast, setWellnessToast] = useState({ open: false, first: false });
   const [changePlanOpen, setChangePlanOpen] = useState(false);
   const [planChangedToast, setPlanChangedToast] = useState('');
+  const [activationToast, setActivationToast] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pollTimerRef = useRef(null);
 
   const greeting = getGreeting();
   const displayName = user?.first_name || user?.username || 'Atleta';
@@ -500,6 +503,45 @@ const AthleteDashboard = ({ user }) => {
         .then(res => setGoals(res.data?.results ?? res.data ?? []))
         .catch(() => setGoals([]));
     }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // PR-167d: Poll subscription status after returning from MP payment
+  const fetchSubWithCoach = useCallback(() => {
+    const orgIdForCoach = user?.memberships?.[0]?.org_id || user?.org_id || null;
+    if (!orgIdForCoach) return Promise.resolve(null);
+    return getMySubscriptionWithCoach(orgIdForCoach)
+      .then(res => { setMySubWithCoach(res.data); return res.data; })
+      .catch(() => null);
+  }, [user]);
+
+  useEffect(() => {
+    if (searchParams.get('mp_return') !== '1') return;
+
+    // Remove param immediately to avoid re-triggering on re-render
+    setSearchParams(prev => { prev.delete('mp_return'); return prev; }, { replace: true });
+
+    // Initial refetch
+    fetchSubWithCoach();
+
+    // Poll every 10s up to 6 attempts (60s total)
+    let attempts = 0;
+    const MAX_ATTEMPTS = 6;
+    pollTimerRef.current = setInterval(async () => {
+      attempts += 1;
+      const data = await fetchSubWithCoach();
+      const subStatus = data?.subscription?.status;
+      if (subStatus === 'active' || attempts >= MAX_ATTEMPTS) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+        if (subStatus === 'active') {
+          setActivationToast('¡Suscripción activada!');
+        }
+      }
+    }, 10000);
+
+    return () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // PR-151: Welcome flow dismiss — stores in localStorage, shows only once
@@ -809,6 +851,16 @@ const AthleteDashboard = ({ user }) => {
       >
         <Alert severity="success" onClose={() => setPlanChangedToast('')}>
           {planChangedToast}
+        </Alert>
+      </Snackbar>
+      <Snackbar
+        open={!!activationToast}
+        autoHideDuration={5000}
+        onClose={() => setActivationToast('')}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="success" onClose={() => setActivationToast('')}>
+          {activationToast}
         </Alert>
       </Snackbar>
     </AthleteLayout>

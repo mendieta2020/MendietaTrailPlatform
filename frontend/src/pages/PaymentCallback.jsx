@@ -29,7 +29,7 @@ export default function PaymentCallback() {
           <Button
             variant="contained"
             fullWidth
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigate('/dashboard?mp_return=1')}
             sx={ctaGreen}
           >
             Ir a entrenar →
@@ -81,7 +81,7 @@ export default function PaymentCallback() {
         <Button
           variant="outlined"
           fullWidth
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate('/dashboard?mp_return=1')}
           sx={{ borderColor: '#CBD5E1', color: '#64748B', textTransform: 'none', borderRadius: 2, fontWeight: 600 }}
         >
           Volver al dashboard
