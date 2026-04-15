@@ -30,7 +30,7 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-export default function SubscriptionCard({ subscription, orgName, onUpdatePayment }) {
+export default function SubscriptionCard({ subscription, orgName, onUpdatePayment, onChangePlan }) {
   if (!subscription) return null;
 
   const { status, plan_name, plan_price, next_payment_at, mp_preapproval_id, trial_ends_at } = subscription;
@@ -170,6 +170,20 @@ export default function SubscriptionCard({ subscription, orgName, onUpdatePaymen
               }}
             >
               Actualizar pago
+            </Button>
+          )}
+          {onChangePlan && (
+            <Button
+              size="small"
+              variant="text"
+              onClick={onChangePlan}
+              sx={{
+                color: '#6366F1', textTransform: 'none',
+                fontWeight: 600, fontSize: '0.75rem',
+                '&:hover': { bgcolor: 'rgba(99,102,241,0.06)' },
+              }}
+            >
+              Cambiar plan
             </Button>
           )}
         </Box>

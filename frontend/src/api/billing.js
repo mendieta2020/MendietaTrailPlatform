@@ -74,3 +74,11 @@ export function getJoinDetail(slug) {
 export function getMySubscription() {
   return client.get('/api/athlete/subscription/');
 }
+
+export function getAvailablePlans() {
+  return client.get('/api/athlete/available-plans/');
+}
+
+export function changePlan(newPlanId) {
+  return client.post('/api/athlete/change-plan/', { new_plan_id: newPlanId });
+}

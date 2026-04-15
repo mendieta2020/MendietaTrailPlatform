@@ -896,7 +896,7 @@ class CoachPricingPlanListCreateView(BillingOrgMixin, APIView):
         org = self.get_org(request)
         if org is None:
             return Response({"detail": "No organization context."}, status=status.HTTP_403_FORBIDDEN)
-        plans = CoachPricingPlan.objects.filter(organization=org).order_by("price_ars")
+        plans = CoachPricingPlan.objects.filter(organization=org, is_active=True).order_by("price_ars")
         data = [
             {
                 "id": p.pk,
@@ -1342,3 +1342,133 @@ class AthletePaymentLinkView(APIView):
             {"detail": "No se pudo generar el link de pago. Contactá a tu coach."},
             status=status.HTTP_400_BAD_REQUEST,
         )
+
+
+# ==============================================================================
+# PR-167b: Athlete plan selection — available plans + change plan
+# ==============================================================================
+
+
+class AthleteAvailablePlansView(APIView):
+    """
+    GET /api/athlete/available-plans/
+    Returns the active CoachPricingPlans for the athlete's organization.
+    Each plan is annotated with is_current=True if it matches the athlete's current plan.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from core.models import AthleteSubscription, CoachPricingPlan, Membership
+
+        sub = AthleteSubscription.objects.filter(
+            athlete__user=request.user,
+        ).select_related("coach_plan", "organization").first()
+
+        if sub is None:
+            return Response({"detail": "No subscription found."}, status=status.HTTP_404_NOT_FOUND)
+
+        plans = CoachPricingPlan.objects.filter(
+            organization=sub.organization, is_active=True,
+        ).order_by("price_ars")
+
+        current_plan_id = sub.coach_plan_id
+
+        data = [
+            {
+                "id": p.pk,
+                "name": p.name,
+                "description": p.description,
+                "price_ars": str(p.price_ars),
+                "is_current": p.pk == current_plan_id,
+            }
+            for p in plans
+        ]
+
+        return Response({
+            "plans": data,
+            "current_plan": {
+                "id": sub.coach_plan_id,
+                "name": sub.coach_plan.name,
+                "price_ars": str(sub.coach_plan.price_ars),
+            },
+        })
+
+
+class AthleteChangePlanView(APIView):
+    """
+    POST /api/athlete/change-plan/
+    Body: {"new_plan_id": <pk>}
+    Allows an athlete in TRIAL (no MP payment yet) to switch to a different
+    active plan within the same organization.
+    MP-active subscriptions are out of scope for this PR.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from core.models import AthleteSubscription, CoachPricingPlan
+
+        sub = AthleteSubscription.objects.filter(
+            athlete__user=request.user,
+        ).select_related("coach_plan", "organization").first()
+
+        if sub is None:
+            return Response({"detail": "No subscription found."}, status=status.HTTP_404_NOT_FOUND)
+
+        new_plan_id = request.data.get("new_plan_id")
+        if not new_plan_id:
+            return Response({"detail": "new_plan_id es requerido."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate same plan
+        try:
+            new_plan_id = int(new_plan_id)
+        except (TypeError, ValueError):
+            return Response({"detail": "new_plan_id inválido."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if new_plan_id == sub.coach_plan_id:
+            return Response(
+                {"detail": "Ya estás suscripto a ese plan."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Validate new plan belongs to same org and is active
+        try:
+            new_plan = CoachPricingPlan.objects.get(
+                pk=new_plan_id, organization=sub.organization, is_active=True,
+            )
+        except CoachPricingPlan.DoesNotExist:
+            return Response(
+                {"detail": "Plan no encontrado o inactivo."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Only allow plan change during trial (no active MP subscription)
+        if sub.mp_preapproval_id:
+            return Response(
+                {"detail": "El cambio de plan con suscripción activa en MercadoPago no está disponible aún. Contactá a tu coach."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        old_plan_name = sub.coach_plan.name
+        sub.coach_plan = new_plan
+        sub.save(update_fields=["coach_plan", "updated_at"])
+
+        logger.info(
+            "athlete.change_plan",
+            extra={
+                "user_id": request.user.pk,
+                "organization_id": sub.organization_id,
+                "old_plan_id": sub.coach_plan_id,
+                "new_plan_id": new_plan.pk,
+                "outcome": "changed",
+            },
+        )
+
+        return Response({
+            "status": "changed",
+            "new_plan": {
+                "id": new_plan.pk,
+                "name": new_plan.name,
+                "price_ars": str(new_plan.price_ars),
+            },
+            "message": f"Plan actualizado de {old_plan_name} a {new_plan.name}",
+        })
