@@ -177,9 +177,10 @@ def _create_mp_preapproval(invitation, user_email, coach_plan=None):
         # Create the preapproval_plan now using the coach's access_token.
         from integrations.mercadopago.subscriptions import create_preapproval_plan
         try:
+            org_name = invitation.organization.name
             mp_plan = create_preapproval_plan(
                 access_token=cred.access_token,
-                name=plan.name,
+                name=f"{org_name} — {plan.name}",
                 price_ars=plan.price_ars,
                 back_url=f"{frontend_url}/payment/callback",
             )

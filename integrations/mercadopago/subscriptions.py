@@ -41,6 +41,8 @@ def create_preapproval_plan(
     Creates a MercadoPago preapproval_plan in the coach's account (using their access_token).
     Called lazily the first time an athlete attempts to pay for a plan that has no mp_plan_id.
     Law 6: access_token never logged.
+    payment_methods_allowed is intentionally omitted so MP shows all available methods
+    (credit_card, debit_card, account_money/saldo) based on the payer's account.
     """
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -55,9 +57,6 @@ def create_preapproval_plan(
             "currency_id": "ARS",
         },
         "back_url": back_url,
-        "payment_methods_allowed": {
-            "payment_types": [{"id": "credit_card"}, {"id": "debit_card"}],
-        },
         "status": "active",
     }
     response = _requests.post(
