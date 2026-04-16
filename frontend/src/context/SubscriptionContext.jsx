@@ -46,7 +46,7 @@ function deriveStatus(data) {
 
 export const SubscriptionProvider = ({ children }) => {
   const { user } = useAuth();
-  const isAthlete = user?.role === 'athlete';
+  const isAthlete = user?.role === 'athlete' || user?.memberships?.[0]?.role === 'athlete';
 
   // Non-athletes start as 'unknown' (no gate); athletes start as 'loading'
   const [subscriptionData, setSubscriptionData] = useState(null);
@@ -89,7 +89,7 @@ export const SubscriptionProvider = ({ children }) => {
     // Convenience booleans
     isActive: subscriptionStatus === 'active' || subscriptionStatus === 'trial',
     isPaused: subscriptionStatus === 'paused',
-    isPaywalled: ['cancelled', 'trial_expired', 'none'].includes(subscriptionStatus),
+    isPaywalled: ['cancelled', 'trial_expired'].includes(subscriptionStatus),
   };
 
   return (

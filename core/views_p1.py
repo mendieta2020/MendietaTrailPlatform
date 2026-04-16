@@ -76,7 +76,7 @@ from core.identity_views import compute_subscription_status
 
 _WRITE_ROLES = {"owner", "coach"}
 
-_PAYWALL_STATUSES = {"cancelled", "trial_expired", "none"}
+_PAYWALL_STATUSES = {"cancelled", "trial_expired"}
 
 
 class AthleteSubscriptionGateMixin:

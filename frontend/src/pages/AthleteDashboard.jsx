@@ -24,6 +24,7 @@ import CoachPlanCard from '../components/SubscriptionCard';
 import TrialBannerWidget from '../components/TrialBanner';
 import ChangePlanModal from '../components/ChangePlanModal';
 import VisibilityGate from '../components/VisibilityGate';
+import { useSubscription } from '../context/SubscriptionContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 // ─── Greeting based on time of day ────────────────────────────────────────────
@@ -438,6 +439,8 @@ const AthleteDashboard = ({ user }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const pollTimerRef = useRef(null);
 
+  const { isPaywalled } = useSubscription();
+
   const greeting = getGreeting();
   const displayName = user?.first_name || user?.username || 'Atleta';
 
@@ -677,8 +680,8 @@ const AthleteDashboard = ({ user }) => {
         )}
       </Box>
 
-      {/* ── Device connection banner (PR-141) ── */}
-      <DeviceBanner deviceStatus={deviceStatus} onDismiss={handleDismissBanner} />
+      {/* ── Device connection banner (PR-141) — hidden when subscription is paywalled ── */}
+      {!isPaywalled && <DeviceBanner deviceStatus={deviceStatus} onDismiss={handleDismissBanner} />}
 
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, md: 8 }}>
@@ -696,11 +699,7 @@ const AthleteDashboard = ({ user }) => {
                 />
               )}
             </Box>
-          </VisibilityGate>
-
-          {/* Welcome flow moved to top-level blocking mode (PR-151) */}
-
-          {/* ── PR-164b: Psychological hooks ── */}
+          {/* ── PR-164b: Psychological hooks — inside VisibilityGate (PR-168a fix) ── */}
           {/* 8a. Streak counter */}
           {!todayLoading && (() => {
             const streak = todayData?.consecutive_days_active ?? 0;
@@ -746,6 +745,7 @@ const AthleteDashboard = ({ user }) => {
               </Box>
             );
           })()}
+          </VisibilityGate>
         </Grid>
 
         <Grid size={{ xs: 12, md: 4 }}>

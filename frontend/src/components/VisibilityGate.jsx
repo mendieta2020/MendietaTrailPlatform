@@ -14,18 +14,18 @@
  *   pausedLabel: string (optional) — badge shown for paused athletes on "limited" content
  *   paywallMessage: string (optional) — override default paywall subtitle
  */
-import React from 'react';
-import { Box, Typography, Button, Paper } from '@mui/material';
+import React, { useState } from 'react';
+import { Box, Typography, Button, CircularProgress } from '@mui/material';
 import LockIcon from '@mui/icons-material/Lock';
-import { useNavigate } from 'react-router-dom';
 import { useSubscription } from '../context/SubscriptionContext';
+import { reactivateMySubscription } from '../api/billing';
 
 // Access matrix
 // "full"    → active, trial only
 // "limited" → active, trial, paused
 // "any"     → no gate
-const FULL_ACCESS_STATUSES = new Set(['active', 'trial']);
-const LIMITED_ACCESS_STATUSES = new Set(['active', 'trial', 'paused']);
+const FULL_ACCESS_STATUSES = new Set(['active', 'trial', 'none']);
+const LIMITED_ACCESS_STATUSES = new Set(['active', 'trial', 'paused', 'none']);
 
 function canAccess(status, requiredAccess) {
   if (requiredAccess === 'any') return true;
@@ -35,7 +35,27 @@ function canAccess(status, requiredAccess) {
 }
 
 const PaywallOverlay = ({ message }) => {
-  const navigate = useNavigate();
+  const { refresh } = useSubscription();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleActivate = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const { data } = await reactivateMySubscription();
+      if (data?.redirect_url) {
+        window.open(data.redirect_url, '_blank');
+      } else {
+        await refresh();
+      }
+    } catch {
+      setError('Contactá a tu coach para reactivar');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Box
       sx={{
@@ -87,7 +107,8 @@ const PaywallOverlay = ({ message }) => {
         <Button
           variant="contained"
           size="small"
-          onClick={() => navigate('/athlete/profile')}
+          onClick={handleActivate}
+          disabled={loading}
           sx={{
             bgcolor: '#6366F1',
             '&:hover': { bgcolor: '#4F46E5' },
@@ -96,10 +117,17 @@ const PaywallOverlay = ({ message }) => {
             fontWeight: 700,
             px: 3,
             py: 1,
+            minWidth: 140,
           }}
         >
-          Ver planes →
+          {loading ? <CircularProgress size={16} sx={{ color: 'white' }} /> : 'Activá tu plan'}
         </Button>
+
+        {error && (
+          <Typography variant="caption" sx={{ color: '#FCA5A5', mt: 1.5, display: 'block' }}>
+            {error}
+          </Typography>
+        )}
       </Box>
     </Box>
   );
