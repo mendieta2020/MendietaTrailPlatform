@@ -27,6 +27,7 @@ import {
   activateAthleteManually,
   resendInvitation,
   syncAthleteSubscriptions,
+  ownerSubscriptionAction,
 } from '../api/billing';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -35,6 +36,7 @@ const STATUS_CONFIG = {
   active:    { label: 'Activo',    bg: 'bg-emerald-50',  text: 'text-emerald-700',  dot: 'bg-emerald-500' },
   pending:   { label: 'Pendiente', bg: 'bg-amber-50',    text: 'text-amber-700',    dot: 'bg-amber-400' },
   overdue:   { label: 'Atrasado',  bg: 'bg-red-50',      text: 'text-red-700',      dot: 'bg-red-500' },
+  paused:    { label: 'Pausado',   bg: 'bg-amber-50',    text: 'text-amber-700',    dot: 'bg-amber-400' },
   cancelled: { label: 'Cancelado', bg: 'bg-slate-100',   text: 'text-slate-500',    dot: 'bg-slate-400' },
   suspended: { label: 'Suspendido',bg: 'bg-slate-100',   text: 'text-slate-500',    dot: 'bg-slate-400' },
 };
@@ -495,6 +497,17 @@ const Finanzas = () => {
     }
   };
 
+  const handleOwnerAction = async (subId, action) => {
+    try {
+      await ownerSubscriptionAction(subId, action, 'owner_decision', '');
+      await loadData();
+      const msgs = { pause: 'Suscripción pausada.', cancel: 'Suscripción cancelada.', reactivate: 'Suscripción reactivada.' };
+      showToast(msgs[action] || 'Listo.');
+    } catch {
+      showToast('No se pudo realizar la acción. Intenta de nuevo.', 'error');
+    }
+  };
+
   const handleSync = async () => {
     setSyncing(true);
     try {
@@ -783,6 +796,7 @@ const Finanzas = () => {
                   { key: 'all', label: `Todos (${subscriptions.length})` },
                   { key: 'active', label: `Activos (${activeSubscriptions.length})` },
                   { key: 'overdue', label: `Vencidos (${overdueSubscriptions.length})` },
+                  { key: 'paused', label: `Pausados (${subscriptions.filter(s => s.status === 'paused').length})` },
                   { key: 'trial', label: `Trial (${trialSubscriptions.length})` },
                 ].map(({ key, label }) => (
                   <button key={key} onClick={() => setSubFilter(key)}
@@ -886,6 +900,30 @@ const Finanzas = () => {
                                   <button onClick={() => setActivateTarget(sub)}
                                     className="px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors">
                                     Activar manualmente
+                                  </button>
+                                </Tooltip>
+                              )}
+                              {sub.status === 'active' && (
+                                <Tooltip title="Pausar suscripción">
+                                  <button onClick={() => handleOwnerAction(sub.id, 'pause')}
+                                    className="px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors">
+                                    Pausar
+                                  </button>
+                                </Tooltip>
+                              )}
+                              {(sub.status === 'active' || sub.status === 'paused') && (
+                                <Tooltip title="Cancelar suscripción">
+                                  <button onClick={() => handleOwnerAction(sub.id, 'cancel')}
+                                    className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition-colors">
+                                    Cancelar
+                                  </button>
+                                </Tooltip>
+                              )}
+                              {(sub.status === 'paused' || sub.status === 'cancelled') && (
+                                <Tooltip title="Reactivar suscripción">
+                                  <button onClick={() => handleOwnerAction(sub.id, 'reactivate')}
+                                    className="px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors">
+                                    Reactivar
                                   </button>
                                 </Tooltip>
                               )}

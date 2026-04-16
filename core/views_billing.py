@@ -1356,6 +1356,10 @@ class AthleteMySubscriptionView(APIView):
             "trial_active": trial_active,
             "trial_days_remaining": trial_days_remaining,
             "trial_ends_at": sub.trial_ends_at.isoformat() if sub.trial_ends_at else None,
+            "paused_at": sub.paused_at.isoformat() if sub.paused_at else None,
+            "cancelled_at": sub.cancelled_at.isoformat() if sub.cancelled_at else None,
+            "pause_reason": sub.pause_reason,
+            "cancellation_reason": sub.cancellation_reason,
         })
 
 
@@ -1744,3 +1748,572 @@ class AthleteSubscriptionSyncView(BillingOrgMixin, APIView):
         )
 
         return Response({"reconciled": reconciled, "errors": errors, "notifications_sent": notifications_sent})
+
+
+# ==============================================================================
+# PR-167c: Athlete subscription lifecycle — Pause / Cancel / Reactivate
+# ==============================================================================
+
+
+def _get_coach_access_token(organization):
+    """
+    Returns the coach's MP access_token for the given organization, or None.
+    Law 6: never log the token.
+    """
+    from core.models import OrgOAuthCredential
+    cred = OrgOAuthCredential.objects.filter(
+        organization=organization, provider="mercadopago"
+    ).first()
+    return cred.access_token if cred else None
+
+
+def _notify_owner(sub, content, alert_type="subscription_action"):
+    """Send InternalMessage to the org owner. Org-scoped. No-op if no owner found."""
+    from core.models import InternalMessage, Membership
+    owner_membership = (
+        Membership.objects.filter(
+            organization=sub.organization, role="owner", is_active=True,
+        )
+        .select_related("user")
+        .first()
+    )
+    if not owner_membership:
+        return
+    InternalMessage.objects.create(
+        organization=sub.organization,
+        sender=sub.athlete.user,
+        recipient=owner_membership.user,
+        content=content,
+        alert_type=alert_type,
+    )
+
+
+def _notify_athlete(sub, content, alert_type="subscription_action", sender=None):
+    """Send InternalMessage to the athlete. Org-scoped."""
+    from core.models import InternalMessage
+    InternalMessage.objects.create(
+        organization=sub.organization,
+        sender=sender or sub.athlete.user,
+        recipient=sub.athlete.user,
+        content=content,
+        alert_type=alert_type,
+    )
+
+
+class AthleteSubscriptionPauseView(APIView):
+    """
+    POST /api/athlete/subscription/pause/
+    Athlete pauses their active subscription.
+    Body: {"reason": "injury|vacation|financial|time|other", "comment": "optional"}
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from core.models import AthleteSubscription
+        from django.utils import timezone
+
+        sub = AthleteSubscription.objects.filter(
+            athlete__user=request.user,
+        ).select_related("coach_plan", "organization", "athlete__user").first()
+
+        if sub is None:
+            return Response({"detail": "No subscription found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if sub.status != AthleteSubscription.Status.ACTIVE:
+            return Response(
+                {"detail": "Solo se puede pausar una suscripción activa."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        reason = request.data.get("reason", "")
+        comment = request.data.get("comment", "")
+
+        if sub.mp_preapproval_id:
+            access_token = _get_coach_access_token(sub.organization)
+            if access_token:
+                try:
+                    from integrations.mercadopago.subscriptions import pause_subscription
+                    pause_subscription(access_token, sub.mp_preapproval_id)
+                except Exception as exc:
+                    logger.error(
+                        "athlete_subscription.pause_mp_error",
+                        extra={
+                            "organization_id": sub.organization_id,
+                            "subscription_id": sub.pk,
+                            "error": str(exc),
+                            "outcome": "error",
+                        },
+                    )
+                    return Response(
+                        {"detail": "Error al pausar en MercadoPago."},
+                        status=status.HTTP_502_BAD_GATEWAY,
+                    )
+
+        now = timezone.now()
+        sub.status = AthleteSubscription.Status.PAUSED
+        sub.paused_at = now
+        sub.pause_reason = reason or None
+        sub.pause_comment = comment or None
+        sub.save(update_fields=["status", "paused_at", "pause_reason", "pause_comment", "updated_at"])
+
+        athlete_name = f"{sub.athlete.user.first_name} {sub.athlete.user.last_name}".strip()
+        reason_display = reason or "sin motivo"
+        _notify_owner(
+            sub,
+            f"\u23f8\ufe0f {athlete_name} pausó su suscripción ({reason_display})",
+            alert_type="subscription_paused",
+        )
+
+        logger.info(
+            "athlete_subscription.paused",
+            extra={
+                "event_name": "athlete_subscription.paused",
+                "organization_id": sub.organization_id,
+                "subscription_id": sub.pk,
+                "user_id": request.user.pk,
+                "reason": reason,
+                "outcome": "paused",
+            },
+        )
+
+        return Response({"status": "paused"})
+
+
+class AthleteSubscriptionCancelView(APIView):
+    """
+    POST /api/athlete/subscription/cancel/
+    Athlete cancels their subscription (active or paused).
+    Body: {"reason": "price|injury|time|other_coach|not_using|other", "comment": "optional"}
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from core.models import AthleteSubscription
+        from django.utils import timezone
+
+        sub = AthleteSubscription.objects.filter(
+            athlete__user=request.user,
+        ).select_related("coach_plan", "organization", "athlete__user").first()
+
+        if sub is None:
+            return Response({"detail": "No subscription found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if sub.status not in (AthleteSubscription.Status.ACTIVE, AthleteSubscription.Status.PAUSED):
+            return Response(
+                {"detail": "Solo se puede cancelar una suscripción activa o pausada."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        reason = request.data.get("reason", "")
+        comment = request.data.get("comment", "")
+
+        if sub.mp_preapproval_id:
+            access_token = _get_coach_access_token(sub.organization)
+            if access_token:
+                try:
+                    from integrations.mercadopago.subscriptions import cancel_athlete_subscription
+                    cancel_athlete_subscription(access_token, sub.mp_preapproval_id)
+                except Exception as exc:
+                    logger.error(
+                        "athlete_subscription.cancel_mp_error",
+                        extra={
+                            "organization_id": sub.organization_id,
+                            "subscription_id": sub.pk,
+                            "error": str(exc),
+                            "outcome": "error",
+                        },
+                    )
+                    return Response(
+                        {"detail": "Error al cancelar en MercadoPago."},
+                        status=status.HTTP_502_BAD_GATEWAY,
+                    )
+
+        now = timezone.now()
+        sub.status = AthleteSubscription.Status.CANCELLED
+        sub.cancelled_at = now
+        sub.cancellation_reason = reason or None
+        sub.cancellation_comment = comment or None
+        sub.paused_at = None
+        sub.pause_reason = None
+        sub.pause_comment = None
+        sub.save(update_fields=[
+            "status", "cancelled_at", "cancellation_reason", "cancellation_comment",
+            "paused_at", "pause_reason", "pause_comment", "updated_at",
+        ])
+
+        athlete_name = f"{sub.athlete.user.first_name} {sub.athlete.user.last_name}".strip()
+        reason_display = reason or "sin motivo"
+        _notify_owner(
+            sub,
+            f"\u274c {athlete_name} canceló su suscripción (motivo: {reason_display})",
+            alert_type="subscription_cancelled",
+        )
+
+        logger.info(
+            "athlete_subscription.cancelled",
+            extra={
+                "event_name": "athlete_subscription.cancelled",
+                "organization_id": sub.organization_id,
+                "subscription_id": sub.pk,
+                "user_id": request.user.pk,
+                "reason": reason,
+                "outcome": "cancelled",
+            },
+        )
+
+        return Response({"status": "cancelled"})
+
+
+class AthleteSubscriptionReactivateView(APIView):
+    """
+    POST /api/athlete/subscription/reactivate/
+    Athlete reactivates a paused or cancelled subscription.
+    - paused → authorized in MP → status = active
+    - cancelled → new payment link (MP doesn't allow reactivating cancelled)
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from core.models import AthleteSubscription
+        from django.utils import timezone
+
+        sub = AthleteSubscription.objects.filter(
+            athlete__user=request.user,
+        ).select_related("coach_plan", "organization", "athlete__user").first()
+
+        if sub is None:
+            return Response({"detail": "No subscription found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if sub.status not in (AthleteSubscription.Status.PAUSED, AthleteSubscription.Status.CANCELLED):
+            return Response(
+                {"detail": "Solo se puede reactivar una suscripción pausada o cancelada."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        athlete_name = f"{sub.athlete.user.first_name} {sub.athlete.user.last_name}".strip()
+
+        # ── Case 1: paused → reactivate in MP ────────────────────────────────
+        if sub.status == AthleteSubscription.Status.PAUSED and sub.mp_preapproval_id:
+            access_token = _get_coach_access_token(sub.organization)
+            if access_token:
+                try:
+                    from integrations.mercadopago.subscriptions import reactivate_subscription
+                    reactivate_subscription(access_token, sub.mp_preapproval_id)
+                except Exception as exc:
+                    logger.error(
+                        "athlete_subscription.reactivate_mp_error",
+                        extra={
+                            "organization_id": sub.organization_id,
+                            "subscription_id": sub.pk,
+                            "error": str(exc),
+                            "outcome": "error",
+                        },
+                    )
+                    return Response(
+                        {"detail": "Error al reactivar en MercadoPago."},
+                        status=status.HTTP_502_BAD_GATEWAY,
+                    )
+
+            sub.status = AthleteSubscription.Status.ACTIVE
+            sub.paused_at = None
+            sub.pause_reason = None
+            sub.pause_comment = None
+            sub.save(update_fields=["status", "paused_at", "pause_reason", "pause_comment", "updated_at"])
+
+            _notify_owner(sub, f"\U0001f504 {athlete_name} reactivó su suscripción", alert_type="subscription_reactivated")
+
+            logger.info(
+                "athlete_subscription.reactivated",
+                extra={
+                    "event_name": "athlete_subscription.reactivated",
+                    "organization_id": sub.organization_id,
+                    "subscription_id": sub.pk,
+                    "user_id": request.user.pk,
+                    "outcome": "active",
+                },
+            )
+            return Response({"status": "active"})
+
+        # ── Case 2: paused without MP preapproval (manual activation) ────────
+        if sub.status == AthleteSubscription.Status.PAUSED and not sub.mp_preapproval_id:
+            sub.status = AthleteSubscription.Status.ACTIVE
+            sub.paused_at = None
+            sub.pause_reason = None
+            sub.pause_comment = None
+            sub.save(update_fields=["status", "paused_at", "pause_reason", "pause_comment", "updated_at"])
+            _notify_owner(sub, f"\U0001f504 {athlete_name} reactivó su suscripción", alert_type="subscription_reactivated")
+            return Response({"status": "active"})
+
+        # ── Case 3: cancelled → generate new payment link ─────────────────────
+        # MP doesn't allow reactivating cancelled preapprovals.
+        # Clear the old preapproval and generate a fresh one.
+        from core.models import OrgOAuthCredential
+        from django.conf import settings as django_settings
+
+        cred = OrgOAuthCredential.objects.filter(
+            organization=sub.organization, provider="mercadopago"
+        ).first()
+
+        if not cred or not sub.coach_plan or not sub.coach_plan.mp_plan_id:
+            return Response(
+                {"detail": "No se puede generar nuevo link de pago. Contactá a tu coach."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        frontend_url = getattr(django_settings, "FRONTEND_URL", "http://localhost:3000")
+
+        try:
+            from integrations.mercadopago.subscriptions import create_coach_athlete_preapproval
+            mp_data = create_coach_athlete_preapproval(
+                access_token=cred.access_token,
+                mp_plan_id=sub.coach_plan.mp_plan_id,
+                payer_email=request.user.email,
+                reason=f"Quantoryn {sub.coach_plan.name} — {sub.organization.name}",
+                back_url=f"{frontend_url}/dashboard",
+            )
+        except Exception as exc:
+            logger.error(
+                "athlete_subscription.reactivate_new_preapproval_error",
+                extra={
+                    "organization_id": sub.organization_id,
+                    "subscription_id": sub.pk,
+                    "error": str(exc),
+                    "outcome": "error",
+                },
+            )
+            return Response(
+                {"detail": "Error al crear nuevo preapproval en MercadoPago."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        init_point = mp_data.get("init_point")
+        new_preapproval_id = mp_data.get("id")
+
+        sub.status = AthleteSubscription.Status.PENDING
+        sub.mp_preapproval_id = new_preapproval_id
+        sub.cancelled_at = None
+        sub.cancellation_reason = None
+        sub.cancellation_comment = None
+        sub.save(update_fields=[
+            "status", "mp_preapproval_id", "cancelled_at",
+            "cancellation_reason", "cancellation_comment", "updated_at",
+        ])
+
+        _notify_owner(sub, f"\U0001f504 {athlete_name} reactivó su suscripción", alert_type="subscription_reactivated")
+
+        logger.info(
+            "athlete_subscription.reactivate_new_preapproval",
+            extra={
+                "event_name": "athlete_subscription.reactivate_new_preapproval",
+                "organization_id": sub.organization_id,
+                "subscription_id": sub.pk,
+                "user_id": request.user.pk,
+                "outcome": "pending",
+            },
+        )
+
+        return Response({"status": "pending", "redirect_url": init_point})
+
+
+class OwnerSubscriptionActionView(BillingOrgMixin, APIView):
+    """
+    POST /api/billing/athlete-subscriptions/<pk>/owner-action/
+    Owner/admin pauses, cancels, or reactivates an athlete's subscription.
+    Body: {"action": "pause|cancel|reactivate", "reason": "owner_decision", "comment": "optional"}
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        from core.models import AthleteSubscription, Membership
+        from django.utils import timezone
+
+        org = self.get_org(request)
+        if org is None:
+            return Response({"detail": "No organization context."}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            membership = Membership.objects.get(user=request.user, organization=org, is_active=True)
+        except Membership.DoesNotExist:
+            return Response({"detail": "Sin acceso."}, status=status.HTTP_403_FORBIDDEN)
+        if membership.role not in ("owner", "admin"):
+            return Response({"detail": "Solo owner o admin."}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            sub = AthleteSubscription.objects.select_related(
+                "athlete__user", "coach_plan", "organization"
+            ).get(pk=pk, organization=org)
+        except AthleteSubscription.DoesNotExist:
+            return Response({"detail": "Suscripción no encontrada."}, status=status.HTTP_404_NOT_FOUND)
+
+        action = request.data.get("action", "")
+        reason = request.data.get("reason", "owner_decision")
+        comment = request.data.get("comment", "")
+        now = timezone.now()
+        athlete_name = f"{sub.athlete.user.first_name} {sub.athlete.user.last_name}".strip()
+
+        # ── PAUSE ─────────────────────────────────────────────────────────────
+        if action == "pause":
+            if sub.status != AthleteSubscription.Status.ACTIVE:
+                return Response(
+                    {"detail": "Solo se puede pausar una suscripción activa."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if sub.mp_preapproval_id:
+                access_token = _get_coach_access_token(sub.organization)
+                if access_token:
+                    try:
+                        from integrations.mercadopago.subscriptions import pause_subscription
+                        pause_subscription(access_token, sub.mp_preapproval_id)
+                    except Exception as exc:
+                        logger.error(
+                            "owner.subscription.pause_mp_error",
+                            extra={
+                                "organization_id": org.pk,
+                                "subscription_id": sub.pk,
+                                "error": str(exc),
+                            },
+                        )
+                        return Response({"detail": "Error al pausar en MercadoPago."}, status=status.HTTP_502_BAD_GATEWAY)
+
+            sub.status = AthleteSubscription.Status.PAUSED
+            sub.paused_at = now
+            sub.pause_reason = reason or None
+            sub.pause_comment = comment or None
+            sub.save(update_fields=["status", "paused_at", "pause_reason", "pause_comment", "updated_at"])
+            _notify_athlete(sub, "Tu coach pausó tu suscripción", alert_type="subscription_paused", sender=request.user)
+
+            logger.info(
+                "owner.subscription.paused",
+                extra={
+                    "event_name": "owner.subscription.paused",
+                    "organization_id": org.pk,
+                    "subscription_id": sub.pk,
+                    "owner_id": request.user.pk,
+                    "outcome": "paused",
+                },
+            )
+            return Response({"status": "paused"})
+
+        # ── CANCEL ────────────────────────────────────────────────────────────
+        if action == "cancel":
+            if sub.status not in (AthleteSubscription.Status.ACTIVE, AthleteSubscription.Status.PAUSED):
+                return Response(
+                    {"detail": "Solo se puede cancelar una suscripción activa o pausada."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if sub.mp_preapproval_id:
+                access_token = _get_coach_access_token(sub.organization)
+                if access_token:
+                    try:
+                        from integrations.mercadopago.subscriptions import cancel_athlete_subscription
+                        cancel_athlete_subscription(access_token, sub.mp_preapproval_id)
+                    except Exception as exc:
+                        logger.error(
+                            "owner.subscription.cancel_mp_error",
+                            extra={
+                                "organization_id": org.pk,
+                                "subscription_id": sub.pk,
+                                "error": str(exc),
+                            },
+                        )
+                        return Response({"detail": "Error al cancelar en MercadoPago."}, status=status.HTTP_502_BAD_GATEWAY)
+
+            sub.status = AthleteSubscription.Status.CANCELLED
+            sub.cancelled_at = now
+            sub.cancellation_reason = reason or None
+            sub.cancellation_comment = comment or None
+            sub.paused_at = None
+            sub.pause_reason = None
+            sub.pause_comment = None
+            sub.save(update_fields=[
+                "status", "cancelled_at", "cancellation_reason", "cancellation_comment",
+                "paused_at", "pause_reason", "pause_comment", "updated_at",
+            ])
+            _notify_athlete(sub, "Tu coach canceló tu suscripción", alert_type="subscription_cancelled", sender=request.user)
+
+            logger.info(
+                "owner.subscription.cancelled",
+                extra={
+                    "event_name": "owner.subscription.cancelled",
+                    "organization_id": org.pk,
+                    "subscription_id": sub.pk,
+                    "owner_id": request.user.pk,
+                    "outcome": "cancelled",
+                },
+            )
+            return Response({"status": "cancelled"})
+
+        # ── REACTIVATE ────────────────────────────────────────────────────────
+        if action == "reactivate":
+            if sub.status not in (AthleteSubscription.Status.PAUSED, AthleteSubscription.Status.CANCELLED):
+                return Response(
+                    {"detail": "Solo se puede reactivar una suscripción pausada o cancelada."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if sub.status == AthleteSubscription.Status.PAUSED and sub.mp_preapproval_id:
+                access_token = _get_coach_access_token(sub.organization)
+                if access_token:
+                    try:
+                        from integrations.mercadopago.subscriptions import reactivate_subscription
+                        reactivate_subscription(access_token, sub.mp_preapproval_id)
+                    except Exception as exc:
+                        logger.error(
+                            "owner.subscription.reactivate_mp_error",
+                            extra={
+                                "organization_id": org.pk,
+                                "subscription_id": sub.pk,
+                                "error": str(exc),
+                            },
+                        )
+                        return Response({"detail": "Error al reactivar en MercadoPago."}, status=status.HTTP_502_BAD_GATEWAY)
+
+                sub.status = AthleteSubscription.Status.ACTIVE
+                sub.paused_at = None
+                sub.pause_reason = None
+                sub.pause_comment = None
+                sub.save(update_fields=["status", "paused_at", "pause_reason", "pause_comment", "updated_at"])
+                _notify_athlete(sub, "Tu coach reactivó tu suscripción", alert_type="subscription_reactivated", sender=request.user)
+
+            elif sub.status == AthleteSubscription.Status.PAUSED and not sub.mp_preapproval_id:
+                sub.status = AthleteSubscription.Status.ACTIVE
+                sub.paused_at = None
+                sub.pause_reason = None
+                sub.pause_comment = None
+                sub.save(update_fields=["status", "paused_at", "pause_reason", "pause_comment", "updated_at"])
+                _notify_athlete(sub, "Tu coach reactivó tu suscripción", alert_type="subscription_reactivated", sender=request.user)
+
+            else:
+                # cancelled → mark pending; athlete must pay again
+                sub.status = AthleteSubscription.Status.PENDING
+                sub.cancelled_at = None
+                sub.cancellation_reason = None
+                sub.cancellation_comment = None
+                sub.mp_preapproval_id = None
+                sub.save(update_fields=[
+                    "status", "cancelled_at", "cancellation_reason", "cancellation_comment",
+                    "mp_preapproval_id", "updated_at",
+                ])
+                _notify_athlete(
+                    sub,
+                    "Tu coach reactivó tu suscripción. Completá el pago para acceder.",
+                    alert_type="subscription_reactivated",
+                    sender=request.user,
+                )
+
+            logger.info(
+                "owner.subscription.reactivated",
+                extra={
+                    "event_name": "owner.subscription.reactivated",
+                    "organization_id": org.pk,
+                    "subscription_id": sub.pk,
+                    "owner_id": request.user.pk,
+                    "outcome": sub.status,
+                },
+            )
+            return Response({"status": sub.status})
+
+        return Response(
+            {"detail": "Acción inválida. Debe ser pause, cancel o reactivate."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )

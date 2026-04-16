@@ -43,6 +43,10 @@ from core.views_billing import (  # PR-131 / PR-132 / PR-134 / PR-135 / PR-136 /
     AthleteAvailablePlansView,
     AthleteChangePlanView,
     AthleteSubscriptionSyncView,
+    AthleteSubscriptionPauseView,
+    AthleteSubscriptionCancelView,
+    AthleteSubscriptionReactivateView,
+    OwnerSubscriptionActionView,
 )
 from core.views_p1 import (  # PR-115/116/117/119/128/X4/149/PR-128-real-pmc/PR-129
     AthleteAdherenceViewSet,
@@ -219,6 +223,8 @@ urlpatterns = [
     path('billing/athlete-subscriptions/', AthleteSubscriptionListView.as_view(), name='billing-athlete-subscriptions'),
     path('billing/athlete-subscriptions/<int:pk>/activate/', AthleteSubscriptionActivateView.as_view(), name='billing-athlete-subscription-activate'),
     path('billing/athlete-subscriptions/sync/', AthleteSubscriptionSyncView.as_view(), name='billing-athlete-subscriptions-sync'),
+    # PR-167c: Owner subscription lifecycle actions
+    path('billing/athlete-subscriptions/<int:pk>/owner-action/', OwnerSubscriptionActionView.as_view(), name='billing-athlete-subscription-owner-action'),
 
     # PR-135: AthleteInvitation — create/list, detail, accept, reject, resend
     path('billing/invitations/', InvitationCreateView.as_view(), name='billing-invitation-create'),
@@ -773,6 +779,10 @@ urlpatterns = [
     path('athlete/payment-link/', AthletePaymentLinkView.as_view(), name='athlete-payment-link'),
     path('athlete/available-plans/', AthleteAvailablePlansView.as_view(), name='athlete-available-plans'),
     path('athlete/change-plan/', AthleteChangePlanView.as_view(), name='athlete-change-plan'),
+    # PR-167c: Athlete subscription lifecycle
+    path('athlete/subscription/pause/', AthleteSubscriptionPauseView.as_view(), name='athlete-subscription-pause'),
+    path('athlete/subscription/cancel/', AthleteSubscriptionCancelView.as_view(), name='athlete-subscription-cancel'),
+    path('athlete/subscription/reactivate/', AthleteSubscriptionReactivateView.as_view(), name='athlete-subscription-reactivate'),
 
     # PR-149: Athlete registration + onboarding
     path('auth/register/', RegisterView.as_view(), name='auth-register'),

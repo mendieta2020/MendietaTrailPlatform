@@ -244,3 +244,93 @@ def cancel_subscription(preapproval_id: str) -> dict:
         extra={"preapproval_id": preapproval_id, "outcome": "cancelled"},
     )
     return result
+
+
+def pause_subscription(access_token: str, preapproval_id: str) -> dict:
+    """
+    PUT /preapproval/{id} {"status": "paused"} using the coach's access_token.
+    Law 6: access_token never logged.
+    """
+    headers = {"Authorization": f"Bearer {access_token}"}
+    response = _requests.put(
+        f"{MP_API_BASE}/preapproval/{preapproval_id}",
+        json={"status": "paused"},
+        headers=headers,
+        timeout=10,
+    )
+    if not response.ok:
+        logger.error(
+            "mp.preapproval.pause_error",
+            extra={
+                "preapproval_id": preapproval_id,
+                "status_code": response.status_code,
+                "outcome": "error",
+            },
+        )
+    response.raise_for_status()
+    logger.info(
+        "mp.preapproval.paused",
+        extra={"preapproval_id": preapproval_id, "outcome": "paused"},
+    )
+    return response.json()
+
+
+def cancel_athlete_subscription(access_token: str, preapproval_id: str) -> dict:
+    """
+    PUT /preapproval/{id} {"status": "cancelled"} using the coach's access_token.
+    Used for athlete/owner-initiated cancellation (different from cancel_subscription
+    which uses the platform token).
+    Law 6: access_token never logged.
+    """
+    headers = {"Authorization": f"Bearer {access_token}"}
+    response = _requests.put(
+        f"{MP_API_BASE}/preapproval/{preapproval_id}",
+        json={"status": "cancelled"},
+        headers=headers,
+        timeout=10,
+    )
+    if not response.ok:
+        logger.error(
+            "mp.preapproval.cancel_error",
+            extra={
+                "preapproval_id": preapproval_id,
+                "status_code": response.status_code,
+                "outcome": "error",
+            },
+        )
+    response.raise_for_status()
+    logger.info(
+        "mp.preapproval.cancelled",
+        extra={"preapproval_id": preapproval_id, "outcome": "cancelled"},
+    )
+    return response.json()
+
+
+def reactivate_subscription(access_token: str, preapproval_id: str) -> dict:
+    """
+    PUT /preapproval/{id} {"status": "authorized"} using the coach's access_token.
+    Used to reactivate a paused preapproval.
+    Law 6: access_token never logged.
+    """
+    headers = {"Authorization": f"Bearer {access_token}"}
+    response = _requests.put(
+        f"{MP_API_BASE}/preapproval/{preapproval_id}",
+        json={"status": "authorized"},
+        headers=headers,
+        timeout=10,
+    )
+    if not response.ok:
+        logger.error(
+            "mp.preapproval.reactivate_error",
+            extra={
+                "preapproval_id": preapproval_id,
+                "status_code": response.status_code,
+                "outcome": "error",
+            },
+        )
+    response.raise_for_status()
+    logger.info(
+        "mp.preapproval.reactivated",
+        extra={"preapproval_id": preapproval_id, "outcome": "reactivated"},
+    )
+    return response.json()
