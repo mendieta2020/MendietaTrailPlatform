@@ -72,8 +72,57 @@ from core.serializers_p1 import (
     WorkoutReconciliationSerializer,
 )
 from core.tenancy import OrgTenantMixin
+from core.identity_views import compute_subscription_status
 
 _WRITE_ROLES = {"owner", "coach"}
+
+_PAYWALL_STATUSES = {"cancelled", "trial_expired", "none"}
+
+
+class AthleteSubscriptionGateMixin:
+    """
+    PR-168a: Defense-in-depth subscription gate for athlete-facing viewsets.
+
+    Works by wrapping resolve_membership() (from OrgTenantMixin) so the gate
+    fires immediately after the membership is established — before any action
+    method runs, regardless of whether the viewset defines its own list() etc.
+
+    When the requester is an athlete:
+      - cancelled / trial_expired / none  → 403 on all methods
+      - paused                             → 403 on write methods (POST/PUT/PATCH/DELETE)
+      - active / trial                     → full access (pass-through)
+
+    Non-athlete roles (coach, owner, admin) are never gated.
+
+    Usage: prepend to viewset's base class list, BEFORE OrgTenantMixin:
+        class MyViewSet(AthleteSubscriptionGateMixin, OrgTenantMixin, ...):
+    """
+
+    def resolve_membership(self, organization_id):
+        """Wrap OrgTenantMixin.resolve_membership to apply subscription gate."""
+        membership = super().resolve_membership(organization_id)
+
+        if membership.role != "athlete":
+            return membership  # non-athletes always pass
+
+        sub_status = compute_subscription_status(
+            self.request.user, membership.organization_id
+        )
+
+        if sub_status in _PAYWALL_STATUSES:
+            raise PermissionDenied(
+                {"detail": "Suscripción requerida", "paywall": True}
+            )
+
+        # Paused: read-only — block write methods
+        if sub_status == "paused" and self.request.method in (
+            "POST", "PUT", "PATCH", "DELETE"
+        ):
+            raise PermissionDenied(
+                {"detail": "Suscripción pausada — solo lectura", "paywall": False}
+            )
+
+        return membership
 
 
 def _notify_coach_of_athlete_note(assignment, athlete_user, organization):
@@ -178,7 +227,7 @@ class RaceEventViewSet(OrgTenantMixin, viewsets.ModelViewSet):
         instance.delete()
 
 
-class AthleteGoalViewSet(OrgTenantMixin, viewsets.ModelViewSet):
+class AthleteGoalViewSet(AthleteSubscriptionGateMixin, OrgTenantMixin, viewsets.ModelViewSet):
     """
     CRUD for organization-scoped AthleteGoal records.
 
@@ -336,6 +385,7 @@ class AthleteProfileViewSet(
 
 
 class WorkoutAssignmentViewSet(
+    AthleteSubscriptionGateMixin,
     OrgTenantMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,

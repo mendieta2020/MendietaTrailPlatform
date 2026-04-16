@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AthleteLayout from '../components/AthleteLayout'
+import VisibilityGate from '../components/VisibilityGate'
 import PMCChart from '../components/PMCChart'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -197,6 +198,11 @@ const AthleteProgress = () => {
 
   return (
     <AthleteLayout user={user}>
+      {/* PR-168a: Mi Progreso requires full access (active or trial) */}
+      <VisibilityGate
+        requiredAccess="full"
+        paywallMessage="Reactivá tu suscripción para ver tu progreso, métricas y readiness."
+      >
       <div className="p-4 sm:p-6 space-y-6 max-w-2xl mx-auto overflow-x-hidden">
 
         {/* HEADER */}
@@ -395,6 +401,7 @@ const AthleteProgress = () => {
         )}
 
       </div>
+      </VisibilityGate>
     </AthleteLayout>
   )
 }

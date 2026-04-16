@@ -11,6 +11,7 @@ import {
 import AthleteLayout from '../components/AthleteLayout';
 import WorkoutDetailDrawer from '../components/WorkoutDetailDrawer';
 import { CompleteWorkoutModal } from '../components/CompleteWorkoutModal';
+import VisibilityGate from '../components/VisibilityGate';
 import { useAuth } from '../context/AuthContext';
 import { listAssignments, updateAssignment } from '../api/assignments';
 import { listAthletes, getAthleteProfile } from '../api/p1';
@@ -315,6 +316,9 @@ const AthleteMyTraining = () => {
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
+      {/* PR-168a: Gate — cancelled/trial_expired/none get paywall; paused gets read-only */}
+      <VisibilityGate requiredAccess="limited" pausedLabel="⏸️ Suscripción pausada — solo lectura">
+
       {/* PR-163 QA Fix 8: always render CalendarGrid — navigating to empty months must show the grid, not crash */}
       <CalendarGrid
         assignments={assignments}
@@ -381,6 +385,7 @@ const AthleteMyTraining = () => {
           }}
         />
       )}
+      </VisibilityGate>
     </AthleteLayout>
   );
 };

@@ -25,6 +25,7 @@ import {
 } from '@mui/icons-material';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
+import VisibilityGate from '../components/VisibilityGate';
 import client from '../api/client';
 
 // Providers that require a native mobile app instead of web OAuth
@@ -303,6 +304,11 @@ const Connections = () => {
 
     return (
         <Layout>
+            {/* PR-168a: Connections requires active subscription for athletes */}
+            <VisibilityGate
+                requiredAccess="full"
+                paywallMessage="Reactivá tu suscripción para sincronizar tus dispositivos y plataformas."
+            >
             <Box>
                 <Typography variant="h4" gutterBottom sx={{ fontWeight: 700, mb: 1 }}>
                     Conexiones con Plataformas
@@ -452,6 +458,7 @@ const Connections = () => {
                     </Button>
                 </DialogActions>
             </Dialog>
+            </VisibilityGate>
         </Layout>
     );
 };
