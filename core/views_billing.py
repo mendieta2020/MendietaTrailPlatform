@@ -1479,12 +1479,13 @@ class AthleteSubscriptionSyncView(BillingOrgMixin, APIView):
     """
     POST /api/billing/athlete-subscriptions/sync/
 
-    Safety-net reconciliation: fetches the real status from MP for each
-    AthleteSubscription in the org that is still "pending" or "overdue"
-    AND already has a mp_preapproval_id set.
+    Safety-net reconciliation with two passes:
 
-    Skips subs without mp_preapproval_id — those must be resolved by
-    the webhook fallback path (Law 5 idempotency).
+    Pass 1 — fast path: subs with mp_preapproval_id → fetch from MP, apply transition.
+
+    Pass 2 — smart path (PR-167f): subs without mp_preapproval_id but whose
+    coach_plan has an mp_plan_id → search MP by plan_id for authorized preapprovals,
+    match by payer_email, stamp mp_preapproval_id, apply transition.
 
     Owner / admin only (via BillingOrgMixin.get_org).
     """
@@ -1497,7 +1498,6 @@ class AthleteSubscriptionSyncView(BillingOrgMixin, APIView):
         if org is None:
             return Response({"detail": "No organization context."}, status=status.HTTP_403_FORBIDDEN)
 
-        # Only owner/admin can trigger manual sync
         from core.models import Membership
         membership = Membership.objects.filter(
             user=request.user, organization=org, is_active=True, role__in=["owner", "admin"],
@@ -1511,20 +1511,23 @@ class AthleteSubscriptionSyncView(BillingOrgMixin, APIView):
         if not cred:
             return Response({"detail": "MercadoPago no conectado para esta organización."}, status=status.HTTP_400_BAD_REQUEST)
 
-        subs = list(
+        from integrations.mercadopago.athlete_webhook import _apply_status_transition, _notify_owner_payment_received
+        from integrations.mercadopago.subscriptions import search_preapprovals
+
+        reconciled = []
+        errors = []
+        notifications_sent = 0
+
+        # ── Pass 1: subs with mp_preapproval_id ──────────────────────────────
+        subs_with_id = list(
             AthleteSubscription.objects.filter(
                 organization=org,
                 status__in=["pending", "overdue"],
                 mp_preapproval_id__isnull=False,
-            ).select_related("coach_plan")
+            ).select_related("coach_plan", "athlete__user")
         )
 
-        reconciled = []
-        errors = []
-
-        from integrations.mercadopago.athlete_webhook import STATUS_MAP, _apply_status_transition
-
-        for sub in subs:
+        for sub in subs_with_id:
             try:
                 resp = http_requests.get(
                     f"https://api.mercadopago.com/preapproval/{sub.mp_preapproval_id}",
@@ -1545,8 +1548,82 @@ class AthleteSubscriptionSyncView(BillingOrgMixin, APIView):
                         "old_status": old_status,
                         "new_status": sub.status,
                     })
+                    if sub.status == "active":
+                        _notify_owner_payment_received(sub)
+                        notifications_sent += 1
             except Exception as exc:
                 errors.append({"sub_id": sub.pk, "error": str(exc)})
+
+        # ── Pass 2: subs WITHOUT mp_preapproval_id (smart search by plan_id) ─
+        subs_without_id = list(
+            AthleteSubscription.objects.filter(
+                organization=org,
+                status__in=["pending", "overdue"],
+                mp_preapproval_id__isnull=True,
+                coach_plan__mp_plan_id__isnull=False,
+            ).select_related("coach_plan", "athlete__user")
+        )
+
+        # Group by plan_id to minimize MP API calls
+        plans_searched = {}
+        for sub in subs_without_id:
+            plan_id = sub.coach_plan.mp_plan_id
+            if not plan_id:
+                continue
+
+            if plan_id not in plans_searched:
+                try:
+                    plans_searched[plan_id] = search_preapprovals(
+                        cred.access_token, plan_id, status="authorized"
+                    )
+                except Exception as exc:
+                    errors.append({"plan_id": plan_id, "error": str(exc)})
+                    plans_searched[plan_id] = []
+
+            results = plans_searched[plan_id]
+            payer_email = (sub.athlete.user.email or "").lower().strip()
+
+            # Match by payer_email
+            match = next(
+                (r for r in results if (r.get("payer_email") or "").lower().strip() == payer_email),
+                None,
+            )
+            if match is None:
+                continue
+
+            preapproval_id = match.get("id")
+            if not preapproval_id:
+                continue
+
+            # Stamp the preapproval_id so future webhooks hit fast path
+            sub.mp_preapproval_id = preapproval_id
+            sub.save(update_fields=["mp_preapproval_id", "updated_at"])
+
+            old_status = sub.status
+            outcome = _apply_status_transition(sub, match.get("status"), preapproval_id)
+
+            logger.info(
+                "mp.sync.reconciled",
+                extra={
+                    "event_name": "mp.sync.reconciled",
+                    "organization_id": org.pk,
+                    "sub_id": sub.pk,
+                    "payer_email": payer_email,
+                    "preapproval_id": preapproval_id,
+                    "outcome": outcome,
+                },
+            )
+
+            if outcome == "updated":
+                reconciled.append({
+                    "sub_id": sub.pk,
+                    "old_status": old_status,
+                    "new_status": sub.status,
+                    "reconciled_by": "plan_search",
+                })
+                if sub.status == "active":
+                    _notify_owner_payment_received(sub)
+                    notifications_sent += 1
 
         logger.info(
             "billing.athlete_sync.completed",
@@ -1555,8 +1632,9 @@ class AthleteSubscriptionSyncView(BillingOrgMixin, APIView):
                 "organization_id": org.pk,
                 "reconciled_count": len(reconciled),
                 "error_count": len(errors),
+                "notifications_sent": notifications_sent,
                 "outcome": "ok",
             },
         )
 
-        return Response({"reconciled": reconciled, "errors": errors})
+        return Response({"reconciled": reconciled, "errors": errors, "notifications_sent": notifications_sent})

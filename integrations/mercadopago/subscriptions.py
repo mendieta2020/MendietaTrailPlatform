@@ -43,7 +43,10 @@ def create_preapproval_plan(
     Law 6: access_token never logged.
     payment_methods_allowed is intentionally omitted so MP shows all available methods
     (credit_card, debit_card, account_money/saldo) based on the payer's account.
+    notification_url is always baked in so MP sends webhooks to our athlete endpoint.
     """
+    from django.conf import settings as _settings
+    backend_url = getattr(_settings, "BACKEND_URL", "http://localhost:8000")
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
@@ -57,6 +60,7 @@ def create_preapproval_plan(
             "currency_id": "ARS",
         },
         "back_url": back_url,
+        "notification_url": f"{backend_url}/api/webhooks/mercadopago/athlete/",
         "status": "active",
     }
     response = _requests.post(
@@ -189,6 +193,27 @@ def get_preapproval_plan(access_token: str, plan_id: str) -> dict:
         )
     response.raise_for_status()
     return response.json()
+
+
+def search_preapprovals(access_token: str, plan_id: str, status: str = None) -> list:
+    """
+    GET /preapproval/search?preapproval_plan_id={plan_id}&status={status}
+    Returns a list of preapproval objects matching the plan.
+    Used by smart sync to reconcile subs where mp_preapproval_id is not yet set.
+    Law 6: access_token never logged.
+    """
+    headers = {"Authorization": f"Bearer {access_token}"}
+    params = {"preapproval_plan_id": plan_id}
+    if status:
+        params["status"] = status
+    response = _requests.get(
+        f"{MP_API_BASE}/preapproval/search",
+        headers=headers,
+        params=params,
+        timeout=10,
+    )
+    response.raise_for_status()
+    return response.json().get("results", [])
 
 
 def get_subscription(preapproval_id: str) -> dict:

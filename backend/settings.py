@@ -162,6 +162,9 @@ if not STRAVA_INTEGRATION_CALLBACK_URI:
 # FRONTEND_URL: Base URL for frontend (for OAuth redirects after callback)
 FRONTEND_URL = get_env_variable("FRONTEND_URL", default="http://localhost:3000", required=False)
 
+# BACKEND_URL: Base URL for this API server (used to construct webhook notification_url for MP)
+BACKEND_URL = get_env_variable("BACKEND_URL", default="http://localhost:8000", required=False)
+
 # FRONTEND_BASE_URL: Base URL for frontend redirects (OAuth callback final destination)
 # Separate from FRONTEND_URL for better dev/prod alignment
 # In DEBUG: defaults to Vite dev server (localhost:5173)

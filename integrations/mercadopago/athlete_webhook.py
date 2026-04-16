@@ -42,7 +42,48 @@ def _apply_status_transition(sub, mp_status, preapproval_id):
             "subscription_id": sub.id,
         },
     )
+
+    if new_status == "active":
+        _notify_owner_payment_received(sub)
+
     return "updated"
+
+
+def _notify_owner_payment_received(sub):
+    """
+    Creates an InternalMessage to the org owner when an athlete's subscription
+    transitions to active. Org-scoped (Law 1). No-op if no active owner found.
+    """
+    from core.models import InternalMessage, Membership
+
+    owner_membership = (
+        Membership.objects.filter(
+            organization=sub.organization, role="owner", is_active=True
+        )
+        .select_related("user")
+        .first()
+    )
+    if not owner_membership:
+        return
+
+    athlete_name = f"{sub.athlete.user.first_name} {sub.athlete.user.last_name}".strip()
+    plan_name = sub.coach_plan.name if sub.coach_plan else "Sin plan"
+    InternalMessage.objects.create(
+        organization=sub.organization,
+        sender=sub.athlete.user,
+        recipient=owner_membership.user,
+        content=f"\U0001f4b0 {athlete_name} activó su suscripción al plan {plan_name}",
+        alert_type="payment_received",
+    )
+    logger.info(
+        "mp.payment_received.owner_notified",
+        extra={
+            "event_name": "mp.payment_received.owner_notified",
+            "organization_id": sub.organization_id,
+            "subscription_id": sub.id,
+            "outcome": "notified",
+        },
+    )
 
 
 def _fetch_preapproval_with_any_coach_token(preapproval_id):
