@@ -1090,7 +1090,10 @@ class AthleteSubscriptionActivateView(BillingOrgMixin, APIView):
 
     @require_plan("pro")
     def post(self, request, pk):
-        from core.models import AthleteSubscription, Membership
+        from core.models import AthleteSubscription, Membership, OrgOAuthCredential, InternalMessage
+        from django.utils import timezone
+        from datetime import timedelta
+
         org = self.get_org(request)
         if org is None:
             return Response({"detail": "No organization context."}, status=status.HTTP_403_FORBIDDEN)
@@ -1102,27 +1105,97 @@ class AthleteSubscriptionActivateView(BillingOrgMixin, APIView):
             return Response({"detail": "Solo owner o admin pueden activar manualmente."}, status=status.HTTP_403_FORBIDDEN)
 
         try:
-            sub = AthleteSubscription.objects.select_related("athlete__user").get(pk=pk, organization=org)
+            sub = AthleteSubscription.objects.select_related("athlete__user", "coach_plan").get(pk=pk, organization=org)
         except AthleteSubscription.DoesNotExist:
             return Response({"detail": "Suscripción no encontrada."}, status=status.HTTP_404_NOT_FOUND)
 
         if sub.status == AthleteSubscription.Status.ACTIVE:
             return Response({"detail": "La suscripción ya está activa."}, status=status.HTTP_400_BAD_REQUEST)
 
-        sub.status = AthleteSubscription.Status.ACTIVE
-        sub.save(update_fields=["status", "updated_at"])
+        mp_linked = False
+        plan_mp_id = sub.coach_plan.mp_plan_id if sub.coach_plan else None
+        cred = OrgOAuthCredential.objects.filter(organization=org, provider="mercadopago").first()
 
-        logger.info(
-            "athlete_manual_activation",
-            extra={
-                "organization_id": org.pk,
-                "subscription_id": sub.pk,
-                "athlete_id": sub.athlete_id,
-                "activated_by": request.user.pk,
-                "outcome": "activated",
-            },
+        if cred and plan_mp_id:
+            try:
+                from integrations.mercadopago.subscriptions import search_preapprovals
+
+                already_assigned = set(
+                    AthleteSubscription.objects.filter(
+                        organization=org,
+                        mp_preapproval_id__isnull=False,
+                    ).exclude(pk=sub.pk).values_list("mp_preapproval_id", flat=True)
+                )
+
+                raw_results = search_preapprovals(cred.access_token, plan_mp_id, status="authorized")
+                available = [r for r in raw_results if r.get("id") not in already_assigned]
+
+                if available:
+                    best = max(available, key=lambda r: r.get("date_created") or "")
+                    preapproval_id = best.get("id")
+                    payer_id = str(best.get("payer_id") or "") or None
+
+                    sub.mp_preapproval_id = preapproval_id
+                    sub.mp_payer_id = payer_id
+                    sub.save(update_fields=["mp_preapproval_id", "mp_payer_id", "updated_at"])
+
+                    from integrations.mercadopago.athlete_webhook import _apply_status_transition
+                    _apply_status_transition(sub, best.get("status"), preapproval_id)
+                    # _apply_status_transition sets last_payment_at, next_payment_at, notifies owner
+                    mp_linked = True
+
+                    logger.info(
+                        "athlete_subscription.activated_with_mp",
+                        extra={
+                            "event_name": "athlete_subscription.activated_with_mp",
+                            "organization_id": org.pk,
+                            "subscription_id": sub.pk,
+                            "preapproval_id": preapproval_id,
+                            "activated_by": request.user.pk,
+                            "outcome": "activated",
+                        },
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "athlete_subscription.activate_mp_search_failed",
+                    extra={
+                        "event_name": "athlete_subscription.activate_mp_search_failed",
+                        "organization_id": org.pk,
+                        "subscription_id": sub.pk,
+                        "error": str(exc),
+                    },
+                )
+
+        if not mp_linked:
+            now = timezone.now()
+            sub.status = AthleteSubscription.Status.ACTIVE
+            sub.last_payment_at = now
+            sub.next_payment_at = now + timedelta(days=30)
+            sub.save(update_fields=["status", "last_payment_at", "next_payment_at", "updated_at"])
+
+            from integrations.mercadopago.athlete_webhook import _notify_owner_payment_received
+            _notify_owner_payment_received(sub)
+
+            logger.info(
+                "athlete_manual_activation",
+                extra={
+                    "organization_id": org.pk,
+                    "subscription_id": sub.pk,
+                    "athlete_id": sub.athlete_id,
+                    "activated_by": request.user.pk,
+                    "outcome": "activated",
+                },
+            )
+
+        InternalMessage.objects.create(
+            organization=org,
+            sender=request.user,
+            recipient=sub.athlete.user,
+            content=f"Tu suscripción al plan {sub.coach_plan.name if sub.coach_plan else ''} fue activada.",
+            alert_type="subscription_activated",
         )
-        return Response({"id": sub.pk, "status": sub.status})
+
+        return Response({"id": sub.pk, "status": sub.status, "mp_linked": mp_linked})
 
 
 # ==============================================================================
@@ -1518,8 +1591,6 @@ class AthleteSubscriptionSyncView(BillingOrgMixin, APIView):
         errors = []
         notifications_sent = 0
 
-        print(f"[SYNC_DEBUG] org={org.pk} user={request.user.email} cred_token_len={len(cred.access_token)}")
-
         # ── Pass 1: subs with mp_preapproval_id ──────────────────────────────
         subs_with_id = list(
             AthleteSubscription.objects.filter(
@@ -1528,7 +1599,6 @@ class AthleteSubscriptionSyncView(BillingOrgMixin, APIView):
                 mp_preapproval_id__isnull=False,
             ).select_related("coach_plan", "athlete__user")
         )
-        print(f"[SYNC_DEBUG] Pass1: subs_with_id count={len(subs_with_id)}")
 
         for sub in subs_with_id:
             try:
@@ -1557,10 +1627,11 @@ class AthleteSubscriptionSyncView(BillingOrgMixin, APIView):
             except Exception as exc:
                 errors.append({"sub_id": sub.pk, "error": str(exc)})
 
-        # ── Pass 2: subs WITHOUT mp_preapproval_id (smart search by plan_id) ─
-        # payer_email often comes empty from /preapproval/search, so we resolve
-        # payer_id → email via GET /users/{payer_id} (PR-167f-fix).
-        from integrations.mercadopago.subscriptions import get_mp_user
+        # ── Pass 2: subs WITHOUT mp_preapproval_id — 1:1 auto-reconcile ────────
+        # MP's GET /users/{id} does not expose email (privacy restriction).
+        # Instead: if exactly 1 pending sub and 1 authorized unassigned preapproval
+        # exist for a given plan, the match is unambiguous and we auto-link.
+        # Multiple subs or multiple preapprovals → log "ambiguous_match" and skip.
 
         subs_without_id = list(
             AthleteSubscription.objects.filter(
@@ -1570,12 +1641,8 @@ class AthleteSubscriptionSyncView(BillingOrgMixin, APIView):
                 coach_plan__mp_plan_id__isnull=False,
             ).select_related("coach_plan", "athlete__user")
         )
-        print(f"[SYNC_DEBUG] Pass2: subs_without_id count={len(subs_without_id)}")
-        for s in subs_without_id:
-            print(f"[SYNC_DEBUG]   sub_id={s.pk} status={s.status} athlete_email={s.athlete.user.email!r} plan_id={s.coach_plan.mp_plan_id!r}")
 
-        # Pre-build set of already-assigned preapproval IDs (across entire org)
-        # to skip duplicates when Natalia paid twice and only newest matters.
+        # Pre-build already-assigned set (includes IDs stamped during Pass 1)
         already_assigned = set(
             AthleteSubscription.objects.filter(
                 organization=org,
@@ -1583,122 +1650,86 @@ class AthleteSubscriptionSyncView(BillingOrgMixin, APIView):
             ).values_list("mp_preapproval_id", flat=True)
         )
 
-        # Cache: plan_id → {athlete_email: preapproval_dict}
-        # Built lazily, one MP search + user-lookups per unique plan_id.
-        plan_email_cache: dict = {}
-
+        # Group pending subs by plan_id
+        subs_by_plan: dict = {}
         for sub in subs_without_id:
             plan_id = sub.coach_plan.mp_plan_id
-            if not plan_id:
+            if plan_id:
+                subs_by_plan.setdefault(plan_id, []).append(sub)
+
+        for plan_id, plan_subs in subs_by_plan.items():
+            try:
+                raw_results = search_preapprovals(
+                    cred.access_token, plan_id, status="authorized"
+                )
+            except Exception as exc:
+                errors.append({"plan_id": plan_id, "error": str(exc)})
                 continue
 
-            if plan_id not in plan_email_cache:
-                # Fetch all authorized preapprovals for this plan
-                print(f"[SYNC_DEBUG]   Searching MP preapprovals for plan_id={plan_id!r}")
-                try:
-                    raw_results = search_preapprovals(
-                        cred.access_token, plan_id, status="authorized"
-                    )
-                except Exception as exc:
-                    print(f"[SYNC_DEBUG]   search_preapprovals EXCEPTION: {exc}")
-                    errors.append({"plan_id": plan_id, "error": str(exc)})
-                    plan_email_cache[plan_id] = {}
+            # Filter already-assigned; dedup by payer_id keeping newest
+            available = [r for r in raw_results if r.get("id") not in already_assigned]
+            payer_id_to_preapproval: dict = {}
+            for r in available:
+                payer_id = str(r.get("payer_id") or "")
+                if not payer_id:
                     continue
-                print(f"[SYNC_DEBUG]   search_preapprovals returned {len(raw_results)} result(s)")
-                for r in raw_results:
-                    print(f"[SYNC_DEBUG]     preapproval id={r.get('id')} status={r.get('status')} payer_id={r.get('payer_id')} payer_email={r.get('payer_email')!r} date_created={r.get('date_created')}")
+                existing = payer_id_to_preapproval.get(payer_id)
+                if existing is None or (
+                    (r.get("date_created") or "") > (existing.get("date_created") or "")
+                ):
+                    payer_id_to_preapproval[payer_id] = r
 
-                # Dedup: for each unique payer_id keep only the NEWEST preapproval
-                # (date_created is ISO-8601, string compare is safe for sorting).
-                payer_id_to_preapproval: dict = {}
-                for r in raw_results:
-                    if r.get("id") in already_assigned:
-                        print(f"[SYNC_DEBUG]     SKIP id={r.get('id')} — already_assigned")
-                        continue  # already linked to another sub — skip
-                    payer_id = str(r.get("payer_id") or "")
-                    if not payer_id:
-                        print(f"[SYNC_DEBUG]     SKIP id={r.get('id')} — payer_id empty")
-                        continue
-                    existing = payer_id_to_preapproval.get(payer_id)
-                    if existing is None or (
-                        (r.get("date_created") or "") > (existing.get("date_created") or "")
-                    ):
-                        payer_id_to_preapproval[payer_id] = r
+            unique_preapprovals = list(payer_id_to_preapproval.values())
 
-                # Resolve each unique payer_id → email via GET /users/{payer_id}
-                print(f"[SYNC_DEBUG]   unique payer_ids after dedup: {list(payer_id_to_preapproval.keys())}")
-                email_to_preapproval: dict = {}
-                for payer_id, preapproval in payer_id_to_preapproval.items():
-                    try:
-                        mp_user = get_mp_user(cred.access_token, payer_id)
-                        email = (mp_user.get("email") or "").lower().strip()
-                        print(f"[SYNC_DEBUG]   get_mp_user payer_id={payer_id} → email={email!r} (mp_user keys={list(mp_user.keys())})")
-                        if email:
-                            preapproval["_resolved_payer_id"] = payer_id
-                            email_to_preapproval[email] = preapproval
-                    except Exception as exc:
-                        print(f"[SYNC_DEBUG]   get_mp_user EXCEPTION payer_id={payer_id}: {exc}")
-                        logger.warning(
-                            "mp.sync.user_lookup_failed",
-                            extra={
-                                "event_name": "mp.sync.user_lookup_failed",
-                                "organization_id": org.pk,
-                                "payer_id": payer_id,
-                                "error": str(exc),
-                            },
-                        )
+            if len(plan_subs) == 1 and len(unique_preapprovals) == 1:
+                # 1:1 — unambiguous, safe to auto-reconcile
+                sub = plan_subs[0]
+                preapproval = unique_preapprovals[0]
+                preapproval_id = preapproval.get("id")
+                resolved_payer_id = str(preapproval.get("payer_id") or "") or None
 
-                plan_email_cache[plan_id] = email_to_preapproval
-                print(f"[SYNC_DEBUG]   email_to_preapproval keys: {list(email_to_preapproval.keys())}")
+                sub.mp_preapproval_id = preapproval_id
+                sub.mp_payer_id = resolved_payer_id
+                sub.save(update_fields=["mp_preapproval_id", "mp_payer_id", "updated_at"])
+                already_assigned.add(preapproval_id)
 
-            email_cache = plan_email_cache[plan_id]
-            athlete_email = (sub.athlete.user.email or "").lower().strip()
-            match = email_cache.get(athlete_email)
-            print(f"[SYNC_DEBUG]   sub_id={sub.pk} athlete_email={athlete_email!r} match={'FOUND id='+match['id'] if match else 'NONE'}")
-            if match is None:
-                continue
+                old_status = sub.status
+                outcome = _apply_status_transition(sub, preapproval.get("status"), preapproval_id)
 
-            preapproval_id = match.get("id")
-            if not preapproval_id:
-                continue
+                logger.info(
+                    "mp.sync.reconciled",
+                    extra={
+                        "event_name": "mp.sync.reconciled",
+                        "organization_id": org.pk,
+                        "sub_id": sub.pk,
+                        "payer_id": resolved_payer_id,
+                        "preapproval_id": preapproval_id,
+                        "outcome": outcome,
+                    },
+                )
 
-            # Guard: skip if already assigned in this sync run (two subs same email)
-            if preapproval_id in already_assigned:
-                continue
-            already_assigned.add(preapproval_id)
-
-            resolved_payer_id = match.get("_resolved_payer_id") or str(match.get("payer_id") or "")
-
-            # Stamp both ids so fast paths work going forward
-            sub.mp_preapproval_id = preapproval_id
-            sub.mp_payer_id = resolved_payer_id or None
-            sub.save(update_fields=["mp_preapproval_id", "mp_payer_id", "updated_at"])
-
-            old_status = sub.status
-            outcome = _apply_status_transition(sub, match.get("status"), preapproval_id)
-
-            logger.info(
-                "mp.sync.reconciled",
-                extra={
-                    "event_name": "mp.sync.reconciled",
-                    "organization_id": org.pk,
-                    "sub_id": sub.pk,
-                    "payer_id": resolved_payer_id,
-                    "preapproval_id": preapproval_id,
-                    "outcome": outcome,
-                },
-            )
-
-            if outcome == "updated":
-                reconciled.append({
-                    "sub_id": sub.pk,
-                    "old_status": old_status,
-                    "new_status": sub.status,
-                    "reconciled_by": "payer_id_lookup",
-                })
-                if sub.status == "active":
-                    _notify_owner_payment_received(sub)
-                    notifications_sent += 1
+                if outcome == "updated":
+                    reconciled.append({
+                        "sub_id": sub.pk,
+                        "old_status": old_status,
+                        "new_status": sub.status,
+                        "reconciled_by": "1_to_1",
+                    })
+                    if sub.status == "active":
+                        notifications_sent += 1
+                        # _apply_status_transition already called _notify_owner_payment_received
+            else:
+                logger.info(
+                    "mp.sync.ambiguous_match",
+                    extra={
+                        "event_name": "mp.sync.ambiguous_match",
+                        "organization_id": org.pk,
+                        "plan_id": plan_id,
+                        "pending_subs": len(plan_subs),
+                        "available_preapprovals": len(unique_preapprovals),
+                        "outcome": "skipped",
+                    },
+                )
 
         logger.info(
             "billing.athlete_sync.completed",
