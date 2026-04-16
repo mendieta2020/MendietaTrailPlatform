@@ -213,12 +213,12 @@ class WorkoutAssignmentSubscriptionGateTest(TestCase):
         self.assertEqual(resp.status_code, 403)
         self.assertTrue(resp.data.get("paywall"))
 
-    def test_no_subscription_athlete_gets_403(self):
+    def test_no_subscription_athlete_gets_200(self):
+        # Athletes with no subscription (legacy/free) pass the gate — status=none is allowed.
         user, _, _ = _make_athlete(self.org, no_sub=True)
         self.client.force_authenticate(user=user)
         resp = self.client.get(self._url)
-        self.assertEqual(resp.status_code, 403)
-        self.assertTrue(resp.data.get("paywall"))
+        self.assertEqual(resp.status_code, 200)
 
     def test_paused_athlete_gets_200_on_get(self):
         user, _, _ = _make_athlete(self.org, sub_status="paused")
