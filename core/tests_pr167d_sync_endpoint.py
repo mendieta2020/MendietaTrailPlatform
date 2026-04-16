@@ -105,32 +105,35 @@ def test_sync_endpoint_owner_only(sync_setup):
     assert res.status_code == 403
 
 
-# ─── Test 3: skips subs without mp_preapproval_id ────────────────────────────
+# ─── Test 3: Pass 2 searches MP by plan_id for subs without mp_preapproval_id ─
 
 @pytest.mark.django_db
-def test_sync_endpoint_skips_subs_without_mp_preapproval_id(sync_setup):
-    """Subs without mp_preapproval_id are skipped; no MP call is made for them."""
+def test_sync_endpoint_searches_by_plan_for_subs_without_preapproval_id(sync_setup):
+    """
+    PR-167f: subs without mp_preapproval_id trigger a Pass-2 search by plan_id.
+    When MP returns no matching authorized preapproval, the sub stays pending.
+    """
     owner, org, sub_a, sub_b = sync_setup
 
-    # Make sub_a already active so only sub_b (None preapproval) would remain — but it's skipped
+    # Make sub_a already active so Pass 1 has nothing to process
     sub_a.status = "active"
     sub_a.save(update_fields=["status"])
-
-    fake_mp_response = MagicMock()
-    fake_mp_response.status_code = 200
-    fake_mp_response.json.return_value = {"status": "authorized"}
 
     client = APIClient()
     client.force_authenticate(user=owner)
 
-    with patch("core.views_billing.http_requests.get", return_value=fake_mp_response) as mock_get:
+    # Pass 2 will call search_preapprovals — return empty list (no match)
+    with patch(
+        "integrations.mercadopago.subscriptions.search_preapprovals",
+        return_value=[],
+    ) as mock_search:
         res = client.post(SYNC_URL)
 
     assert res.status_code == 200
     data = res.json()
     assert data["reconciled"] == []
-    # No MP calls should be made for sub_b (no preapproval_id)
-    mock_get.assert_not_called()
+    # search_preapprovals must be called for sub_b's plan
+    mock_search.assert_called_once()
 
     sub_b.refresh_from_db()
-    assert sub_b.status == "pending"  # unchanged
+    assert sub_b.status == "pending"  # unchanged — no match found
