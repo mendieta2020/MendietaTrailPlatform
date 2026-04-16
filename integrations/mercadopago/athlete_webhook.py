@@ -113,29 +113,85 @@ def _fetch_preapproval_with_any_coach_token(preapproval_id):
 
 def _reconcile_by_payer(mp_data, cred):
     """
-    Fallback match: find AthleteSubscription by payer_email + preapproval_plan_id
-    within organizations owned by this credential.
+    Fallback match: find AthleteSubscription for a preapproval whose id is unknown.
 
-    Returns AthleteSubscription or None.
+    Strategy (in order):
+    1. Match by mp_payer_id field (fastest — no extra API call).
+    2. Match by payer_email from mp_data (populated for some MP flows).
+    3. Resolve email via GET /users/{payer_id} and match by email (PR-167f-fix).
+
+    Returns AthleteSubscription or None. Stores mp_payer_id when resolved via
+    email lookup so future calls skip the API round-trip.
+    Law 6: access_token never logged.
     """
     from core.models import AthleteSubscription
 
+    payer_id = str(mp_data.get("payer_id") or "")
     payer_email = (mp_data.get("payer_email") or "").lower().strip()
     preapproval_plan_id = mp_data.get("preapproval_plan_id") or mp_data.get("plan_id") or ""
 
-    if not payer_email or not preapproval_plan_id:
-        return None
-
-    return (
-        AthleteSubscription.objects.filter(
-            organization=cred.organization,
-            coach_plan__mp_plan_id=preapproval_plan_id,
-            athlete__user__email__iexact=payer_email,
+    # 1. Fast lookup by mp_payer_id (set during sync or a prior webhook reconcile)
+    if payer_id:
+        sub = (
+            AthleteSubscription.objects.filter(
+                organization=cred.organization,
+                mp_payer_id=payer_id,
+            )
+            .select_related("coach_plan", "athlete__user")
+            .order_by("-created_at")
+            .first()
         )
-        .select_related("coach_plan", "athlete__user")
-        .order_by("-created_at")
-        .first()
-    )
+        if sub is not None:
+            return sub
+
+    # 2. Match by payer_email directly from mp_data (may be populated)
+    if payer_email and preapproval_plan_id:
+        sub = (
+            AthleteSubscription.objects.filter(
+                organization=cred.organization,
+                coach_plan__mp_plan_id=preapproval_plan_id,
+                athlete__user__email__iexact=payer_email,
+            )
+            .select_related("coach_plan", "athlete__user")
+            .order_by("-created_at")
+            .first()
+        )
+        if sub is not None:
+            return sub
+
+    # 3. Resolve email via MP API (payer_email empty — production case)
+    if payer_id and preapproval_plan_id:
+        try:
+            from integrations.mercadopago.subscriptions import get_mp_user
+            mp_user = get_mp_user(cred.access_token, payer_id)
+            resolved_email = (mp_user.get("email") or "").lower().strip()
+            if resolved_email:
+                sub = (
+                    AthleteSubscription.objects.filter(
+                        organization=cred.organization,
+                        coach_plan__mp_plan_id=preapproval_plan_id,
+                        athlete__user__email__iexact=resolved_email,
+                    )
+                    .select_related("coach_plan", "athlete__user")
+                    .order_by("-created_at")
+                    .first()
+                )
+                if sub is not None:
+                    # Store payer_id so future calls skip this API round-trip
+                    sub.mp_payer_id = payer_id
+                    sub.save(update_fields=["mp_payer_id", "updated_at"])
+                    return sub
+        except Exception as exc:
+            logger.warning(
+                "mp.reconcile.user_lookup_failed",
+                extra={
+                    "event_name": "mp.reconcile.user_lookup_failed",
+                    "payer_id": payer_id,
+                    "error": str(exc),
+                },
+            )
+
+    return None
 
 
 def process_athlete_subscription_webhook(payload: dict) -> dict:

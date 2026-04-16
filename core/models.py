@@ -3466,6 +3466,10 @@ class AthleteSubscription(models.Model):
         max_length=100, null=True, blank=True,
         help_text="ID del preapproval en MercadoPago del atleta.",
     )
+    mp_payer_id = models.CharField(
+        max_length=50, null=True, blank=True,
+        help_text="MP user_id del payer. Obtenido vía GET /users/{payer_id} para reconciliación.",
+    )
     last_payment_at = models.DateTimeField(null=True, blank=True)
     next_payment_at = models.DateTimeField(null=True, blank=True)
     # PR-152: 7-day grace period for new athletes
