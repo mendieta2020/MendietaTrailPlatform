@@ -1518,6 +1518,8 @@ class AthleteSubscriptionSyncView(BillingOrgMixin, APIView):
         errors = []
         notifications_sent = 0
 
+        print(f"[SYNC_DEBUG] org={org.pk} user={request.user.email} cred_token_len={len(cred.access_token)}")
+
         # ── Pass 1: subs with mp_preapproval_id ──────────────────────────────
         subs_with_id = list(
             AthleteSubscription.objects.filter(
@@ -1526,6 +1528,7 @@ class AthleteSubscriptionSyncView(BillingOrgMixin, APIView):
                 mp_preapproval_id__isnull=False,
             ).select_related("coach_plan", "athlete__user")
         )
+        print(f"[SYNC_DEBUG] Pass1: subs_with_id count={len(subs_with_id)}")
 
         for sub in subs_with_id:
             try:
@@ -1567,6 +1570,9 @@ class AthleteSubscriptionSyncView(BillingOrgMixin, APIView):
                 coach_plan__mp_plan_id__isnull=False,
             ).select_related("coach_plan", "athlete__user")
         )
+        print(f"[SYNC_DEBUG] Pass2: subs_without_id count={len(subs_without_id)}")
+        for s in subs_without_id:
+            print(f"[SYNC_DEBUG]   sub_id={s.pk} status={s.status} athlete_email={s.athlete.user.email!r} plan_id={s.coach_plan.mp_plan_id!r}")
 
         # Pre-build set of already-assigned preapproval IDs (across entire org)
         # to skip duplicates when Natalia paid twice and only newest matters.
@@ -1588,23 +1594,30 @@ class AthleteSubscriptionSyncView(BillingOrgMixin, APIView):
 
             if plan_id not in plan_email_cache:
                 # Fetch all authorized preapprovals for this plan
+                print(f"[SYNC_DEBUG]   Searching MP preapprovals for plan_id={plan_id!r}")
                 try:
                     raw_results = search_preapprovals(
                         cred.access_token, plan_id, status="authorized"
                     )
                 except Exception as exc:
+                    print(f"[SYNC_DEBUG]   search_preapprovals EXCEPTION: {exc}")
                     errors.append({"plan_id": plan_id, "error": str(exc)})
                     plan_email_cache[plan_id] = {}
                     continue
+                print(f"[SYNC_DEBUG]   search_preapprovals returned {len(raw_results)} result(s)")
+                for r in raw_results:
+                    print(f"[SYNC_DEBUG]     preapproval id={r.get('id')} status={r.get('status')} payer_id={r.get('payer_id')} payer_email={r.get('payer_email')!r} date_created={r.get('date_created')}")
 
                 # Dedup: for each unique payer_id keep only the NEWEST preapproval
                 # (date_created is ISO-8601, string compare is safe for sorting).
                 payer_id_to_preapproval: dict = {}
                 for r in raw_results:
                     if r.get("id") in already_assigned:
+                        print(f"[SYNC_DEBUG]     SKIP id={r.get('id')} — already_assigned")
                         continue  # already linked to another sub — skip
                     payer_id = str(r.get("payer_id") or "")
                     if not payer_id:
+                        print(f"[SYNC_DEBUG]     SKIP id={r.get('id')} — payer_id empty")
                         continue
                     existing = payer_id_to_preapproval.get(payer_id)
                     if existing is None or (
@@ -1613,15 +1626,18 @@ class AthleteSubscriptionSyncView(BillingOrgMixin, APIView):
                         payer_id_to_preapproval[payer_id] = r
 
                 # Resolve each unique payer_id → email via GET /users/{payer_id}
+                print(f"[SYNC_DEBUG]   unique payer_ids after dedup: {list(payer_id_to_preapproval.keys())}")
                 email_to_preapproval: dict = {}
                 for payer_id, preapproval in payer_id_to_preapproval.items():
                     try:
                         mp_user = get_mp_user(cred.access_token, payer_id)
                         email = (mp_user.get("email") or "").lower().strip()
+                        print(f"[SYNC_DEBUG]   get_mp_user payer_id={payer_id} → email={email!r} (mp_user keys={list(mp_user.keys())})")
                         if email:
                             preapproval["_resolved_payer_id"] = payer_id
                             email_to_preapproval[email] = preapproval
                     except Exception as exc:
+                        print(f"[SYNC_DEBUG]   get_mp_user EXCEPTION payer_id={payer_id}: {exc}")
                         logger.warning(
                             "mp.sync.user_lookup_failed",
                             extra={
@@ -1633,10 +1649,12 @@ class AthleteSubscriptionSyncView(BillingOrgMixin, APIView):
                         )
 
                 plan_email_cache[plan_id] = email_to_preapproval
+                print(f"[SYNC_DEBUG]   email_to_preapproval keys: {list(email_to_preapproval.keys())}")
 
             email_cache = plan_email_cache[plan_id]
             athlete_email = (sub.athlete.user.email or "").lower().strip()
             match = email_cache.get(athlete_email)
+            print(f"[SYNC_DEBUG]   sub_id={sub.pk} athlete_email={athlete_email!r} match={'FOUND id='+match['id'] if match else 'NONE'}")
             if match is None:
                 continue
 
