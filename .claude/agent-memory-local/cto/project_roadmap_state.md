@@ -460,5 +460,25 @@ Coach B2C:     Athlete pays Coach via MercadoPago (AthleteSubscription)
 - Post-deploy action: run POST /api/billing/athlete-subscriptions/sync/ to reconcile Natalia's test sub ($100 "Regalo")
 - Risk: HIGH (billing critical path) — RESOLVED
 
+### PR-167c — Subscription lifecycle: Pause + Cancel + Reactivate + Retention survey ✅ 2026-04-16
+- Model: AthleteSubscription.Status.PAUSED added + 6 new nullable fields: paused_at, cancelled_at, pause_reason, pause_comment, cancellation_reason, cancellation_comment
+- Migration 0114_pr167c_subscription_lifecycle.py
+- Webhook: STATUS_MAP "paused" → "paused" (was "overdue") — corrects idempotency behavior
+- 3 new MP helpers: pause_subscription, cancel_athlete_subscription, reactivate_subscription (all coach-token, Law 6 compliant)
+- 4 new endpoints:
+  - POST /api/athlete/subscription/pause/ — athlete pauses with retention survey
+  - POST /api/athlete/subscription/cancel/ — athlete cancels with retention survey
+  - POST /api/athlete/subscription/reactivate/ — paused→active (MP reactivate) or cancelled→pending (new preapproval)
+  - POST /api/billing/athlete-subscriptions/<pk>/owner-action/ — owner pause/cancel/reactivate + notifies athlete
+- AthleteMySubscriptionView now returns paused_at, cancelled_at, pause_reason, cancellation_reason
+- Frontend:
+  - SubscriptionActionModal.jsx (new) — retention survey modal for pause + cancel flows
+  - SubscriptionCard.jsx — action buttons for active (Pausar/Cancelar), paused (Reactivar/Cancelar), cancelled (Volver a suscribirse)
+  - Finanzas.jsx — owner action buttons per row + Pausados filter tab + ownerSubscriptionAction import
+  - billing.js — 4 new API functions
+- 28 new tests, all pass; adjacent billing tests (47 total) all pass
+- Django check: 0 issues; lint: 0 errors; build: success
+- Risk: MEDIUM | Branch: p2/pr167c-subscription-lifecycle | Commit: f998dfe
+
 ## Test Baseline
-~1403+ tests | CI: backend ✅ frontend ✅
+~1431+ tests | CI: backend ✅ frontend ✅
