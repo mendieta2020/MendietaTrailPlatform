@@ -132,13 +132,19 @@ def test_sync_reconciles_by_plan_search(sub_without_preapproval):
     """
     owner, org, plan, ath, sub, athlete_user = sub_without_preapproval
 
+    # payer_email is empty (production case) — payer_id is used to resolve email
     fake_search_results = [
         {
             "id": "discovered_preapproval_id",
-            "payer_email": "ath_167f@test.com",
+            "payer_id": 111222333,
+            "payer_email": "",
             "status": "authorized",
+            "date_created": "2026-04-16T10:00:00.000-04:00",
         }
     ]
+
+    def fake_get_mp_user(access_token, user_id):
+        return {"email": "ath_167f@test.com"}
 
     client = APIClient()
     client.force_authenticate(user=owner)
@@ -148,9 +154,13 @@ def test_sync_reconciles_by_plan_search(sub_without_preapproval):
         return_value=fake_search_results,
     ):
         with patch(
-            "integrations.mercadopago.athlete_webhook._notify_owner_payment_received"
+            "integrations.mercadopago.subscriptions.get_mp_user",
+            side_effect=fake_get_mp_user,
         ):
-            res = client.post(SYNC_URL)
+            with patch(
+                "integrations.mercadopago.athlete_webhook._notify_owner_payment_received"
+            ):
+                res = client.post(SYNC_URL)
 
     assert res.status_code == 200
     data = res.json()
@@ -159,7 +169,7 @@ def test_sync_reconciles_by_plan_search(sub_without_preapproval):
     assert reconciled_entry["sub_id"] == sub.pk
     assert reconciled_entry["old_status"] == "pending"
     assert reconciled_entry["new_status"] == "active"
-    assert reconciled_entry.get("reconciled_by") == "plan_search"
+    assert reconciled_entry.get("reconciled_by") == "payer_id_lookup"
 
     sub.refresh_from_db()
     assert sub.mp_preapproval_id == "discovered_preapproval_id"
@@ -181,16 +191,22 @@ def test_sync_sends_owner_notification(sub_without_preapproval):
     fake_search_results = [
         {
             "id": "notif_preapproval_id",
-            "payer_email": "ath_167f@test.com",
+            "payer_id": 444555666,
+            "payer_email": "",
             "status": "authorized",
+            "date_created": "2026-04-16T10:00:00.000-04:00",
         }
     ]
+
+    def fake_get_mp_user(access_token, user_id):
+        return {"email": "ath_167f@test.com"}
 
     client = APIClient()
     client.force_authenticate(user=owner)
 
     with patch("integrations.mercadopago.subscriptions.search_preapprovals", return_value=fake_search_results):
-        res = client.post(SYNC_URL)
+        with patch("integrations.mercadopago.subscriptions.get_mp_user", side_effect=fake_get_mp_user):
+            res = client.post(SYNC_URL)
 
     assert res.status_code == 200
     data = res.json()

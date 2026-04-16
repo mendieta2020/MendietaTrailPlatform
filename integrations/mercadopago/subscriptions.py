@@ -216,6 +216,23 @@ def search_preapprovals(access_token: str, plan_id: str, status: str = None) -> 
     return response.json().get("results", [])
 
 
+def get_mp_user(access_token: str, user_id: str) -> dict:
+    """
+    GET /users/{user_id} — returns MP user profile (email, first_name, last_name).
+    Used to resolve payer_id → email during reconciliation when payer_email
+    is missing from /preapproval/search results.
+    Law 6: access_token never logged.
+    """
+    headers = {"Authorization": f"Bearer {access_token}"}
+    response = _requests.get(
+        f"{MP_API_BASE}/users/{user_id}",
+        headers=headers,
+        timeout=10,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 def get_subscription(preapproval_id: str) -> dict:
     return mp_get(f"/preapproval/{preapproval_id}")
 
