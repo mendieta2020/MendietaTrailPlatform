@@ -11,6 +11,45 @@ from rest_framework import status
 from .models import Alumno, Membership
 
 
+def compute_subscription_status(user, org_id):
+    """
+    Returns the athlete's effective subscription status for visibility gates.
+
+    Values:
+        "active"        — paid subscription, full access
+        "trial"         — trial period still valid, full access
+        "paused"        — paused, limited access
+        "cancelled"     — cancelled, hard paywall
+        "trial_expired" — trial ended and not active, hard paywall
+        "none"          — no subscription record found, hard paywall
+
+    PR-168a: Single source of truth for frontend visibility decisions.
+    """
+    from django.utils import timezone as tz
+    from .models import AthleteSubscription
+
+    sub = AthleteSubscription.objects.filter(
+        athlete__user=user,
+        organization_id=org_id,
+    ).first()
+
+    if sub is None:
+        return "none"
+
+    if sub.status == "active":
+        return "active"
+    if sub.status == "paused":
+        return "paused"
+    if sub.status == "cancelled":
+        return "cancelled"
+
+    # pending / overdue / suspended — check trial
+    if sub.trial_ends_at and sub.trial_ends_at > tz.now():
+        return "trial"
+
+    return "trial_expired"
+
+
 class UserIdentityView(APIView):
     """
     GET /api/me/
@@ -75,6 +114,11 @@ class UserIdentityView(APIView):
                     identity["coach_id"] = alumno.entrenador.id
             except Alumno.DoesNotExist:
                 pass
+
+            # PR-168a: include subscription_status for frontend visibility gates
+            identity["subscription_status"] = compute_subscription_status(
+                user, membership.organization_id
+            )
 
             return Response(identity, status=status.HTTP_200_OK)
 

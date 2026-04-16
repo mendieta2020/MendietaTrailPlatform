@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
 import { OrgProvider } from './context/OrgContext.jsx'
+import { SubscriptionProvider } from './context/SubscriptionContext.jsx'
 
 // Sentry: initialize only when VITE_SENTRY_DSN is present.
 // No Session Replay, no Profiling — P0 minimal footprint.
@@ -30,7 +31,9 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <AuthProvider>
       <OrgProvider>
-        <App />
+        <SubscriptionProvider>
+          <App />
+        </SubscriptionProvider>
       </OrgProvider>
     </AuthProvider>
   </StrictMode>,

@@ -11,7 +11,7 @@ import {
 import AthleteLayout from '../components/AthleteLayout';
 import useWeather from '../hooks/useWeather';
 import client from '../api/client';
-import { getBillingStatus, getMySubscription } from '../api/billing';
+import { getBillingStatus, getMySubscription, pauseMySubscription, cancelMySubscription, reactivateMySubscription } from '../api/billing';
 import { listAthleteGoals, getMySubscriptionWithCoach } from '../api/p1';
 import {
   getDeviceStatus,
@@ -22,8 +22,9 @@ import { WellnessCheckIn } from '../components/WellnessCheckIn';
 import CoachInfoCard from '../components/CoachInfoCard';
 import CoachPlanCard from '../components/SubscriptionCard';
 import TrialBannerWidget from '../components/TrialBanner';
-import TrialPaywall from '../components/TrialPaywall';
 import ChangePlanModal from '../components/ChangePlanModal';
+import VisibilityGate from '../components/VisibilityGate';
+import { useSubscription } from '../context/SubscriptionContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 // ─── Greeting based on time of day ────────────────────────────────────────────
@@ -438,6 +439,8 @@ const AthleteDashboard = ({ user }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const pollTimerRef = useRef(null);
 
+  const { isPaywalled } = useSubscription();
+
   const greeting = getGreeting();
   const displayName = user?.first_name || user?.username || 'Atleta';
 
@@ -626,28 +629,9 @@ const AthleteDashboard = ({ user }) => {
         </Alert>
       </Snackbar>
 
-      {/* ── PR-165b: Trial Paywall (full-screen, zIndex 1250) ── */}
-      {mySubWithCoach?.subscription && (() => {
-        const sub = mySubWithCoach.subscription;
-        if (sub.trial_ends_at && new Date(sub.trial_ends_at) < new Date() && sub.status !== 'active') {
-          return (
-            <TrialPaywall
-              trialEndsAt={sub.trial_ends_at}
-              status={sub.status}
-              planName={sub.plan_name}
-              planPrice={sub.plan_price}
-              coachName={mySubWithCoach.coach?.name}
-              mpPreapprovalId={sub.mp_preapproval_id}
-            />
-          );
-        }
-        return null;
-      })()}
-
-      {/* ── PR-152: Trial Banner (existing inline component, kept for compatibility) ── */}
-      <TrialBanner mySub={mySub} />
-
-      {/* ── PR-165b: New trial banner widget (shows < 5 days) ── */}
+      {/* ── PR-168a: Trial banner — single source (TrialBannerWidget only, < 5 days).
+           TrialPaywall and inline TrialBanner removed: VisibilityGate handles hard
+           paywall and paused states without duplicate renders. ── */}
       {mySubWithCoach?.subscription && (
         <TrialBannerWidget
           trialEndsAt={mySubWithCoach.subscription.trial_ends_at}
@@ -696,25 +680,26 @@ const AthleteDashboard = ({ user }) => {
         )}
       </Box>
 
-      {/* ── Device connection banner (PR-141) ── */}
-      <DeviceBanner deviceStatus={deviceStatus} onDismiss={handleDismissBanner} />
+      {/* ── Device connection banner (PR-141) — hidden when subscription is paywalled ── */}
+      {!isPaywalled && <DeviceBanner deviceStatus={deviceStatus} onDismiss={handleDismissBanner} />}
 
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, md: 8 }}>
-          {/* ── Today's workout card ── */}
-          <Box sx={{ mb: 3 }}>
-            <WorkoutCard workout={workout} loading={todayLoading} />
-            {!todayLoading && (
-              <WeeklyPulse
-                weeklySummary={todayData?.weekly_summary}
-                streak={todayData?.consecutive_days_active ?? 0}
-              />
-            )}
-          </Box>
-
-          {/* Welcome flow moved to top-level blocking mode (PR-151) */}
-
-          {/* ── PR-164b: Psychological hooks ── */}
+          {/* ── PR-168a: Today's workout — gated for active/trial subs ── */}
+          <VisibilityGate
+            requiredAccess="limited"
+            pausedLabel="⏸️ Suscripción pausada — solo lectura"
+          >
+            <Box sx={{ mb: 3 }}>
+              <WorkoutCard workout={workout} loading={todayLoading} />
+              {!todayLoading && (
+                <WeeklyPulse
+                  weeklySummary={todayData?.weekly_summary}
+                  streak={todayData?.consecutive_days_active ?? 0}
+                />
+              )}
+            </Box>
+          {/* ── PR-164b: Psychological hooks — inside VisibilityGate (PR-168a fix) ── */}
           {/* 8a. Streak counter */}
           {!todayLoading && (() => {
             const streak = todayData?.consecutive_days_active ?? 0;
@@ -760,6 +745,7 @@ const AthleteDashboard = ({ user }) => {
               </Box>
             );
           })()}
+          </VisibilityGate>
         </Grid>
 
         <Grid size={{ xs: 12, md: 4 }}>
@@ -780,6 +766,21 @@ const AthleteDashboard = ({ user }) => {
                 window.alert('Contactá a tu coach para activar tu plan.');
               }}
               onChangePlan={() => setChangePlanOpen(true)}
+              onPause={async ({ reason, comment }) => {
+                await pauseMySubscription(reason, comment);
+                const { data: fresh } = await getMySubscriptionWithCoach();
+                setMySubWithCoach(fresh);
+              }}
+              onCancel={async ({ reason, comment }) => {
+                await cancelMySubscription(reason, comment);
+                const { data: fresh } = await getMySubscriptionWithCoach();
+                setMySubWithCoach(fresh);
+              }}
+              onReactivate={async () => {
+                await reactivateMySubscription();
+                const { data: fresh } = await getMySubscriptionWithCoach();
+                setMySubWithCoach(fresh);
+              }}
             />
           ) : (
             /* ── PR-150 fallback: original inline subscription widget ── */
