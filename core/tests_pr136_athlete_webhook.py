@@ -125,8 +125,8 @@ def test_authorized_idempotent():
 
 
 @pytest.mark.django_db
-def test_paused_sets_overdue():
-    """paused → status=overdue."""
+def test_paused_sets_paused():
+    """paused → status=paused."""
     from integrations.mercadopago.athlete_webhook import process_athlete_subscription_webhook
 
     org = _org("org-paused-1")
@@ -139,7 +139,7 @@ def test_paused_sets_overdue():
 
     assert result["outcome"] == "updated"
     sub.refresh_from_db()
-    assert sub.status == "overdue"
+    assert sub.status == "paused"
 
 
 @pytest.mark.django_db

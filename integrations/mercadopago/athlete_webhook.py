@@ -5,7 +5,7 @@ logger = logging.getLogger(__name__)
 
 STATUS_MAP = {
     "authorized": "active",
-    "paused": "overdue",
+    "paused": "paused",
     "cancelled": "cancelled",
     "pending": None,  # no-op
 }

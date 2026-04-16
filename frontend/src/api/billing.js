@@ -86,3 +86,19 @@ export function changePlan(newPlanId) {
 export function syncAthleteSubscriptions() {
   return client.post('/api/billing/athlete-subscriptions/sync/');
 }
+
+export function pauseMySubscription(reason, comment) {
+  return client.post('/api/athlete/subscription/pause/', { reason, comment });
+}
+
+export function cancelMySubscription(reason, comment) {
+  return client.post('/api/athlete/subscription/cancel/', { reason, comment });
+}
+
+export function reactivateMySubscription() {
+  return client.post('/api/athlete/subscription/reactivate/');
+}
+
+export function ownerSubscriptionAction(subscriptionId, action, reason, comment) {
+  return client.post(`/api/billing/athlete-subscriptions/${subscriptionId}/owner-action/`, { action, reason, comment });
+}

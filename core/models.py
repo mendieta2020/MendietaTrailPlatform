@@ -3438,6 +3438,7 @@ class AthleteSubscription(models.Model):
         PENDING   = "pending",   "Pendiente"
         ACTIVE    = "active",    "Activo"
         OVERDUE   = "overdue",   "Moroso"
+        PAUSED    = "paused",    "Pausado"
         CANCELLED = "cancelled", "Cancelado"
         SUSPENDED = "suspended", "Suspendido"
 
@@ -3477,6 +3478,13 @@ class AthleteSubscription(models.Model):
         null=True, blank=True,
         help_text="End of 7-day trial period. After this, athlete must pay to access content.",
     )
+    # PR-167c: subscription lifecycle fields
+    paused_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    pause_reason = models.CharField(max_length=50, null=True, blank=True)
+    pause_comment = models.TextField(null=True, blank=True)
+    cancellation_reason = models.CharField(max_length=50, null=True, blank=True)
+    cancellation_comment = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
