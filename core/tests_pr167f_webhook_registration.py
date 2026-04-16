@@ -169,7 +169,7 @@ def test_sync_reconciles_by_plan_search(sub_without_preapproval):
     assert reconciled_entry["sub_id"] == sub.pk
     assert reconciled_entry["old_status"] == "pending"
     assert reconciled_entry["new_status"] == "active"
-    assert reconciled_entry.get("reconciled_by") == "payer_id_lookup"
+    assert reconciled_entry.get("reconciled_by") == "1_to_1"
 
     sub.refresh_from_db()
     assert sub.mp_preapproval_id == "discovered_preapproval_id"
