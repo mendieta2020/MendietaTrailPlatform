@@ -14,7 +14,7 @@
  *   pausedLabel: string (optional) — badge shown for paused athletes on "limited" content
  *   paywallMessage: string (optional) — override default paywall subtitle
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Typography, Button, CircularProgress } from '@mui/material';
 import LockIcon from '@mui/icons-material/Lock';
 import { useSubscription } from '../context/SubscriptionContext';
@@ -39,15 +39,26 @@ const PaywallOverlay = ({ message }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // Refresh subscription when user returns to tab (e.g. after completing MP payment)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refresh();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [refresh]);
+
   const handleActivate = async () => {
     setLoading(true);
     setError('');
     try {
       const { data } = await reactivateMySubscription();
+      // Always refresh context so paywall updates immediately
+      await refresh();
       if (data?.redirect_url) {
         window.open(data.redirect_url, '_blank');
-      } else {
-        await refresh();
       }
     } catch (err) {
       console.error('[PaywallOverlay] reactivate error:', err);

@@ -1327,6 +1327,16 @@ class AthleteMySubscriptionView(APIView):
     def get(self, request):
         from core.models import AthleteSubscription
 
+        logger.info(
+            "athlete.subscription.get",
+            extra={
+                "event_name": "athlete.subscription.get",
+                "user_id": request.user.pk,
+                "org_id_param": request.GET.get("org_id"),
+                "outcome": "request_received",
+            },
+        )
+
         sub = AthleteSubscription.objects.filter(
             athlete__user=request.user,
         ).select_related("coach_plan").first()

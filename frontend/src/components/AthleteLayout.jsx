@@ -20,6 +20,7 @@ import QuantorynLogo from './QuantorynLogo';
 import { logoutSession } from '../api/authClient';
 import { getMessages, markMessageRead } from '../api/messages';
 import { useOrg } from '../context/OrgContext';
+import { useSubscription } from '../context/SubscriptionContext';
 import MessagesDrawer from './MessagesDrawer';
 import PWAInstallPrompt from './PWAInstallPrompt';
 
@@ -55,6 +56,7 @@ const AthleteLayout = ({ children, user }) => {
   const location = useLocation();
   const { activeOrg } = useOrg();
   const orgId = activeOrg?.org_id ?? null;
+  const { isPaywalled } = useSubscription();
 
   const drawerWidth = collapsed ? DRAWER_COLLAPSED : DRAWER_EXPANDED;
 
@@ -179,9 +181,14 @@ const AthleteLayout = ({ children, user }) => {
                   {!collapsed && (
                     <ListItemText
                       primary={item.text}
+                      secondary={item.text === 'Hoy' && isPaywalled ? '🔒 Bloqueado' : undefined}
                       primaryTypographyProps={{
                         fontSize: '0.9rem',
                         fontWeight: isActive ? 600 : 400,
+                      }}
+                      secondaryTypographyProps={{
+                        fontSize: '0.7rem',
+                        color: '#EF4444',
                       }}
                     />
                   )}
