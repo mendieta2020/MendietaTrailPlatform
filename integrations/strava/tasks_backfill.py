@@ -37,6 +37,7 @@ def backfill_strava_athlete(
     athlete_id: int,
     alumno_id: int,
     years: int = 5,
+    days: int | None = None,
 ) -> dict:
     """
     Idempotent Celery task: fetch all Strava activities for an athlete
@@ -47,6 +48,9 @@ def backfill_strava_athlete(
         athlete_id:      PK of the new-style Athlete (for structured logging).
         alumno_id:       PK of the legacy Alumno (token lookup + ingest).
         years:           How many years back to import (default 5, max 10).
+                         Ignored when `days` is provided.
+        days:            If set, import exactly this many days back instead of
+                         years. Used for onboarding backfill (days=90).
     """
     from core.models import Alumno  # noqa: PLC0415
     from core.services import obtener_cliente_strava_para_alumno  # noqa: PLC0415
@@ -91,6 +95,7 @@ def backfill_strava_athlete(
             alumno_id=alumno_id,
             access_token=access_token,
             years=years,
+            days=days,
         )
     except Exception as exc:
         logger.warning(

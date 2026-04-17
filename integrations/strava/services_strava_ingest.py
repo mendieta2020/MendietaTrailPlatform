@@ -22,6 +22,7 @@ def backfill_strava_activities(
     alumno_id: int,
     access_token: str,
     years: int = 5,
+    days: int | None = None,
 ) -> dict:
     """
     Fetch paginated Strava /athlete/activities and persist each as CompletedActivity.
@@ -36,6 +37,9 @@ def backfill_strava_activities(
         alumno_id:    PK of the Alumno — passed directly to ingest_strava_activity.
         access_token: Valid Strava OAuth access token (NEVER logged).
         years:        How many years back to import (clamped to 1–10).
+                      Ignored when `days` is provided.
+        days:         If set, use exactly this many days back instead of `years`.
+                      Useful for onboarding backfill (e.g. days=90). Not clamped.
 
     Returns:
         {"created": int, "skipped": int, "errors": int}
@@ -46,8 +50,11 @@ def backfill_strava_activities(
     from django.utils import timezone
     from django.utils.dateparse import parse_datetime
 
-    years = max(1, min(years, 10))
-    after_dt = timezone.now() - datetime.timedelta(days=365 * years)
+    if days is not None:
+        after_dt = timezone.now() - datetime.timedelta(days=days)
+    else:
+        years = max(1, min(years, 10))
+        after_dt = timezone.now() - datetime.timedelta(days=365 * years)
     after_ts = int(after_dt.timestamp())
 
     created = 0

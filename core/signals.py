@@ -442,6 +442,40 @@ def link_strava_on_oauth(sender, request, sociallogin, **kwargs):
                 "oauth.link.drain_failed_to_queue",
                 extra={"alumno_id": alumno.id, "athlete_id": athlete_id, "error": str(e)},
             )
+
+        # 5) PR-171: Trigger 90-day historical backfill on first connection (async, fail-safe).
+        # Idempotent: task uses update_or_create so safe to rerun.
+        # athlete_pk / org_id are resolved now (pre-commit) to avoid closure pitfalls.
+        try:
+            from integrations.strava.tasks_backfill import backfill_strava_athlete  # noqa: PLC0415
+            from core.models import Athlete as _Athlete  # noqa: PLC0415
+            _backfill_athlete = _Athlete.objects.filter(user=user, is_active=True).first()
+            _org_id = _backfill_athlete.organization_id if _backfill_athlete else 0
+            _athlete_pk = _backfill_athlete.pk if _backfill_athlete else 0
+            _alumno_id = alumno.id
+            transaction.on_commit(
+                lambda: backfill_strava_athlete.delay(
+                    organization_id=_org_id,
+                    athlete_id=_athlete_pk,
+                    alumno_id=_alumno_id,
+                    days=90,
+                )
+            )
+            logger.info(
+                "oauth.link.backfill_queued",
+                extra={
+                    "alumno_id": alumno.id,
+                    "organization_id": _org_id,
+                    "athlete_id": _athlete_pk,
+                    "days": 90,
+                },
+            )
+        except Exception as e:
+            # Non-critical: backfill can be triggered manually if this fails
+            logger.warning(
+                "oauth.link.backfill_failed_to_queue",
+                extra={"alumno_id": alumno.id, "error": str(e)},
+            )
     
     except Exception as e:
         # Unexpected exception during linking: mark as failed in OAuthIntegrationStatus
