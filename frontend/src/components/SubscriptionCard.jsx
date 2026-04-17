@@ -37,14 +37,20 @@ export default function SubscriptionCard({ subscription, orgName, onUpdatePaymen
   const [modal, setModal] = useState(null); // 'pause' | 'cancel' | null
   const [reactivateLoading, setReactivateLoading] = useState(false);
   const [reactivateError, setReactivateError] = useState('');
+  const [reactivateSuccess, setReactivateSuccess] = useState('');
   if (!subscription) return null;
 
   const handleReactivate = async () => {
     if (!onReactivate) return;
     setReactivateLoading(true);
     setReactivateError('');
+    setReactivateSuccess('');
     try {
-      await onReactivate();
+      const result = await onReactivate();
+      if (result?.redirect_url) {
+        setReactivateSuccess('Abriendo MercadoPago...');
+        window.open(result.redirect_url, '_blank');
+      }
     } catch (err) {
       console.error('[SubscriptionCard] reactivate error:', err);
       setReactivateError('No se pudo generar el link de pago. Contactá a tu coach.');
@@ -256,6 +262,11 @@ export default function SubscriptionCard({ subscription, orgName, onUpdatePaymen
           {reactivateError && (
             <Typography variant="caption" sx={{ color: '#EF4444', display: 'block', px: 2.5, pb: 1.5 }}>
               {reactivateError}
+            </Typography>
+          )}
+          {reactivateSuccess && (
+            <Typography variant="caption" sx={{ color: '#00D4AA', display: 'block', px: 2.5, pb: 1.5 }}>
+              {reactivateSuccess}
             </Typography>
           )}
         </Box>

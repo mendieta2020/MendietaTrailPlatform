@@ -777,9 +777,13 @@ const AthleteDashboard = ({ user }) => {
                 setMySubWithCoach(fresh);
               }}
               onReactivate={async () => {
-                await reactivateMySubscription();
-                const { data: fresh } = await getMySubscriptionWithCoach();
-                setMySubWithCoach(fresh);
+                const { data } = await reactivateMySubscription();
+                // Refresh coach subscription data (fire-and-forget, don't block)
+                const orgIdForCoach = user?.memberships?.[0]?.org_id || user?.org_id || null;
+                getMySubscriptionWithCoach(orgIdForCoach)
+                  .then(res => setMySubWithCoach(res.data))
+                  .catch(() => {});
+                return data; // propagate to SubscriptionCard so it can open redirect_url
               }}
             />
           ) : (
