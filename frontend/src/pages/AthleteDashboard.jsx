@@ -436,10 +436,11 @@ const AthleteDashboard = ({ user }) => {
   const [changePlanOpen, setChangePlanOpen] = useState(false);
   const [planChangedToast, setPlanChangedToast] = useState('');
   const [activationToast, setActivationToast] = useState('');
+  const [subActionToast, setSubActionToast] = useState('');
   const [searchParams, setSearchParams] = useSearchParams();
   const pollTimerRef = useRef(null);
 
-  const { isPaywalled } = useSubscription();
+  const { isPaywalled, refresh: refreshSubscription } = useSubscription();
 
   const greeting = getGreeting();
   const displayName = user?.first_name || user?.username || 'Atleta';
@@ -767,22 +768,29 @@ const AthleteDashboard = ({ user }) => {
               }}
               onChangePlan={() => setChangePlanOpen(true)}
               onPause={async ({ reason, comment }) => {
+                const orgIdForCoach = user?.memberships?.[0]?.org_id || user?.org_id || null;
                 await pauseMySubscription(reason, comment);
-                const { data: fresh } = await getMySubscriptionWithCoach();
+                const { data: fresh } = await getMySubscriptionWithCoach(orgIdForCoach);
                 setMySubWithCoach(fresh);
+                refreshSubscription();
+                setSubActionToast('⏸️ Tu suscripción está pausada. Reactivala cuando quieras.');
               }}
               onCancel={async ({ reason, comment }) => {
+                const orgIdForCoach = user?.memberships?.[0]?.org_id || user?.org_id || null;
                 await cancelMySubscription(reason, comment);
-                const { data: fresh } = await getMySubscriptionWithCoach();
+                const { data: fresh } = await getMySubscriptionWithCoach(orgIdForCoach);
                 setMySubWithCoach(fresh);
+                refreshSubscription();
+                setSubActionToast('✅ Tu suscripción fue cancelada. Siempre podés volver.');
               }}
               onReactivate={async () => {
                 const { data } = await reactivateMySubscription();
-                // Refresh coach subscription data (fire-and-forget, don't block)
                 const orgIdForCoach = user?.memberships?.[0]?.org_id || user?.org_id || null;
                 getMySubscriptionWithCoach(orgIdForCoach)
                   .then(res => setMySubWithCoach(res.data))
                   .catch(() => {});
+                refreshSubscription();
+                setSubActionToast('🔄 ¡Bienvenido de vuelta! Tu suscripción está activa.');
                 return data; // propagate to SubscriptionCard so it can open redirect_url
               }}
             />
@@ -842,9 +850,9 @@ const AthleteDashboard = ({ user }) => {
         open={changePlanOpen}
         onClose={() => setChangePlanOpen(false)}
         onPlanChanged={(data) => {
+          const orgIdForCoach = user?.memberships?.[0]?.org_id || user?.org_id || null;
           setPlanChangedToast(`Plan actualizado a ${data.new_plan.name}`);
-          // Refresh subscription data
-          getMySubscriptionWithCoach().then(({ data: fresh }) => setMySubWithCoach(fresh)).catch(() => {});
+          getMySubscriptionWithCoach(orgIdForCoach).then(({ data: fresh }) => setMySubWithCoach(fresh)).catch(() => {});
         }}
       />
 
@@ -866,6 +874,16 @@ const AthleteDashboard = ({ user }) => {
       >
         <Alert severity="success" onClose={() => setActivationToast('')}>
           {activationToast}
+        </Alert>
+      </Snackbar>
+      <Snackbar
+        open={!!subActionToast}
+        autoHideDuration={5000}
+        onClose={() => setSubActionToast('')}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="success" onClose={() => setSubActionToast('')}>
+          {subActionToast}
         </Alert>
       </Snackbar>
     </AthleteLayout>
