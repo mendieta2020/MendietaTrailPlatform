@@ -49,8 +49,9 @@ const PaywallOverlay = ({ message }) => {
       } else {
         await refresh();
       }
-    } catch {
-      setError('Contactá a tu coach para reactivar');
+    } catch (err) {
+      console.error('[PaywallOverlay] reactivate error:', err);
+      setError('No se pudo generar el link de pago. Contactá a tu coach.');
     } finally {
       setLoading(false);
     }

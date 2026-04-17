@@ -1992,6 +1992,19 @@ class AthleteSubscriptionReactivateView(APIView):
 
         athlete_name = f"{sub.athlete.user.first_name} {sub.athlete.user.last_name}".strip()
 
+        # ── DEBUG: trace 400/502 root cause (remove after diagnosis) ─────────
+        from core.models import OrgOAuthCredential as _OrgOAuthCredential
+        print(
+            f"[REACTIVATE] org={sub.organization_id} status={sub.status} "
+            f"mp_plan_id={sub.coach_plan.mp_plan_id if sub.coach_plan else 'NO_PLAN'} "
+            f"mp_preapproval_id={sub.mp_preapproval_id}"
+        )
+        print(
+            f"[REACTIVATE] OAuth cred exists: "
+            f"{_OrgOAuthCredential.objects.filter(organization=sub.organization, provider='mercadopago').exists()}"
+        )
+        # ─────────────────────────────────────────────────────────────────────
+
         # ── Case 1: paused → reactivate in MP ────────────────────────────────
         if sub.status == AthleteSubscription.Status.PAUSED and sub.mp_preapproval_id:
             access_token = _get_coach_access_token(sub.organization)
@@ -2046,7 +2059,8 @@ class AthleteSubscriptionReactivateView(APIView):
 
         # ── Case 3: cancelled → generate new payment link ─────────────────────
         # MP doesn't allow reactivating cancelled preapprovals.
-        # Clear the old preapproval and generate a fresh one.
+        # Clear the stale preapproval_id and generate a fresh payment link via
+        # the plan's init_point (lazy-creates the preapproval_plan if needed).
         from core.models import OrgOAuthCredential
         from django.conf import settings as django_settings
 
@@ -2054,24 +2068,42 @@ class AthleteSubscriptionReactivateView(APIView):
             organization=sub.organization, provider="mercadopago"
         ).first()
 
-        if not cred or not sub.coach_plan or not sub.coach_plan.mp_plan_id:
+        if not cred or not sub.coach_plan:
             return Response(
                 {"detail": "No se puede generar nuevo link de pago. Contactá a tu coach."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         frontend_url = getattr(django_settings, "FRONTEND_URL", "http://localhost:3000")
+        coach_plan = sub.coach_plan
+
+        # Clear the dead preapproval BEFORE calling MP so we never hold a stale ID
+        sub.mp_preapproval_id = None
+        sub.save(update_fields=["mp_preapproval_id", "updated_at"])
 
         try:
-            from integrations.mercadopago.subscriptions import create_coach_athlete_preapproval
-            mp_data = create_coach_athlete_preapproval(
-                access_token=cred.access_token,
-                mp_plan_id=sub.coach_plan.mp_plan_id,
-                payer_email=request.user.email,
-                reason=f"Quantoryn {sub.coach_plan.name} — {sub.organization.name}",
-                back_url=f"{frontend_url}/dashboard",
-            )
+            if not coach_plan.mp_plan_id:
+                # Lazy-create the preapproval_plan in MP (mp_plan_id was nulled or never set)
+                from integrations.mercadopago.subscriptions import create_preapproval_plan
+                mp_plan = create_preapproval_plan(
+                    access_token=cred.access_token,
+                    name=f"{sub.organization.name} — {coach_plan.name}",
+                    price_ars=coach_plan.price_ars,
+                    back_url=f"{frontend_url}/payment/callback",
+                )
+                coach_plan.mp_plan_id = mp_plan["id"]
+                coach_plan.save(update_fields=["mp_plan_id", "updated_at"])
+                init_point = mp_plan.get("init_point")
+            else:
+                # Plan already registered in MP — fetch it to get its checkout URL
+                from integrations.mercadopago.subscriptions import get_preapproval_plan
+                mp_plan = get_preapproval_plan(
+                    access_token=cred.access_token,
+                    plan_id=coach_plan.mp_plan_id,
+                )
+                init_point = mp_plan.get("init_point")
         except Exception as exc:
+            print(f"[REACTIVATE] MP error: {type(exc).__name__}: {exc}")
             logger.error(
                 "athlete_subscription.reactivate_new_preapproval_error",
                 extra={
@@ -2082,20 +2114,22 @@ class AthleteSubscriptionReactivateView(APIView):
                 },
             )
             return Response(
-                {"detail": "Error al crear nuevo preapproval en MercadoPago."},
+                {"detail": "Error al generar link de pago en MercadoPago."},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        init_point = mp_data.get("init_point")
-        new_preapproval_id = mp_data.get("id")
+        if not init_point:
+            return Response(
+                {"detail": "MercadoPago no retornó un link de pago."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         sub.status = AthleteSubscription.Status.PENDING
-        sub.mp_preapproval_id = new_preapproval_id
         sub.cancelled_at = None
         sub.cancellation_reason = None
         sub.cancellation_comment = None
         sub.save(update_fields=[
-            "status", "mp_preapproval_id", "cancelled_at",
+            "status", "cancelled_at",
             "cancellation_reason", "cancellation_comment", "updated_at",
         ])
 

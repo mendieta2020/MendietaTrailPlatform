@@ -272,7 +272,7 @@ class TestAthleteSubscriptionReactivate(TestCase):
         mock_react.assert_called_once_with("tok_test3", "preapp_789")
 
     def test_athlete_reactivate_cancelled_returns_redirect_url(self):
-        """Reactivating a cancelled sub generates new payment link."""
+        """Reactivating a cancelled sub generates new payment link via plan init_point."""
         user, athlete, sub = _make_athlete_with_sub(
             self.org, AthleteSubscription.Status.CANCELLED
         )
@@ -286,8 +286,9 @@ class TestAthleteSubscriptionReactivate(TestCase):
         )
         self.client.force_authenticate(user=user)
 
-        with patch("integrations.mercadopago.subscriptions.create_coach_athlete_preapproval") as mock_create:
-            mock_create.return_value = {"id": "new_preapp", "init_point": "https://mp.com/checkout/new"}
+        # New code fetches the plan's init_point (not create_coach_athlete_preapproval)
+        with patch("integrations.mercadopago.subscriptions.get_preapproval_plan") as mock_get:
+            mock_get.return_value = {"id": "mp_plan_test_167c", "init_point": "https://mp.com/checkout/new"}
             resp = self.client.post("/api/athlete/subscription/reactivate/")
 
         self.assertEqual(resp.status_code, 200)
@@ -295,7 +296,8 @@ class TestAthleteSubscriptionReactivate(TestCase):
         self.assertIn("redirect_url", resp.data)
         sub.refresh_from_db()
         self.assertEqual(sub.status, "pending")
-        self.assertEqual(sub.mp_preapproval_id, "new_preapp")
+        # mp_preapproval_id is cleared (not set to a new one — athlete creates their own via MP)
+        self.assertIsNone(sub.mp_preapproval_id)
 
     def test_cannot_reactivate_active(self):
         """Reactivating an already-active sub returns 400."""
