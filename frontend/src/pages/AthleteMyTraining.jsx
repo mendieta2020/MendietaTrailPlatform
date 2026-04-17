@@ -149,7 +149,11 @@ const AthleteMyTraining = () => {
       const data = res.data?.results ?? res.data ?? [];
       setAssignments(Array.isArray(data) ? data : []);
     } catch (err) {
-      setError('Error cargando el calendario. Intenta de nuevo.');
+      // 403 + paywall: VisibilityGate handles the overlay — no error toast needed
+      const isPaywall = err?.response?.status === 403 && err?.response?.data?.paywall === true;
+      if (!isPaywall) {
+        setError('Error cargando el calendario. Intenta de nuevo.');
+      }
       console.error('[AthleteMyTraining] fetch assignments error:', err);
     } finally {
       setLoading(false);

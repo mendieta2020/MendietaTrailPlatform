@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Typography, Paper, Chip, Button } from '@mui/material';
+import { Box, Typography, Paper, Chip, Button, CircularProgress } from '@mui/material';
 import { CreditCard } from '@mui/icons-material';
 import SubscriptionActionModal from './SubscriptionActionModal';
 
@@ -35,7 +35,23 @@ function formatDate(iso) {
 
 export default function SubscriptionCard({ subscription, orgName, onUpdatePayment, onChangePlan, onPause, onCancel, onReactivate }) {
   const [modal, setModal] = useState(null); // 'pause' | 'cancel' | null
+  const [reactivateLoading, setReactivateLoading] = useState(false);
+  const [reactivateError, setReactivateError] = useState('');
   if (!subscription) return null;
+
+  const handleReactivate = async () => {
+    if (!onReactivate) return;
+    setReactivateLoading(true);
+    setReactivateError('');
+    try {
+      await onReactivate();
+    } catch (err) {
+      console.error('[SubscriptionCard] reactivate error:', err);
+      setReactivateError('No se pudo generar el link de pago. Contactá a tu coach.');
+    } finally {
+      setReactivateLoading(false);
+    }
+  };
 
   const { status, plan_name, plan_price, next_payment_at, mp_preapproval_id, trial_ends_at, paused_at, cancelled_at } = subscription;
 
@@ -186,9 +202,10 @@ export default function SubscriptionCard({ subscription, orgName, onUpdatePaymen
               {status === 'paused' && (
                 <>
                   {onReactivate && (
-                    <Button size="small" variant="contained" onClick={onReactivate}
-                      sx={{ bgcolor: '#00D4AA', '&:hover': { bgcolor: '#00B899' }, textTransform: 'none', fontWeight: 700, fontSize: '0.75rem', borderRadius: 2 }}>
-                      Reactivar
+                    <Button size="small" variant="contained" onClick={handleReactivate}
+                      disabled={reactivateLoading}
+                      sx={{ bgcolor: '#00D4AA', '&:hover': { bgcolor: '#00B899' }, textTransform: 'none', fontWeight: 700, fontSize: '0.75rem', borderRadius: 2, minWidth: 100 }}>
+                      {reactivateLoading ? <CircularProgress size={14} sx={{ color: 'white' }} /> : 'Reactivar'}
                     </Button>
                   )}
                   {onCancel && (
@@ -202,9 +219,10 @@ export default function SubscriptionCard({ subscription, orgName, onUpdatePaymen
 
               {/* Cancelled state CTA */}
               {status === 'cancelled' && onReactivate && (
-                <Button size="small" variant="contained" onClick={onReactivate}
-                  sx={{ bgcolor: '#00D4AA', '&:hover': { bgcolor: '#00B899' }, textTransform: 'none', fontWeight: 700, fontSize: '0.75rem', borderRadius: 2 }}>
-                  Volver a suscribirse
+                <Button size="small" variant="contained" onClick={handleReactivate}
+                  disabled={reactivateLoading}
+                  sx={{ bgcolor: '#00D4AA', '&:hover': { bgcolor: '#00B899' }, textTransform: 'none', fontWeight: 700, fontSize: '0.75rem', borderRadius: 2, minWidth: 140 }}>
+                  {reactivateLoading ? <CircularProgress size={14} sx={{ color: 'white' }} /> : 'Volver a suscribirse'}
                 </Button>
               )}
 
@@ -235,6 +253,11 @@ export default function SubscriptionCard({ subscription, orgName, onUpdatePaymen
               )}
             </Box>
           </Box>
+          {reactivateError && (
+            <Typography variant="caption" sx={{ color: '#EF4444', display: 'block', px: 2.5, pb: 1.5 }}>
+              {reactivateError}
+            </Typography>
+          )}
         </Box>
       </Paper>
     </>
