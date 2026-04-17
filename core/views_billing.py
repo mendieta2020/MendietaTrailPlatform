@@ -2015,19 +2015,6 @@ class AthleteSubscriptionReactivateView(APIView):
 
         athlete_name = f"{sub.athlete.user.first_name} {sub.athlete.user.last_name}".strip()
 
-        # ── DEBUG: trace 400/502 root cause (remove after diagnosis) ─────────
-        from core.models import OrgOAuthCredential as _OrgOAuthCredential
-        print(
-            f"[REACTIVATE] org={sub.organization_id} status={sub.status} "
-            f"mp_plan_id={sub.coach_plan.mp_plan_id if sub.coach_plan else 'NO_PLAN'} "
-            f"mp_preapproval_id={sub.mp_preapproval_id}"
-        )
-        print(
-            f"[REACTIVATE] OAuth cred exists: "
-            f"{_OrgOAuthCredential.objects.filter(organization=sub.organization, provider='mercadopago').exists()}"
-        )
-        # ─────────────────────────────────────────────────────────────────────
-
         # ── Case 1: paused → reactivate in MP ────────────────────────────────
         if sub.status == AthleteSubscription.Status.PAUSED and sub.mp_preapproval_id:
             access_token = _get_coach_access_token(sub.organization)
@@ -2126,7 +2113,6 @@ class AthleteSubscriptionReactivateView(APIView):
                 )
                 init_point = mp_plan.get("init_point")
         except Exception as exc:
-            print(f"[REACTIVATE] MP error: {type(exc).__name__}: {exc}")
             logger.error(
                 "athlete_subscription.reactivate_new_preapproval_error",
                 extra={
