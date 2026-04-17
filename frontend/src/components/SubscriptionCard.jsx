@@ -157,6 +157,13 @@ export default function SubscriptionCard({ subscription, orgName, onUpdatePaymen
             </Typography>
           )}
 
+          {/* Overdue state message */}
+          {status === 'overdue' && (
+            <Typography variant="caption" sx={{ color: '#991B1B', display: 'block', mb: 1.5 }}>
+              No pudimos procesar tu último pago. Actualizá tu tarjeta en MercadoPago para no perder acceso.
+            </Typography>
+          )}
+
           {/* Cancelled state message */}
           {status === 'cancelled' && (
             <Typography variant="caption" sx={{ color: '#64748B', display: 'block', mb: 1.5 }}>

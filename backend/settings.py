@@ -637,3 +637,7 @@ MERCADOPAGO_REDIRECT_URI = get_env_variable(
     default="http://localhost:8000/api/billing/mp/callback/",
     required=False,
 )
+# PR-169: Webhook signature secret (from MP Developer Dashboard → Notifications → Secret).
+# If empty, signature verification is skipped (dev mode — see webhook_security.py).
+# Law 6: never log this value.
+MERCADOPAGO_WEBHOOK_SECRET = os.environ.get("MERCADOPAGO_WEBHOOK_SECRET", "")

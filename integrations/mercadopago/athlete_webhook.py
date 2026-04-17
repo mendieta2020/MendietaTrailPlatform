@@ -7,7 +7,8 @@ STATUS_MAP = {
     "authorized": "active",
     "paused": "paused",
     "cancelled": "cancelled",
-    "pending": None,  # no-op
+    "overdue": "overdue",   # PR-169: MP could not charge — failed payment
+    "pending": None,        # no-op
 }
 
 
@@ -45,6 +46,8 @@ def _apply_status_transition(sub, mp_status, preapproval_id):
 
     if new_status == "active":
         _notify_owner_payment_received(sub)
+    elif new_status == "overdue":
+        _notify_failed_payment(sub)
 
     return "updated"
 
@@ -79,6 +82,64 @@ def _notify_owner_payment_received(sub):
         "mp.payment_received.owner_notified",
         extra={
             "event_name": "mp.payment_received.owner_notified",
+            "organization_id": sub.organization_id,
+            "subscription_id": sub.id,
+            "outcome": "notified",
+        },
+    )
+
+
+def _notify_failed_payment(sub):
+    """
+    PR-169: When a subscription transitions to overdue (MP could not charge),
+    notify both the org owner and the athlete.
+    - Owner: urgent alert to follow up.
+    - Athlete: informational — asks them to update their payment method.
+    - Does NOT cancel the subscription (gives athlete a chance to fix card).
+    Org-scoped (Law 1). No-op if no owner found.
+    """
+    from core.models import InternalMessage, Membership
+
+    owner_membership = (
+        Membership.objects.filter(
+            organization=sub.organization, role="owner", is_active=True
+        )
+        .select_related("user")
+        .first()
+    )
+
+    athlete_name = f"{sub.athlete.user.first_name} {sub.athlete.user.last_name}".strip() or sub.athlete.user.username
+    plan_name = sub.coach_plan.name if sub.coach_plan else "Sin plan"
+
+    if owner_membership:
+        InternalMessage.objects.create(
+            organization=sub.organization,
+            sender=sub.athlete.user,
+            recipient=owner_membership.user,
+            content=(
+                f"\u26a0\ufe0f Pago fallido: {athlete_name} — "
+                f"no se pudo cobrar el plan {plan_name}. "
+                f"Solicitarle que actualice su método de pago urgente."
+            ),
+            alert_type="payment_failed",
+        )
+        # Notify athlete (sender = owner, recipient = athlete)
+        InternalMessage.objects.create(
+            organization=sub.organization,
+            sender=owner_membership.user,
+            recipient=sub.athlete.user,
+            content=(
+                f"\U0001f4b3 No pudimos procesar tu pago para el plan {plan_name}. "
+                f"Actualizá tu tarjeta en MercadoPago para no perder acceso. "
+                f"Si ya lo hiciste, el estado se actualizará en las próximas horas."
+            ),
+            alert_type="payment_failed",
+        )
+
+    logger.info(
+        "mp.payment_failed.notified",
+        extra={
+            "event_name": "mp.payment_failed.notified",
             "organization_id": sub.organization_id,
             "subscription_id": sub.id,
             "outcome": "notified",

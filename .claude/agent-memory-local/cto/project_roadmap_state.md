@@ -480,5 +480,23 @@ Coach B2C:     Athlete pays Coach via MercadoPago (AthleteSubscription)
 - Django check: 0 issues; lint: 0 errors; build: success
 - Risk: MEDIUM | Branch: p2/pr167c-subscription-lifecycle | Commit: f998dfe
 
+### PR-169 — MP Security & Reliability Bundle ✅ 2026-04-17
+- Feature 1: `create_preapproval_plan()` raises ImproperlyConfigured if BACKEND_URL empty (non-test);
+  `patch_mp_notification_urls` command — idempotent PUT on all active CoachPricingPlans; --verify mode
+- Feature 2: `integrations/mercadopago/webhook_security.py` — HMAC-SHA256 x-signature verification;
+  `AthleteSubscriptionWebhookView` returns 401 on invalid sig; passthrough when secret unconfigured (dev)
+  `MERCADOPAGO_WEBHOOK_SECRET` added to settings.py
+- Feature 3: `daily_mp_reconciliation` command — reconciles pending/overdue subs vs MP; logs orphans;
+  notifies org owner on orphaned authorized preapproval
+- Feature 4: `STATUS_MAP["overdue"] = "overdue"` — creates InternalMessages to both owner (urgent alert)
+  and athlete (update card CTA); sub is never auto-cancelled; SubscriptionCard.jsx overdue message added
+- Feature 5: `last_pre_charge_notification_sent_at` field on AthleteSubscription (migration 0115);
+  `pre_charge_notifications` command — sends 3-day renewal reminder; idempotent (24h dedup guard)
+- 13 new tests in core/tests_pr169_mp_security.py — all pass; 64 billing regression tests — all pass
+- Migration: 0115_pr169_pre_charge_notification_field.py
+- Django check: 0 issues; lint: 0 errors; build: success
+- Branch: p2/pr169-mp-security-reliability | NOT YET PUSHED (waiting for Fernando)
+- Post-deploy: add MERCADOPAGO_WEBHOOK_SECRET env var + run patch_mp_notification_urls + configure cron
+
 ## Test Baseline
-~1431+ tests | CI: backend ✅ frontend ✅
+~1444+ tests | CI: backend ✅ frontend ✅
