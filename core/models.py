@@ -3479,6 +3479,11 @@ class AthleteSubscription(models.Model):
         help_text="End of 7-day trial period. After this, athlete must pay to access content.",
     )
     # PR-167c: subscription lifecycle fields
+    # PR-169: idempotency guard for pre-charge notification (3 days before renewal)
+    last_pre_charge_notification_sent_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Last time a pre-charge reminder was sent for this subscription.",
+    )
     paused_at = models.DateTimeField(null=True, blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
     pause_reason = models.CharField(max_length=50, null=True, blank=True)

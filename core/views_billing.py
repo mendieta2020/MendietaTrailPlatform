@@ -800,6 +800,19 @@ class AthleteSubscriptionWebhookView(View):
     """
 
     def post(self, request):
+        from integrations.mercadopago.webhook_security import verify_mp_signature  # lazy — Law 4
+
+        if not verify_mp_signature(request):
+            logger.warning(
+                "mp.athlete_webhook.signature_rejected",
+                extra={
+                    "event_name": "mp.athlete_webhook.signature_rejected",
+                    "remote_addr": request.META.get("REMOTE_ADDR", ""),
+                    "outcome": "rejected",
+                },
+            )
+            return JsonResponse({"detail": "Invalid signature"}, status=401)
+
         try:
             payload = json.loads(request.body)
         except (json.JSONDecodeError, UnicodeDecodeError):

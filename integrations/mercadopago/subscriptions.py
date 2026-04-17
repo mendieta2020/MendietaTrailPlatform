@@ -46,7 +46,15 @@ def create_preapproval_plan(
     notification_url is always baked in so MP sends webhooks to our athlete endpoint.
     """
     from django.conf import settings as _settings
-    backend_url = getattr(_settings, "BACKEND_URL", "http://localhost:8000")
+    from django.core.exceptions import ImproperlyConfigured
+    backend_url = getattr(_settings, "BACKEND_URL", "")
+    if not backend_url:
+        if not getattr(_settings, "TESTING", False):
+            raise ImproperlyConfigured(
+                "BACKEND_URL is not configured. MercadoPago webhooks will not work. "
+                "Set BACKEND_URL to the production API domain (e.g. https://api.quantoryn.com)."
+            )
+        backend_url = "http://localhost:8000"
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
@@ -165,6 +173,39 @@ def create_coach_athlete_preapproval(
         },
     )
     return result
+
+
+def update_preapproval_plan_notification_url(access_token: str, plan_id: str, notification_url: str) -> dict:
+    """
+    PUT /preapproval_plan/{plan_id} — sets notification_url so MP sends webhooks to us.
+    Used by the patch_mp_notification_urls management command to fix existing plans.
+    Law 6: access_token never logged.
+    """
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+    response = _requests.put(
+        f"{MP_API_BASE}/preapproval_plan/{plan_id}",
+        json={"notification_url": notification_url},
+        headers=headers,
+        timeout=10,
+    )
+    if not response.ok:
+        logger.error(
+            "mp.preapproval_plan.patch_notification_url_error",
+            extra={
+                "plan_id": plan_id,
+                "status_code": response.status_code,
+                "outcome": "error",
+            },
+        )
+    response.raise_for_status()
+    logger.info(
+        "mp.preapproval_plan.notification_url_patched",
+        extra={"plan_id": plan_id, "outcome": "patched"},
+    )
+    return response.json()
 
 
 def get_preapproval_plan(access_token: str, plan_id: str) -> dict:
