@@ -14,6 +14,7 @@ class Command(BaseCommand):
         from core.models import StravaWebhookEvent
 
         self.stdout.write("=== StravaWebhookEvent by status ===")
+        # Intentional: system-level operator view, not tenant-scoped.
         counts = (
             StravaWebhookEvent.objects
             .values("status")
@@ -31,7 +32,10 @@ class Command(BaseCommand):
             import redis as redis_lib
             broker_url = getattr(settings, "CELERY_BROKER_URL", "")
             r = redis_lib.from_url(broker_url)
-            queues = ["default", "celery", "strava_ingest", "suunto_ingest", "analytics_recompute", "notifications"]
+            queues = [
+                "default", "celery",  # "celery" = legacy implicit default; included to detect pre-PR-172 stranded tasks
+                "strava_ingest", "suunto_ingest", "analytics_recompute", "notifications",
+            ]
             for q in queues:
                 depth = r.llen(q)
                 self.stdout.write(f"  {q}: {depth}")
