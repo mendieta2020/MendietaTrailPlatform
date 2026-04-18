@@ -436,11 +436,10 @@ def link_strava_on_oauth(sender, request, sociallogin, **kwargs):
                     owner_id=int(athlete_id),
                 )
             )
-        except Exception as e:
-            # Non-critical: draining can be done manually if this fails
-            logger.warning(
+        except Exception:
+            logger.exception(
                 "oauth.link.drain_failed_to_queue",
-                extra={"alumno_id": alumno.id, "athlete_id": athlete_id, "error": str(e)},
+                extra={"alumno_id": alumno.id, "athlete_id": athlete_id},
             )
 
         # 5) PR-171: Trigger 90-day historical backfill on first connection (async, fail-safe).
@@ -470,11 +469,10 @@ def link_strava_on_oauth(sender, request, sociallogin, **kwargs):
                     "days": 90,
                 },
             )
-        except Exception as e:
-            # Non-critical: backfill can be triggered manually if this fails
-            logger.warning(
+        except Exception:
+            logger.exception(
                 "oauth.link.backfill_failed_to_queue",
-                extra={"alumno_id": alumno.id, "error": str(e)},
+                extra={"alumno_id": alumno.id},
             )
     
     except Exception as e:
