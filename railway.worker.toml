@@ -2,7 +2,7 @@
 buildCommand = "pip install -r requirements.txt"
 
 [deploy]
-startCommand = "celery -A backend.celery.app worker -l info --concurrency 2 --max-tasks-per-child 200"
+startCommand = "celery -A backend.celery.app worker -l info --concurrency 2 --max-tasks-per-child 200 -Q default,strava_ingest,suunto_ingest,analytics_recompute,notifications"
 
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
