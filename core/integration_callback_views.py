@@ -379,14 +379,23 @@ class IntegrationCallbackView(APIView):
         )
 
         
-        # Trigger background activity sync (async celery task)
+        # Trigger drain of any pending webhook events buffered while athlete was unlinked.
+        # owner_id must be the Strava athlete external ID (not the Django alumno PK).
         try:
-            drain_strava_events_for_athlete.delay(alumno.id)
-        except Exception as e:
-            logger.warning("oauth.callback.drain_task_failed", extra={
+            drain_strava_events_for_athlete.delay(
+                provider="strava",
+                owner_id=int(external_user_id),
+            )
+            logger.info("oauth.callback.drain_task_dispatched", extra={
                 "provider": provider,
                 "alumno_id": alumno.id,
-                "error": str(e),
+                "owner_id": int(external_user_id),
+            })
+        except Exception:
+            logger.exception("oauth.callback.drain_task_failed", extra={
+                "provider": provider,
+                "alumno_id": alumno.id,
+                "external_user_id": external_user_id,
             })
         
         # SUCCESS

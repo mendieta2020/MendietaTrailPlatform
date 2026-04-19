@@ -115,8 +115,9 @@ class TestIntegrationCallback:
         assert integration_status.error_reason == ""
         assert integration_status.expires_at is not None
         
-        # Assert: Background sync triggered
-        mock_drain.delay.assert_called_once_with(alumno.id)
+        # Assert: Background sync triggered with correct Strava athlete ID (not Django PK).
+        # PR-173: owner_id must be the external Strava athlete ID, not alumno.id.
+        mock_drain.delay.assert_called_once_with(provider="strava", owner_id=98765432)
     
     def test_callback_invalid_state_rejected(self, client):
         """
