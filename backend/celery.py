@@ -65,6 +65,10 @@ app.conf.beat_schedule = {
 # 4. Auto-descubrir tareas en todas las apps instaladas (core, etc.)
 app.autodiscover_tasks()
 
+# tasks_backfill.py lives outside INSTALLED_APPS so autodiscover misses it;
+# this import forces strava.backfill_athlete to register at worker startup.
+import integrations.strava.tasks_backfill  # noqa: E402, F401
+
 logger = logging.getLogger(__name__)
 
 @app.task(bind=True)

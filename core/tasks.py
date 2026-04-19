@@ -1390,30 +1390,36 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
 
     # Plan vs Actual + Alertas (recalculable ante updates)
     try:
-        from analytics.models import SessionComparison
-        from analytics.plan_vs_actual import PlannedVsActualComparator
-        from analytics.alerts import run_alert_triggers_for_comparison
+        if alumno.entrenador_id is None:
+            logger.warning(
+                "strava.plan_vs_actual.skip_no_coach",
+                extra={"alumno_id": alumno.id, "activity_id": actividad_obj.id},
+            )
+        else:
+            from analytics.models import SessionComparison
+            from analytics.plan_vs_actual import PlannedVsActualComparator
+            from analytics.alerts import run_alert_triggers_for_comparison
 
-        comparator = PlannedVsActualComparator()
-        planned_session = None if accion == "CREATED_UNPLANNED" else entreno
-        result = comparator.compare(planned_session, actividad_obj)
+            comparator = PlannedVsActualComparator()
+            planned_session = None if accion == "CREATED_UNPLANNED" else entreno
+            result = comparator.compare(planned_session, actividad_obj)
 
-        comparison, _ = SessionComparison.objects.update_or_create(
-            activity=actividad_obj,
-            defaults={
-                "entrenador_id": alumno.entrenador_id,
-                "equipo_id": alumno.equipo_id,
-                "alumno_id": alumno.id,
-                "fecha": fecha,
-                "planned_session": planned_session,
-                "metrics_json": result.metrics,
-                "compliance_score": int(result.compliance_score),
-                "classification": result.classification,
-                "explanation": result.explanation,
-                "next_action": result.next_action,
-            },
-        )
-        run_alert_triggers_for_comparison(comparison)
+            comparison, _ = SessionComparison.objects.update_or_create(
+                activity=actividad_obj,
+                defaults={
+                    "entrenador_id": alumno.entrenador_id,
+                    "equipo_id": alumno.equipo_id,
+                    "alumno_id": alumno.id,
+                    "fecha": fecha,
+                    "planned_session": planned_session,
+                    "metrics_json": result.metrics,
+                    "compliance_score": int(result.compliance_score),
+                    "classification": result.classification,
+                    "explanation": result.explanation,
+                    "next_action": result.next_action,
+                },
+            )
+            run_alert_triggers_for_comparison(comparison)
     except Exception as exc:
         # No bloquea la ingesta principal: queda en logs/import state.
         logger.exception(
