@@ -378,7 +378,15 @@ class IntegrationCallbackView(APIView):
             },
         )
 
-        
+        # Flow identity marker — custom integration path bypasses allauth signals.
+        # Logged here so future divergences between this flow and the allauth signal
+        # flow (signals.py:link_strava_on_oauth) are immediately visible in logs.
+        logger.info("oauth.callback.flow_identified", extra={
+            "provider": provider,
+            "alumno_id": alumno.id,
+            "flow": "custom_integration",
+        })
+
         # Trigger drain of any pending webhook events buffered while athlete was unlinked.
         # owner_id must be the Strava athlete external ID (not the Django alumno PK).
         try:
@@ -397,7 +405,48 @@ class IntegrationCallbackView(APIView):
                 "alumno_id": alumno.id,
                 "external_user_id": external_user_id,
             })
-        
+
+        # PR-175: Trigger 90-day historical backfill for athletes connecting via the
+        # custom integration flow. The allauth signal handler (signals.py:456) covers
+        # the allauth social-login path; this block covers the custom /api/integrations/
+        # path which bypasses allauth signals entirely.
+        # Idempotent: backfill_strava_athlete uses get_or_create internally.
+        try:
+            from integrations.strava.tasks_backfill import backfill_strava_athlete  # noqa: PLC0415
+            from core.models import Athlete as _Athlete  # noqa: PLC0415
+            _backfill_athlete = _Athlete.objects.filter(
+                user=alumno.usuario, is_active=True
+            ).first()
+            if _backfill_athlete is None:
+                # Athlete record not yet created (race condition or deferred provisioning).
+                # Skip dispatch — a reconciliation job will trigger backfill once the
+                # Athlete record exists. Dispatching with org_id=0/athlete_id=0 would
+                # corrupt structured log data and any org-scoped queries in the task.
+                logger.warning("oauth.callback.backfill_athlete_not_found", extra={
+                    "provider": provider,
+                    "alumno_id": alumno.id,
+                    "reason_code": "ATHLETE_RECORD_MISSING",
+                })
+            else:
+                backfill_strava_athlete.delay(
+                    organization_id=_backfill_athlete.organization_id,
+                    athlete_id=_backfill_athlete.pk,
+                    alumno_id=alumno.id,
+                    days=90,
+                )
+                logger.info("oauth.callback.backfill_task_dispatched", extra={
+                    "provider": provider,
+                    "alumno_id": alumno.id,
+                    "organization_id": _backfill_athlete.organization_id,
+                    "athlete_id": _backfill_athlete.pk,
+                    "days": 90,
+                })
+        except Exception:
+            logger.exception("oauth.callback.backfill_task_failed", extra={
+                "provider": provider,
+                "alumno_id": alumno.id,
+            })
+
         # SUCCESS
         logger.info("oauth.callback.success", extra={
             "provider": provider,
