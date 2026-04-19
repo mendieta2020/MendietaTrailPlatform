@@ -118,7 +118,7 @@ def backfill_strava_athlete(
             "organization_id": organization_id,
             "athlete_id": athlete_id,
             "outcome": "success",
-            "created": result.get("created", 0),
+            "created_count": result.get("created", 0),
             "skipped": result.get("skipped", 0),
             "errors": result.get("errors", 0),
         },

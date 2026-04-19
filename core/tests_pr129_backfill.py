@@ -349,6 +349,6 @@ class TestBackfillStravaActivitiesService:
 
         assert extra["organization_id"] == org.pk
         assert extra["athlete_id"] == athlete.pk
-        assert extra["created"] == 5
+        assert extra["created_count"] == 5
         assert extra["skipped"] == 3
         assert extra["outcome"] == "success"
