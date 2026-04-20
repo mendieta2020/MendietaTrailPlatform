@@ -56,7 +56,7 @@ import { listAthletes, listTeams, listLibraries, listPlannedWorkouts, getAthlete
 import { getCoachAthleteTrainingPhases } from '../api/periodization';
 import {
   listAssignments, createAssignment, bulkAssignTeam,
-  moveAssignment, deleteAssignment, cloneAssignmentWorkout,
+  moveAssignment, deleteAssignment, cloneAssignmentWorkout, getCalendarTimeline,
 } from '../api/assignments';
 import UndoToast from '../components/UndoToast';
 import CalendarContextMenu from '../components/CalendarContextMenu';
@@ -606,6 +606,9 @@ export default function CalendarPage() {
   // PR-154: Athlete availability + menstrual cycle
   const [athleteAvailability, setAthleteAvailability] = useState([]); // AthleteAvailability[]
   const [athleteProfile, setAthleteProfile] = useState(null);
+  // PR-179a: calendar timeline for coach month grid (activities + reconciliations)
+  const [coachActivities, setCoachActivities] = useState([]);
+  const [coachReconciliationMap, setCoachReconciliationMap] = useState({});
   // Blocked-day drop confirmation dialog
   const [blockedDropPending, setBlockedDropPending] = useState(null); // { callback } | null
 
@@ -807,6 +810,27 @@ export default function CalendarPage() {
     });
     return () => { cancelled = true; setCoachPlanVsRealMap({}); };
   }, [orgId, selectedTarget, currentDate]);
+
+  // PR-179a: Load calendar timeline for coach month grid when individual athlete selected
+  useEffect(() => {
+    const target = parseTarget(selectedTarget);
+    let cancelled = false;
+    if (!orgId || !target || target.type !== 'a') {
+      setCoachActivities([]);
+      setCoachReconciliationMap({});
+      return;
+    }
+    getCalendarTimeline(orgId, { startDate: dateFrom, endDate: dateTo, athleteId: target.id })
+      .then((res) => {
+        if (cancelled) return;
+        setCoachActivities(res.data?.activities ?? []);
+        const map = {};
+        for (const r of (res.data?.reconciliations ?? [])) map[r.plan_id] = r;
+        setCoachReconciliationMap(map);
+      })
+      .catch(() => { if (!cancelled) { setCoachActivities([]); setCoachReconciliationMap({}); } });
+    return () => { cancelled = true; };
+  }, [orgId, selectedTarget, dateFrom, dateTo]);
 
   // ── Load teams ────────────────────────────────────────────────────────────
 
@@ -1674,6 +1698,8 @@ export default function CalendarPage() {
                     planVsRealMap={coachPlanVsRealMap}
                     pmcData={coachPmcData}
                     trainingPhaseMap={trainingPhaseMap}
+                    activities={coachActivities}
+                    reconciliationMap={coachReconciliationMap}
                     role="coach"
                     currentDate={currentDate}
                     onNavigate={setCurrentDate}

@@ -2401,3 +2401,229 @@ class TrainingWeekViewSet(OrgTenantMixin, viewsets.GenericViewSet):
             serializer.data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
+
+
+# ==============================================================================
+# PR-179a: Calendar Timeline — unified Plan + Real overlay
+# ==============================================================================
+
+import logging as _ctl_logging  # noqa: E402
+
+_ctl_logger = _ctl_logging.getLogger(__name__)
+
+
+class CalendarTimelineView(OrgTenantMixin, views.APIView):
+    """
+    GET /api/p1/orgs/{org_id}/calendar-timeline/
+
+    Returns plans + activities + reconciliations for a date range.
+    Models remain separate (Law 3). This view only groups them for rendering.
+
+    Query params:
+        start_date  YYYY-MM-DD (required)
+        end_date    YYYY-MM-DD (required, max 62-day range)
+        athlete_id  int (required for coach/owner; ignored for athlete role)
+
+    Permission matrix:
+        athlete → own calendar only (derived from session, never from param)
+        coach   → any athlete in the org
+        owner   → any athlete in the org
+        cross-tenant → 403
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    _CACHE_TTL = 300  # 5 minutes
+    _MAX_DAYS = 62
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if getattr(self, "swagger_fake_view", False):
+            return
+        self.resolve_membership(self.kwargs["org_id"])
+
+    def get(self, request, org_id):
+        import time as _time
+        from django.core.cache import cache as _cache
+
+        t0 = _time.monotonic()
+        start_date, end_date = self._parse_dates(request)
+        athlete = self._resolve_athlete(request)
+
+        _ctl_logger.info(
+            "calendar_timeline.requested",
+            extra={
+                "event_name": "calendar_timeline.requested",
+                "organization_id": self.organization.id,
+                "athlete_id": athlete.id,
+                "range": f"{start_date}/{end_date}",
+            },
+        )
+
+        cache_key = f"cal_tl:{self.organization.id}:{athlete.id}:{start_date}:{end_date}"
+        hit = _cache.get(cache_key)
+        if hit is not None:
+            _ctl_logger.info("calendar_timeline.cache_hit", extra={
+                "event_name": "calendar_timeline.cache_hit",
+                "organization_id": self.organization.id,
+            })
+            return Response(hit)
+        _ctl_logger.info("calendar_timeline.cache_miss", extra={
+            "event_name": "calendar_timeline.cache_miss",
+            "organization_id": self.organization.id,
+        })
+
+        assignments = list(
+            WorkoutAssignment.objects.filter(
+                organization=self.organization,
+                athlete=athlete,
+                scheduled_date__gte=start_date,
+                scheduled_date__lte=end_date,
+            )
+            .select_related("planned_workout", "reconciliation__completed_activity")
+            .order_by("scheduled_date", "day_order")
+        )
+        completed = list(
+            CompletedActivity.objects.filter(
+                organization=self.organization,
+                athlete=athlete,
+                start_time__date__gte=start_date,
+                start_time__date__lte=end_date,
+            ).order_by("start_time")
+        )
+
+        plans, reconciliations, act_to_plan = self._build_plans(assignments)
+        activities = self._build_activities(completed, act_to_plan)
+
+        elapsed_ms = round((_time.monotonic() - t0) * 1000)
+        _ctl_logger.info("calendar_timeline.query_time_ms", extra={
+            "event_name": "calendar_timeline.query_time_ms",
+            "organization_id": self.organization.id,
+            "athlete_id": athlete.id,
+            "elapsed_ms": elapsed_ms,
+        })
+
+        payload = {
+            "range": {"start": str(start_date), "end": str(end_date)},
+            "plans": plans,
+            "activities": activities,
+            "reconciliations": reconciliations,
+        }
+        _cache.set(cache_key, payload, timeout=self._CACHE_TTL)
+        return Response(payload)
+
+    # ── helpers ──────────────────────────────────────────────────────────────
+
+    def _parse_dates(self, request):
+        try:
+            start = datetime.date.fromisoformat(request.query_params.get("start_date", ""))
+            end = datetime.date.fromisoformat(request.query_params.get("end_date", ""))
+        except ValueError:
+            raise DRFValidationError({"detail": "start_date and end_date must be YYYY-MM-DD."})
+        if end < start:
+            raise DRFValidationError({"detail": "end_date must be >= start_date."})
+        if (end - start).days > self._MAX_DAYS:
+            raise DRFValidationError({"detail": f"Range cannot exceed {self._MAX_DAYS} days."})
+        return start, end
+
+    def _resolve_athlete(self, request):
+        from core.models import Athlete
+        if self.membership.role == "athlete":
+            try:
+                return Athlete.objects.get(organization=self.organization, user=request.user)
+            except Athlete.DoesNotExist:
+                raise PermissionDenied("Athlete profile not found.")
+        param = request.query_params.get("athlete_id")
+        if not param:
+            raise DRFValidationError({"athlete_id": "Required for coach/owner role."})
+        try:
+            athlete_id = int(param)
+        except (ValueError, TypeError):
+            raise DRFValidationError({"athlete_id": "Must be a positive integer."})
+        try:
+            return Athlete.objects.get(id=athlete_id, organization=self.organization)
+        except Athlete.DoesNotExist:
+            raise PermissionDenied("Athlete not found in this organization.")
+
+    @staticmethod
+    def _build_plans(assignments):
+        today = datetime.date.today()
+        plans = []
+        reconciliations = []
+        act_to_plan = {}
+
+        for wa in assignments:
+            pw = wa.planned_workout
+            rec = getattr(wa, "reconciliation", None)
+
+            if rec and rec.state == "reconciled":
+                comp_status = "completed"
+            elif rec and rec.state == "missed":
+                comp_status = "missed"
+            elif wa.status in ("completed", "skipped", "canceled"):
+                comp_status = wa.status
+            elif wa.scheduled_date < today:
+                comp_status = "missed"
+            else:
+                comp_status = "pending"
+
+            plans.append({
+                "id": wa.id,
+                "date": str(wa.scheduled_date),
+                "type": pw.discipline if pw else "",
+                "name": pw.name if pw else "",
+                "session_type": pw.session_type if pw else "",
+                "estimated_duration_min": (
+                    round(pw.estimated_duration_seconds / 60, 1)
+                    if pw and pw.estimated_duration_seconds else None
+                ),
+                "estimated_distance_km": (
+                    round(pw.estimated_distance_meters / 1000, 2)
+                    if pw and pw.estimated_distance_meters else None
+                ),
+                "status": wa.status,
+                "completion_status": comp_status,
+            })
+
+            if rec and rec.state == "reconciled" and rec.completed_activity_id:
+                act_to_plan[rec.completed_activity_id] = wa.id
+                score = rec.compliance_score
+                if score is None:
+                    rec_status = "missed"
+                elif score >= 95:
+                    rec_status = "on_plan"
+                elif score > 110:
+                    rec_status = "over"
+                else:
+                    rec_status = "under"
+                reconciliations.append({
+                    "date": str(wa.scheduled_date),
+                    "plan_id": wa.id,
+                    "activity_id": rec.completed_activity_id,
+                    "compliance_pct": score,
+                    "status": rec_status,
+                })
+
+        return plans, reconciliations, act_to_plan
+
+    @staticmethod
+    def _build_activities(completed, act_to_plan):
+        result = []
+        for act in completed:
+            strava_url = (
+                f"https://www.strava.com/activities/{act.provider_activity_id}"
+                if act.provider == "strava" and act.provider_activity_id else None
+            )
+            result.append({
+                "id": act.id,
+                "date": str(act.start_time.date()),
+                "sport": act.sport,
+                "duration_min": round(act.duration_s / 60, 1),
+                "distance_km": round(act.distance_m / 1000, 2),
+                "elevation_m": act.elevation_gain_m,
+                "provider": act.provider,
+                "provider_activity_id": act.provider_activity_id,
+                "strava_url": strava_url,
+                "linked_plan_id": act_to_plan.get(act.id),
+                "canonical_load": act.canonical_load,
+            })
+        return result

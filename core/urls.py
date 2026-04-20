@@ -68,6 +68,7 @@ from core.views_p1 import (  # PR-115/116/117/119/128/X4/149/PR-128-real-pmc/PR-
     WellnessCheckInViewSet,
     WellnessDismissView,
     TrainingWeekViewSet,
+    CalendarTimelineView,
 )
 from core.views_pmc import (  # PR-128a / PR-145a / PR-152
     AthletePMCView,
@@ -822,5 +823,12 @@ urlpatterns = [
         'p1/orgs/<int:org_id>/athletes/<int:athlete_id>/alerts/',
         AthleteAlertsView.as_view(),
         name='p1-athlete-alerts',
+    ),
+
+    # PR-179a: Calendar Timeline — unified Plan + Real overlay
+    path(
+        'p1/orgs/<int:org_id>/calendar-timeline/',
+        CalendarTimelineView.as_view(),
+        name='p1-calendar-timeline',
     ),
 ]
