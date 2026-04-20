@@ -140,6 +140,8 @@ const AthleteMyTraining = () => {
   // PR-179a: calendar timeline — completed activities + reconciliation map
   const [calActivities, setCalActivities] = useState([]);
   const [calReconciliationMap, setCalReconciliationMap] = useState({});
+  // PR-179b: enriched plan details map { [assignmentId]: planEntry }
+  const [calPlanDetailsMap, setCalPlanDetailsMap] = useState({});
 
   const fetchData = useCallback(async () => {
     if (!orgId) { setLoading(false); return; }
@@ -159,6 +161,9 @@ const AthleteMyTraining = () => {
       const recMap = {};
       for (const r of (timelineRes?.data?.reconciliations ?? [])) recMap[r.plan_id] = r;
       setCalReconciliationMap(recMap);
+      const pdMap = {};
+      for (const p of (timelineRes?.data?.plans ?? [])) pdMap[p.id] = p;
+      setCalPlanDetailsMap(pdMap);
     } catch (err) {
       // 403 + paywall: VisibilityGate handles the overlay — no error toast needed
       const isPaywall = err?.response?.status === 403 && err?.response?.data?.paywall === true;
@@ -352,6 +357,7 @@ const AthleteMyTraining = () => {
         onGoalClick={(goal) => setSelectedGoalForEdit(goal)}
         activities={calActivities}
         reconciliationMap={calReconciliationMap}
+        planDetailsMap={calPlanDetailsMap}
       />
 
       {/* Workout detail drawer */}

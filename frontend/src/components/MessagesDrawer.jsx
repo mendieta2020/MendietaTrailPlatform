@@ -471,7 +471,7 @@ const MessagesDrawer = ({
                       </Typography>
 
                       {/* Session deep-link chip */}
-                      {msg.alert_type === 'session_comment' && msg.reference_id && onSessionClick && (
+                      {(msg.alert_type === 'session_comment' || msg.alert_type === 'athlete_session_note') && msg.reference_id && onSessionClick && (
                         <Box
                           onClick={() => {
                             onClose();

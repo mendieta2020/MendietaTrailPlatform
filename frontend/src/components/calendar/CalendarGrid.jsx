@@ -35,6 +35,8 @@ import {
 } from '../../utils/calendarHelpers';
 import { addMonths, subMonths } from 'date-fns';
 import WorkoutCard from './WorkoutCard';
+import UnifiedCard from './UnifiedCard';
+import WorkoutModal from './WorkoutModal';
 import GoalCard from './GoalCard';
 import WeekHeader from './WeekHeader';
 
@@ -111,9 +113,17 @@ export default function CalendarGrid({
   onGoalClick,
   activities = [],
   reconciliationMap = {},
+  planDetailsMap = {},
 }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
+  const [modalPayload, setModalPayload] = React.useState(null);
+
+  const handleCardOpen = (payload) => {
+    setModalPayload(payload);
+    if (payload.assignment) onCardClick?.(payload.assignment);
+  };
 
   const today = new Date();
   // Up to 6 weeks — months starting on Fri/Sat can span 5–6 partial weeks
@@ -228,6 +238,7 @@ export default function CalendarGrid({
     };
 
     return (
+      <>
       <Paper
         sx={{ borderRadius: 3, overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: 'none' }}
         onTouchStart={handleMobileTouchStart}
@@ -367,25 +378,41 @@ export default function CalendarGrid({
                         <GoalCard goal={goalDateMap[dateKey]} onClick={onGoalClick} />
                       )}
 
-                      {/* Assignment cards — full width */}
-                      {viewMode !== 'activities' && dayAssignments.map((a) => (
-                        <WorkoutCard
-                          key={a.id}
-                          assignment={a}
-                          role={role}
-                          isPast={isPast}
-                          onClick={onCardClick}
-                          onCompleteClick={onCompleteClick}
-                          onContextMenu={onContextMenu}
-                          onDragStart={() => {}}
-                          onDragEnd={() => {}}
-                        />
-                      ))}
+                      {/* Unified cards — plan + real merged (mobile) */}
+                      {viewMode !== 'activities' && dayAssignments.map((a) => {
+                        const linkedAct = (activitiesByDate[dateKey] ?? []).find(
+                          (act) => act.linked_plan_id === a.id
+                        );
+                        const rec = reconciliationMap[a.id] ?? null;
+                        const pd = planDetailsMap[a.id] ?? null;
+                        return (
+                          <UnifiedCard
+                            key={a.id}
+                            assignment={a}
+                            activity={viewMode !== 'plans' ? linkedAct : null}
+                            reconciliation={rec}
+                            planDetails={pd}
+                            isPast={isPast}
+                            role={role}
+                            onClick={handleCardOpen}
+                            onCompleteClick={onCompleteClick}
+                            onContextMenu={onContextMenu}
+                          />
+                        );
+                      })}
 
-                      {/* Activity pills — real execution overlay */}
-                      {viewMode !== 'plans' && (activitiesByDate[dateKey] ?? []).map((act) => (
-                        <ActivityPill key={act.id} activity={act} reconciliationMap={reconciliationMap} />
-                      ))}
+                      {/* Free activity cards (mobile) */}
+                      {viewMode !== 'plans' && (activitiesByDate[dateKey] ?? [])
+                        .filter((act) => !act.linked_plan_id)
+                        .map((act) => (
+                          <UnifiedCard
+                            key={`free-${act.id}`}
+                            freeActivity={act}
+                            isPast={isPast}
+                            role={role}
+                            onClick={handleCardOpen}
+                          />
+                        ))}
                     </Box>
                   );
                 })}
@@ -394,6 +421,15 @@ export default function CalendarGrid({
           })}
         </Box>
       </Paper>
+
+      {/* WorkoutModal (mobile) */}
+      <WorkoutModal
+        open={!!modalPayload}
+        onClose={() => setModalPayload(null)}
+        payload={modalPayload}
+        role={role}
+      />
+      </>
     );
   }
 
@@ -577,25 +613,43 @@ export default function CalendarGrid({
                       <GoalCard goal={goalDateMap[dateKey]} onClick={onGoalClick} />
                     )}
 
-                    {/* Assignment cards — all stacked, no truncation */}
-                    {viewMode !== 'activities' && dayAssignments.map((a) => (
-                      <WorkoutCard
-                        key={a.id}
-                        assignment={a}
-                        role={role}
-                        isPast={isPast}
-                        onClick={onCardClick}
-                        onCompleteClick={onCompleteClick}
-                        onContextMenu={onContextMenu}
-                        onDragStart={handleCardDragStart}
-                        onDragEnd={handleCardDragEnd}
-                      />
-                    ))}
+                    {/* Unified cards — plan + real merged */}
+                    {viewMode !== 'activities' && dayAssignments.map((a) => {
+                      const linkedAct = (activitiesByDate[dateKey] ?? []).find(
+                        (act) => act.linked_plan_id === a.id
+                      );
+                      const rec = reconciliationMap[a.id] ?? null;
+                      const pd = planDetailsMap[a.id] ?? null;
+                      return (
+                        <UnifiedCard
+                          key={a.id}
+                          assignment={a}
+                          activity={viewMode !== 'plans' ? linkedAct : null}
+                          reconciliation={rec}
+                          planDetails={pd}
+                          isPast={isPast}
+                          role={role}
+                          onClick={handleCardOpen}
+                          onCompleteClick={onCompleteClick}
+                          onContextMenu={onContextMenu}
+                          onDragStart={handleCardDragStart}
+                          onDragEnd={handleCardDragEnd}
+                        />
+                      );
+                    })}
 
-                    {/* Activity pills — real execution overlay */}
-                    {viewMode !== 'plans' && (activitiesByDate[dateKey] ?? []).map((act) => (
-                      <ActivityPill key={act.id} activity={act} reconciliationMap={reconciliationMap} />
-                    ))}
+                    {/* Free activity cards — real with no plan */}
+                    {viewMode !== 'plans' && (activitiesByDate[dateKey] ?? [])
+                      .filter((act) => !act.linked_plan_id)
+                      .map((act) => (
+                        <UnifiedCard
+                          key={`free-${act.id}`}
+                          freeActivity={act}
+                          isPast={isPast}
+                          role={role}
+                          onClick={handleCardOpen}
+                        />
+                      ))}
                   </Box>
                 );
               })}
@@ -622,6 +676,14 @@ export default function CalendarGrid({
           }}
         />
       )}
+
+      {/* WorkoutModal — unified card detail */}
+      <WorkoutModal
+        open={!!modalPayload}
+        onClose={() => setModalPayload(null)}
+        payload={modalPayload}
+        role={role}
+      />
     </Paper>
   );
 }
