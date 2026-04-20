@@ -246,7 +246,7 @@ def persist_oauth_tokens_v2(
                 "provider": provider,
                 "alumno_id": alumno.pk,
                 "external_user_id": external_user_id,
-                "created": created,
+                "credential_created": created,
                 "has_access_token": True,
                 "has_refresh_token": bool(refresh_token),
                 "has_expires_at": expires_at is not None,
