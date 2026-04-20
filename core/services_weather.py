@@ -88,12 +88,16 @@ def get_weather_for_date(lat: float, lon: float, target_date: date) -> dict | No
             if not item:
                 return None
 
+        wind_ms = item.get("wind", {}).get("speed", 0) or 0
+        pop = item.get("pop", 0) or 0  # probability of precipitation (0–1), forecast only
         return {
             "temp_c": round(item["main"]["temp"]),
             "feels_like": round(item["main"]["feels_like"]),
             "description": item["weather"][0]["description"].capitalize(),
             "icon": item["weather"][0]["icon"],
             "humidity": item["main"]["humidity"],
+            "wind_kmh": round(wind_ms * 3.6),
+            "precipitation_pct": round(pop * 100),
         }
     except Exception as exc:
         logger.warning(
