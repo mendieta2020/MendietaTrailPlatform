@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-06 · PR-165e Final Pre-Launch — Password Recovery + Tenancy + UX Polish_
+_Last updated: 2026-04-20 · PR-179b Unified Card + Modal + Weather + Coach View Parity_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -290,6 +290,29 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - No backend changes, no migrations
 - Frontend: lint 0 errors, build success
 - Risk: MEDIUM (new dependency react-body-highlighter)
+
+### PR-179a — Unified Plan + Real overlay for calendar timeline ✅ 2026-04-20
+- See PR-331 (merged)
+
+### PR-179b — Unified Card + Modal Expandido + Weather + Coach View Parity ✅ 2026-04-20
+- Backend: `/calendar-timeline/` enriched with `description`, `intensity_steps`, `weather`,
+  `athlete_notes`, `rpe`, `coach_notes`, `estimated_elevation_m`; `coach_comment` omitted
+  for athlete-role (role-scoped field); prefetch_related blocks/intervals added to queryset
+- services_weather.py: `wind_kmh` + `precipitation_pct` (OWM `pop` field) added to snapshot
+- New: `UnifiedCard.jsx` — 7 variants (A pending / B on-plan / C under / D over / E missed /
+  F free / G rest); one card per assignment replacing WorkoutCard + ActivityPill
+- New: `WorkoutModal.jsx` — 3 cases; intensity steps list; MiniWorkoutProfile graph;
+  compliance bar; athlete sentiment; coach-only comment section; no Strava link/watch button
+- useWeatherIcon.js: `weatherBadgeProps()` with 7 threshold rules (freeze/heat/rain/wind)
+- CalendarGrid.jsx: wired UnifiedCard + WorkoutModal; planDetailsMap prop
+- Calendar.jsx: fix TDZ bug — dateFrom/dateTo moved before useEffect that deps on them;
+  coachPlanDetailsMap built from timeline plans
+- AthleteMyTraining.jsx: calPlanDetailsMap passed to CalendarGrid
+- MessagesDrawer.jsx: athlete_session_note added to notification click-through guard
+- 9 backend tests (tests_pr179b_unified_card.py) — all pass; 22/22 total with PR-179a
+- frontend lint: 0 errors; build: success (pre-existing chunk warning)
+- Deferred to PR-179c: historical comparison (last 3 executions)
+- Risk: MEDIUM — RESOLVED
 
 ### Before Mes 2 (10 external coaches)
 - PR-155 ✅ — Building cleanup (sidebar consolidation, duplicate removal) — DONE
