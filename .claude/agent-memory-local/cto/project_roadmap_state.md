@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-20 · PR-179b Unified Card + Modal + Weather + Coach View Parity_
+_Last updated: 2026-04-20 · PR-179b-hotfix: 6 critical regressions fixed, READY FOR REVIEW_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -313,6 +313,18 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - frontend lint: 0 errors; build: success (pre-existing chunk warning)
 - Deferred to PR-179c: historical comparison (last 3 executions)
 - Risk: MEDIUM — RESOLVED
+
+### PR-179b-hotfix — 6 Critical Regressions from Production Validation 🔄 READY FOR REVIEW
+- Branch: p2/pr179b-hotfix-6-critical-fixes
+- BUG 1: Dual modal on athlete card click — role guard in CalendarGrid.handleCardOpen; drawer deep-link coach-only; athletes use WorkoutModal exclusively. Files: CalendarGrid.jsx, AthleteMyTraining.jsx
+- BUG 2: Weather wiring (Case A only) — structured warn when upcoming assignments in ±4d window lack weather_snapshot. Case B (real weather from Strava) DEFERRED — requires CompletedActivity schema extension; provider field extraction in core/ would violate Law 4. Follow-up PR needed. Files: AthleteMyTraining.jsx
+- BUG 3: Notification "Ver sección" navigation — extended chip to workout_modified and plan_adjusted alert_types; all 4 types with reference_id navigate to modal. Files: MessagesDrawer.jsx
+- BUG 4: Effort-based compliance for cross-family run pairings — TRAILRUNNING added to sport map; _effort_detail() helper with formula: effort = distance_km × (1 + elevation_m / 1000); used only for cross-discipline run pairings. 51/51 reconciliation tests pass. Files: services_reconciliation.py, tests_reconciliation.py
+- BUG 5: Zone-based colors in MiniWorkoutProfile — Z1-Z5 palette keyed on target_label; was #CBD5E1 uniform gray. Files: MiniWorkoutProfile.jsx
+- BUG 6: Prominent compliance badge — full-width bottom strip with semantic labels (Óptimo/Revisar/Alerta) + color-coded typography. Files: UnifiedCard.jsx
+- Validation: python manage.py check ✅ | 51/51 tests ✅ | npm run lint ✅ | npm run build ✅
+- Architecture review: all 9 Constitution laws PASS (quantoryn-review subagent)
+- Risk: MEDIUM — READY FOR REVIEW
 
 ### Before Mes 2 (10 external coaches)
 - PR-155 ✅ — Building cleanup (sidebar consolidation, duplicate removal) — DONE

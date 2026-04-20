@@ -9,7 +9,7 @@ import {
   startOfMonth, endOfMonth, startOfWeek, format,
 } from 'date-fns';
 import AthleteLayout from '../components/AthleteLayout';
-import WorkoutDetailDrawer from '../components/WorkoutDetailDrawer';
+import WorkoutModal from '../components/calendar/WorkoutModal';
 import { CompleteWorkoutModal } from '../components/CompleteWorkoutModal';
 import VisibilityGate from '../components/VisibilityGate';
 import { useAuth } from '../context/AuthContext';
@@ -125,7 +125,8 @@ const AthleteMyTraining = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pmcData, setPmcData] = useState(null);
-  const [selectedAssignment, setSelectedAssignment] = useState(null);
+  // Deep-link from MessagesDrawer: opens WorkoutModal for a specific assignment
+  const [deepLinkAssignment, setDeepLinkAssignment] = useState(null);
   const [completeModalOpen, setCompleteModalOpen] = useState(false);
   const [completeTarget, setCompleteTarget] = useState(null);
   // availability: array of { day_of_week, is_available, reason }
@@ -164,6 +165,23 @@ const AthleteMyTraining = () => {
       const pdMap = {};
       for (const p of (timelineRes?.data?.plans ?? [])) pdMap[p.id] = p;
       setCalPlanDetailsMap(pdMap);
+      // Diagnostic: warn when upcoming assignments (within ±4-day enrichment window) have no weather
+      if (timelineRes?.data?.plans) {
+        const today = new Date();
+        const windowMs = 4 * 24 * 60 * 60 * 1000;
+        const missing = timelineRes.data.plans.filter((p) => {
+          if (p.weather) return false;
+          const d = new Date(p.date + 'T00:00:00');
+          return Math.abs(d - today) <= windowMs;
+        });
+        if (missing.length > 0) {
+          console.warn('[AthleteMyTraining] weather_snapshot missing for upcoming assignments', {
+            event_name: 'weather_snapshot_missing',
+            count: missing.length,
+            assignment_ids: missing.map((p) => p.id),
+          });
+        }
+      }
     } catch (err) {
       // 403 + paywall: VisibilityGate handles the overlay — no error toast needed
       const isPaywall = err?.response?.status === 403 && err?.response?.data?.paywall === true;
@@ -225,7 +243,7 @@ const AthleteMyTraining = () => {
     const found = assignments.find((a) => a.id === targetId);
     if (found) {
       sessionStorage.removeItem('openAssignmentId');
-      setSelectedAssignment(found);
+      setDeepLinkAssignment(found);
     }
   }, [assignments, loading]);
 
@@ -294,18 +312,6 @@ const AthleteMyTraining = () => {
     return () => { cancelled = true; };
   }, [orgId, currentDate]);
 
-  const handleMarkComplete = async (assignment) => {
-    if (!orgId) return;
-    try {
-      const res = await updateAssignment(orgId, assignment.id, { status: 'completed' });
-      setAssignments((prev) => prev.map((a) => a.id === assignment.id ? res.data : a));
-      if (selectedAssignment?.id === assignment.id) {
-        setSelectedAssignment(res.data);
-      }
-    } catch (err) {
-      console.error('[AthleteMyTraining] mark complete error:', err);
-    }
-  };
 
   const handleOpenCompleteModal = (assignment) => {
     setCompleteTarget(assignment);
@@ -316,8 +322,8 @@ const AthleteMyTraining = () => {
     if (!orgId || !completeTarget) return;
     const res = await updateAssignment(orgId, completeTarget.id, data);
     setAssignments((prev) => prev.map((a) => a.id === completeTarget.id ? res.data : a));
-    if (selectedAssignment?.id === completeTarget.id) {
-      setSelectedAssignment(res.data);
+    if (deepLinkAssignment?.id === completeTarget.id) {
+      setDeepLinkAssignment(res.data);
     }
   };
 
@@ -350,7 +356,6 @@ const AthleteMyTraining = () => {
         currentDate={currentDate}
         onNavigate={setCurrentDate}
         loading={loading}
-        onCardClick={setSelectedAssignment}
         onCompleteClick={handleOpenCompleteModal}
         availability={availability}
         athleteProfile={athleteProfile}
@@ -360,11 +365,18 @@ const AthleteMyTraining = () => {
         planDetailsMap={calPlanDetailsMap}
       />
 
-      {/* Workout detail drawer */}
-      <WorkoutDetailDrawer
-        assignment={selectedAssignment}
-        onClose={() => setSelectedAssignment(null)}
-        onMarkComplete={handleMarkComplete}
+      {/* Deep-link WorkoutModal (opened from MessagesDrawer notification) */}
+      <WorkoutModal
+        open={!!deepLinkAssignment}
+        onClose={() => setDeepLinkAssignment(null)}
+        payload={deepLinkAssignment ? {
+          assignment: deepLinkAssignment,
+          activity: calActivities.find((a) => a.linked_plan_id === deepLinkAssignment.id) ?? null,
+          reconciliation: calReconciliationMap[deepLinkAssignment.id] ?? null,
+          planDetails: calPlanDetailsMap[deepLinkAssignment.id] ?? null,
+          freeActivity: null,
+        } : null}
+        role="athlete"
       />
 
       {/* Complete workout modal */}

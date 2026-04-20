@@ -122,7 +122,8 @@ export default function CalendarGrid({
 
   const handleCardOpen = (payload) => {
     setModalPayload(payload);
-    if (payload.assignment) onCardClick?.(payload.assignment);
+    // Drawer deep-link is coach-only; athletes use WorkoutModal exclusively
+    if (role !== 'athlete' && payload.assignment) onCardClick?.(payload.assignment);
   };
 
   const today = new Date();
