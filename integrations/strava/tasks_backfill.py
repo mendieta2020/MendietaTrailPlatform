@@ -98,14 +98,13 @@ def backfill_strava_athlete(
             days=days,
         )
     except Exception as exc:
-        logger.warning(
+        logger.exception(
             "strava.backfill.error",
             extra={
                 "event_name": "strava.backfill.error",
                 "organization_id": organization_id,
                 "athlete_id": athlete_id,
                 "outcome": "error",
-                "exc": str(exc),
             },
         )
         raise self.retry(exc=exc)
