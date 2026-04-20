@@ -25,7 +25,7 @@
  *   onGoalClick      — (goal) => void
  */
 import React, { useRef, useState } from 'react';
-import { Box, Typography, IconButton, Paper, useTheme, useMediaQuery } from '@mui/material';
+import { Box, Typography, IconButton, Paper, Button, useTheme, useMediaQuery } from '@mui/material';
 import { ChevronLeft, ChevronRight } from '@mui/icons-material';
 import { format, isSameDay, isSameMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -37,6 +37,58 @@ import { addMonths, subMonths } from 'date-fns';
 import WorkoutCard from './WorkoutCard';
 import GoalCard from './GoalCard';
 import WeekHeader from './WeekHeader';
+
+// ── Activity pill — real execution overlay (PR-179a) ─────────────────────────
+function ActivityPill({ activity, reconciliationMap = {} }) {
+  const rec = activity.linked_plan_id != null ? reconciliationMap[activity.linked_plan_id] : null;
+  const isFree = !activity.linked_plan_id;
+  const color = isFree ? '#f97316' : (rec?.status === 'on_plan' || rec?.status === 'over' ? '#10b981' : '#3b82f6');
+  const emoji = isFree ? '🏃' : '✅';
+  const dist = activity.distance_km > 0 ? `${activity.distance_km}km` : `${activity.duration_min}min`;
+  const compLabel = !isFree && rec?.compliance_pct != null ? ` · ${rec.compliance_pct}%` : '';
+  return (
+    <Box
+      sx={{
+        mt: 0.5, px: 0.75, py: 0.2,
+        bgcolor: `${color}18`, border: `1px solid ${color}50`,
+        borderRadius: 1, cursor: activity.strava_url ? 'pointer' : 'default',
+        lineHeight: 1,
+      }}
+      onClick={() => activity.strava_url && window.open(activity.strava_url, '_blank')}
+      title={activity.strava_url ? 'Ver en Strava' : undefined}
+    >
+      <Typography sx={{ fontSize: '0.6rem', color, fontWeight: 600, lineHeight: 1.3 }}>
+        {emoji} {dist}{compLabel}
+      </Typography>
+    </Box>
+  );
+}
+
+// ── View mode toggle strip ────────────────────────────────────────────────────
+function ViewModeToggle({ viewMode, setViewMode }) {
+  const MODES = [['plans', 'Plan'], ['activities', 'Real'], ['both', 'Ambos']];
+  return (
+    <Box sx={{ display: 'flex', gap: 0.5 }}>
+      {MODES.map(([mode, label]) => (
+        <Button
+          key={mode}
+          size="small"
+          variant={viewMode === mode ? 'contained' : 'outlined'}
+          onClick={() => setViewMode(mode)}
+          sx={{
+            minWidth: 48, fontSize: '0.62rem', py: 0.2, px: 0.75,
+            textTransform: 'none', fontWeight: 600,
+            ...(viewMode === mode
+              ? { bgcolor: '#1e293b', '&:hover': { bgcolor: '#334155' } }
+              : { borderColor: '#cbd5e1', color: '#64748b', '&:hover': { borderColor: '#94a3b8' } }),
+          }}
+        >
+          {label}
+        </Button>
+      ))}
+    </Box>
+  );
+}
 
 export default function CalendarGrid({
   assignments = [],
@@ -57,6 +109,8 @@ export default function CalendarGrid({
   availability = [],
   athleteProfile = null,
   onGoalClick,
+  activities = [],
+  reconciliationMap = {},
 }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -74,12 +128,23 @@ export default function CalendarGrid({
   const mobileTouchStartYRef = useRef(null);
   const [mobilePulling, setMobilePulling] = useState(false);
 
+  // View mode toggle: 'plans' | 'activities' | 'both' (default)
+  const [viewMode, setViewMode] = useState('both');
+
   // Build assignment index: { 'YYYY-MM-DD': [assignment, ...] }
   const assignmentsByDate = {};
   for (const a of assignments) {
     const key = a.scheduled_date;
     if (!assignmentsByDate[key]) assignmentsByDate[key] = [];
     assignmentsByDate[key].push(a);
+  }
+
+  // Build activity index: { 'YYYY-MM-DD': [activity, ...] }
+  const activitiesByDate = {};
+  for (const act of activities) {
+    const key = act.date;
+    if (!activitiesByDate[key]) activitiesByDate[key] = [];
+    activitiesByDate[key].push(act);
   }
 
   // Build blocked day map: availIndex → availability record
@@ -193,6 +258,13 @@ export default function CalendarGrid({
           </IconButton>
         </Box>
 
+        {/* View mode toggle (mobile) */}
+        {activities.length > 0 && (
+          <Box sx={{ px: 2, py: 0.75, borderBottom: '1px solid #e2e8f0', bgcolor: '#f8fafc' }}>
+            <ViewModeToggle viewMode={viewMode} setViewMode={setViewMode} />
+          </Box>
+        )}
+
         {/* Week sections — vertical list */}
         <Box sx={{ bgcolor: 'white' }}>
           {weeks.map((week, wIdx) => {
@@ -202,16 +274,16 @@ export default function CalendarGrid({
             const pvr = planVsRealMap[weekMondayKey] ?? null;
             const trainingPhase = trainingPhaseMap[weekMondayKey] ?? null;
 
-            // Find which days in this week have sessions or goals
+            // Find which days in this week have sessions or goals (including activities)
             const activeDays = week.filter((d) => {
               const dk = format(d, 'yyyy-MM-dd');
-              return (assignmentsByDate[dk]?.length > 0) || goalDateMap[dk];
+              return (assignmentsByDate[dk]?.length > 0) || goalDateMap[dk] || (activitiesByDate[dk]?.length > 0);
             });
 
             // Collect empty in-month days grouped into one line
             const emptyInMonthDays = week.filter((d) => {
               const dk = format(d, 'yyyy-MM-dd');
-              return isSameMonth(d, currentDate) && !assignmentsByDate[dk]?.length && !goalDateMap[dk];
+              return isSameMonth(d, currentDate) && !assignmentsByDate[dk]?.length && !goalDateMap[dk] && !activitiesByDate[dk]?.length;
             });
 
             return (
@@ -296,7 +368,7 @@ export default function CalendarGrid({
                       )}
 
                       {/* Assignment cards — full width */}
-                      {dayAssignments.map((a) => (
+                      {viewMode !== 'activities' && dayAssignments.map((a) => (
                         <WorkoutCard
                           key={a.id}
                           assignment={a}
@@ -308,6 +380,11 @@ export default function CalendarGrid({
                           onDragStart={() => {}}
                           onDragEnd={() => {}}
                         />
+                      ))}
+
+                      {/* Activity pills — real execution overlay */}
+                      {viewMode !== 'plans' && (activitiesByDate[dateKey] ?? []).map((act) => (
+                        <ActivityPill key={act.id} activity={act} reconciliationMap={reconciliationMap} />
                       ))}
                     </Box>
                   );
@@ -347,13 +424,18 @@ export default function CalendarGrid({
         >
           {format(currentDate, 'MMMM yyyy', { locale: es })}
         </Typography>
-        <IconButton
-          size="small"
-          onClick={() => onNavigate(addMonths(currentDate, 1))}
-          sx={{ bgcolor: '#f1f5f9', '&:hover': { bgcolor: '#e2e8f0' } }}
-        >
-          <ChevronRight fontSize="small" />
-        </IconButton>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {activities.length > 0 && (
+            <ViewModeToggle viewMode={viewMode} setViewMode={setViewMode} />
+          )}
+          <IconButton
+            size="small"
+            onClick={() => onNavigate(addMonths(currentDate, 1))}
+            sx={{ bgcolor: '#f1f5f9', '&:hover': { bgcolor: '#e2e8f0' } }}
+          >
+            <ChevronRight fontSize="small" />
+          </IconButton>
+        </Box>
       </Box>
 
       {/* Day-of-week headers */}
@@ -496,7 +578,7 @@ export default function CalendarGrid({
                     )}
 
                     {/* Assignment cards — all stacked, no truncation */}
-                    {dayAssignments.map((a) => (
+                    {viewMode !== 'activities' && dayAssignments.map((a) => (
                       <WorkoutCard
                         key={a.id}
                         assignment={a}
@@ -508,6 +590,11 @@ export default function CalendarGrid({
                         onDragStart={handleCardDragStart}
                         onDragEnd={handleCardDragEnd}
                       />
+                    ))}
+
+                    {/* Activity pills — real execution overlay */}
+                    {viewMode !== 'plans' && (activitiesByDate[dateKey] ?? []).map((act) => (
+                      <ActivityPill key={act.id} activity={act} reconciliationMap={reconciliationMap} />
                     ))}
                   </Box>
                 );

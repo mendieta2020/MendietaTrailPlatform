@@ -61,3 +61,9 @@ export function bulkCreateAssignments(orgId, data) {
 export function getAssignment(orgId, id) {
   return client.get(`${p1Base(orgId)}/assignments/${id}/`);
 }
+
+export function getCalendarTimeline(orgId, { startDate, endDate, athleteId } = {}) {
+  const params = { start_date: startDate, end_date: endDate };
+  if (athleteId) params.athlete_id = athleteId;
+  return client.get(`${p1Base(orgId)}/calendar-timeline/`, { params });
+}

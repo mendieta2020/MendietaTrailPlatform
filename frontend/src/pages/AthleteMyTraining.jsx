@@ -13,7 +13,7 @@ import WorkoutDetailDrawer from '../components/WorkoutDetailDrawer';
 import { CompleteWorkoutModal } from '../components/CompleteWorkoutModal';
 import VisibilityGate from '../components/VisibilityGate';
 import { useAuth } from '../context/AuthContext';
-import { listAssignments, updateAssignment } from '../api/assignments';
+import { listAssignments, updateAssignment, getCalendarTimeline } from '../api/assignments';
 import { listAthletes, getAthleteProfile } from '../api/p1';
 import { getAthleteGoals } from '../api/pmc';
 import { getAvailability, updateGoal } from '../api/athlete';
@@ -137,6 +137,9 @@ const AthleteMyTraining = () => {
   const [selectedGoalForEdit, setSelectedGoalForEdit] = useState(null);
   // PR-158: plan vs real data keyed by week Monday string
   const [planVsRealMap, setPlanVsRealMap] = useState({}); // { 'YYYY-MM-DD': {...} }
+  // PR-179a: calendar timeline — completed activities + reconciliation map
+  const [calActivities, setCalActivities] = useState([]);
+  const [calReconciliationMap, setCalReconciliationMap] = useState({});
 
   const fetchData = useCallback(async () => {
     if (!orgId) { setLoading(false); return; }
@@ -145,9 +148,17 @@ const AthleteMyTraining = () => {
     try {
       const dateFrom = format(startOfMonth(currentDate), 'yyyy-MM-dd');
       const dateTo = format(endOfMonth(currentDate), 'yyyy-MM-dd');
-      const res = await listAssignments(orgId, { dateFrom, dateTo });
+      const [res, timelineRes] = await Promise.all([
+        listAssignments(orgId, { dateFrom, dateTo }),
+        getCalendarTimeline(orgId, { startDate: dateFrom, endDate: dateTo }).catch(() => null),
+      ]);
       const data = res.data?.results ?? res.data ?? [];
       setAssignments(Array.isArray(data) ? data : []);
+      const acts = timelineRes?.data?.activities ?? [];
+      setCalActivities(acts);
+      const recMap = {};
+      for (const r of (timelineRes?.data?.reconciliations ?? [])) recMap[r.plan_id] = r;
+      setCalReconciliationMap(recMap);
     } catch (err) {
       // 403 + paywall: VisibilityGate handles the overlay — no error toast needed
       const isPaywall = err?.response?.status === 403 && err?.response?.data?.paywall === true;
@@ -339,6 +350,8 @@ const AthleteMyTraining = () => {
         availability={availability}
         athleteProfile={athleteProfile}
         onGoalClick={(goal) => setSelectedGoalForEdit(goal)}
+        activities={calActivities}
+        reconciliationMap={calReconciliationMap}
       />
 
       {/* Workout detail drawer */}
