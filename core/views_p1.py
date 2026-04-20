@@ -2480,6 +2480,10 @@ class CalendarTimelineView(OrgTenantMixin, views.APIView):
                 scheduled_date__lte=end_date,
             )
             .select_related("planned_workout", "reconciliation__completed_activity")
+            .prefetch_related(
+                "planned_workout__blocks",
+                "planned_workout__blocks__intervals",
+            )
             .order_by("scheduled_date", "day_order")
         )
         completed = list(
@@ -2491,7 +2495,8 @@ class CalendarTimelineView(OrgTenantMixin, views.APIView):
             ).order_by("start_time")
         )
 
-        plans, reconciliations, act_to_plan = self._build_plans(assignments)
+        is_athlete = self.membership.role == "athlete"
+        plans, reconciliations, act_to_plan = self._build_plans(assignments, is_athlete=is_athlete)
         activities = self._build_activities(completed, act_to_plan)
 
         elapsed_ms = round((_time.monotonic() - t0) * 1000)
@@ -2545,7 +2550,35 @@ class CalendarTimelineView(OrgTenantMixin, views.APIView):
             raise PermissionDenied("Athlete not found in this organization.")
 
     @staticmethod
-    def _build_plans(assignments):
+    def _build_intensity_steps(pw):
+        """
+        Flatten PlannedWorkout blocks → intervals into a simple ordered list
+        for the frontend intensity profile graph.
+        """
+        if not pw:
+            return []
+        steps = []
+        step_index = 0
+        for block in pw.blocks.all():
+            for interval in block.intervals.all():
+                steps.append({
+                    "step_index": step_index,
+                    "block_type": block.block_type,
+                    "block_name": block.name or block.block_type,
+                    "repetitions": interval.repetitions,
+                    "duration_sec": interval.duration_seconds,
+                    "distance_m": interval.distance_meters,
+                    "intensity_label": interval.target_label,
+                    "intensity_low": interval.target_value_low,
+                    "intensity_high": interval.target_value_high,
+                    "metric_type": interval.metric_type,
+                    "description": interval.description,
+                })
+                step_index += 1
+        return steps
+
+    @staticmethod
+    def _build_plans(assignments, *, is_athlete=False):
         today = datetime.date.today()
         plans = []
         reconciliations = []
@@ -2566,7 +2599,7 @@ class CalendarTimelineView(OrgTenantMixin, views.APIView):
             else:
                 comp_status = "pending"
 
-            plans.append({
+            plan_entry = {
                 "id": wa.id,
                 "date": str(wa.scheduled_date),
                 "type": pw.discipline if pw else "",
@@ -2580,9 +2613,26 @@ class CalendarTimelineView(OrgTenantMixin, views.APIView):
                     round(pw.estimated_distance_meters / 1000, 2)
                     if pw and pw.estimated_distance_meters else None
                 ),
+                "estimated_elevation_m": pw.elevation_gain_min_m if pw else None,
                 "status": wa.status,
                 "completion_status": comp_status,
-            })
+                # PR-179b: enriched fields
+                "description": pw.description if pw else "",
+                "intensity_steps": CalendarTimelineView._build_intensity_steps(pw),
+                "weather": wa.weather_snapshot or None,
+                # athlete-authored feedback (visible to both roles)
+                "athlete_notes": wa.athlete_notes or "",
+                "rpe": wa.rpe,
+            }
+
+            # coach_notes: visible to both roles (coach writes, athlete reads)
+            plan_entry["coach_notes"] = wa.coach_notes or ""
+
+            # coach_comment (quick comment, legacy field) — coach only
+            if not is_athlete:
+                plan_entry["coach_comment"] = wa.coach_comment or ""
+
+            plans.append(plan_entry)
 
             if rec and rec.state == "reconciled" and rec.completed_activity_id:
                 act_to_plan[rec.completed_activity_id] = wa.id

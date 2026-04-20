@@ -609,6 +609,8 @@ export default function CalendarPage() {
   // PR-179a: calendar timeline for coach month grid (activities + reconciliations)
   const [coachActivities, setCoachActivities] = useState([]);
   const [coachReconciliationMap, setCoachReconciliationMap] = useState({});
+  // PR-179b: enriched plan details map { [assignmentId]: planEntry }
+  const [coachPlanDetailsMap, setCoachPlanDetailsMap] = useState({});
   // Blocked-day drop confirmation dialog
   const [blockedDropPending, setBlockedDropPending] = useState(null); // { callback } | null
 
@@ -811,6 +813,10 @@ export default function CalendarPage() {
     return () => { cancelled = true; setCoachPlanVsRealMap({}); };
   }, [orgId, selectedTarget, currentDate]);
 
+  // Derived date range for the visible month (used by multiple effects below)
+  const dateFrom = format(startOfMonth(currentDate), 'yyyy-MM-dd');
+  const dateTo = format(endOfMonth(currentDate), 'yyyy-MM-dd');
+
   // PR-179a: Load calendar timeline for coach month grid when individual athlete selected
   useEffect(() => {
     const target = parseTarget(selectedTarget);
@@ -824,11 +830,21 @@ export default function CalendarPage() {
       .then((res) => {
         if (cancelled) return;
         setCoachActivities(res.data?.activities ?? []);
-        const map = {};
-        for (const r of (res.data?.reconciliations ?? [])) map[r.plan_id] = r;
-        setCoachReconciliationMap(map);
+        const recMap = {};
+        for (const r of (res.data?.reconciliations ?? [])) recMap[r.plan_id] = r;
+        setCoachReconciliationMap(recMap);
+        // PR-179b: build plan details map keyed by assignment id
+        const pdMap = {};
+        for (const p of (res.data?.plans ?? [])) pdMap[p.id] = p;
+        setCoachPlanDetailsMap(pdMap);
       })
-      .catch(() => { if (!cancelled) { setCoachActivities([]); setCoachReconciliationMap({}); } });
+      .catch(() => {
+        if (!cancelled) {
+          setCoachActivities([]);
+          setCoachReconciliationMap({});
+          setCoachPlanDetailsMap({});
+        }
+      });
     return () => { cancelled = true; };
   }, [orgId, selectedTarget, dateFrom, dateTo]);
 
@@ -847,9 +863,6 @@ export default function CalendarPage() {
   }, [orgId]);
 
   // ── Load assignments for current month ────────────────────────────────────
-
-  const dateFrom = format(startOfMonth(currentDate), 'yyyy-MM-dd');
-  const dateTo = format(endOfMonth(currentDate), 'yyyy-MM-dd');
 
   useEffect(() => {
     const target = parseTarget(selectedTarget);
@@ -1700,6 +1713,7 @@ export default function CalendarPage() {
                     trainingPhaseMap={trainingPhaseMap}
                     activities={coachActivities}
                     reconciliationMap={coachReconciliationMap}
+                    planDetailsMap={coachPlanDetailsMap}
                     role="coach"
                     currentDate={currentDate}
                     onNavigate={setCurrentDate}
