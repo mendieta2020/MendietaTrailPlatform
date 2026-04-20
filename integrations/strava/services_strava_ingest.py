@@ -17,6 +17,53 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _derive_organization(alumno):
+    """
+    Resolve the Organization for a given Alumno.
+
+    Primary path:  alumno.entrenador → active coach/owner Membership → organization
+    Fallback path: alumno.usuario → Athlete (org-first model) → organization
+
+    Returns Organization instance or None if no path succeeds.
+    """
+    from core.models import Athlete, Membership  # lazy — Law 4 boundary
+
+    if alumno.entrenador_id is not None:
+        membership = (
+            Membership.objects
+            .filter(user=alumno.entrenador, role__in=["owner", "coach"], is_active=True)
+            .select_related("organization")
+            .first()
+        )
+        if membership is not None:
+            return membership.organization
+
+    # Fallback: derive from the org-first Athlete record linked to alumno.usuario.
+    # ExternalIdentity and OAuthCredential carry no direct organization FK.
+    if alumno.usuario_id is not None:
+        athletes = list(
+            Athlete.objects
+            .filter(user_id=alumno.usuario_id, is_active=True)
+            .select_related("organization")
+        )
+        if len(athletes) == 1:
+            return athletes[0].organization
+        if len(athletes) > 1:
+            # Fail-closed (Law 1): multiple orgs for the same user — tenant is ambiguous.
+            logger.warning(
+                "strava.ingest.ambiguous_org_fallback",
+                extra={
+                    "event_name": "strava.ingest.ambiguous_org_fallback",
+                    "alumno_id": alumno.pk,
+                    "usuario_id": alumno.usuario_id,
+                    "org_count": len(athletes),
+                    "reason_code": "AMBIGUOUS_ORG",
+                },
+            )
+
+    return None
+
+
 def backfill_strava_activities(
     *,
     alumno_id: int,
@@ -50,6 +97,12 @@ def backfill_strava_activities(
     from django.utils import timezone
     from django.utils.dateparse import parse_datetime
 
+    from core.models import Alumno  # lazy — Law 4 boundary
+
+    # Fix B: resolve alumno + organization ONCE before the page loop (N queries → 1).
+    alumno = Alumno.objects.select_related("entrenador").get(pk=alumno_id)
+    organization = _derive_organization(alumno)
+
     if days is not None:
         after_dt = timezone.now() - datetime.timedelta(days=days)
     else:
@@ -76,6 +129,20 @@ def backfill_strava_activities(
             break
 
         for act in activities:
+            # Fix D: no-coach guard — skip gracefully, never crash the backfill.
+            if organization is None:
+                logger.info(
+                    "strava.ingest.skip_no_coach",
+                    extra={
+                        "event_name": "strava.ingest.skip_no_coach",
+                        "alumno_id": alumno_id,
+                        "strava_activity_id": act.get("id"),
+                        "reason_code": "NO_ORGANIZATION_RESOLVED",
+                    },
+                )
+                skipped += 1
+                continue
+
             try:
                 raw_start = act.get("start_date_local") or act.get("start_date")
                 start_dt = None
@@ -105,20 +172,22 @@ def backfill_strava_activities(
                     alumno_id=alumno_id,
                     external_activity_id=str(act["id"]),
                     activity_data=activity_data,
+                    _alumno=alumno,
+                    _organization=organization,
                 )
                 if was_created:
                     created += 1
                 else:
                     skipped += 1
 
-            except Exception as exc:
-                logger.warning(
+            except Exception:
+                # Fix A: logger.exception captures the full traceback automatically.
+                logger.exception(
                     "strava.backfill.activity_error",
                     extra={
                         "event_name": "strava.backfill.activity_error",
                         "alumno_id": alumno_id,
                         "strava_activity_id": act.get("id"),
-                        "exc": str(exc),
                     },
                 )
                 errors += 1
@@ -158,6 +227,8 @@ def ingest_strava_activity(
     alumno_id: int,
     external_activity_id: str,
     activity_data: dict,
+    _alumno=None,
+    _organization=None,
 ) -> tuple[object, bool]:
     """
     Persist a single Strava activity as a CompletedActivity (idempotent).
@@ -169,37 +240,30 @@ def ingest_strava_activity(
             start_date_local (datetime), elapsed_time_s (int), distance_m (float),
             type (str, Strava activity type), elevation_m (float | None),
             calories_kcal (float | None), avg_hr (float | None), raw (dict).
+        _alumno: pre-resolved Alumno instance (skips DB lookup when provided).
+        _organization: pre-resolved Organization instance (skips membership lookup).
 
     Returns:
         (CompletedActivity instance, created: bool)
 
     Raises:
         Alumno.DoesNotExist: if alumno_id is not found.
-        ValueError: if activity_data is missing start_date_local or elapsed_time_s.
+        ValueError: if activity_data is missing start_date_local or elapsed_time_s,
+                    or if organization cannot be determined.
     """
     from core.models import Alumno, Athlete, CompletedActivity, Membership  # lazy — Law 4 boundary
 
-    alumno = Alumno.objects.select_related("entrenador").get(pk=alumno_id)
-
-    if alumno.entrenador is None:
-        raise ValueError(
-            f"ingest_strava_activity: alumno {alumno_id} has no entrenador — "
-            "cannot determine organization. Ingestion aborted."
-        )
-
-    membership = (
-        Membership.objects
-        .filter(user=alumno.entrenador, role__in=["owner", "coach"], is_active=True)
-        .select_related("organization")
-        .first()
-    )
-    if membership is None:
-        raise ValueError(
-            f"ingest_strava_activity: entrenador (user_id={alumno.entrenador_id}) "
-            "has no active coach/owner Membership — cannot determine organization. "
-            "Ingestion aborted."
-        )
-    organization = membership.organization
+    if _alumno is not None and _organization is not None:
+        alumno = _alumno
+        organization = _organization
+    else:
+        alumno = Alumno.objects.select_related("entrenador").get(pk=alumno_id)
+        organization = _derive_organization(alumno)
+        if organization is None:
+            raise ValueError(
+                f"ingest_strava_activity: alumno {alumno_id} has no resolvable organization "
+                "(no active coach membership and no linked Athlete record). Ingestion aborted."
+            )
 
     # Bridge to organization-first Athlete — None if alumno has no linked user
     # or no Athlete row exists for this org. Never blocks ingestion (Law 5).
