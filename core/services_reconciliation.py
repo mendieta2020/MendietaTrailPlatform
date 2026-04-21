@@ -106,17 +106,21 @@ class ComplianceSignal:
 # ============================================================================
 
 _SPORT_TO_DISCIPLINE: dict[str, str] = {
-    "RUN":         "run",
-    "TRAIL":       "trail",
-    "CYCLING":     "bike",
-    "MTB":         "bike",
-    "SWIMMING":    "swim",
-    "STRENGTH":    "strength",
-    "CARDIO":      "other",
-    "INDOOR_BIKE": "bike",
-    "REST":        "other",
-    "OTHER":       "other",
+    "RUN":          "run",
+    "TRAIL":        "trail",
+    "TRAILRUNNING": "trail",   # Strava normalizer variant
+    "CYCLING":      "bike",
+    "MTB":          "bike",
+    "SWIMMING":     "swim",
+    "STRENGTH":     "strength",
+    "CARDIO":       "other",
+    "INDOOR_BIKE":  "bike",
+    "REST":         "other",
+    "OTHER":        "other",
 }
+
+# Run-family disciplines that use effort-based compliance scoring.
+_RUN_FAMILY: frozenset[str] = frozenset({"run", "trail"})
 
 # Discipline pairs considered compatible for matching (symmetric).
 # run ↔ trail: both are foot-based running variants; may match when discipline
@@ -316,6 +320,51 @@ def _pace_detail(
     )
 
 
+def _effort_detail(
+    planned_distance_m: float | None,
+    planned_elevation_m: float | None,
+    actual_distance_m: float | None,
+    actual_elevation_m: float | None,
+) -> VariableComplianceDetail:
+    """
+    Compute compliance detail using trail-effort formula for run-family disciplines.
+
+    effort = distance_km × (1 + elevation_m / 1000)
+
+    Elevation defaults to 0 when not available (flat-road equivalent).
+    Used as primary target for run ↔ trail ↔ trailrunning pairings.
+    """
+    signals: list[str] = []
+    if not planned_distance_m or planned_distance_m <= 0:
+        return VariableComplianceDetail(
+            planned=None, actual=None, ratio=None, score=None, signals=signals
+        )
+    plan_elev = max(0.0, float(planned_elevation_m or 0))
+    plan_effort = (planned_distance_m / 1000.0) * (1.0 + plan_elev / 1000.0)
+
+    if actual_distance_m is None or actual_distance_m <= 0:
+        return VariableComplianceDetail(
+            planned=round(plan_effort, 3), actual=0.0, ratio=0.0, score=0,
+            signals=[ComplianceSignal.DISTANCE_SHORT],
+        )
+    real_elev = max(0.0, float(actual_elevation_m or 0))
+    real_effort = (actual_distance_m / 1000.0) * (1.0 + real_elev / 1000.0)
+
+    ratio = real_effort / plan_effort
+    score = _clamp_score(ratio * 100)
+    if ratio < SIGNAL_UNDER_THRESHOLD:
+        signals.append(ComplianceSignal.UNDER_COMPLETED)
+    if ratio > SIGNAL_OVER_THRESHOLD:
+        signals.append(ComplianceSignal.OVER_COMPLETED)
+    return VariableComplianceDetail(
+        planned=round(plan_effort, 3),
+        actual=round(real_effort, 3),
+        ratio=round(ratio, 4),
+        score=score,
+        signals=signals,
+    )
+
+
 def _auto_select_primary_target(assignment: WorkoutAssignment) -> str:
     """
     Determine the dominant evaluation variable.
@@ -385,8 +434,30 @@ def score_compliance(
         "pace":     pace,
     }
 
-    primary_target  = _auto_select_primary_target(assignment)
-    primary_detail  = detail.get(primary_target)
+    # Effort-based scoring for cross-family run pairings (run ↔ trail ↔ trailrunning).
+    # Triggered only when plan discipline ≠ activity discipline (both in run family).
+    # Effort = distance_km × (1 + elevation_m / 1000) accounts for D+ in trail runs.
+    # Same-discipline pairings (run→run, trail→trail) use standard distance/duration scoring.
+    plan_discipline     = pw.discipline
+    activity_discipline = _SPORT_TO_DISCIPLINE.get(activity.sport.upper(), "other")
+    is_run_family       = plan_discipline in _RUN_FAMILY and activity_discipline in _RUN_FAMILY
+    is_cross_run_family = is_run_family and plan_discipline != activity_discipline
+    has_explicit_target = bool(getattr(pw, "primary_target_variable", ""))
+    if is_cross_run_family and pw.estimated_distance_meters:
+        effort = _effort_detail(
+            planned_distance_m=float(pw.estimated_distance_meters),
+            planned_elevation_m=float(pw.elevation_gain_min_m) if pw.elevation_gain_min_m else None,
+            actual_distance_m=float(activity.distance_m) if activity.distance_m else None,
+            actual_elevation_m=float(activity.elevation_gain_m) if activity.elevation_gain_m else None,
+        )
+        detail["effort"] = effort
+
+    primary_target = (
+        "effort"
+        if is_cross_run_family and "effort" in detail and not has_explicit_target
+        else _auto_select_primary_target(assignment)
+    )
+    primary_detail = detail.get(primary_target)
 
     if primary_detail is None or primary_detail.score is None:
         headline_score = 0

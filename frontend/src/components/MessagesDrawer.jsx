@@ -470,8 +470,13 @@ const MessagesDrawer = ({
                         {msg.content}
                       </Typography>
 
-                      {/* Session deep-link chip */}
-                      {(msg.alert_type === 'session_comment' || msg.alert_type === 'athlete_session_note') && msg.reference_id && onSessionClick && (
+                      {/* Session deep-link chip — all alert types that reference a workout */}
+                      {(
+                        msg.alert_type === 'session_comment' ||
+                        msg.alert_type === 'athlete_session_note' ||
+                        msg.alert_type === 'workout_modified' ||
+                        msg.alert_type === 'plan_adjusted'
+                      ) && msg.reference_id && onSessionClick && (
                         <Box
                           onClick={() => {
                             onClose();

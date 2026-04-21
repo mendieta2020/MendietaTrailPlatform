@@ -96,26 +96,36 @@ function WeatherBadge({ weather }) {
   );
 }
 
-// ── ComplianceBadge ───────────────────────────────────────────────────────────
+// ── ComplianceBadge ── prominent bottom strip with semantic label ─────────────
+
+function resolveComplianceLabel(pct) {
+  if (pct == null) return null;
+  if (pct >= 80 && pct <= 120) return { label: 'Óptimo',  color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' };
+  if ((pct >= 50 && pct < 80) || (pct > 120 && pct <= 150)) return { label: 'Revisar', color: '#d97706', bg: '#fffbeb', border: '#fde68a' };
+  return { label: 'Alerta', color: '#dc2626', bg: '#fef2f2', border: '#fecaca' };
+}
 
 function ComplianceBadge({ pct, variant }) {
   if (pct == null || variant === 'A' || variant === 'E' || variant === 'F') return null;
-  const color = VARIANT_BORDER[variant];
+  const meta = resolveComplianceLabel(pct);
+  if (!meta) return null;
   return (
     <Box
       sx={{
-        px: 0.5, py: 0.1,
-        borderRadius: 0.75,
-        bgcolor: `${color}22`,
-        border: `1px solid ${color}44`,
-        fontSize: '0.58rem',
-        fontWeight: 700,
-        color,
-        lineHeight: 1.4,
-        flexShrink: 0,
+        mt: 0.5,
+        px: 0.75, py: 0.25,
+        borderRadius: 1,
+        bgcolor: meta.bg,
+        border: `1px solid ${meta.border}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}
     >
-      {pct}%
+      <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: meta.color, lineHeight: 1.3 }}>
+        {meta.label}
+      </Typography>
+      <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: meta.color, lineHeight: 1.3 }}>
+        {pct}%
+      </Typography>
     </Box>
   );
 }
@@ -236,7 +246,7 @@ export default function UnifiedCard({
         userSelect: 'none',
       }}
     >
-      {/* Row 1: sport label + weather + compliance */}
+      {/* Row 1: sport label + weather + comment icon */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.25 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4, minWidth: 0 }}>
           {variantEmoji && (
@@ -262,7 +272,6 @@ export default function UnifiedCard({
               <ChatBubbleOutline sx={{ fontSize: 10, color: '#64748b' }} />
             </Tooltip>
           )}
-          <ComplianceBadge pct={compliancePct} variant={variant} />
         </Box>
       </Box>
 
@@ -319,6 +328,9 @@ export default function UnifiedCard({
           {['', '😴', '😐', '🙂', '💪', '🔥'][planDetails.rpe] ?? ''}
         </Typography>
       )}
+
+      {/* Row 7: compliance badge — prominent bottom strip */}
+      <ComplianceBadge pct={compliancePct} variant={variant} />
     </Paper>
   );
 }

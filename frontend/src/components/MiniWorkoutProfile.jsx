@@ -19,6 +19,26 @@
 
 const SVG_H = 32;
 
+// Zone colors — matches WorkoutLibraryPage ZonePreviewBar palette
+const ZONE_FILL = {
+  Z1: '#3b82f6',
+  Z2: '#22c55e',
+  Z3: '#f59e0b',
+  Z4: '#f97316',
+  Z5: '#ef4444',
+};
+const ZONE_FILL_DEFAULT = '#CBD5E1';
+
+function resolveZoneFill(targetLabel) {
+  if (!targetLabel) return ZONE_FILL_DEFAULT;
+  if (/\bz5\b|vo2|sprint/i.test(targetLabel))          return ZONE_FILL.Z5;
+  if (/\bz4\b|threshold|umbral/i.test(targetLabel))     return ZONE_FILL.Z4;
+  if (/\bz3\b|tempo/i.test(targetLabel))                return ZONE_FILL.Z3;
+  if (/\bz2\b|aerobic|aer[oó]bico/i.test(targetLabel)) return ZONE_FILL.Z2;
+  if (/\bz1\b|recovery|recuper/i.test(targetLabel))     return ZONE_FILL.Z1;
+  return ZONE_FILL_DEFAULT;
+}
+
 // Block-type → height ratio (0–1). Main set gets highest default.
 const BLOCK_TYPE_HEIGHT = {
   warmup:        0.20,
@@ -74,6 +94,7 @@ export function MiniWorkoutProfile({ blocks, estimatedDuration }) {
           duration: dur,
           distance: dist,
           h: resolveHeight(iv.target_label, block.block_type),
+          fill: resolveZoneFill(iv.target_label),
         });
       }
     }
@@ -96,6 +117,7 @@ export function MiniWorkoutProfile({ blocks, estimatedDuration }) {
         key: i,
         wPct: (iv.distance / totalDistance) * 100,
         h: iv.h,
+        fill: iv.fill,
       }));
   } else if (totalDuration > 0) {
     // Case Time: no distance data — proportional width from duration.
@@ -105,6 +127,7 @@ export function MiniWorkoutProfile({ blocks, estimatedDuration }) {
         key: i,
         wPct: (iv.duration / totalDuration) * 100,
         h: iv.h,
+        fill: iv.fill,
       }));
   } else if (blockList.length > 0) {
     // Case Equal: no time or distance data — equal widths from block expansion.
@@ -112,13 +135,13 @@ export function MiniWorkoutProfile({ blocks, estimatedDuration }) {
     for (const block of blockList) {
       const reps = getBlockReps(block);
       const h = (BLOCK_TYPE_HEIGHT[block.block_type] ?? 0.25) * SVG_H;
-      for (let r = 0; r < reps; r++) expanded.push({ h });
+      for (let r = 0; r < reps; r++) expanded.push({ h, fill: ZONE_FILL_DEFAULT });
     }
     if (expanded.length === 0) return null;
-    bars = expanded.map((b, i) => ({ key: i, wPct: 100 / expanded.length, h: b.h }));
+    bars = expanded.map((b, i) => ({ key: i, wPct: 100 / expanded.length, h: b.h, fill: b.fill }));
   } else if (estimatedDuration) {
     // Case 3: no blocks, known total duration — single bar at default height
-    bars = [{ key: 0, wPct: 100, h: 0.25 * SVG_H }];
+    bars = [{ key: 0, wPct: 100, h: 0.25 * SVG_H, fill: ZONE_FILL_DEFAULT }];
   } else {
     return null;
   }
@@ -146,7 +169,7 @@ export function MiniWorkoutProfile({ blocks, estimatedDuration }) {
           y={SVG_H - r.h}
           width={`${r.wPct}%`}
           height={r.h}
-          fill="#CBD5E1"
+          fill={r.fill ?? ZONE_FILL_DEFAULT}
         />
       ))}
     </svg>

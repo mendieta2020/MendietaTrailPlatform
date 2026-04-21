@@ -788,3 +788,130 @@ class WeeklyAdherenceTests(TestCase):
         )
         # Org A has no reconciliations yet → planned=0 (no reconciliation records)
         self.assertEqual(result.planned_count, 0)
+
+
+# ==============================================================================
+# PR-179b-hotfix — BUG 4: Run-family effort compliance + TRAILRUNNING mapping
+# ==============================================================================
+
+class RunFamilyEffortComplianceTests(TestCase):
+    """
+    Validates effort-based compliance scoring for run-family pairings.
+
+    Business rule:
+      effort = distance_km × (1 + elevation_m / 1000)
+      compliance = real_effort / plan_effort × 100
+
+    Families:
+      Run family: run ↔ trail ↔ trailrunning (all pair with each other)
+      Bike family: bike only (isolated)
+      Swim: swim only
+      Strength: strength — excluded from effort scoring
+    """
+
+    def setUp(self):
+        self.org = _make_org("effort-org")
+        coach_u = _make_user("eff_coach")
+        _make_membership(coach_u, self.org, "coach")
+        _make_coach(coach_u, self.org)
+        athlete_u = _make_user("eff_athlete")
+        _make_membership(athlete_u, self.org, "athlete")
+        self.athlete = _make_athlete(athlete_u, self.org)
+        self.alumno = _make_alumno(athlete_u, coach_u)
+        self.library = _make_library(self.org, "effort-lib")
+
+    def _plan(self, discipline, dist_m, elev_m=None):
+        return _make_planned_workout(
+            self.org, self.library,
+            name=f"plan-{discipline}",
+            discipline=discipline,
+            estimated_distance_meters=dist_m,
+            estimated_duration_seconds=3600,
+            elevation_gain_min_m=elev_m,
+        )
+
+    def _assign(self, pw):
+        return _make_assignment(self.org, self.athlete, pw)
+
+    def _activity(self, sport, dist_m, elev_m=None):
+        return _make_activity(
+            self.org, self.alumno, self.athlete,
+            sport=sport, distance_m=dist_m,
+            elevation_gain_m=elev_m,
+        )
+
+    # ------------------------------------------------------------------
+    # (a) RUNNING plan 10km/400m D+ vs TRAIL real 14km/0m D+
+    #     plan_effort = 10 × (1 + 0.4) = 14.0
+    #     real_effort = 14 × (1 + 0.0) = 14.0
+    #     compliance ≈ 100% (not 140% raw distance)
+    # ------------------------------------------------------------------
+    def test_run_plan_trail_real_effort_compliance(self):
+        pw = self._plan("run", dist_m=10000, elev_m=400)
+        assignment = self._assign(pw)
+        activity = self._activity("TRAIL", dist_m=14000, elev_m=0)
+        result = score_compliance(assignment, activity)
+        self.assertEqual(result.primary_target, "effort")
+        self.assertIn("effort", result.detail)
+        # plan_effort=14.0, real_effort=14.0 → 100
+        self.assertAlmostEqual(result.score, 100, delta=2)
+
+    # ------------------------------------------------------------------
+    # (b) TRAILRUNNING ↔ RUNNING ↔ TRAIL all pair within run family
+    # ------------------------------------------------------------------
+    def test_trailrunning_pairs_with_run_plan(self):
+        from core.services_reconciliation import _disciplines_compatible
+        self.assertTrue(_disciplines_compatible("run",   "TRAILRUNNING"))
+        self.assertTrue(_disciplines_compatible("trail", "TRAILRUNNING"))
+        self.assertTrue(_disciplines_compatible("run",   "TRAIL"))
+        self.assertTrue(_disciplines_compatible("trail", "RUN"))
+
+    # ------------------------------------------------------------------
+    # (c) CYCLING vs RUNNING — NOT compatible
+    # ------------------------------------------------------------------
+    def test_cycling_not_compatible_with_run(self):
+        from core.services_reconciliation import _disciplines_compatible
+        self.assertFalse(_disciplines_compatible("run",  "CYCLING"))
+        self.assertFalse(_disciplines_compatible("bike", "RUN"))
+
+    # ------------------------------------------------------------------
+    # (d) STRENGTH excluded — no effort scoring, uses duration fallback
+    # ------------------------------------------------------------------
+    def test_strength_uses_duration_not_effort(self):
+        pw = self._plan("strength", dist_m=0)
+        pw.estimated_duration_seconds = 3600
+        pw.save()
+        assignment = self._assign(pw)
+        activity = self._activity("STRENGTH", dist_m=0)
+        result = score_compliance(assignment, activity)
+        self.assertNotEqual(result.primary_target, "effort")
+        self.assertNotIn("effort", result.detail)
+
+    # ------------------------------------------------------------------
+    # RUN plan / TRAIL real with elevation → effort higher than distance
+    # Cross-family: run plan + TRAIL real, real has more elevation than plan
+    # ------------------------------------------------------------------
+    def test_run_plan_trail_real_with_elevation_scores_higher_than_distance(self):
+        # Plan: run 10km / 0m D+  →  plan_effort = 10.0
+        # Real: TRAIL 10km / 500m D+ →  real_effort = 10 × 1.5 = 15.0
+        # distance compliance = 100%, but effort compliance = 150%
+        pw = self._plan("run", dist_m=10000, elev_m=0)
+        assignment = self._assign(pw)
+        activity = self._activity("TRAIL", dist_m=10000, elev_m=500)
+        result = score_compliance(assignment, activity)
+        self.assertEqual(result.primary_target, "effort")
+        # real_effort (15.0) > plan_effort (10.0) → score > 100
+        self.assertGreater(result.score, 100)
+
+    # ------------------------------------------------------------------
+    # Missing elevation on real activity defaults to 0 (flat equivalent)
+    # ------------------------------------------------------------------
+    def test_effort_no_real_elevation_defaults_to_flat(self):
+        pw = self._plan("run", dist_m=10000, elev_m=400)
+        assignment = self._assign(pw)
+        activity = self._activity("TRAIL", dist_m=14000, elev_m=None)
+        result = score_compliance(assignment, activity)
+        self.assertEqual(result.primary_target, "effort")
+        detail = result.detail["effort"]
+        # real elevation treated as 0 → real_effort = 14.0
+        self.assertAlmostEqual(detail.actual, 14.0, places=1)
