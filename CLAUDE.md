@@ -41,3 +41,6 @@ Before writing any code for a new PR:
 
 ## After each PR
 Update .claude/agent-memory-local/cto/project_roadmap_state.md and commit it with the PR.
+
+## Deferred Decisions
+- [ADR-001 — Claude Design adoption diferida](docs/decisions/ADR-001-claude-design-deferred.md) (2026-04-21): no adoptar en P2. Re-evaluar cuando se cumplan los triggers medibles del ADR.

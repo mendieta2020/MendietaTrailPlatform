@@ -182,4 +182,10 @@ For tasks outside this map's scope, **stop and ask** rather than exploring freel
 
 ---
 
-*Last updated: 2026-03-06 · See also: `docs/ai/CONSTITUTION.md`*
+## Architecture Decision Records
+
+- [ADR-001 — Claude Design adoption diferida](../decisions/ADR-001-claude-design-deferred.md) (2026-04-21)
+
+---
+
+*Last updated: 2026-04-21 · See also: `docs/ai/CONSTITUTION.md`*
