@@ -666,79 +666,31 @@ def obtener_cliente_strava_para_alumno(alumno: Alumno, *, force_refresh: bool = 
     )
 
     if cred is not None:
-        # Build client from OAuthCredential
         client = Client()
-        access = cred.access_token
-        refresh = cred.refresh_token
-
-        # Refresh if expired or forced
         now = timezone.now()
-        if force_refresh or (cred.expires_at is not None and now >= cred.expires_at):
+        needs_refresh = force_refresh or (
+            cred.expires_at is not None
+            and now >= cred.expires_at - datetime.timedelta(seconds=60)
+        )
+
+        if needs_refresh:
             try:
-                app_config = SocialApp.objects.filter(provider="strava").first()
-                if not app_config:
-                    logger.warning(
-                        "strava.auth.lookup",
-                        extra=safe_extra({
-                            "event_name": "strava.auth.lookup",
-                            "alumno_id": _alumno_id,
-                            "provider": "strava",
-                            "reason_code": "CRED_PRIMARY_OAUTHCREDENTIAL",
-                            "outcome": "fail",
-                            "detail": "no_socialapp_for_refresh",
-                        }),
-                    )
-                    # Fall through to legacy path
-                    cred = None
-                else:
-                    temp_client = Client()
-                    refresh_response = temp_client.refresh_access_token(
-                        client_id=app_config.client_id,
-                        client_secret=app_config.secret,
-                        refresh_token=refresh,
-                    )
-                    access = refresh_response["access_token"]
-                    refresh = refresh_response.get("refresh_token", refresh)
-                    expires_at = timezone.make_aware(
-                        datetime.datetime.fromtimestamp(refresh_response["expires_at"])
-                    )
-                    # Persist refreshed tokens back to OAuthCredential
-                    _OAuthCred.objects.filter(pk=cred.pk).update(
-                        access_token=access,
-                        refresh_token=refresh,
-                        expires_at=expires_at,
-                    )
-                    client.access_token = access
-                    client.refresh_token = refresh
-                    logger.info(
-                        "strava.auth.lookup",
-                        extra=safe_extra({
-                            "event_name": "strava.auth.lookup",
-                            "alumno_id": _alumno_id,
-                            "provider": "strava",
-                            "reason_code": "CRED_PRIMARY_OAUTHCREDENTIAL",
-                            "outcome": "ok",
-                            "refreshed": True,
-                        }),
-                    )
-                    return client
+                from integrations.strava.oauth import refresh_strava_token  # noqa: PLC0415
+                access = refresh_strava_token(cred)
             except Exception:
-                logger.exception(
+                # refresh_strava_token already emitted a structured event log.
+                logger.info(
                     "strava.auth.lookup",
                     extra=safe_extra({
                         "event_name": "strava.auth.lookup",
                         "alumno_id": _alumno_id,
                         "provider": "strava",
-                        "reason_code": "CRED_PRIMARY_OAUTHCREDENTIAL",
                         "outcome": "fail",
-                        "detail": "refresh_exception",
+                        "reason_code": "TOKEN_REFRESH_FAILED",
                     }),
                 )
-                cred = None  # Fall through to legacy
-
-        if cred is not None:
+                return None
             client.access_token = access
-            client.refresh_token = refresh
             logger.info(
                 "strava.auth.lookup",
                 extra=safe_extra({
@@ -747,10 +699,25 @@ def obtener_cliente_strava_para_alumno(alumno: Alumno, *, force_refresh: bool = 
                     "provider": "strava",
                     "reason_code": "CRED_PRIMARY_OAUTHCREDENTIAL",
                     "outcome": "ok",
-                    "refreshed": False,
+                    "refreshed": True,
                 }),
             )
             return client
+
+        client.access_token = cred.access_token
+        client.refresh_token = cred.refresh_token
+        logger.info(
+            "strava.auth.lookup",
+            extra=safe_extra({
+                "event_name": "strava.auth.lookup",
+                "alumno_id": _alumno_id,
+                "provider": "strava",
+                "reason_code": "CRED_PRIMARY_OAUTHCREDENTIAL",
+                "outcome": "ok",
+                "refreshed": False,
+            }),
+        )
+        return client
 
     # --- LEGACY: SocialToken (allauth) — backward compat ---
     def _try_social_token_for_user(user):

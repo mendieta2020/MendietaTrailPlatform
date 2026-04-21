@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-20 · PR-179b-hotfix: 6 critical regressions fixed, READY FOR REVIEW_
+_Last updated: 2026-04-21 · PR-180: Strava OAuth lifecycle (token refresh + reconnect backfill), READY FOR REVIEW_
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -325,6 +325,16 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - Validation: python manage.py check ✅ | 51/51 tests ✅ | npm run lint ✅ | npm run build ✅
 - Architecture review: all 9 Constitution laws PASS (quantoryn-review subagent)
 - Risk: MEDIUM — READY FOR REVIEW
+
+### PR-180 — Strava OAuth Lifecycle: Token Refresh + Reconnect Backfill 🔄 READY FOR REVIEW
+- Branch: p2/pr180-strava-oauth-lifecycle
+- **Bug #34 FIXED**: Auto-refresh expired access_token — `refresh_strava_token` helper in `integrations/strava/oauth.py`; `select_for_update` for concurrent-safe refresh; mirrors OAuthCredential + SocialToken allauth; 60s buffer before expiration; structured log events: `strava.token.refreshed.ok` / `strava_401` / `rate_limited` / `unexpected_error`; new reason_code `strava_token_refresh_failed` distinct from `missing_strava_auth`
+- **Bug #36 FIXED**: Reconnect now dispatches `trigger_strava_backfill` — callback resolves org via `_derive_org_from_alumno` (3-level fallback: coach Membership → user Membership → Athlete record); removes `_backfill_athlete is None` hard guard; `backfill_strava_athlete` accepts `athlete_id=None`; ingestion proceeds even when `entrenador_id=None`
+- **Bug #33 NOT FIXED** (upstream): `Alumno.entrenador_id` not persisting after coach assignment — this PR adds RESILIENCE via Membership fallback but does not fix the upstream coach persistence logic. **HIGH priority follow-up PR.**
+- Skills audit: `/quantoryn-review` — APPROVED WITH CONDITIONS (order_by fix applied; `_derive_org_from_alumno` dedup with `services_strava_ingest._derive_organization` deferred to follow-up); `/simplify` — no critical fixes; SocialAccount-inside-atomic-block optimization deferred (Low-Medium, safe-to-merge)
+- 9 protective tests T1-T9 in `core/tests_pr180_strava_oauth_lifecycle.py`; 6/6 PR-175 regression tests updated and passing
+- Validation: `manage.py check` ✅ | `pytest pr180` 9/9 ✅ | `pytest pr175` 6/6 ✅ | full suite ✅ | npm lint ✅ | npm build ✅
+- Risk: HIGH (OAuth token lifecycle, backfill dispatch) — RESOLVED
 
 ### Before Mes 2 (10 external coaches)
 - PR-155 ✅ — Building cleanup (sidebar consolidation, duplicate removal) — DONE
