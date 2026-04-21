@@ -22,7 +22,7 @@ Two agents operate this repo with distinct roles:
 ## Current Phase: P2 — Historical Data, Analytics & Billing
 
 PR queue:
-- PR-125 through PR-179b ✅ MERGED (see `.claude/agent-memory-local/cto/project_roadmap_state.md` for full history)
+- PR-125 through PR-180 ✅ MERGED (see `.claude/agent-memory-local/cto/project_roadmap_state.md` for full history)
 - No PR in flight as of 2026-04-21
 
 ## PR Protocol (PASO 0)
