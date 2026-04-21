@@ -1,10 +1,11 @@
 # ADR-001 — Claude Design: Adopcion Diferida
 
-- **Fecha:** 2026-04-21
-- **Estado:** Diferida (re-evaluacion gatillada por triggers medibles)
-- **Decisor:** Fernando Mendieta (CTO)
-- **Autor tecnico:** Antigravity (Claude Code)
-- **Fase del roadmap al momento de decidir:** P2 — Historical Data, Analytics & Billing
+- **Status:** accepted
+- **Outcome:** deferred (re-evaluación gatillada por triggers medibles)
+- **Date:** 2026-04-21
+- **Decider:** Fernando Mendieta (CTO)
+- **Technical author:** Antigravity (Claude Code)
+- **Roadmap phase at decision:** P2 — Historical Data, Analytics & Billing
 
 ---
 
