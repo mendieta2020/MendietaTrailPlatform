@@ -34,7 +34,7 @@ def backfill_strava_athlete(
     self,
     *,
     organization_id: int,
-    athlete_id: int,
+    athlete_id: int | None = None,
     alumno_id: int,
     years: int = 5,
     days: int | None = None,

@@ -197,7 +197,7 @@ def test_backfill_dispatched_on_successful_custom_callback():
     assert kwargs["alumno_id"] == alumno.id
     assert kwargs["days"] == 90
     assert kwargs["organization_id"] == athlete.organization_id
-    assert kwargs["athlete_id"] == athlete.pk
+    assert kwargs["athlete_id"] is None  # PR-180: athlete_id is logging-only, passed as None
 
 
 # ---------------------------------------------------------------------------
@@ -244,11 +244,11 @@ def test_backfill_dispatch_logged():
         for c in mock_logger.info.call_args_list
     ]
     event_names = [name for name, _ in info_events]
-    assert "oauth.callback.backfill_task_dispatched" in event_names, (
-        f"Expected oauth.callback.backfill_task_dispatched; got: {event_names}"
+    assert "strava.backfill.dispatched" in event_names, (
+        f"Expected strava.backfill.dispatched; got: {event_names}"
     )
 
-    _, extra = next(e for e in info_events if e[0] == "oauth.callback.backfill_task_dispatched")
+    _, extra = next(e for e in info_events if e[0] == "strava.backfill.dispatched")
     assert extra.get("alumno_id") == alumno.id
     assert extra.get("days") == 90
 
@@ -416,19 +416,17 @@ def test_flow_identified_log_emitted():
 
 
 @pytest.mark.django_db
-def test_backfill_not_dispatched_when_athlete_record_missing():
+def test_backfill_dispatched_when_athlete_record_missing_but_coach_exists():
     """
-    If no Athlete record exists for the user (race condition / deferred provisioning),
-    backfill_strava_athlete.delay must NOT be called.
-    A oauth.callback.backfill_athlete_not_found warning must be logged.
-    The callback must still return 302 success (non-blocking).
+    PR-180: When no Athlete record exists but a coach Membership is present,
+    _derive_org_from_alumno resolves the org via path (a) and backfill IS dispatched.
 
-    This guards the medium finding from the quantoryn-review: dispatching with
-    organization_id=0 / athlete_id=0 would corrupt structured log data.
+    This validates the fix for Natalia's prod scenario: reconnect with missing
+    P1 Athlete record no longer silently skips the backfill.
     """
     org = _org("org-175-t6")
     coach = _coach_user(org)
-    # Alumno exists but NO Athlete record (the new-style model is missing)
+    # Alumno exists, has a coach, but NO Athlete record (missing P1 migration).
     _, alumno = _athlete_setup_no_athlete_record(org, coach)
     ext_id = _strava_id()
 
@@ -458,16 +456,20 @@ def test_backfill_not_dispatched_when_athlete_record_missing():
         mock_bf.delay = MagicMock()
         response = IntegrationCallbackView.as_view()(_request(ext_id), provider="strava")
 
-    # Callback still succeeds
+    # Callback must still succeed
     assert response.status_code == 302
     location = response.get("Location", "")
     assert "status=error" not in location
 
-    # Backfill must NOT be dispatched
-    mock_bf.delay.assert_not_called()
+    # Backfill MUST be dispatched via coach org (path a)
+    mock_bf.delay.assert_called_once()
+    kwargs = mock_bf.delay.call_args.kwargs
+    assert kwargs["alumno_id"] == alumno.id
+    assert kwargs["organization_id"] == org.pk
+    assert kwargs["athlete_id"] is None
 
-    # Warning must be logged
-    warning_events = [c.args[0] if c.args else "" for c in mock_logger.warning.call_args_list]
-    assert "oauth.callback.backfill_athlete_not_found" in warning_events, (
-        f"Expected oauth.callback.backfill_athlete_not_found; got: {warning_events}"
+    # strava.backfill.dispatched must be logged
+    info_events = [c.args[0] if c.args else "" for c in mock_logger.info.call_args_list]
+    assert "strava.backfill.dispatched" in info_events, (
+        f"Expected strava.backfill.dispatched; got: {info_events}"
     )
