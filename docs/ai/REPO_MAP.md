@@ -182,4 +182,19 @@ For tasks outside this map's scope, **stop and ask** rather than exploring freel
 
 ---
 
-*Last updated: 2026-03-06 · See also: `docs/ai/CONSTITUTION.md`*
+## Architecture Decision Records
+
+Architectural decisions live in [`docs/decisions/`](../decisions/). Start there when you need to understand *why* a pattern exists.
+
+- **Index:** [`docs/decisions/README.md`](../decisions/README.md)
+- **Template:** [`docs/decisions/TEMPLATE.md`](../decisions/TEMPLATE.md) (MADR lite + `amended-by` / `partially-superseded-by`)
+- **Workflow:** [`docs/decisions/HOWTO.md`](../decisions/HOWTO.md) (manual, no automation)
+
+Current ADRs:
+
+- [ADR-001 — Claude Design adoption deferred](../decisions/ADR-001-claude-design-deferred.md) (2026-04-21)
+- [ADR-002 — Ratify teal as canonical Quantoryn brand](../decisions/ADR-002-teal-canonical-brand.md) (2026-04-21)
+
+---
+
+*Last updated: 2026-04-21 · See also: `docs/ai/CONSTITUTION.md`*
