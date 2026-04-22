@@ -46,5 +46,12 @@ Before writing any code for a new PR:
 ## After each PR
 Update .claude/agent-memory-local/cto/project_roadmap_state.md and commit it with the PR.
 
+## Infrastructure
+
+Operations procedures: [`docs/infra/railway-runbook.md`](docs/infra/railway-runbook.md).
+Architectural law: [ADR-003 — Railway env vars must be dynamic references](docs/decisions/ADR-003-railway-env-vars-references.md).
+
+**Quarterly requirement**: runbook procedures must be dry-run every 90 days. Next review: 2026-07-22.
+
 ## Deferred Decisions
 - [ADR-001 — Claude Design adoption diferida](docs/decisions/ADR-001-claude-design-deferred.md) (2026-04-21): no adoptar en P2. Re-evaluar cuando se cumplan los triggers medibles del ADR.
