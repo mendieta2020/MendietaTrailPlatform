@@ -15,6 +15,7 @@ This directory records architectural decisions for MendietaTrailPlatform / Quant
 |----|-------|--------|---------|------|
 | [ADR-001](ADR-001-claude-design-deferred.md) | Claude Design adoption | accepted | deferred | 2026-04-21 |
 | [ADR-002](ADR-002-teal-canonical-brand.md) | Ratify teal as canonical Quantoryn brand | accepted | — | 2026-04-21 |
+| [ADR-003](ADR-003-railway-env-vars-references.md) | Railway internal env vars must be dynamic references | accepted | — | 2026-04-22 |
 
 ## Conventions
 

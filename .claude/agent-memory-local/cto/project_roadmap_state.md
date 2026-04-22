@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-22 · PR-180 MERGED 2026-04-21 (commit c21e42d, PR #334). No PR in flight. Next queue: PR-181 → PR-182 → PR-179c._
+_Last updated: 2026-04-22 · PR-181 READY FOR REVIEW (Railway infra formalization: ADR-003 + runbook). PR-180 merged. Next queue after PR-181: PR-182 (bug bundle incl. MP webhook + Strava sport mapping) → PR-183 (weather enrichment) → PR-179c (design system)._
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -335,6 +335,17 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - 9 protective tests T1-T9 in `core/tests_pr180_strava_oauth_lifecycle.py`; 6/6 PR-175 regression tests updated and passing
 - Validation: `manage.py check` ✅ | `pytest pr180` 9/9 ✅ | `pytest pr175` 6/6 ✅ | full suite ✅ | npm lint ✅ | npm build ✅
 - Risk: HIGH (OAuth token lifecycle, backfill dispatch) — RESOLVED
+
+### PR-181 — Railway Env Vars Refactor: ADR-003 + Operations Runbook 🔄 READY FOR REVIEW
+- Branch: p2/pr181-railway-infra-formalization
+- **Scope**: documentation-only PR that formalizes the Railway dynamic-references pattern applied manually on 2026-04-22 after two production incidents (backend 2026-04-21, worker 2026-04-22).
+- **Files created**: `docs/decisions/ADR-003-railway-env-vars-references.md`, `docs/infra/railway-runbook.md`.
+- **Files modified**: `CLAUDE.md` (new Infrastructure section), `docs/decisions/README.md` (ADR-003 index row).
+- **ADR-003**: establishes that all Railway-internal service env vars (Postgres, Redis, Celery broker/backend) MUST use `${{Service.VAR}}` references. External API secrets remain static. Includes re-evaluation triggers and quarterly dry-run requirement.
+- **Runbook**: 9 sections covering services map, variable reference table (backend + worker), Postgres rotation procedure, external secrets rotation (7 categories including MP webhook secret pending ticket WCS-36049), audit procedure, 2 troubleshooting guides, new-service onboarding checklist, and an incidents log with the two 2026-04-21/22 incidents documented.
+- **Validation**: Fernando manually rotated Postgres password on 2026-04-22 after refactor completed; zero downtime. Documented as the first incidents log entry validating section 3 procedure.
+- **No code changes. No migrations. No env var changes in repo.** All env var changes already applied directly in Railway UI.
+- Risk: LOW (documentation only) — READY FOR REVIEW
 
 ### Before Mes 2 (10 external coaches)
 - PR-155 ✅ — Building cleanup (sidebar consolidation, duplicate removal) — DONE
