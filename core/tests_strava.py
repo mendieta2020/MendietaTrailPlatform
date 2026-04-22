@@ -444,7 +444,11 @@ class StravaIngestionRobustTests(TestCase):
             StravaImportLog.objects.filter(event=e, status=StravaImportLog.Status.SAVED).exists()
         )
 
-    def test_walk_activity_is_discarded_with_explicit_reason(self):
+    def test_walk_activity_with_zero_distance_is_discarded(self):
+        """
+        WALK with distance=0 must be DISCARDED (PR-182: distance required for
+        distance-based sports including WALK).
+        """
         start = datetime.now(dt_timezone.utc)
         walk = _FakeStravaActivity(
             activity_id=778,
@@ -452,20 +456,52 @@ class StravaIngestionRobustTests(TestCase):
             name="Walk",
             type_="Walk",
             start=start,
-            distance_m=1500,
+            distance_m=0,
             moving_time_s=900,
         )
-        e = self._mk_event(uid="e_walk", owner_id=111, object_id=778, aspect="create")
+        e = self._mk_event(uid="e_walk_nodist", owner_id=111, object_id=778, aspect="create")
 
         with patch("core.services.obtener_cliente_strava", return_value=_FakeStravaClient(walk)):
             process_strava_event.delay(e.id)
 
         act = Actividad.objects.get(strava_id=778)
         self.assertEqual(act.validity, Actividad.Validity.DISCARDED)
-        self.assertEqual(act.invalid_reason, "sport_type_not_allowed:WALK")
+        self.assertIn("distance_non_positive_for_WALK", act.invalid_reason)
         self.assertEqual(Entrenamiento.objects.filter(strava_id="778").count(), 0)
         self.assertTrue(
-            StravaImportLog.objects.filter(event=e, status=StravaImportLog.Status.DISCARDED, reason="sport_type_not_allowed:WALK").exists()
+            StravaImportLog.objects.filter(
+                event=e,
+                status=StravaImportLog.Status.DISCARDED,
+                reason="distance_non_positive_for_WALK",
+            ).exists()
+        )
+
+    def test_walk_activity_with_distance_is_created_valid(self):
+        """
+        WALK with distance>0 and duration>0 must be VALID (PR-182 relaxed
+        creation gate: "todo suma"; distance required only for distance-based
+        sports, duration > 0 is the universal gate).
+        """
+        start = datetime.now(dt_timezone.utc)
+        walk = _FakeStravaActivity(
+            activity_id=779,
+            athlete_id=111,
+            name="Walk",
+            type_="Walk",
+            start=start,
+            distance_m=3000,
+            moving_time_s=1800,
+        )
+        e = self._mk_event(uid="e_walk_valid", owner_id=111, object_id=779, aspect="create")
+
+        with patch("core.services.obtener_cliente_strava", return_value=_FakeStravaClient(walk)):
+            process_strava_event.delay(e.id)
+
+        act = Actividad.objects.get(strava_id=779)
+        self.assertEqual(act.validity, Actividad.Validity.VALID)
+        self.assertEqual(act.invalid_reason, "")
+        self.assertTrue(
+            StravaImportLog.objects.filter(event=e, status=StravaImportLog.Status.SAVED).exists()
         )
 
     def test_retry_on_rate_limit_429_raises_retry_and_marks_queued(self):

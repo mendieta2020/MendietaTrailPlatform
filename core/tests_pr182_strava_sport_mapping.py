@@ -12,6 +12,8 @@ Eight tests:
   T6 — RUN with distance=0 → should_create=False
   T7 — STRENGTH duration=1800, distance=0 → should_create=True
   T8 — Integration: STRENGTH activity + FUERZA PlannedWorkout → find_best_match returns it
+
+Imports from integrations.strava are lazy (inside each test) per Law 4 / repo convention.
 """
 
 import datetime
@@ -19,11 +21,6 @@ import datetime
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
-
-from integrations.strava.normalizer import (
-    _normalize_strava_sport_type,
-    decide_activity_creation,
-)
 
 User = get_user_model()
 
@@ -37,26 +34,34 @@ class StravaSportMappingTests(TestCase):
     # ── T1 ────────────────────────────────────────────────────────────────────
 
     def test_weighttraining_maps_to_strength(self):
+        from integrations.strava.normalizer import _normalize_strava_sport_type  # noqa: PLC0415
         self.assertEqual(_normalize_strava_sport_type(_raw("WeightTraining")), "STRENGTH")
 
     # ── T2 ────────────────────────────────────────────────────────────────────
 
     def test_yoga_maps_to_strength(self):
+        from integrations.strava.normalizer import _normalize_strava_sport_type  # noqa: PLC0415
         self.assertEqual(_normalize_strava_sport_type(_raw("Yoga")), "STRENGTH")
 
     # ── T3 ────────────────────────────────────────────────────────────────────
 
     def test_swim_maps_to_swim(self):
+        from integrations.strava.normalizer import _normalize_strava_sport_type  # noqa: PLC0415
         self.assertEqual(_normalize_strava_sport_type(_raw("Swim")), "SWIM")
 
     # ── T4 ────────────────────────────────────────────────────────────────────
 
     def test_hike_maps_to_walk(self):
+        from integrations.strava.normalizer import _normalize_strava_sport_type  # noqa: PLC0415
         self.assertEqual(_normalize_strava_sport_type(_raw("Hike")), "WALK")
 
     # ── T5 ────────────────────────────────────────────────────────────────────
 
     def test_unknown_sport_maps_to_other_and_is_created(self):
+        from integrations.strava.normalizer import (  # noqa: PLC0415
+            _normalize_strava_sport_type,
+            decide_activity_creation,
+        )
         self.assertEqual(_normalize_strava_sport_type(_raw("Golf")), "OTHER")
         normalized = {
             "tipo_deporte": "OTHER",
@@ -69,6 +74,7 @@ class StravaSportMappingTests(TestCase):
     # ── T6 ────────────────────────────────────────────────────────────────────
 
     def test_run_with_zero_distance_not_created(self):
+        from integrations.strava.normalizer import decide_activity_creation  # noqa: PLC0415
         normalized = {
             "tipo_deporte": "RUN",
             "duracion": 1800,
@@ -81,6 +87,7 @@ class StravaSportMappingTests(TestCase):
     # ── T7 ────────────────────────────────────────────────────────────────────
 
     def test_strength_duration_only_is_created(self):
+        from integrations.strava.normalizer import decide_activity_creation  # noqa: PLC0415
         normalized = {
             "tipo_deporte": "STRENGTH",
             "duracion": 1800,
@@ -93,7 +100,7 @@ class StravaSportMappingTests(TestCase):
 
     def test_strength_activity_matches_fuerza_plan(self):
         """STRENGTH activity + strength PlannedWorkout same day → find_best_match returns it."""
-        from core.models import (
+        from core.models import (  # noqa: PLC0415
             Athlete,
             Alumno,
             Coach,
@@ -104,7 +111,7 @@ class StravaSportMappingTests(TestCase):
             WorkoutAssignment,
             WorkoutLibrary,
         )
-        from core.services_reconciliation import find_best_match
+        from core.services_reconciliation import find_best_match  # noqa: PLC0415
 
         # Setup
         coach_user = User.objects.create_user(username="str_coach_182", password="x")
