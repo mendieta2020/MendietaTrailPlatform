@@ -247,6 +247,14 @@ const AthleteMyTraining = () => {
     }
   }, [assignments, loading]);
 
+  // Cleanup stale deep-link keys on unmount to prevent cross-session leakage.
+  useEffect(() => {
+    return () => {
+      sessionStorage.removeItem('openAssignmentId');
+      sessionStorage.removeItem('openAssignmentDate');
+    };
+  }, []);
+
   useEffect(() => {
     client.get('/api/athlete/pmc/')
       .then((res) => setPmcData(res.data))

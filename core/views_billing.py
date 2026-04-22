@@ -823,7 +823,8 @@ class AthleteSubscriptionWebhookView(View):
             process_athlete_subscription_webhook,
         )
 
-        result = process_athlete_subscription_webhook(payload)
+        webhook_type = request.GET.get("type")
+        result = process_athlete_subscription_webhook(payload, webhook_type=webhook_type)
         return JsonResponse(result, status=200)
 
 

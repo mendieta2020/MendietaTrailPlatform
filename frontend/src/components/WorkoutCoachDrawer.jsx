@@ -342,10 +342,10 @@ export default function WorkoutCoachDrawer({
       {/* ── Scrollable body ─────────────────────────────────────────────── */}
       <Box sx={{ flex: 1, overflowY: 'auto', px: 3, py: 2 }}>
 
-        {/* ── 2. METRIC CHIPS ─────────────────────────────────────────── */}
+        {/* ── 2. METRIC CHIPS (plan values) ───────────────────────────── */}
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'nowrap', overflowX: 'auto', pb: 0.5, mb: 2 }}>
-          <MetricChip icon="⏱" value={fmtDuration(pw?.estimated_duration_seconds)} label="Duración" />
-          <MetricChip icon="📍" value={fmtDistance(pw?.estimated_distance_meters)} label="Distancia" />
+          <MetricChip icon="⏱" value={fmtDuration(pw?.estimated_duration_seconds)} label="Plan" />
+          <MetricChip icon="📍" value={fmtDistance(pw?.estimated_distance_meters)} label="Plan" />
           {pw?.elevation_gain_min_m > 0 && (
             <MetricChip icon="⛰" value={`${pw.elevation_gain_min_m}m`} label="D+" />
           )}

@@ -915,3 +915,88 @@ class RunFamilyEffortComplianceTests(TestCase):
         detail = result.detail["effort"]
         # real elevation treated as 0 → real_effort = 14.0
         self.assertAlmostEqual(detail.actual, 14.0, places=1)
+
+
+# ==============================================================================
+# PR-182 Bug #27: Reconciliation tiebreaker — exact discipline wins over ambiguous
+# ==============================================================================
+
+class ReconciliationTiebreakerTests(TestCase):
+    """
+    find_best_match should tiebreak when multiple compatible candidates exist.
+    Rule: exact-discipline + exact-date match wins over a compatible-but-different one.
+    If two exact matches exist → still ambiguous (preserve fail-closed behavior).
+    """
+
+    def setUp(self):
+        coach_u = _make_user("tb_coach")
+        athlete_u = _make_user("tb_athlete")
+        self.org = _make_org("TiebreakerOrg")
+        _make_membership(coach_u, self.org, "coach")
+        _make_membership(athlete_u, self.org, "athlete")
+        _make_coach(coach_u, self.org)
+        self.athlete = _make_athlete(athlete_u, self.org)
+        self.alumno = _make_alumno(athlete_u, coach_u)
+        self.library = _make_library(self.org, "tb-lib")
+        self.date = datetime.date(2026, 5, 1)
+
+    def _plan(self, discipline):
+        return _make_planned_workout(
+            self.org, self.library,
+            name=f"tb-plan-{discipline}",
+            discipline=discipline,
+            estimated_duration_seconds=3600,
+            estimated_distance_meters=10000,
+        )
+
+    def _assign(self, pw):
+        return _make_assignment(self.org, self.athlete, pw, scheduled_date=self.date)
+
+    def _activity(self, sport):
+        return _make_activity(
+            self.org, self.alumno, self.athlete,
+            sport=sport,
+            start_time=timezone.make_aware(datetime.datetime(2026, 5, 1, 8, 0, 0)),
+            duration_s=3600,
+            distance_m=10000.0,
+        )
+
+    # T1 — exact discipline beats compatible-but-different when there are two candidates
+
+    def test_prefers_exact_discipline_over_compatible(self):
+        """RUNNING plan + (1 RUN + 1 TRAIL) same day → returns the RUN with confidence 1.0."""
+        pw = self._plan("run")
+        assignment = self._assign(pw)
+        run_activity = self._activity("RUN")
+        _trail_activity = self._activity("TRAIL")  # compatible but not exact
+
+        matched, confidence, reason = find_best_match(assignment)
+        self.assertIsNotNone(matched, msg=f"Expected match; reason={reason}")
+        self.assertEqual(matched.pk, run_activity.pk)
+        self.assertEqual(confidence, 1.0)
+
+    # T2 — two exact matches still ambiguous (fail-closed)
+
+    def test_two_exact_matches_returns_ambiguous(self):
+        """RUNNING plan + 2 RUN activities → ambiguous (no tiebreaker possible)."""
+        pw = self._plan("run")
+        assignment = self._assign(pw)
+        _run1 = self._activity("RUN")
+        _run2 = self._activity("RUN")
+
+        matched, confidence, reason = find_best_match(assignment)
+        self.assertIsNone(matched)
+        self.assertEqual(reason, "ambiguous")
+
+    # T3 — single compatible candidate still returned (no regression)
+
+    def test_single_compatible_candidate_returned(self):
+        """RUNNING plan + only 1 TRAIL activity → returns TRAIL with confidence 0.9."""
+        pw = self._plan("run")
+        assignment = self._assign(pw)
+        trail_activity = self._activity("TRAIL")
+
+        matched, confidence, reason = find_best_match(assignment)
+        self.assertIsNotNone(matched, msg=f"Expected match; reason={reason}")
+        self.assertEqual(matched.pk, trail_activity.pk)
+        self.assertEqual(confidence, 0.9)
