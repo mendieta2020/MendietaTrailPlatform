@@ -9,8 +9,11 @@ https://docs.djangoproject.com/en/5.2/howto/deployment/wsgi/
 
 import os
 
+import logging
+
 import sentry_sdk
 from sentry_sdk.integrations.django import DjangoIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
 from django.core.wsgi import get_wsgi_application
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
@@ -33,7 +36,13 @@ _sentry_dsn = os.environ.get("SENTRY_DSN", "")
 if _sentry_dsn:
     sentry_sdk.init(
         dsn=_sentry_dsn,
-        integrations=[DjangoIntegration()],
+        integrations=[
+            DjangoIntegration(),
+            LoggingIntegration(
+                level=logging.WARNING,       # breadcrumbs from WARNING+
+                event_level=logging.WARNING, # WARNING+ sent as Sentry events
+            ),
+        ],
         traces_sample_rate=0.1,   # 10% of transactions — adjust in Sentry dashboard
         send_default_pii=False,   # never send cookies, user IPs, or headers automatically
         before_send=_scrub_sensitive,

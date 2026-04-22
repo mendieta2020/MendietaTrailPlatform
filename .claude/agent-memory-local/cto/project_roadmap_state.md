@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-22 · PR-182 READY FOR REVIEW (bug bundle: MP webhook type discrimination + Strava sport mapping + reconciliation tiebreaker + 3 UX fixes). PR-181 still in review (Railway infra docs). PR-180 merged. Next queue: PR-181 merge → PR-182 merge → PR-183 (weather enrichment OWM) → PR-179c (design system)._
+_Last updated: 2026-04-22 · PR-183 READY FOR REVIEW (Sentry LoggingIntegration — structured log capture gap closed). PR-182 READY FOR REVIEW (bug bundle). PR-181 READY FOR REVIEW (Railway infra docs). PR-180 merged. Next queue: PR-181 merge → PR-182 merge → PR-183 merge → PR-183b (weather enrichment OWM) → PR-179c (design system)._
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -362,6 +362,15 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - **Validation**: Fernando manually rotated Postgres password on 2026-04-22 after refactor completed; zero downtime. Documented as the first incidents log entry validating section 3 procedure.
 - **No code changes. No migrations. No env var changes in repo.** All env var changes already applied directly in Railway UI.
 - Risk: LOW (documentation only) — READY FOR REVIEW
+
+### PR-183 — Sentry LoggingIntegration for structured logs capture ✅ READY FOR REVIEW
+- Branch: `p2/pr183-sentry-logging-integration`
+- **Motivation**: Observability gap discovered during PR-182 post-validation (2026-04-22) via Claude Code + Sentry MCP. Structured events like `mp.athlete_webhook.not_found`, `strava.token.refreshed.*`, `strava.backfill.dispatched` were invisible in Sentry because the SDK default only captures unhandled exceptions, treating `logger.warning()` calls as breadcrumbs only.
+- **Fix**: Add `LoggingIntegration(level=WARNING, event_level=WARNING)` to sentry_sdk.init in both tiers: `backend/wsgi.py` (web) + `backend/celery.py` (async worker).
+- **Effect**: Every `logger.warning()` and above is now captured as a Sentry event/issue, making the Sentry MCP integration (Claude Code <-> Sentry) useful for structured log analysis.
+- **Risk note**: Potential noise from third-party library warnings (Django core, DRF, allauth) that emit `logger.warning()` calls. Monitor Sentry event volume for 24-48h post-deploy. If the spike is unmanageable, a follow-up PR will restrict scope via a Python `LOGGING` handler in `settings.py` scoped only to `core`, `integrations`, `quantoryn.reconciliation` loggers.
+- **Validation**: `python manage.py check` + `pytest -q` full suite (no new tests, regression only) + `npm run lint` + `npm run build`.
+- Risk: LOW (infra config, zero business logic changes, no migrations).
 
 ### Before Mes 2 (10 external coaches)
 - PR-155 ✅ — Building cleanup (sidebar consolidation, duplicate removal) — DONE
