@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-21 · PR-180: Strava OAuth lifecycle (token refresh + reconnect backfill), READY FOR REVIEW_
+_Last updated: 2026-04-22 · PR-180 MERGED 2026-04-21 (commit c21e42d, PR #334). No PR in flight. Next queue: PR-181 → PR-182 → PR-179c._
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -326,8 +326,8 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - Architecture review: all 9 Constitution laws PASS (quantoryn-review subagent)
 - Risk: MEDIUM — READY FOR REVIEW
 
-### PR-180 — Strava OAuth Lifecycle: Token Refresh + Reconnect Backfill 🔄 READY FOR REVIEW
-- Branch: p2/pr180-strava-oauth-lifecycle
+### PR-180 — Strava OAuth Lifecycle: Token Refresh + Reconnect Backfill ✅ 2026-04-21
+- Branch: p2/pr180-strava-oauth-lifecycle | Merged: commit c21e42d via PR #334 (merge 9ecb8fe)
 - **Bug #34 FIXED**: Auto-refresh expired access_token — `refresh_strava_token` helper in `integrations/strava/oauth.py`; `select_for_update` for concurrent-safe refresh; mirrors OAuthCredential + SocialToken allauth; 60s buffer before expiration; structured log events: `strava.token.refreshed.ok` / `strava_401` / `rate_limited` / `unexpected_error`; new reason_code `strava_token_refresh_failed` distinct from `missing_strava_auth`
 - **Bug #36 FIXED**: Reconnect now dispatches `trigger_strava_backfill` — callback resolves org via `_derive_org_from_alumno` (3-level fallback: coach Membership → user Membership → Athlete record); removes `_backfill_athlete is None` hard guard; `backfill_strava_athlete` accepts `athlete_id=None`; ingestion proceeds even when `entrenador_id=None`
 - **Bug #33 NOT FIXED** (upstream): `Alumno.entrenador_id` not persisting after coach assignment — this PR adds RESILIENCE via Membership fallback but does not fix the upstream coach persistence logic. **HIGH priority follow-up PR.**

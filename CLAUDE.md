@@ -23,7 +23,19 @@ Two agents operate this repo with distinct roles:
 
 PR queue:
 - PR-125 through PR-180 ✅ MERGED (see `.claude/agent-memory-local/cto/project_roadmap_state.md` for full history)
-- No PR in flight as of 2026-04-21
+- No PR in flight as of 2026-04-22
+
+### Next queue (confirmed order — "paint after plumbing")
+1. **PR-181** — Weather enrichment (Bug #23): populate `weather_snapshot` in `/calendar-timeline/` (OWM Case A window ±4d).
+2. **PR-182** — Residual bug bundle: Bug #29 (notification "Ver sesión" nav), Bug #30 (drawer 41min vs modal 165.9min data inconsistency), Bug #32 (intensity graph flat on "personalizado" workouts), Bug #27 (TRAIL↔RUNNING pairing now unblocked after PR-180).
+3. **PR-179c** — Design system: card unification, grid alignment, calendar auto-scroll, coach single-modal (replaces modal+drawer), coach-first landing.
+
+### Future PRs (non-blocking, triaged)
+- Bug #33: `Alumno.entrenador_id` upstream persistence fix (PR-180 added resilience, not root-cause).
+- Bug #35: reconnect kicks user out of athlete/coach panel context.
+- Bug #37: consolidate `_derive_org_from_alumno` vs `_derive_organization` (tech debt).
+- Bug #38: SocialAccount lookup outside `select_for_update` atomic block (perf).
+- Branding bundle: photos on R2 + branded emails (all 4 decisions resolved, DNS ready).
 
 ## PR Protocol (PASO 0)
 Before writing any code for a new PR:
