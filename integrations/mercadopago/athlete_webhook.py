@@ -255,26 +255,68 @@ def _reconcile_by_payer(mp_data, cred):
     return None
 
 
-def process_athlete_subscription_webhook(payload: dict) -> dict:
+def _resolve_preapproval_from_payment(payment_id: str) -> str | None:
+    """
+    Resolve preapproval_id from a payment_id via the MP payments API.
+    Checks metadata.preapproval_id first, then
+    point_of_interaction.transaction_data.subscription_id.
+    Tries each OrgOAuthCredential token. Law 6: access_token never logged.
+    """
+    from core.models import OrgOAuthCredential
+    from integrations.mercadopago.subscriptions import get_mp_payment
+
+    credentials = OrgOAuthCredential.objects.filter(provider="mercadopago")
+    for cred in credentials:
+        try:
+            payment = get_mp_payment(cred.access_token, str(payment_id))
+            meta_preapproval = (payment.get("metadata") or {}).get("preapproval_id")
+            if meta_preapproval:
+                return str(meta_preapproval)
+            poi = ((payment.get("point_of_interaction") or {}).get("transaction_data") or {})
+            if poi.get("subscription_id"):
+                return str(poi["subscription_id"])
+        except Exception:
+            continue
+    return None
+
+
+def process_athlete_subscription_webhook(payload: dict, webhook_type: str | None = None) -> dict:
     """
     Procesa eventos de MP para AthleteSubscription.
     Idempotente — safe to rerun multiple times.
 
+    webhook_type: query-string ``type`` from the MP webhook URL.
+      - "subscription_preapproval": payload.data.id IS the preapproval_id  (fast path)
+      - "payment" or "subscription_authorized_payment": payload.data.id is a
+        payment_id; we resolve the linked preapproval_id via the MP payments API.
+      - None: backward-compat fallback — treated as subscription_preapproval.
+
     Fast path: lookup by mp_preapproval_id.
     Fallback path: fetch preapproval from MP, match by payer_email + plan_id.
-
-    Eventos que maneja:
-    - authorized  → status = "active", last_payment_at = now()
-    - paused      → status = "overdue"
-    - cancelled   → status = "cancelled"
-    - pending     → no-op (ya está en pending)
 
     Returns: {"outcome": "updated"|"noop"|"not_found"|"reconciled",
               "preapproval_id": str}
     """
-    preapproval_id = payload.get("id") or payload.get("data", {}).get("id")
-    if not preapproval_id:
+    payload_id = payload.get("id") or payload.get("data", {}).get("id")
+    if not payload_id:
         return {"outcome": "noop", "preapproval_id": None}
+
+    if webhook_type in ("payment", "subscription_authorized_payment"):
+        preapproval_id = _resolve_preapproval_from_payment(payload_id)
+        if preapproval_id is None:
+            logger.info(
+                "mp.athlete_webhook.payment_no_preapproval",
+                extra={
+                    "event_name": "mp.athlete_webhook.payment_no_preapproval",
+                    "payment_id": payload_id,
+                    "webhook_type": webhook_type,
+                    "outcome": "skipped",
+                    "reason_code": "NO_PREAPPROVAL_LINKED",
+                },
+            )
+            return {"outcome": "noop", "preapproval_id": None}
+    else:
+        preapproval_id = str(payload_id)
 
     # Lazy import (Law 4)
     from core.models import AthleteSubscription

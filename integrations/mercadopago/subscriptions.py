@@ -1,4 +1,3 @@
-import json as _json
 import logging
 import requests as _requests
 from django.conf import settings
@@ -123,31 +122,11 @@ def create_coach_athlete_preapproval(
         "back_url": back_url,
         "status": "pending",
     }
-    # [DEBUG PR-167] Log full payload to stdout so it appears in Railway Deploy Logs
-    print(
-        "[MP DEBUG] create_coach_athlete_preapproval PAYLOAD:",
-        _json.dumps(payload),
-        flush=True,
-    )
-    print(
-        f"[MP DEBUG] Endpoint: POST {MP_API_BASE}/preapproval  |  "
-        f"token_type={'bearer'}  |  token_len={len(access_token)}",
-        flush=True,
-    )
     response = _requests.post(
         f"{MP_API_BASE}/preapproval",
         json=payload,
         headers=headers,
         timeout=10,
-    )
-    # Always print status + body to stdout (Railway Deploy Logs)
-    print(
-        f"[MP DEBUG] Response status: {response.status_code}",
-        flush=True,
-    )
-    print(
-        f"[MP DEBUG] Response body: {response.text}",
-        flush=True,
     )
     if not response.ok:
         logger.error(
@@ -269,6 +248,22 @@ def get_mp_user(access_token: str, user_id: str) -> dict:
         f"{MP_API_BASE}/users/{user_id}",
         headers=headers,
         timeout=10,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def get_mp_payment(access_token: str, payment_id: str) -> dict:
+    """
+    GET /v1/payments/{payment_id} — returns payment object.
+    Used to resolve preapproval_id from a payment webhook (type=payment or
+    type=subscription_authorized_payment). Law 6: access_token never logged.
+    """
+    headers = {"Authorization": f"Bearer {access_token}"}
+    response = _requests.get(
+        f"{MP_API_BASE}/v1/payments/{payment_id}",
+        headers=headers,
+        timeout=8,
     )
     response.raise_for_status()
     return response.json()

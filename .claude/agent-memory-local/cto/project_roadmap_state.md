@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-22 · PR-181 READY FOR REVIEW (Railway infra formalization: ADR-003 + runbook). PR-180 merged. Next queue after PR-181: PR-182 (bug bundle incl. MP webhook + Strava sport mapping) → PR-183 (weather enrichment) → PR-179c (design system)._
+_Last updated: 2026-04-22 · PR-182 READY FOR REVIEW (bug bundle: MP webhook type discrimination + Strava sport mapping + reconciliation tiebreaker + 3 UX fixes). PR-181 still in review (Railway infra docs). PR-180 merged. Next queue: PR-181 merge → PR-182 merge → PR-183 (weather enrichment OWM) → PR-179c (design system)._
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -335,6 +335,22 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - 9 protective tests T1-T9 in `core/tests_pr180_strava_oauth_lifecycle.py`; 6/6 PR-175 regression tests updated and passing
 - Validation: `manage.py check` ✅ | `pytest pr180` 9/9 ✅ | `pytest pr175` 6/6 ✅ | full suite ✅ | npm lint ✅ | npm build ✅
 - Risk: HIGH (OAuth token lifecycle, backfill dispatch) — RESOLVED
+
+### PR-182 — Bug Bundle Post-PR-180 Validation 🔄 READY FOR REVIEW
+- Branch: p2/pr182-bug-bundle-post-pr180-validation
+- **Bug #40 FIXED**: MP webhook type discrimination — `process_athlete_subscription_webhook` now accepts `webhook_type` from `?type=` query param; `payment` and `subscription_authorized_payment` resolve preapproval_id via new `get_mp_payment` helper (metadata.preapproval_id → POI.transaction_data.subscription_id). `subscription_preapproval` (fast path) and None (backward compat) unchanged.
+- **Law 6 pre-existing violation REMOVED**: `[DEBUG PR-167]` `print()` statements in `create_coach_athlete_preapproval` that logged full MP response body to Railway stdout. Removed as part of PR-182 file diff.
+- **Bug #41a FIXED**: Strava sport mapping expanded — STRENGTH (WeightTraining/Workout/Crossfit/Yoga/Pilates), SWIM, WALK (Hike/Wheelchair), OTHER (all remaining sports). `decide_activity_creation` relaxed: distance required only for RUN/TRAIL/BIKE/SWIM/WALK; STRENGTH/OTHER gate on duration > 0. SportType Literal extended. Provider-only change (Law 4).
+- **_SPORT_TO_DISCIPLINE aliases added**: BIKE, SWIM, WALK → correct discipline slugs for reconciliation matching (PR-182).
+- **Bug #27 FIXED**: `find_best_match` tiebreaker — exact-discipline + exact-date wins over multi-candidate ambiguity. Two exact matches still fail-closed. Structured log: `reconciliation.match.tiebreak_exact`.
+- **Bug #29 FIXED**: `AthleteMyTraining.jsx` unmount cleanup — `sessionStorage.removeItem` on both keys to prevent stale deep-link state across navigation. (Deep-link open logic was already present from PR-179b.)
+- **Bug #30 FIXED**: `WorkoutCoachDrawer.jsx` top metric chips relabeled "Plan" (was unlabeled "Duración"/"Distancia") — disambiguates from real metrics in Plan vs Real table below. `WorkoutModal.jsx` already correctly separates Plan/Real sections; no change needed.
+- **Bug #32 FIXED**: `MiniWorkoutProfile.jsx` — detects absence of structured intensity data and renders "Intensidad libre" striped placeholder instead of misleading flat gray bars.
+- **17 new protective tests**: 6 MP webhook (T1-T6) + 8 Strava sport mapping (T1-T8) + 3 reconciliation tiebreaker (T1-T3). 54/54 reconciliation suite + full backend suite pass.
+- **quantoryn-review**: APPROVED after Law 6 fix applied (print() removal). All laws pass.
+- Validation: `manage.py check` ✅ | 17/17 new tests ✅ | 54/54 reconciliation ✅ | full suite ✅ | npm lint ✅ | npm build ✅
+- Constitution deviation (~650 LOC) approved by Fernando Mendieta (product owner) 2026-04-22.
+- Risk: HIGH (MP webhook critical path + reconciliation engine) — READY FOR REVIEW
 
 ### PR-181 — Railway Env Vars Refactor: ADR-003 + Operations Runbook 🔄 READY FOR REVIEW
 - Branch: p2/pr181-railway-infra-formalization

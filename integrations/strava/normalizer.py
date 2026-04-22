@@ -7,7 +7,7 @@ from typing import Any, Literal, TypedDict
 from django.utils import timezone
 
 
-SportType = Literal["RUN", "TRAIL", "BIKE", "WALK", "OTHER"]
+SportType = Literal["RUN", "TRAIL", "BIKE", "WALK", "SWIM", "STRENGTH", "OTHER"]
 
 
 class NormalizedStravaBusinessActivity(TypedDict):
@@ -90,33 +90,51 @@ def _normalize_strava_sport_type(raw: dict) -> SportType:
     """
     Normaliza tipos Strava a tipos de negocio.
 
-    Nota de producto:
-    - Strava puede mandar `type` (legacy) y/o `sport_type` (más granular). Preferimos sport_type si existe.
+    Priority: sport_type (granular) > type (legacy).
+
+    Product principle (2026-04-22): every activity Strava sends becomes a
+    persisted domain activity — "todo suma" (every effort is physiological load).
+    Unknown sports fall to OTHER but are still created (see decide_activity_creation).
+    Applies only to Strava (Law 4); other providers follow the same pattern
+    in their own normalizer when activated.
     """
     st = extract_strava_sport_type(raw)
 
-    # Running
+    # Run family
     if st in {"RUN", "VIRTUALRUN", "VIRTUAL_RUN"}:
         return "RUN"
     if st in {"TRAILRUN", "TRAIL_RUN"}:
         return "TRAIL"
 
-    # Bike
+    # Bike family
     if st in {
-        "RIDE",
-        "VIRTUALRIDE",
-        "VIRTUAL_RIDE",
-        "EBIKERIDE",
-        "MOUNTAINBIKERIDE",
-        "GRAVELRIDE",
-        "ROADBIKERIDE",
+        "RIDE", "VIRTUALRIDE", "VIRTUAL_RIDE",
+        "EBIKERIDE", "E_BIKE_RIDE",
+        "MOUNTAINBIKERIDE", "MOUNTAIN_BIKE_RIDE",
+        "GRAVELRIDE", "GRAVEL_RIDE",
+        "ROADBIKERIDE", "ROAD_BIKE_RIDE",
+        "HANDCYCLE", "VELOMOBILE",
     }:
         return "BIKE"
 
-    # Walk-ish
-    if st in {"WALK", "HIKE"}:
+    # Swim
+    if st in {"SWIM", "SWIMMING"}:
+        return "SWIM"
+
+    # Walk / Hike
+    if st in {"WALK", "HIKE", "WHEELCHAIR"}:
         return "WALK"
 
+    # Strength / recovery family
+    if st in {
+        "WEIGHTTRAINING", "WEIGHT_TRAINING",
+        "WORKOUT",
+        "CROSSFIT",
+        "YOGA", "PILATES",
+    }:
+        return "STRENGTH"
+
+    # All other sports persist as OTHER (cardio equipment, winter, water, climbing, golf…)
     return "OTHER"
 
 
@@ -170,13 +188,20 @@ class ProductDecision:
 
 def decide_activity_creation(*, normalized: NormalizedStravaBusinessActivity) -> ProductDecision:
     """
-    Reglas de producto (SaaS):
-    - SOLO crear actividad "válida" si tipo_deporte ∈ [RUN, TRAIL, BIKE] y distancia > 0
-    - Si no, reason explícita (no genérica)
+    Reglas de producto (2026-04-22) — "todo suma":
+    - TODA actividad con duracion > 0 se crea.
+    - Deportes con distancia (RUN/TRAIL/BIKE/SWIM/WALK) requieren distance > 0.
+    - Deportes sin distancia (STRENGTH/OTHER) solo requieren duracion > 0.
     """
     sport = normalized.get("tipo_deporte")
-    if sport not in {"RUN", "TRAIL", "BIKE"}:
-        return ProductDecision(False, f"sport_type_not_allowed:{sport}")
-    if float(normalized.get("distancia") or 0.0) <= 0:
-        return ProductDecision(False, "distance_non_positive")
+    duration = int(normalized.get("duracion") or 0)
+    distance = float(normalized.get("distancia") or 0.0)
+
+    if duration <= 0:
+        return ProductDecision(False, "duration_non_positive")
+
+    if sport in {"RUN", "TRAIL", "BIKE", "SWIM", "WALK"}:
+        if distance <= 0:
+            return ProductDecision(False, f"distance_non_positive_for_{sport}")
+
     return ProductDecision(True, "")

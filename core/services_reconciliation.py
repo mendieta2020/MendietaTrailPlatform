@@ -109,12 +109,15 @@ _SPORT_TO_DISCIPLINE: dict[str, str] = {
     "RUN":          "run",
     "TRAIL":        "trail",
     "TRAILRUNNING": "trail",   # Strava normalizer variant
+    "BIKE":         "bike",    # normalized Strava code (PR-182)
     "CYCLING":      "bike",
     "MTB":          "bike",
+    "INDOOR_BIKE":  "bike",
+    "SWIM":         "swim",    # normalized Strava code (PR-182)
     "SWIMMING":     "swim",
     "STRENGTH":     "strength",
+    "WALK":         "other",   # normalized Strava code (PR-182)
     "CARDIO":       "other",
-    "INDOOR_BIKE":  "bike",
     "REST":         "other",
     "OTHER":        "other",
 }
@@ -575,18 +578,39 @@ def find_best_match(
         return None, 0.0, "no_compatible_activity_in_window"
 
     if len(compatible) > 1:
-        logger.warning(
-            "reconciliation.match.ambiguous",
-            extra={
-                "event_name":       "auto_match_ambiguous",
-                "assignment_id":    assignment.pk,
-                "organization_id":  assignment.organization_id,
-                "candidate_count":  len(compatible),
-            },
-        )
-        return None, 0.0, "ambiguous"
-
-    activity = compatible[0]
+        # Tiebreak: prefer exact-discipline match on the effective date.
+        exact_matches = [
+            ca for ca in compatible
+            if _SPORT_TO_DISCIPLINE.get(ca.sport.upper(), "other") == plan_discipline
+            and ca.start_time.date() == effective_date
+        ]
+        if len(exact_matches) == 1:
+            activity = exact_matches[0]
+            logger.info(
+                "reconciliation.match.tiebreak_exact",
+                extra={
+                    "event_name":       "auto_match_tiebreak_exact",
+                    "assignment_id":    assignment.pk,
+                    "organization_id":  assignment.organization_id,
+                    "candidate_count":  len(compatible),
+                    "chosen_activity":  activity.pk,
+                    "reason_code":      "EXACT_DISCIPLINE_EXACT_DATE",
+                },
+            )
+        else:
+            logger.warning(
+                "reconciliation.match.ambiguous",
+                extra={
+                    "event_name":        "auto_match_ambiguous",
+                    "assignment_id":     assignment.pk,
+                    "organization_id":   assignment.organization_id,
+                    "candidate_count":   len(compatible),
+                    "exact_match_count": len(exact_matches),
+                },
+            )
+            return None, 0.0, "ambiguous"
+    else:
+        activity = compatible[0]
     activity_date       = activity.start_time.date()
     activity_discipline = _SPORT_TO_DISCIPLINE.get(activity.sport.upper(), "other")
     exact_date          = activity_date == effective_date

@@ -79,6 +79,37 @@ export function MiniWorkoutProfile({ blocks, estimatedDuration }) {
 
   if (blockList.length === 0 && !estimatedDuration) return null;
 
+  // Detect whether any block carries structured intensity data.
+  const hasStructuredIntensity = blockList.some((block) => {
+    const blockTypeKnown = block.block_type in BLOCK_TYPE_HEIGHT;
+    const intervalsStructured = (block.intervals ?? []).some(
+      (iv) => iv.target_label && LABEL_PATTERNS.some((p) => p.re.test(iv.target_label))
+    );
+    return blockTypeKnown || intervalsStructured;
+  });
+
+  if (!hasStructuredIntensity && estimatedDuration) {
+    return (
+      <div
+        style={{
+          height: SVG_H,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'repeating-linear-gradient(45deg, #f1f5f9, #f1f5f9 4px, #e2e8f0 4px, #e2e8f0 8px)',
+          borderRadius: 3,
+          fontSize: '0.65rem',
+          color: '#64748b',
+          fontStyle: 'italic',
+          marginTop: 4,
+        }}
+        aria-hidden="true"
+      >
+        Intensidad libre
+      </div>
+    );
+  }
+
   // Expand blocks into a flat list of {duration, distance, h} intervals,
   // respecting block repetitions for repeated blocks.
   // Both duration and distance are tracked so the right axis can be chosen.
