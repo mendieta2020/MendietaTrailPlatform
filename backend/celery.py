@@ -3,6 +3,7 @@ import os
 
 import sentry_sdk
 from sentry_sdk.integrations.celery import CeleryIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
 from celery import Celery
 from celery.signals import task_failure
 from kombu import Queue
@@ -29,7 +30,13 @@ _sentry_dsn = os.environ.get("SENTRY_DSN", "")
 if _sentry_dsn:
     sentry_sdk.init(
         dsn=_sentry_dsn,
-        integrations=[CeleryIntegration()],
+        integrations=[
+            CeleryIntegration(),
+            LoggingIntegration(
+                level=logging.WARNING,       # breadcrumbs from WARNING+
+                event_level=logging.WARNING, # WARNING+ sent as Sentry events
+            ),
+        ],
         traces_sample_rate=0.1,
         send_default_pii=False,
         before_send=_scrub_sensitive,
