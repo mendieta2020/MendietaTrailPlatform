@@ -7,8 +7,13 @@ from pathlib import Path
 import logging
 import os
 import sys
+import warnings
 from dotenv import load_dotenv
 from datetime import timedelta # Importamos timedelta para JWT
+
+# drf-yasg 1.x emits DeprecationWarning on import; tracked for future migration
+# to drf-spectacular (Bug #52). Silence here to keep test output clean.
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="drf_yasg")
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -60,7 +65,7 @@ def parse_env_list(value):
 
 # Variables Críticas
 SECRET_KEY = get_env_variable("SECRET_KEY", default="test-secret-key", required=not RUNNING_TESTS)
-DEBUG = get_env_variable("DEBUG", default=("True" if RUNNING_TESTS else "False"), required=not RUNNING_TESTS) == "True"
+DEBUG = get_env_variable("DEBUG", default=("True" if RUNNING_TESTS else "False"), required=False) == "True"
 
 # ======================================================================
 #  FLAGS DE AUTENTICACIÓN (Transición JWT -> Cookies HttpOnly)

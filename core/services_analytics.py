@@ -155,6 +155,7 @@ def compute_athlete_pmc_real(
             athlete=athlete,
             start_time__date__gte=start_date,
             start_time__date__lte=today,
+            deleted_at__isnull=True,
         )
         .annotate(activity_date=TruncDate("start_time"))
         .values_list("activity_date", "duration_s")

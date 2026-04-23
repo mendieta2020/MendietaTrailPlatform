@@ -561,6 +561,7 @@ def find_best_match(
             athlete=athlete,
             start_time__date__gte=date_lo,
             start_time__date__lte=date_hi,
+            deleted_at__isnull=True,
         )
         .exclude(
             reconciliations__state=WorkoutReconciliation.State.RECONCILED,

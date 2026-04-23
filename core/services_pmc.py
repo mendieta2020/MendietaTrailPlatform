@@ -269,6 +269,7 @@ def compute_pmc_for_athlete_full(user_id: int, organization_id: int) -> None:
     activities = CompletedActivity.objects.filter(
         organization=organization,
         athlete__user=user,
+        deleted_at__isnull=True,
     ).order_by("start_time")
 
     for activity in activities:

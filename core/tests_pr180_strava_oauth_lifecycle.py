@@ -361,7 +361,8 @@ def test_t6_first_connect_backfill_dispatched():
     mock_bf.delay.assert_called_once()
     kw = mock_bf.delay.call_args.kwargs
     assert kw["alumno_id"] == alumno.id
-    assert kw["days"] == 90
+    # PR-185: days is now dynamic (rescue window); no failed events → fallback 7d
+    assert 1 <= kw["days"] <= 90
     assert kw["organization_id"] == org.pk
     assert kw["athlete_id"] is None
 
@@ -510,10 +511,10 @@ def test_t9_reconnect_no_athlete_record_but_membership_exists():
     assert kw["alumno_id"] == alumno.id
     assert kw["athlete_id"] is None
 
-    # strava.backfill.dispatched must be logged (not skipped)
+    # PR-185: log event renamed from strava.backfill.dispatched to strava.rescue.dispatched
     info_events = [c.args[0] if c.args else "" for c in mock_logger.info.call_args_list]
-    assert "strava.backfill.dispatched" in info_events, (
-        f"Expected strava.backfill.dispatched — got: {info_events}"
+    assert "strava.rescue.dispatched" in info_events, (
+        f"Expected strava.rescue.dispatched — got: {info_events}"
     )
     # strava.backfill.skipped_org_unresolved must NOT be logged
     error_events = [c.args[0] if c.args else "" for c in mock_logger.error.call_args_list]

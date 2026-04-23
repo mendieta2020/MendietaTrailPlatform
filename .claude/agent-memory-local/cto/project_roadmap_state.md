@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-23 · PR-184 READY FOR REVIEW (Strava sport mapping hotfix — WeightTraining→STRENGTH ingest path via _STRAVA_SPORT_MAP). PR-183 READY FOR REVIEW (Sentry). PR-182/181 READY FOR REVIEW. PR-180 merged. Next queue: merge queue in PR order → PR-179c (design system)._
+_Last updated: 2026-04-23 · PR-185 READY FOR REVIEW (cleanup bundle: soft-delete, rescue backfill, ordering, DEBUG). PR-184 READY FOR REVIEW. PR-183 READY FOR REVIEW (Sentry). PR-182/181 READY FOR REVIEW. PR-180 merged. Next queue: merge queue in PR order → PR-186 (Bug #51 sport mapping investigation)._
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -372,6 +372,18 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - **Validation**: `python manage.py check` + `pytest -q` full suite (no new tests, regression only) + `npm run lint` + `npm run build`.
 - Risk: LOW (infra config, zero business logic changes, no migrations).
 
+### PR-185 — Cleanup Bundle: Soft-Delete + Rescue Backfill + Ordering + DEBUG 🔄 READY FOR REVIEW
+- Branch: `p2/pr185-cleanup-bundle`
+- **Bug #44 FIXED**: `AlumnoViewSet` missing `ordering = ['nombre']` (DRF OrderingFilter was silently ignored). `filterwarnings` added for drf-yasg DeprecationWarning. staticfiles sub-item deferred to post-merge CI observation.
+- **Bug #46 VALIDATED** (no code change): `test_athlete_organization_cascade_delete` already passes on current main — likely fixed as side-effect of PR-183 or PR-184.
+- **Bug #47 FIXED**: `CompletedActivity` soft-delete via new `deleted_at` field. Strava `activity.delete` webhook now sets `deleted_at` (replaces old IGNORED stub). PMC recompute dispatched after deletion. Full queryset audit: 9 read sites patched with `deleted_at__isnull=True` (services_analytics, services_pmc, services_reconciliation, views_athlete, views_p1 ×2, views_pmc ×3, views_reports ×2, views_planning). Integrations (`update_or_create`) intentionally unfiltered — restore-on-reingestion policy (see design notes). Migrations 0116 (deleted_at + indexes).
+- **Bug #48 FIXED**: `DEBUG = get_env_variable(..., required=False)` — Railway deploy no longer requires DEBUG in env.
+- **Bug #50 FIXED**: OAuth rescue backfill now uses smart window logic: oldest failed `StravaWebhookEvent` for this athlete → fallback 7d → hard cap 90d. Throttled per-athlete via `last_rescue_dispatched_at` (30 min). Structured logs: dispatched / skipped_recent / skipped_org_unresolved. Migration 0117 (last_rescue_dispatched_at). Index on StravaWebhookEvent(owner_id, status).
+- **14 protective tests**: 7 rescue dispatch (T1-T7) + 7 strava delete webhook (T1-T7 incl. T6 PMC tripwire + T7 reconciliation tripwire). 14/14 PASS.
+- **Design notes**: restore-on-reingestion policy — `update_or_create` in ingest paths preserves `deleted_at`, keeping soft-deleted rows hidden in reads. Re-evaluation needed if Strava "activity restored" webhook is ever implemented.
+- Validation: `manage.py check` ✅ | `makemigrations --check` ✅ | 14/14 PR-185 tests ✅ | full suite pending (in progress at time of commit prep)
+- Risk: MEDIUM (soft-delete is new data lifecycle path; query audit is broad but each change is a 1-line filter addition) — READY FOR REVIEW
+
 ### PR-184 — Strava sport mapping hotfix 🔄 READY FOR REVIEW
 - Branch: `p2/pr184-strava-sport-mapping-fix`
 - **Motivation**: PR-182 updated `normalizer.py::_normalize_strava_sport_type` but the actual Strava webhook flow uses a SEPARATE mapping in `services_strava_ingest._STRAVA_SPORT_MAP`. Diagnosed by Claude Code + Sentry MCP on 2026-04-23 — Garmin→Strava synced activities (sport_type=WeightTraining) still appeared as OTHER in the calendar.
@@ -397,6 +409,9 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - PR-159 — Calendar "+2 more" fix + expand day view
 
 ## Technical Debt
+- **Queryset audit discipline (PR-185 lesson)**: Any future soft-delete field introduction requires a full `git grep CompletedActivity.objects` (and equivalent for the affected model) across ALL read paths — not just the write-path patch. PR-185 found 9 read sites needing `deleted_at__isnull=True` across views_pmc (×3), views_reports (×2), views_planning, services_analytics, services_pmc, services_reconciliation, views_athlete, views_p1 (×2). Two regression tripwire tests (T6/T7) added to `tests_pr185_strava_delete_webhook.py` to catch future regressions. Document in Constitution as mandatory step.
+- **Bug #45**: Unify `_STRAVA_SPORT_MAP` and `normalizer.py::_normalize_strava_sport_type` into a single source of truth — future PR.
+- **Bug #51**: Sport mapping investigation (next in queue as PR-186).
 - FINDING-X4-A: ExternalIdentityViewSet legacy scope (low priority)
 - Migration 0083 uses atomic=False (standard pattern for PostgreSQL FK+DDL)
 - PR-132 was merged directly to main (no feature branch) — process gap corrected

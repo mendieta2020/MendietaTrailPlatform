@@ -606,6 +606,7 @@ class TeamReadinessView(APIView):
                 sport__in=run_sports,
                 start_time__date__gte=seven_ago_dt,
                 start_time__date__lte=today,
+                deleted_at__isnull=True,
             ).aggregate(
                 td=Sum("distance_m", output_field=FloatField()),
                 te=Sum("elevation_gain_m", output_field=FloatField()),
@@ -620,6 +621,7 @@ class TeamReadinessView(APIView):
             CompletedActivity.objects.filter(
                 organization=org,
                 alumno_id__in=alumno_ids,
+                deleted_at__isnull=True,
             )
             .values("alumno_id")
             .annotate(last_start=Max("start_time"))
@@ -903,6 +905,7 @@ class TrainingVolumeView(APIView):
             alumno=alumno,
             start_time__date__gte=start_date,
             start_time__date__lte=today,
+            deleted_at__isnull=True,
         )
         if sport_list:
             qs = qs.filter(sport__in=sport_list)

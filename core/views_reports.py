@@ -74,6 +74,7 @@ def _build_volume_snapshot(org, athlete_user, alumno, start_date, today):
         alumno=alumno,
         start_time__date__gte=start_date,
         start_time__date__lte=today,
+        deleted_at__isnull=True,
     )
 
     rows = (
@@ -190,6 +191,7 @@ def _build_gap_snapshot(org, alumno, start_date, today):
         sport__in=["RUN", "TRAIL"],
         start_time__date__gte=start_date,
         start_time__date__lte=today,
+        deleted_at__isnull=True,
     ).aggregate(
         td=Sum("distance_m", output_field=FloatField()),
         te=Sum("elevation_gain_m", output_field=FloatField()),
