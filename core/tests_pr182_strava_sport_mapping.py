@@ -156,3 +156,24 @@ class StravaSportMappingTests(TestCase):
         self.assertIsNotNone(matched, msg=f"Expected a match; reason={reason}")
         self.assertEqual(matched.pk, activity.pk)
         self.assertGreaterEqual(confidence, 1.0)
+
+
+# ── PR-184 regression tests ───────────────────────────────────────────────────
+
+
+def test_strava_webhook_weight_training_maps_to_strength_via_ingest_flow():
+    """PR-184: WeightTraining from Strava webhook must produce STRENGTH, not OTHER."""
+    from integrations.strava.services_strava_ingest import _normalize_sport  # noqa: PLC0415
+
+    assert _normalize_sport("WeightTraining") == "STRENGTH"
+    assert _normalize_sport("WEIGHTTRAINING") == "STRENGTH"
+    assert _normalize_sport("WEIGHT_TRAINING") == "STRENGTH"
+
+
+def test_strava_ingest_accepts_normalized_business_codes_as_passthrough():
+    """PR-184: when tasks.py falls back to tipo_deporte (already normalized by
+    normalizer.py), _STRAVA_SPORT_MAP must pass through those codes, not OTHER."""
+    from integrations.strava.services_strava_ingest import _normalize_sport  # noqa: PLC0415
+
+    for code in ("STRENGTH", "TRAIL", "BIKE", "SWIM", "WALK", "RUN"):
+        assert _normalize_sport(code) == code, f"Passthrough failed for {code}"

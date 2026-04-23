@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-22 · PR-183 READY FOR REVIEW (Sentry LoggingIntegration — structured log capture gap closed). PR-182 READY FOR REVIEW (bug bundle). PR-181 READY FOR REVIEW (Railway infra docs). PR-180 merged. Next queue: PR-181 merge → PR-182 merge → PR-183 merge → PR-183b (weather enrichment OWM) → PR-179c (design system)._
+_Last updated: 2026-04-23 · PR-184 READY FOR REVIEW (Strava sport mapping hotfix — WeightTraining→STRENGTH ingest path via _STRAVA_SPORT_MAP). PR-183 READY FOR REVIEW (Sentry). PR-182/181 READY FOR REVIEW. PR-180 merged. Next queue: merge queue in PR order → PR-179c (design system)._
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -371,6 +371,19 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - **Risk note**: Potential noise from third-party library warnings (Django core, DRF, allauth) that emit `logger.warning()` calls. Monitor Sentry event volume for 24-48h post-deploy. If the spike is unmanageable, a follow-up PR will restrict scope via a Python `LOGGING` handler in `settings.py` scoped only to `core`, `integrations`, `quantoryn.reconciliation` loggers.
 - **Validation**: `python manage.py check` + `pytest -q` full suite (no new tests, regression only) + `npm run lint` + `npm run build`.
 - Risk: LOW (infra config, zero business logic changes, no migrations).
+
+### PR-184 — Strava sport mapping hotfix 🔄 READY FOR REVIEW
+- Branch: `p2/pr184-strava-sport-mapping-fix`
+- **Motivation**: PR-182 updated `normalizer.py::_normalize_strava_sport_type` but the actual Strava webhook flow uses a SEPARATE mapping in `services_strava_ingest._STRAVA_SPORT_MAP`. Diagnosed by Claude Code + Sentry MCP on 2026-04-23 — Garmin→Strava synced activities (sport_type=WeightTraining) still appeared as OTHER in the calendar.
+- **Root cause**: `core/tasks.py:1227` falls back from empty `type` to `tipo_deporte` (already normalized to "STRENGTH" by normalizer.py), then calls `_normalize_sport("STRENGTH")` which returned "OTHER" because "STRENGTH" was not a key in `_STRAVA_SPORT_MAP`.
+- **Fix A**: Updated `"WALK": "OTHER"` → `"WALK": "WALK"` and `"SWIM": "SWIMMING"` → `"SWIM": "SWIM"` (align with business codes established in PR-182 normalizer).
+- **Fix B**: Added passthrough entries for normalized business codes (STRENGTH, TRAIL, BIKE).
+- **Fix C**: Added Garmin→Strava underscore aliases (WEIGHT_TRAINING→STRENGTH, TRAIL_RUN→TRAIL).
+- **Fix D**: `mapper.py` prefers modern `sport_type` field over legacy `type` for stravalib Activity objects (Garmin-synced activities often leave `type` empty).
+- **Architectural debt (Bug #45)**: unify `_STRAVA_SPORT_MAP` and `normalizer.py::_normalize_strava_sport_type` into a single source of truth — future PR.
+- **2 new regression tests**: `test_strava_webhook_weight_training_maps_to_strength_via_ingest_flow` + `test_strava_ingest_accepts_normalized_business_codes_as_passthrough` in `core/tests_pr182_strava_sport_mapping.py`. 10/10 pass.
+- Validation: `manage.py check` ✅ | 10/10 new tests ✅ | full suite ✅ | npm lint ✅ | npm build ✅
+- Risk: LOW (dict entries + field preference, no tenancy/OAuth/model changes).
 
 ### Before Mes 2 (10 external coaches)
 - PR-155 ✅ — Building cleanup (sidebar consolidation, duplicate removal) — DONE
