@@ -73,6 +73,113 @@ def _derive_org_from_alumno(alumno):
     return None
 
 
+_RESCUE_THROTTLE_MINUTES = 30
+_RESCUE_MAX_DAYS = 90
+_RESCUE_FALLBACK_DAYS = 7
+
+
+def _dispatch_strava_rescue_backfill(alumno, external_user_id: str, provider: str) -> None:
+    """
+    Dispatch a targeted historical backfill after a successful Strava OAuth.
+
+    Window logic (Bug #50):
+      1. Query oldest StravaWebhookEvent for this athlete where status='failed'.
+         Use its received_at as window_start.
+      2. If none found, fall back to now - 7 days.
+      3. Hard cap: window_start >= now - 90 days.
+      4. Throttle: skip if a rescue was already dispatched within 30 minutes.
+    """
+    from .models import StravaWebhookEvent  # noqa: PLC0415
+
+    from integrations.strava.tasks_backfill import backfill_strava_athlete  # noqa: PLC0415
+
+    _org = _derive_org_from_alumno(alumno)
+    if _org is None:
+        logger.error(
+            "strava.rescue.skipped_org_unresolved",
+            extra={
+                "event_name": "strava.rescue.skipped_org_unresolved",
+                "provider": provider,
+                "alumno_id": alumno.id,
+                "outcome": "skipped",
+                "reason_code": "ORG_UNRESOLVABLE",
+            },
+        )
+        return
+
+    now = timezone.now()
+    throttle_cutoff = now - timezone.timedelta(minutes=_RESCUE_THROTTLE_MINUTES)
+
+    status_row, _ = OAuthIntegrationStatus.objects.get_or_create(
+        alumno=alumno,
+        provider=provider,
+    )
+
+    if (
+        status_row.last_rescue_dispatched_at is not None
+        and status_row.last_rescue_dispatched_at >= throttle_cutoff
+    ):
+        logger.info(
+            "strava.rescue.skipped_recent",
+            extra={
+                "event_name": "strava.rescue.skipped_recent",
+                "provider": provider,
+                "alumno_id": alumno.id,
+                "organization_id": _org.pk,
+                "last_rescue_dispatched_at": status_row.last_rescue_dispatched_at.isoformat(),
+                "outcome": "skipped",
+                "reason_code": "THROTTLED",
+            },
+        )
+        return
+
+    max_cap = now - timezone.timedelta(days=_RESCUE_MAX_DAYS)
+
+    oldest_failed = (
+        StravaWebhookEvent.objects
+        .filter(owner_id=int(external_user_id), status=StravaWebhookEvent.Status.FAILED)
+        .order_by("received_at")
+        .values_list("received_at", flat=True)
+        .first()
+    )
+
+    if oldest_failed is not None:
+        window_start = max(oldest_failed, max_cap)
+        source = "oldest_failed_event"
+    else:
+        window_start = max(now - timezone.timedelta(days=_RESCUE_FALLBACK_DAYS), max_cap)
+        source = "fallback_7d"
+
+    days = max(1, (now - window_start).days)
+
+    backfill_strava_athlete.delay(
+        organization_id=_org.pk,
+        athlete_id=None,
+        alumno_id=alumno.id,
+        days=days,
+    )
+
+    OAuthIntegrationStatus.objects.filter(pk=status_row.pk).update(
+        last_rescue_dispatched_at=now,
+    )
+
+    logger.info(
+        "strava.rescue.dispatched",
+        extra={
+            "event_name": "strava.rescue.dispatched",
+            "provider": provider,
+            "alumno_id": alumno.id,
+            "organization_id": _org.pk,
+            "athlete_id": external_user_id,
+            "window_start": window_start.isoformat(),
+            "window_end": now.isoformat(),
+            "days": days,
+            "source": source,
+            "outcome": "dispatched",
+        },
+    )
+
+
 class IntegrationCallbackView(APIView):
     """
     Custom OAuth integration callback (NOT allauth social login).
@@ -446,42 +553,12 @@ class IntegrationCallbackView(APIView):
                 "external_user_id": external_user_id,
             })
 
-        # PR-180: Trigger 90-day historical backfill on EVERY successful OAuth
-        # (first connect AND reconnect). Org is resolved via three-level fallback
-        # so backfill works even when the P1 Athlete record is absent.
+        # PR-185 (Bug #50): Rescue window backfill on every successful OAuth.
+        # Window = oldest failed StravaWebhookEvent for this athlete, fallback 7d,
+        # hard cap 90d. Throttled per-athlete via last_rescue_dispatched_at (30 min).
         # Idempotent: backfill_strava_athlete dedupes via upsert_actividad.
         try:
-            from integrations.strava.tasks_backfill import backfill_strava_athlete  # noqa: PLC0415
-            _org = _derive_org_from_alumno(alumno)
-            if _org is None:
-                logger.error(
-                    "strava.backfill.skipped_org_unresolved",
-                    extra={
-                        "event_name": "strava.backfill.skipped_org_unresolved",
-                        "provider": provider,
-                        "alumno_id": alumno.id,
-                        "outcome": "skipped",
-                        "reason_code": "ORG_UNRESOLVABLE",
-                    },
-                )
-            else:
-                backfill_strava_athlete.delay(
-                    organization_id=_org.pk,
-                    athlete_id=None,
-                    alumno_id=alumno.id,
-                    days=90,
-                )
-                logger.info(
-                    "strava.backfill.dispatched",
-                    extra={
-                        "event_name": "strava.backfill.dispatched",
-                        "provider": provider,
-                        "alumno_id": alumno.id,
-                        "organization_id": _org.pk,
-                        "days": 90,
-                        "outcome": "dispatched",
-                    },
-                )
+            _dispatch_strava_rescue_backfill(alumno, external_user_id, provider)
         except Exception:
             logger.exception("oauth.callback.backfill_task_failed", extra={
                 "provider": provider,

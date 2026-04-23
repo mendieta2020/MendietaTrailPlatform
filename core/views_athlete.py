@@ -539,6 +539,7 @@ class AthleteWeeklySummaryView(APIView):
                 alumno=alumno,
                 start_time__date__gte=week_start,
                 start_time__date__lte=today,
+                deleted_at__isnull=True,
             ).aggregate(
                 dist=Sum("distance_m"),
                 dur=Sum("duration_s"),

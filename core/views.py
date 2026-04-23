@@ -197,6 +197,7 @@ class AlumnoViewSet(TenantModelViewSet):
     search_fields = ['nombre', 'apellido', 'email', 'ciudad'] 
     filterset_fields = ['estado_actual', 'categoria', 'apto_medico_al_dia', 'equipo'] 
     ordering_fields = ['nombre', 'fecha_ultimo_pago']
+    ordering = ['nombre']
 
     def get_queryset(self):
         qs = super().get_queryset().select_related("sync_state")

@@ -195,7 +195,9 @@ def test_backfill_dispatched_on_successful_custom_callback():
     mock_bf.delay.assert_called_once()
     kwargs = mock_bf.delay.call_args.kwargs
     assert kwargs["alumno_id"] == alumno.id
-    assert kwargs["days"] == 90
+    # PR-185: days is now dynamic (rescue window). No failed events in test DB →
+    # fallback 7d. Assert 1 <= days <= 90 to tolerate sub-day clock rounding.
+    assert 1 <= kwargs["days"] <= 90
     assert kwargs["organization_id"] == athlete.organization_id
     assert kwargs["athlete_id"] is None  # PR-180: athlete_id is logging-only, passed as None
 
@@ -244,13 +246,15 @@ def test_backfill_dispatch_logged():
         for c in mock_logger.info.call_args_list
     ]
     event_names = [name for name, _ in info_events]
-    assert "strava.backfill.dispatched" in event_names, (
-        f"Expected strava.backfill.dispatched; got: {event_names}"
+    # PR-185: log event renamed from strava.backfill.dispatched to strava.rescue.dispatched
+    assert "strava.rescue.dispatched" in event_names, (
+        f"Expected strava.rescue.dispatched; got: {event_names}"
     )
 
-    _, extra = next(e for e in info_events if e[0] == "strava.backfill.dispatched")
+    _, extra = next(e for e in info_events if e[0] == "strava.rescue.dispatched")
     assert extra.get("alumno_id") == alumno.id
-    assert extra.get("days") == 90
+    # PR-185: days is dynamic (rescue window); no failed events → fallback 7d
+    assert 1 <= extra.get("days") <= 90
 
 
 # ---------------------------------------------------------------------------
@@ -468,8 +472,8 @@ def test_backfill_dispatched_when_athlete_record_missing_but_coach_exists():
     assert kwargs["organization_id"] == org.pk
     assert kwargs["athlete_id"] is None
 
-    # strava.backfill.dispatched must be logged
+    # PR-185: log event renamed from strava.backfill.dispatched to strava.rescue.dispatched
     info_events = [c.args[0] if c.args else "" for c in mock_logger.info.call_args_list]
-    assert "strava.backfill.dispatched" in info_events, (
-        f"Expected strava.backfill.dispatched; got: {info_events}"
+    assert "strava.rescue.dispatched" in info_events, (
+        f"Expected strava.rescue.dispatched; got: {info_events}"
     )

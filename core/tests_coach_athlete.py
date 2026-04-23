@@ -154,9 +154,10 @@ class AthleteModelTests(TestCase):
 
     def test_athlete_organization_cascade_delete(self):
         Athlete.objects.create(user=self.user, organization=self.org)
-        self.assertEqual(Athlete.objects.filter(organization=self.org).count(), 1)
+        org_id = self.org.pk
+        self.assertEqual(Athlete.objects.filter(organization_id=org_id).count(), 1)
         self.org.delete()
-        self.assertEqual(Athlete.objects.count(), 0)
+        self.assertEqual(Athlete.objects.filter(organization_id=org_id).count(), 0)
 
     def test_athlete_str(self):
         athlete = Athlete(user=self.user, organization=self.org)

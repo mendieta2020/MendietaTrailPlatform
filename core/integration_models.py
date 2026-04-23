@@ -91,6 +91,10 @@ class OAuthIntegrationStatus(models.Model):
         db_index=True,
     )
 
+    # Rescue dispatch throttle — prevents redundant backfills within 30 minutes
+    # of a reconnect. Updated atomically after each rescue dispatch (Bug #50).
+    last_rescue_dispatched_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True, db_index=True)
     

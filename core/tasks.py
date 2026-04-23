@@ -20,6 +20,7 @@ from .models import (
     StravaImportLog,
     StravaActivitySyncState,
     ExternalIdentity,
+    CompletedActivity,
 )
 from analytics.models import HistorialFitness 
 from core.calories import compute_calories_kcal
@@ -644,6 +645,109 @@ def process_strava_event(self, event_id: int):
         raise
 
 
+def _handle_strava_activity_delete(event: "StravaWebhookEvent") -> str:
+    """
+    Soft-delete CompletedActivity when Strava fires aspect_type=delete.
+
+    Idempotent: if the activity is already deleted (or was never ingested),
+    marks the event as PROCESSED without error (Law 5).
+    Dispatches full PMC recompute for the affected athlete after deletion.
+    Never hard-deletes (Law 3 audit trail).
+    """
+    strava_activity_id = str(event.object_id)
+    strava_owner_id = str(event.owner_id)
+    now = timezone.now()
+
+    identity = (
+        ExternalIdentity.objects
+        .filter(provider="strava", external_user_id=strava_owner_id, alumno__isnull=False)
+        .select_related("alumno__usuario")
+        .first()
+    )
+    if identity is None:
+        StravaWebhookEvent.objects.filter(pk=event.pk).update(
+            status=StravaWebhookEvent.Status.IGNORED,
+            discard_reason="delete_no_linked_identity",
+            processed_at=now,
+        )
+        logger.warning(
+            "strava.activity.soft_delete.no_identity",
+            extra={
+                "event_name": "strava.activity.soft_delete.no_identity",
+                "strava_owner_id": strava_owner_id,
+                "strava_activity_id": strava_activity_id,
+                "outcome": "ignored",
+                "reason_code": "NO_LINKED_IDENTITY",
+            },
+        )
+        return "IGNORED: delete_no_linked_identity"
+
+    alumno = identity.alumno
+    activity = CompletedActivity.objects.filter(
+        alumno=alumno,
+        provider="strava",
+        provider_activity_id=strava_activity_id,
+        deleted_at__isnull=True,
+    ).first()
+
+    if activity is None:
+        StravaWebhookEvent.objects.filter(pk=event.pk).update(
+            status=StravaWebhookEvent.Status.PROCESSED,
+            processed_at=now,
+        )
+        logger.info(
+            "strava.activity.soft_delete.already_gone",
+            extra={
+                "event_name": "strava.activity.soft_delete.already_gone",
+                "alumno_id": alumno.pk,
+                "strava_activity_id": strava_activity_id,
+                "outcome": "noop",
+                "reason_code": "NOT_FOUND_OR_ALREADY_DELETED",
+            },
+        )
+        return "PROCESSED: delete_noop"
+
+    organization_id = activity.organization_id
+    user_id = alumno.usuario_id
+
+    CompletedActivity.objects.filter(pk=activity.pk).update(deleted_at=now)
+
+    StravaWebhookEvent.objects.filter(pk=event.pk).update(
+        status=StravaWebhookEvent.Status.PROCESSED,
+        processed_at=now,
+    )
+
+    logger.info(
+        "strava.activity.soft_deleted",
+        extra={
+            "event_name": "strava.activity.soft_deleted",
+            "organization_id": organization_id,
+            "alumno_id": alumno.pk,
+            "activity_id": activity.pk,
+            "strava_activity_id": strava_activity_id,
+            "outcome": "deleted",
+        },
+    )
+
+    if user_id and organization_id:
+        try:
+            compute_pmc_full_for_athlete.delay(
+                user_id=user_id,
+                organization_id=organization_id,
+            )
+        except Exception:
+            logger.exception(
+                "strava.activity.soft_delete.pmc_dispatch_failed",
+                extra={
+                    "event_name": "strava.activity.soft_delete.pmc_dispatch_failed",
+                    "organization_id": organization_id,
+                    "alumno_id": alumno.pk,
+                },
+            )
+
+    return "PROCESSED: soft_deleted"
+
+
 def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: float):
     """
     Procesa un StravaWebhookEvent:
@@ -701,12 +805,7 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
         return "IGNORED: non-activity"
 
     if event.aspect_type == "delete":
-        StravaWebhookEvent.objects.filter(pk=event.pk).update(
-            status=StravaWebhookEvent.Status.IGNORED,
-            discard_reason="delete_event_ignored",
-            processed_at=timezone.now(),
-        )
-        return "IGNORED: delete"
+        return _handle_strava_activity_delete(event)
 
     # Lock lógico por actividad (evita pipelines simultáneos para la misma activity_id).
     lock_ttl_s = _strava_activity_lock_ttl_seconds()

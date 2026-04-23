@@ -1249,6 +1249,7 @@ class ReconciliationViewSet(OrgTenantMixin, viewsets.GenericViewSet):
                 activity = CompletedActivity.objects.get(
                     pk=activity_id,
                     athlete__organization=self.organization,
+                    deleted_at__isnull=True,
                 )
             except CompletedActivity.DoesNotExist:
                 raise NotFound("Activity not found.")
@@ -2492,6 +2493,7 @@ class CalendarTimelineView(OrgTenantMixin, views.APIView):
                 athlete=athlete,
                 start_time__date__gte=start_date,
                 start_time__date__lte=end_date,
+                deleted_at__isnull=True,
             ).order_by("start_time")
         )
 

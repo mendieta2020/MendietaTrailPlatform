@@ -803,6 +803,7 @@ class AthletePlanVsRealView(APIView):
                 athlete=athlete,
                 start_time__date__gte=week_monday,
                 start_time__date__lte=week_end,
+                deleted_at__isnull=True,
             )
             for act in completed:
                 day = act.start_time.date()

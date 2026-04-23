@@ -626,6 +626,7 @@ class StravaWebhookEvent(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=["owner_id", "-received_at"]),
+            models.Index(fields=["owner_id", "status"]),
             models.Index(fields=["status", "-received_at"]),
             models.Index(fields=["status", "updated_at"]),
             models.Index(fields=["object_type", "aspect_type", "object_id"]),
@@ -983,11 +984,17 @@ class CompletedActivity(models.Model):
     # ------------------------------------------------------------------
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
+    # Soft-delete: set by the Strava "activity.delete" webhook handler.
+    # Hard delete is never performed (Law 3 audit trail).
+    # All querysets must filter deleted_at__isnull=True.
+    deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
     class Meta:
         ordering = ["-start_time"]
         indexes = [
             models.Index(fields=["organization", "-start_time"]),
             models.Index(fields=["alumno", "-start_time"]),
+            models.Index(fields=["organization", "deleted_at", "-start_time"]),
         ]
         constraints = [
             models.UniqueConstraint(
