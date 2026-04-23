@@ -208,11 +208,21 @@ _STRAVA_SPORT_MAP: dict[str, str] = {
     "MOUNTAINBIKERIDE": "MTB",
     "GRAVELRIDE": "CYCLING",
     "ROADBIKERIDE": "CYCLING",
-    "WALK": "OTHER",
+    "WALK": "WALK",
     "HIKE": "TRAIL",
     "WORKOUT": "CARDIO",
-    "SWIM": "SWIMMING",
+    "SWIM": "SWIM",
     "WEIGHTTRAINING": "STRENGTH",
+    # Passthrough for normalized business codes: tasks.py may fall back from
+    # empty `type` to `tipo_deporte` (already normalized by normalizer.py), so
+    # this map must recognize those codes rather than returning "OTHER".
+    # TODO Bug #45: unify with normalizer.py::_normalize_strava_sport_type.
+    "STRENGTH": "STRENGTH",
+    "TRAIL": "TRAIL",
+    "BIKE": "BIKE",
+    # Garmin→Strava sync aliases (underscore form, no spaces)
+    "WEIGHT_TRAINING": "STRENGTH",
+    "TRAIL_RUN": "TRAIL",
 }
 
 

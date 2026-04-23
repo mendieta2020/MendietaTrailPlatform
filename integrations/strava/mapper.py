@@ -130,7 +130,9 @@ def normalize_strava_activity(activity: Any) -> dict:
         "id": int(getattr(activity, "id")),
         "athlete_id": athlete_id,
         "name": str(getattr(activity, "name", "") or ""),
-        "type": str(getattr(activity, "type", "") or ""),
+        # Prefer modern sport_type over legacy type — Garmin-synced activities
+        # populate sport_type but often leave type empty.
+        "type": str(getattr(activity, "sport_type", "") or getattr(activity, "type", "") or ""),
         "start_date_local": start_dt,
         "moving_time_s": int(moving_time_s),
         "elapsed_time_s": int(elapsed_time_s),
