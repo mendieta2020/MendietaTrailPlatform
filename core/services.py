@@ -577,7 +577,9 @@ def obtener_cliente_strava(user, force_refresh: bool = False):
         client = Client()
         client.access_token = social_token.token
         client.refresh_token = social_token.token_secret
-        
+        if social_token.expires_at:
+            client.token_expires = int(social_token.expires_at.timestamp())
+
         token_expira_en = social_token.expires_at
         if force_refresh:
             # Refresh forzado (p.ej. tras 401)
@@ -589,6 +591,8 @@ def obtener_cliente_strava(user, force_refresh: bool = False):
                 return None
             client.access_token = social_token.token
             client.refresh_token = social_token.token_secret
+            if social_token.expires_at:
+                client.token_expires = int(social_token.expires_at.timestamp())
             return client
 
         if token_expira_en and timezone.now() > token_expira_en:
@@ -613,6 +617,8 @@ def obtener_cliente_strava(user, force_refresh: bool = False):
 
                 client.access_token = social_token.token
                 client.refresh_token = social_token.token_secret
+                if social_token.expires_at:
+                    client.token_expires = int(social_token.expires_at.timestamp())
             except Exception as exc:
                 logger.warning(
                     "strava.token.refresh_failed",

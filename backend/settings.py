@@ -14,6 +14,16 @@ from datetime import timedelta # Importamos timedelta para JWT
 # drf-yasg 1.x emits DeprecationWarning on import; tracked for future migration
 # to drf-spectacular (Bug #52). Silence here to keep test output clean.
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="drf_yasg")
+warnings.filterwarnings(
+    "ignore",
+    message=r".*multi-threaded.*fork\(\).*deadlocks.*",
+    category=DeprecationWarning,
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r".*running the worker with superuser.*",
+    category=Warning,
+)
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent

@@ -184,42 +184,42 @@ def refresh_strava_token(credential):
             raise RuntimeError("No SocialApp configured for strava — cannot refresh token")
 
         try:
+            from stravalib import exc as _strava_exc
+        except ImportError:
+            _strava_exc = None
+
+        try:
             temp = Client()
             resp = temp.refresh_access_token(
                 client_id=app_config.client_id,
                 client_secret=app_config.secret,
                 refresh_token=locked.refresh_token,
             )
-        except _requests.exceptions.HTTPError as exc:
-            status = exc.response.status_code if exc.response is not None else None
-            if status == 401:
-                event = "strava.token.refreshed.strava_401"
-                reason = "REFRESH_TOKEN_INVALID"
-            elif status == 429:
-                event = "strava.token.refreshed.rate_limited"
-                reason = "STRAVA_RATE_LIMIT"
+        except Exception as exc:
+            if _strava_exc and isinstance(exc, _strava_exc.AccessUnauthorized):
+                _event = "strava.token.refreshed.strava_401"
+                _reason = "REFRESH_TOKEN_INVALID"
+            elif isinstance(exc, _requests.exceptions.HTTPError):
+                _status = exc.response.status_code if exc.response is not None else None
+                if _status == 401:
+                    _event = "strava.token.refreshed.strava_401"
+                    _reason = "REFRESH_TOKEN_INVALID"
+                elif _status == 429:
+                    _event = "strava.token.refreshed.rate_limited"
+                    _reason = "STRAVA_RATE_LIMIT"
+                else:
+                    _event = "strava.token.refreshed.unexpected_error"
+                    _reason = f"HTTP_{_status}"
             else:
-                event = "strava.token.refreshed.unexpected_error"
-                reason = f"HTTP_{status}"
+                _event = "strava.token.refreshed.unexpected_error"
+                _reason = "UNEXPECTED_ERROR"
             logger.exception(
-                event,
+                _event,
                 extra={
-                    "event_name": event,
+                    "event_name": _event,
                     "alumno_id": alumno_id,
                     "outcome": "fail",
-                    "reason_code": reason,
-                    "http_status": status,
-                },
-            )
-            raise
-        except Exception:
-            logger.exception(
-                "strava.token.refreshed.unexpected_error",
-                extra={
-                    "event_name": "strava.token.refreshed.unexpected_error",
-                    "alumno_id": alumno_id,
-                    "outcome": "fail",
-                    "reason_code": "UNEXPECTED_ERROR",
+                    "reason_code": _reason,
                 },
             )
             raise

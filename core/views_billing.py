@@ -726,7 +726,7 @@ class InvitationAcceptView(APIView):
             organization=invitation.organization,
         ).first()
         if athlete:
-            AthleteSubscription.objects.get_or_create(
+            _sub, _created = AthleteSubscription.objects.get_or_create(
                 athlete=athlete,
                 coach_plan=invitation.coach_plan,
                 defaults={
@@ -735,6 +735,10 @@ class InvitationAcceptView(APIView):
                     "mp_preapproval_id": preapproval_id,
                 },
             )
+            # Stamp preapproval_id if record already existed without it (e.g. created by onboarding path)
+            if not _created and preapproval_id and not _sub.mp_preapproval_id:
+                _sub.mp_preapproval_id = preapproval_id
+                _sub.save(update_fields=["mp_preapproval_id", "updated_at"])
 
         logger.info(
             "invitation_accepted",

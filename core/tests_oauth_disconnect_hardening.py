@@ -18,7 +18,7 @@ from django.utils import timezone
 
 from core.integration_models import OAuthIntegrationStatus
 from core.integration_views import IntegrationStartView
-from core.models import Alumno, ExternalIdentity, OAuthCredential
+from core.models import Alumno, ExternalIdentity, Membership, OAuthCredential, Organization
 
 User = get_user_model()
 
@@ -227,6 +227,8 @@ class DisconnectDoneLogContractTests(TestCase):
     def setUp(self):
         self.coach = User.objects.create_user(username="coach_d6", password="x")
         self.athlete_user = User.objects.create_user(username="athlete_d6", password="x")
+        self.org = Organization.objects.create(name="DisconnectTestOrg", slug="disconnect-test-org")
+        Membership.objects.create(user=self.athlete_user, organization=self.org, role="athlete", is_active=True)
         self.alumno = Alumno.objects.create(
             entrenador=self.coach,
             usuario=self.athlete_user,

@@ -55,7 +55,7 @@ Frontend is hosted on Vercel (`app.quantoryn.com`), not covered by this runbook.
 | `CELERY_RESULT_BACKEND` | `${{Redis.REDIS_URL}}` | reference |
 | `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET` | (from Strava dev console) | static external |
 | `MERCADOPAGO_ACCESS_TOKEN` / `MERCADOPAGO_CLIENT_ID` / `MERCADOPAGO_CLIENT_SECRET` / `MERCADOPAGO_PUBLIC_KEY` | (from MP panel) | static external |
-| `MERCADOPAGO_WEBHOOK_SECRET` | (from MP panel, pending ticket WCS-36049) | static external |
+| `MERCADOPAGO_WEBHOOK_SECRET` | (from MP panel — configured 2026-04-24, WCS-36049 resolved) | static external |
 | `RESEND_API_KEY` | (from Resend dashboard) | static external |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | (from Google Cloud Console) | static external |
 | `OPENAI_API_KEY` | (from OpenAI dashboard) | static external |
@@ -104,7 +104,7 @@ These secrets come from third-party providers and are NOT Railway references. Ea
 | Secret | When to rotate | Procedure |
 |---|---|---|
 | `STRAVA_CLIENT_SECRET` | Only if leaked | Strava dev console → Your apps → regenerate client secret → update in Railway backend + worker → redeploy. Validate with reconnect flow. |
-| `MERCADOPAGO_WEBHOOK_SECRET` | Pending ticket WCS-36049 resolution (MP support) | MP panel → Integrations → Webhooks → regenerate secret → add to Railway backend as `MERCADOPAGO_WEBHOOK_SECRET` → redeploy. Validate: POST a test webhook, confirm `mp.webhook.signature_verified` log (not `signature_check_skipped`). |
+| `MERCADOPAGO_WEBHOOK_SECRET` | Rotate if leaked | MP panel → Integrations → Webhooks → regenerate secret → add to Railway backend as `MERCADOPAGO_WEBHOOK_SECRET` → redeploy. Validate: POST a test webhook, confirm `mp.webhook.signature_verified` log (not `signature_check_skipped`). |
 | `MERCADOPAGO_ACCESS_TOKEN` | If MP requires it | MP panel → credentials → copy new access token → update in Railway backend → redeploy. |
 | `RESEND_API_KEY` | If leaked | Resend dashboard → API keys → create new → update in Railway backend → redeploy. Validate by triggering a password reset email. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | If leaked | Google Cloud Console → APIs & Services → Credentials → OAuth client → regenerate → update both in Railway backend. Test Google Sign-In. |
