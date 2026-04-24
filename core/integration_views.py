@@ -581,7 +581,15 @@ class IntegrationDisconnectView(APIView):
             )
             return Response(status=status.HTTP_204_NO_CONTENT)
 
-        organization_id = alumno.entrenador_id  # tenant anchor
+        # Derive real org_id for structured logging (fail-soft: null if membership missing)
+        from core.models import Membership as _Membership
+        _org_id = (
+            _Membership.objects
+            .filter(user=request.user, is_active=True)
+            .values_list("organization_id", flat=True)
+            .first()
+        )
+        organization_id = _org_id  # correct organization, not coach user id
 
         # --- Check if already disconnected (idempotency gate) ---
         from core.models import OAuthCredential, ExternalIdentity

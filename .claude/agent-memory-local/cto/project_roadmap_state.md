@@ -372,6 +372,24 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - **Validation**: `python manage.py check` + `pytest -q` full suite (no new tests, regression only) + `npm run lint` + `npm run build`.
 - Risk: LOW (infra config, zero business logic changes, no migrations).
 
+### PR-185 — Cleanup Bundle: Soft-Delete + Rescue Backfill + Ordering + DEBUG ✅ MERGED
+- Merged 2026-04-22. CI green. Soft-delete, rescue dispatch, DEBUG fix, ordering fix.
+
+### PR-186 — MP preapproval_id stamp + Strava token hardening + disconnect log fix ✅ MERGED
+- Branch: p2/pr186-mp-preapproval-stamp
+- **Bug #54 FIXED**: AthleteSubscription.mp_preapproval_id stamped on existing records
+  (core/views_billing.py + core/views_onboarding.py — get_or_create + post-stamp)
+- **Bug #61 FIXED**: client.token_expires set in obtener_cliente_strava()
+  (core/services.py — 3 locations)
+- **Bug #64 FIXED**: disconnect log now derives org_id from Membership, not entrenador_id
+  (core/integration_views.py)
+- **Bug #65 FIXED**: stravalib.exc.AccessUnauthorized classified as strava_401
+  (integrations/strava/oauth.py)
+- **Bug #66 FIXED**: billiard + Celery superuser warnings suppressed
+  (backend/settings.py)
+- Runbook updated: WCS-36049 resolved, MERCADOPAGO_WEBHOOK_SECRET documented
+- Tests: core/tests_pr186_mp_preapproval_stamp.py (T1, T2)
+
 ### PR-185 — Cleanup Bundle: Soft-Delete + Rescue Backfill + Ordering + DEBUG 🔄 READY FOR REVIEW
 - Branch: `p2/pr185-cleanup-bundle`
 - **Bug #44 FIXED**: `AlumnoViewSet` missing `ordering = ['nombre']` (DRF OrderingFilter was silently ignored). `filterwarnings` added for drf-yasg DeprecationWarning. staticfiles sub-item deferred to post-merge CI observation.
@@ -411,7 +429,8 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 ## Technical Debt
 - **Queryset audit discipline (PR-185 lesson)**: Any future soft-delete field introduction requires a full `git grep CompletedActivity.objects` (and equivalent for the affected model) across ALL read paths — not just the write-path patch. PR-185 found 9 read sites needing `deleted_at__isnull=True` across views_pmc (×3), views_reports (×2), views_planning, services_analytics, services_pmc, services_reconciliation, views_athlete, views_p1 (×2). Two regression tripwire tests (T6/T7) added to `tests_pr185_strava_delete_webhook.py` to catch future regressions. Document in Constitution as mandatory step.
 - **Bug #45**: Unify `_STRAVA_SPORT_MAP` and `normalizer.py::_normalize_strava_sport_type` into a single source of truth — future PR.
-- **Bug #51**: Sport mapping investigation (next in queue as PR-186).
+- **Bug #45**: Unify `_STRAVA_SPORT_MAP` and `normalizer.py::_normalize_strava_sport_type` into a single source of truth — future PR.
+- **Next queue (confirmed order)**: PR-181 (weather enrichment Bug #63: populate weather_snapshot in /calendar-timeline/) → PR-182 (Bug bundle frontend: #29 notifications nav, #30 modal math, #32 intensity graph) → PR-179c (design system) → PR-187 (Bug #33 root cause: Alumno.entrenador_id upstream persistence skip_no_coach).
 - FINDING-X4-A: ExternalIdentityViewSet legacy scope (low priority)
 - Migration 0083 uses atomic=False (standard pattern for PostgreSQL FK+DDL)
 - PR-132 was merged directly to main (no feature branch) — process gap corrected

@@ -497,7 +497,7 @@ class OnboardingCompleteView(APIView):
         invitation.mp_preapproval_id = preapproval_id
         invitation.save(update_fields=["mp_preapproval_id"])
 
-        AthleteSubscription.objects.get_or_create(
+        sub, created = AthleteSubscription.objects.get_or_create(
             athlete=athlete,
             coach_plan=coach_plan,
             defaults={
@@ -507,6 +507,10 @@ class OnboardingCompleteView(APIView):
                 "trial_ends_at": trial_end,
             },
         )
+        # Stamp preapproval_id if record already existed without it (e.g. MP failed on first attempt)
+        if not created and preapproval_id and not sub.mp_preapproval_id:
+            sub.mp_preapproval_id = preapproval_id
+            sub.save(update_fields=["mp_preapproval_id", "updated_at"])
 
         # PR-152: Notify coach about new athlete registration
         try:
