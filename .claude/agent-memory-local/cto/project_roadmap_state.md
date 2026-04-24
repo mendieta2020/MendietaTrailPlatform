@@ -1,5 +1,12 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-23 · PR-185 READY FOR REVIEW (cleanup bundle: soft-delete, rescue backfill, ordering, DEBUG). PR-184 READY FOR REVIEW. PR-183 READY FOR REVIEW (Sentry). PR-182/181 READY FOR REVIEW. PR-180 merged. Next queue: merge queue in PR order → PR-186 (Bug #51 sport mapping investigation)._
+_Last updated: 2026-04-24 · PR-188 DONE ✅ (weather snapshot backfill via Celery Beat — Bug #63). PR-186 MERGED ✅. PR-185 MERGED ✅. Next: PR-182 bug bundle (Bug #29/#30/#32/#27) → PR-179c design system._
+
+## Operational work completed 2026-04-24
+- Sentry alert rule configured: project=python-django, WHEN new issue, IF level=error OR fatal, THEN email → fernandorubenmedieta@gmail.com. "Send Test Notification" confirmed working.
+- Railway Wait for CI: activated on both MendietaTrailPlatform + agile-alignment services.
+- PR-186 post-deploy checklist: all APIs 200 ✅, no new errors in logs ✅, worker stable ✅. Bug #66 (billiard startup warning) persists cosmetically — fires before Django settings load; follow-up in celery.py deferred to PR-187.
+- Sentry alert for quantoryn-frontend: PENDING (5-min task, same config as python-django project).
+- Gmail MCP: connector connected in Claude Desktop. Only works in Claude Desktop app, not browser-based claude.ai sessions.
 
 ## Phase
 P2 — Historical Data, Analytics & Billing (IN PROGRESS)
@@ -375,6 +382,17 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 ### PR-185 — Cleanup Bundle: Soft-Delete + Rescue Backfill + Ordering + DEBUG ✅ MERGED
 - Merged 2026-04-22. CI green. Soft-delete, rescue dispatch, DEBUG fix, ordering fix.
 
+### PR-188 — Weather Snapshot Backfill via Celery Beat (Bug #63) ✅ 2026-04-24
+- Branch: `p2/pr188-weather-snapshot-backfill`
+- **Bug #63 FIXED**: `WorkoutAssignment.weather_snapshot` never populated because no caller invoked `enrich_assignment_weather()`. Fix: Celery Beat task running at 08:00 + 15:00 UTC.
+- **New task** `core.weather.enrich_upcoming_snapshots` in `core/tasks.py`: iterates assignments in [today, today+4] with non-null `athlete.location_lat/lon`, calls `enrich_assignment_weather(wa)` per row, swallows OWM-side exceptions, returns `{enriched, skipped_no_location, skipped_owm_failure, errors}`.
+- **Celery Beat** entry added to `backend/celery.py` — two schedule entries: `weather-enrich-upcoming-08utc` + `weather-enrich-upcoming-15utc`, queue=`default`.
+- **Structured logs**: `weather.enrich.started`, `weather.enrich.assignment_success`, `weather.enrich.assignment_skipped`, `weather.enrich.completed` — all with `run_id`, org/assignment/athlete_id, counters. No snapshot contents logged (Law 6).
+- **Idempotency**: assignment-local writes (`update_fields=["weather_snapshot"]`) — safe to run concurrently; no cross-org data access (Law 1).
+- **6 tests** in `core/tests_weather_task.py`: date window, no-location skip, idempotency, OWM failure tolerance, tenancy, structured logs. 6/6 pass.
+- No migrations, no frontend changes, no schema changes.
+- Risk: LOW — RESOLVED
+
 ### PR-186 — MP preapproval_id stamp + Strava token hardening + disconnect log fix ✅ MERGED
 - Branch: p2/pr186-mp-preapproval-stamp
 - **Bug #54 FIXED**: AthleteSubscription.mp_preapproval_id stamped on existing records
@@ -430,7 +448,7 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - **Queryset audit discipline (PR-185 lesson)**: Any future soft-delete field introduction requires a full `git grep CompletedActivity.objects` (and equivalent for the affected model) across ALL read paths — not just the write-path patch. PR-185 found 9 read sites needing `deleted_at__isnull=True` across views_pmc (×3), views_reports (×2), views_planning, services_analytics, services_pmc, services_reconciliation, views_athlete, views_p1 (×2). Two regression tripwire tests (T6/T7) added to `tests_pr185_strava_delete_webhook.py` to catch future regressions. Document in Constitution as mandatory step.
 - **Bug #45**: Unify `_STRAVA_SPORT_MAP` and `normalizer.py::_normalize_strava_sport_type` into a single source of truth — future PR.
 - **Bug #45**: Unify `_STRAVA_SPORT_MAP` and `normalizer.py::_normalize_strava_sport_type` into a single source of truth — future PR.
-- **Next queue (confirmed order)**: PR-181 (weather enrichment Bug #63: populate weather_snapshot in /calendar-timeline/) → PR-182 (Bug bundle frontend: #29 notifications nav, #30 modal math, #32 intensity graph) → PR-179c (design system) → PR-187 (Bug #33 root cause: Alumno.entrenador_id upstream persistence skip_no_coach).
+- **Next queue (confirmed order)**: PR-182 (Bug bundle frontend: #29 notifications nav, #30 modal math, #32 intensity graph, #27 TRAIL↔RUNNING pairing) → PR-179c (design system: card unification, grid alignment, calendar auto-scroll, coach single-modal, coach-first landing) → PR-187 (Bug #33 root cause: Alumno.entrenador_id upstream persistence).
 - FINDING-X4-A: ExternalIdentityViewSet legacy scope (low priority)
 - Migration 0083 uses atomic=False (standard pattern for PostgreSQL FK+DDL)
 - PR-132 was merged directly to main (no feature branch) — process gap corrected

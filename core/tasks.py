@@ -2011,3 +2011,137 @@ def compute_pmc_full_for_athlete(self, user_id: int, organization_id: int):
         )
         raise self.retry(exc=exc)
 
+
+# ==============================================================================
+#  WEATHER SNAPSHOT BACKFILL — PR-188 (Bug #63)
+#  Populates WorkoutAssignment.weather_snapshot for upcoming assignments.
+#  Runs twice daily via Celery Beat (08:00 + 15:00 UTC).
+# ==============================================================================
+
+@shared_task(name="core.weather.enrich_upcoming_snapshots")
+def enrich_upcoming_snapshots() -> dict:
+    """
+    Fill weather_snapshot for WorkoutAssignments in the next 4 days.
+
+    Idempotent: enrich_assignment_weather uses update_fields and the service
+    swallows all OWM-side errors. Safe to run concurrently — each row is
+    written independently with no cross-row locking. Writes are
+    assignment-local (wa.save(update_fields=["weather_snapshot"])) so
+    no cross-organization data can be touched regardless of which org
+    the assignment belongs to (Law 1 — tenancy-safe by construction).
+    """
+    import uuid
+    from datetime import date, timedelta
+
+    import requests
+
+    from core.models import WorkoutAssignment
+    from core.services_weather import enrich_assignment_weather
+
+    run_id = str(uuid.uuid4())
+    horizon_days = 4
+    t0 = time.monotonic()
+    today = date.today()
+    end_date = today + timedelta(days=horizon_days)
+
+    logger.info(
+        "weather.enrich.started",
+        extra=safe_extra({
+            "event_name": "weather.enrich.started",
+            "run_id": run_id,
+            "scheduled_horizon_days": horizon_days,
+        }),
+    )
+
+    enriched = 0
+    skipped_no_location = 0
+    skipped_owm_failure = 0
+    errors = 0
+
+    qs = (
+        WorkoutAssignment.objects
+        .filter(
+            scheduled_date__gte=today,
+            scheduled_date__lte=end_date,
+            athlete__location_lat__isnull=False,
+            athlete__location_lon__isnull=False,
+        )
+        .select_related("athlete")
+        .iterator(chunk_size=200)
+    )
+
+    for wa in qs:
+        try:
+            success = enrich_assignment_weather(wa)
+            if success:
+                enriched += 1
+                logger.info(
+                    "weather.enrich.assignment_success",
+                    extra=safe_extra({
+                        "event_name": "weather.enrich.assignment_success",
+                        "organization_id": wa.organization_id,
+                        "assignment_id": wa.id,
+                        "athlete_id": wa.athlete_id,
+                        "scheduled_date": str(wa.scheduled_date),
+                    }),
+                )
+            else:
+                skipped_owm_failure += 1
+                logger.info(
+                    "weather.enrich.assignment_skipped",
+                    extra=safe_extra({
+                        "event_name": "weather.enrich.assignment_skipped",
+                        "organization_id": wa.organization_id,
+                        "assignment_id": wa.id,
+                        "athlete_id": wa.athlete_id,
+                        "reason_code": "owm_returned_none",
+                    }),
+                )
+        except requests.RequestException:
+            # OWM-side network failure propagated past the service layer — treat as skip.
+            skipped_owm_failure += 1
+            logger.warning(
+                "weather.enrich.assignment_skipped",
+                extra=safe_extra({
+                    "event_name": "weather.enrich.assignment_skipped",
+                    "organization_id": wa.organization_id,
+                    "assignment_id": wa.id,
+                    "athlete_id": wa.athlete_id,
+                    "reason_code": "owm_returned_none",
+                }),
+            )
+        except Exception:
+            errors += 1
+            logger.exception(
+                "weather.enrich.assignment_error",
+                extra=safe_extra({
+                    "event_name": "weather.enrich.assignment_error",
+                    "organization_id": wa.organization_id,
+                    "assignment_id": wa.id,
+                    "athlete_id": wa.athlete_id,
+                }),
+            )
+
+    elapsed_ms = int((time.monotonic() - t0) * 1000)
+    result = {
+        "enriched": enriched,
+        "skipped_no_location": skipped_no_location,
+        "skipped_owm_failure": skipped_owm_failure,
+        "errors": errors,
+    }
+
+    logger.info(
+        "weather.enrich.completed",
+        extra=safe_extra({
+            "event_name": "weather.enrich.completed",
+            "run_id": run_id,
+            "elapsed_ms": elapsed_ms,
+            "enriched": enriched,
+            "skipped_no_location": skipped_no_location,
+            "skipped_owm_failure": skipped_owm_failure,
+            "errors": errors,
+        }),
+    )
+
+    return result
+
