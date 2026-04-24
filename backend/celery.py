@@ -67,6 +67,16 @@ app.conf.beat_schedule = {
         "schedule": crontab(hour=2, minute=10),  # 02:10 UTC
         "args": (None,),
     },
+    "weather-enrich-upcoming-08utc": {
+        "task": "core.weather.enrich_upcoming_snapshots",
+        "schedule": crontab(hour=8, minute=0),   # 08:00 UTC
+        "options": {"queue": "default"},
+    },
+    "weather-enrich-upcoming-15utc": {
+        "task": "core.weather.enrich_upcoming_snapshots",
+        "schedule": crontab(hour=15, minute=0),  # 15:00 UTC
+        "options": {"queue": "default"},
+    },
 }
 
 # 4. Auto-descubrir tareas en todas las apps instaladas (core, etc.)
