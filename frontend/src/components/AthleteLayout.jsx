@@ -106,7 +106,8 @@ const AthleteLayout = ({ children, user }) => {
   const handleAthleteSessionClick = (referenceId, referenceDate) => {
     sessionStorage.setItem('openAssignmentId', String(referenceId));
     if (referenceDate) sessionStorage.setItem('openAssignmentDate', referenceDate);
-    navigate('/athlete/training');
+    // Pass state so same-route navigation also triggers deep-link effects in AthleteMyTraining
+    navigate('/athlete/training', { state: { _deepLinkAt: Date.now() } });
   };
 
   const initials = user?.first_name && user?.last_name

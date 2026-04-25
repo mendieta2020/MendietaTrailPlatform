@@ -157,6 +157,7 @@ export default function UnifiedCard({
   isPast = false,
   role = 'athlete',
   onClick,
+  onCompleteClick,
   onContextMenu,
   onDragStart,
   onDragEnd,
@@ -195,6 +196,11 @@ export default function UnifiedCard({
   const handleClick = (e) => {
     e.stopPropagation();
     onClick?.({ assignment, activity: act, reconciliation, planDetails, freeActivity });
+  };
+
+  const handleCompleteClick = (e) => {
+    e.stopPropagation();
+    onCompleteClick?.(assignment);
   };
 
   const handleContextMenu = (e) => {
@@ -331,6 +337,23 @@ export default function UnifiedCard({
 
       {/* Row 7: compliance badge — prominent bottom strip */}
       <ComplianceBadge pct={compliancePct} variant={variant} />
+
+      {/* Row 8: athlete-only "Marcar completado" — only when no real data yet */}
+      {role === 'athlete' && !isFreeVariant && !act && assignment && (
+        <Typography
+          variant="caption"
+          onClick={handleCompleteClick}
+          sx={{
+            display: 'block',
+            mt: 0.5,
+            color: '#64748b', fontSize: '0.6rem', fontWeight: 500,
+            cursor: 'pointer', textDecoration: 'underline',
+            '&:hover': { color: '#f97316' },
+          }}
+        >
+          Marcar completado
+        </Typography>
+      )}
     </Paper>
   );
 }

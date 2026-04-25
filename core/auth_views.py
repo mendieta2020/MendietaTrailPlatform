@@ -90,10 +90,10 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         email = attrs.get("email", "").strip().lower()
         password = attrs.get("password", "")
 
-        # 1. Look up user by email
-        try:
-            user_obj = _EarlyUser.objects.get(email__iexact=email)
-        except _EarlyUser.DoesNotExist:
+        # 1. Look up user by email — oldest account (lowest id) wins on duplicate email;
+        #    .filter().first() avoids MultipleObjectsReturned if two accounts share the address.
+        user_obj = _EarlyUser.objects.filter(email__iexact=email).order_by('id').first()
+        if user_obj is None:
             raise _drf_serializers.ValidationError(
                 {"detail": "No active account found with the given credentials"}
             )
