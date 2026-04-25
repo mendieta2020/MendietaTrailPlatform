@@ -98,6 +98,28 @@ class AuthHardeningTests(APITestCase):
         self.assertNotIn("mt_access", response.cookies)
         self.assertNotIn("mt_refresh", response.cookies)
 
+    @override_settings(USE_COOKIE_AUTH=False)
+    def test_no_crash_on_duplicate_email(self):
+        """POST /api/token/ returns 200 (not 500) when two users share the same email.
+        The auth view must use .filter().first() instead of .get() to avoid
+        MultipleObjectsReturned under case-insensitive duplicates."""
+        User = get_user_model()
+        # Create a second user with the same email (different username to satisfy UNIQUE on username)
+        User.objects.create_user(
+            username="coach_dup",
+            email="coach@test.com",
+            password="other-pass-456",
+        )
+        # The original user (setUp) and this duplicate share "coach@test.com"
+        response = self.client.post(
+            "/api/token/",
+            {"email": "coach@test.com", "password": "test-pass-123"},
+            format="json",
+        )
+        # Must not 500 — returns 200 with the first-created account's token
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("access", response.data)
+
 
 User = get_user_model()
 

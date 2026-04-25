@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import {
   Box, Typography, CircularProgress, Alert, Button,
   Dialog, DialogTitle, DialogContent, DialogActions,
@@ -118,6 +118,7 @@ function AthleteGoalEditDialog({ goal, orgId, onClose, onSaved }) {
 
 const AthleteMyTraining = () => {
   const { user } = useAuth();
+  const location = useLocation();
   const orgId = user?.memberships?.[0]?.org_id;
 
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -254,6 +255,22 @@ const AthleteMyTraining = () => {
       sessionStorage.removeItem('openAssignmentDate');
     };
   }, []);
+
+  // Same-route deep-link: fires when already on /athlete/training and "Ver sesión" is clicked.
+  // AthleteLayout passes { state: { _deepLinkAt: Date.now() } } so location.state changes
+  // even for same-route navigation, triggering this effect without a component remount.
+  useEffect(() => {
+    if (!location.state?._deepLinkAt) return;
+    const assignmentDate = sessionStorage.getItem('openAssignmentDate');
+    if (assignmentDate) {
+      const targetDate = new Date(assignmentDate + 'T00:00:00');
+      sessionStorage.removeItem('openAssignmentDate');
+      setCurrentDate(targetDate);
+    }
+    // Always re-fetch so the data-watch effect can pick up openAssignmentId even when
+    // the target month is already displayed (setCurrentDate would be a React no-op in that case).
+    fetchData();
+  }, [location.state?._deepLinkAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     client.get('/api/athlete/pmc/')
