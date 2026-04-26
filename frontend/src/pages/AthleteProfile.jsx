@@ -241,7 +241,7 @@ const AthleteProfile = () => {
       await updateAthleteRecord(orgId, athleteId, { location_city: locationDraft });
       setLocationCity(locationDraft);
       setEditingLocation(false);
-      showToast('Ubicación guardada');
+      showToast('📍 Ubicación guardada — coordenadas geocodificadas automáticamente');
     } catch {
       showToast('Error al guardar ubicación');
     } finally {

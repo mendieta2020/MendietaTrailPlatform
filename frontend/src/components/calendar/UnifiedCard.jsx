@@ -54,7 +54,7 @@ const VARIANT_BORDER = {
   C: '#f59e0b', // under — amber
   D: '#7c3aed', // over — purple alert
   E: '#ef4444', // missed — red
-  F: '#f97316', // free — orange
+  F: '#e2e8f0', // free — neutral (Bug #67: libre no debe heredar sport color)
 };
 
 const VARIANT_BG = {
@@ -63,7 +63,7 @@ const VARIANT_BG = {
   C: '#fffbeb',
   D: '#faf5ff',
   E: '#fef2f2',
-  F: '#fff7ed',
+  F: '#f8fafc', // free — neutral gray
 };
 
 const VARIANT_EMOJI = { A: null, B: '✅', C: '⚠️', D: '🔥', E: '❌', F: '🏃' };
@@ -222,9 +222,17 @@ export default function UnifiedCard({
     onDragEnd?.(e);
   };
 
-  const title = isFreeVariant
-    ? (sportLabel(discipline) + ' — libre')
+  // Fix 6: show Strava activity name for libre cards when available
+  const freeTitle = freeActivity?.name?.trim()
+    ? freeActivity.name.trim()
+    : (sportLabel(discipline) + ' — libre');
+
+  // Fix 2: strip " (personalizado)" from display; detect via is_assignment_snapshot
+  const isCustomized = pw?.is_assignment_snapshot === true;
+  const rawTitle = isFreeVariant
+    ? freeTitle
     : (pw?.name ?? assignment?.planned_workout_title ?? '');
+  const title = rawTitle.replace(/ \(personalizado\)$/i, '');
 
   return (
     <Paper
@@ -252,10 +260,10 @@ export default function UnifiedCard({
         userSelect: 'none',
       }}
     >
-      {/* Row 1: sport label + weather + comment icon */}
+      {/* Row 1: sport label + weather + compliance pill + comment + custom icon */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.25 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4, minWidth: 0 }}>
-          {variantEmoji && (
+          {variantEmoji && !isFreeVariant && (
             <Typography component="span" sx={{ fontSize: '0.65rem', lineHeight: 1 }}>
               {variantEmoji}
             </Typography>
@@ -263,13 +271,42 @@ export default function UnifiedCard({
           <Typography
             variant="caption"
             noWrap
-            sx={{ fontWeight: 700, color, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: 0.3 }}
+            sx={{
+              fontWeight: 700,
+              color: isFreeVariant ? '#94a3b8' : color,
+              fontSize: '0.65rem',
+              textTransform: 'uppercase',
+              letterSpacing: 0.3,
+            }}
           >
             {sportLabel(discipline)}
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
           <WeatherBadge weather={weather} />
+          {/* Fix 7: compliance pill — top-right, shown for completed sessions */}
+          {!isFreeVariant && variant !== 'A' && variant !== 'E' && compliancePct != null && (
+            <Box sx={{
+              px: 0.5, py: 0.1, borderRadius: 0.75, lineHeight: 1.4, flexShrink: 0,
+              fontSize: '0.58rem', fontWeight: 700,
+              ...(compliancePct <= 69
+                ? { bgcolor: '#fef2f2', color: '#ef4444' }
+                : compliancePct <= 110
+                  ? { bgcolor: '#f0fdf4', color: '#16a34a' }
+                  : compliancePct <= 150
+                    ? { bgcolor: '#eff6ff', color: '#3b82f6' }
+                    : { bgcolor: '#faf5ff', color: '#7c3aed' }),
+            }}>
+              {compliancePct}%
+            </Box>
+          )}
+          {!isFreeVariant && variant !== 'A' && variant !== 'E' && compliancePct == null && (
+            <Typography component="span" sx={{ fontSize: '0.6rem', color: '#16a34a', fontWeight: 700 }}>✓</Typography>
+          )}
+          {/* Fix 2: pencil icon for individually customized sessions */}
+          {isCustomized && (
+            <Typography component="span" sx={{ fontSize: '0.6rem', color: '#94a3b8' }} title="Sesión personalizada">✏️</Typography>
+          )}
           {hasComment && (
             <Tooltip
               title={(planDetails?.coach_notes || assignment?.coach_comment || '').slice(0, 60)}
@@ -310,15 +347,15 @@ export default function UnifiedCard({
           duration={realDuration}
           distance={realDistance}
           elevation={realElevation}
-          color={isFreeVariant ? VARIANT_BORDER.F : VARIANT_BORDER[variant]}
+          color={isFreeVariant ? '#94a3b8' : VARIANT_BORDER[variant]}
         />
       )}
 
-      {/* Row 5: free activity tag */}
+      {/* Row 5: free activity tag — neutral */}
       {isFreeVariant && (
         <Typography
           variant="caption"
-          sx={{ fontSize: '0.58rem', color: '#92400e', fontWeight: 600, display: 'block' }}
+          sx={{ fontSize: '0.58rem', color: '#94a3b8', fontWeight: 500, display: 'block' }}
         >
           Actividad libre
         </Typography>

@@ -14,7 +14,27 @@ from __future__ import annotations
 
 import logging
 
+from integrations.strava.normalizer import _normalize_strava_sport_type
+
 logger = logging.getLogger(__name__)
+
+# Canonical business sport codes (Bug #67 / PR-188d):
+# tasks.py can fall back to `tipo_deporte` (already a business code) when the
+# raw Strava `type` is absent. These codes must pass through unchanged; only
+# raw Strava types (EbikeRide, MountainBikeRide…) need normalizer translation.
+_CANONICAL_SPORT_TYPES = frozenset({"RUN", "TRAIL", "BIKE", "SWIM", "WALK", "STRENGTH", "OTHER"})
+
+
+def _resolve_sport(raw_type: str | None) -> str:
+    """Return canonical sport code from raw_type.
+
+    If raw_type is already a canonical business code (e.g. tasks.py fallback via
+    tipo_deporte), return it directly. Otherwise delegate to the unified normalizer.
+    """
+    upper = (raw_type or "").strip().upper()
+    if upper in _CANONICAL_SPORT_TYPES:
+        return upper
+    return _normalize_strava_sport_type({"sport_type": raw_type or ""})
 
 
 def _derive_organization(alumno):
@@ -197,40 +217,6 @@ def backfill_strava_activities(
     return {"created": created, "skipped": skipped, "errors": errors}
 
 
-# Mapping from Strava activity type strings to TIPO_ACTIVIDAD choices.
-_STRAVA_SPORT_MAP: dict[str, str] = {
-    "RUN": "RUN",
-    "TRAILRUN": "TRAIL",
-    "VIRTUALRUN": "RUN",
-    "RIDE": "CYCLING",
-    "VIRTUALRIDE": "INDOOR_BIKE",
-    "EBIKERIDE": "CYCLING",
-    "MOUNTAINBIKERIDE": "MTB",
-    "GRAVELRIDE": "CYCLING",
-    "ROADBIKERIDE": "CYCLING",
-    "WALK": "WALK",
-    "HIKE": "TRAIL",
-    "WORKOUT": "CARDIO",
-    "SWIM": "SWIM",
-    "WEIGHTTRAINING": "STRENGTH",
-    # Passthrough for normalized business codes: tasks.py may fall back from
-    # empty `type` to `tipo_deporte` (already normalized by normalizer.py), so
-    # this map must recognize those codes rather than returning "OTHER".
-    # TODO Bug #45: unify with normalizer.py::_normalize_strava_sport_type.
-    "STRENGTH": "STRENGTH",
-    "TRAIL": "TRAIL",
-    "BIKE": "BIKE",
-    # Garmin→Strava sync aliases (underscore form, no spaces)
-    "WEIGHT_TRAINING": "STRENGTH",
-    "TRAIL_RUN": "TRAIL",
-}
-
-
-def _normalize_sport(strava_type: str | None) -> str:
-    """Map Strava activity type to a TIPO_ACTIVIDAD value. Falls back to OTHER."""
-    key = (strava_type or "").upper().replace(" ", "")
-    return _STRAVA_SPORT_MAP.get(key, "OTHER")
-
 
 def ingest_strava_activity(
     *,
@@ -315,7 +301,7 @@ def ingest_strava_activity(
     _ca_defaults = {
         "alumno": alumno,
         "athlete": athlete,
-        "sport": _normalize_sport(activity_data.get("type")),
+        "sport": _resolve_sport(activity_data.get("type")),
         "start_time": start_date,
         "duration_s": int(elapsed_time_s),
         "distance_m": float(activity_data.get("distance_m") or 0.0),

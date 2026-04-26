@@ -603,6 +603,26 @@ class WorkoutAssignmentViewSet(
         ):
             _notify_coach_of_athlete_note(instance, self.request.user, self.organization)
 
+        # Bug #69: invalidate CalendarTimeline cache so athlete sees updated assignment.
+        # Key format mirrors CalendarTimelineView.get():
+        #   cal_tl:{org_id}:{athlete_id}:{start_date}:{end_date}
+        # We invalidate the current-month window (most likely active view).
+        try:
+            import datetime as _dt
+            from django.core.cache import cache as _cache
+            sched = instance.scheduled_date
+            month_start = sched.replace(day=1)
+            # Last day of the month
+            if sched.month == 12:
+                month_end = sched.replace(day=31)
+            else:
+                month_end = (sched.replace(month=sched.month + 1, day=1) - _dt.timedelta(days=1))
+            _cache.delete(
+                f"cal_tl:{self.organization.id}:{instance.athlete_id}:{month_start}:{month_end}"
+            )
+        except Exception:
+            pass  # cache invalidation is best-effort; never fail a save
+
     @action(detail=True, methods=["post"], url_path="push")
     def push(self, request, *args, **kwargs):
         """

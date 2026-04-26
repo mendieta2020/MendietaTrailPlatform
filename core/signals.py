@@ -499,6 +499,49 @@ def link_strava_on_oauth(sender, request, sociallogin, **kwargs):
 
 
 # ==============================================================================
+#  PR-188d Fix 4: Auto-geocode Athlete.location_city → lat/lon (OWM Geocoding)
+# ==============================================================================
+
+from .models import Athlete  # noqa: E402
+
+
+@receiver(post_save, sender=Athlete)
+def geocode_athlete_city(sender, instance: Athlete, **kwargs):
+    """
+    When an Athlete is saved with a non-empty location_city but null coordinates,
+    call OWM geocoding to populate location_lat/location_lon automatically.
+
+    Idempotent: only runs when lat is null. Uses update_fields to avoid re-triggering.
+    """
+    if not instance.location_city or instance.location_lat is not None:
+        return
+    try:
+        from core.services_weather import geocode_city_to_coords
+        coords = geocode_city_to_coords(instance.location_city)
+        if coords:
+            Athlete.objects.filter(pk=instance.pk).update(
+                location_lat=coords[0],
+                location_lon=coords[1],
+            )
+            logger.info(
+                "athlete.geocoded",
+                extra={
+                    "event_name": "athlete.geocoded",
+                    "athlete_id": instance.pk,
+                    "city": instance.location_city,
+                    "lat": coords[0],
+                    "lon": coords[1],
+                    "outcome": "success",
+                },
+            )
+    except Exception:
+        logger.exception(
+            "athlete.geocode_error",
+            extra={"event_name": "athlete.geocode_error", "athlete_id": instance.pk},
+        )
+
+
+# ==============================================================================
 #  PR-131: Trial automático al crear Organization
 # ==============================================================================
 

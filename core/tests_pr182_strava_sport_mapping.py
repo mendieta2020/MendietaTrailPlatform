@@ -162,18 +162,69 @@ class StravaSportMappingTests(TestCase):
 
 
 def test_strava_webhook_weight_training_maps_to_strength_via_ingest_flow():
-    """PR-184: WeightTraining from Strava webhook must produce STRENGTH, not OTHER."""
-    from integrations.strava.services_strava_ingest import _normalize_sport  # noqa: PLC0415
+    """PR-184 / PR-188d Bug #67: WeightTraining → STRENGTH via unified normalizer."""
+    from integrations.strava.normalizer import _normalize_strava_sport_type  # noqa: PLC0415
 
-    assert _normalize_sport("WeightTraining") == "STRENGTH"
-    assert _normalize_sport("WEIGHTTRAINING") == "STRENGTH"
-    assert _normalize_sport("WEIGHT_TRAINING") == "STRENGTH"
+    assert _normalize_strava_sport_type({"sport_type": "WeightTraining"}) == "STRENGTH"
+    assert _normalize_strava_sport_type({"sport_type": "WEIGHTTRAINING"}) == "STRENGTH"
+    assert _normalize_strava_sport_type({"sport_type": "WEIGHT_TRAINING"}) == "STRENGTH"
 
 
-def test_strava_ingest_accepts_normalized_business_codes_as_passthrough():
-    """PR-184: when tasks.py falls back to tipo_deporte (already normalized by
-    normalizer.py), _STRAVA_SPORT_MAP must pass through those codes, not OTHER."""
-    from integrations.strava.services_strava_ingest import _normalize_sport  # noqa: PLC0415
+# ── PR-188d Fix 1 — Bike family unification ───────────────────────────────────
 
-    for code in ("STRENGTH", "TRAIL", "BIKE", "SWIM", "WALK", "RUN"):
-        assert _normalize_sport(code) == code, f"Passthrough failed for {code}"
+
+def test_ebike_ride_maps_to_bike():
+    """Bug #67: EbikeRide must map to BIKE (was CYCLING → calendar showed OTHER)."""
+    from integrations.strava.normalizer import _normalize_strava_sport_type  # noqa: PLC0415
+
+    assert _normalize_strava_sport_type({"sport_type": "EbikeRide"}) == "BIKE"
+    assert _normalize_strava_sport_type({"sport_type": "EBIKERIDE"}) == "BIKE"
+
+
+def test_mountain_bike_ride_maps_to_bike():
+    """Bug #67: MountainBikeRide must map to BIKE (was MTB → calendar showed OTHER)."""
+    from integrations.strava.normalizer import _normalize_strava_sport_type  # noqa: PLC0415
+
+    assert _normalize_strava_sport_type({"sport_type": "MountainBikeRide"}) == "BIKE"
+
+
+def test_gravel_ride_maps_to_bike():
+    """Bug #67: GravelRide must map to BIKE."""
+    from integrations.strava.normalizer import _normalize_strava_sport_type  # noqa: PLC0415
+
+    assert _normalize_strava_sport_type({"sport_type": "GravelRide"}) == "BIKE"
+    assert _normalize_strava_sport_type({"sport_type": "GRAVELRIDE"}) == "BIKE"
+
+
+def test_workout_maps_to_strength():
+    """Bug #67: Workout (Strava gym) must map to STRENGTH (was CARDIO → OTHER)."""
+    from integrations.strava.normalizer import _normalize_strava_sport_type  # noqa: PLC0415
+
+    assert _normalize_strava_sport_type({"sport_type": "Workout"}) == "STRENGTH"
+
+
+def test_none_sport_maps_to_other():
+    """Bug #67: missing/empty sport_type falls back to OTHER."""
+    from integrations.strava.normalizer import _normalize_strava_sport_type  # noqa: PLC0415
+
+    assert _normalize_strava_sport_type({}) == "OTHER"
+    assert _normalize_strava_sport_type({"sport_type": ""}) == "OTHER"
+    assert _normalize_strava_sport_type({"sport_type": None}) == "OTHER"
+
+
+def test_ingest_uses_normalizer_for_bike_family():
+    """Bug #67: ingest call site maps EbikeRide → BIKE via unified normalizer."""
+    from integrations.strava.services_strava_ingest import _resolve_sport  # noqa: PLC0415
+
+    for strava_type in ("EbikeRide", "MountainBikeRide", "GravelRide", "Ride"):
+        result = _resolve_sport(strava_type)
+        assert result == "BIKE", f"Expected BIKE for {strava_type!r}, got {result!r}"
+
+
+def test_resolve_sport_passes_through_canonical_business_codes():
+    """tasks.py fallback: tipo_deporte already normalized (e.g. 'TRAIL') must pass through, not become OTHER."""
+    from integrations.strava.services_strava_ingest import _resolve_sport  # noqa: PLC0415
+
+    for code in ("RUN", "TRAIL", "BIKE", "SWIM", "WALK", "STRENGTH", "OTHER"):
+        result = _resolve_sport(code)
+        assert result == code, f"Passthrough failed for canonical code {code!r}: got {result!r}"
