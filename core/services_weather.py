@@ -107,6 +107,46 @@ def get_weather_for_date(lat: float, lon: float, target_date: date) -> dict | No
         return None
 
 
+OWM_GEO_URL = "http://api.openweathermap.org/geo/1.0/direct"
+
+
+def geocode_city_to_coords(city: str) -> tuple[float, float] | None:
+    """
+    Call OWM Geocoding API to resolve a city name to (lat, lon).
+
+    Returns (lat, lon) or None on failure / missing API key / not found.
+    Gracefully degrades: never raises.
+    """
+    if not OWM_KEY or not city or not city.strip():
+        return None
+    try:
+        resp = requests.get(
+            OWM_GEO_URL,
+            params={"q": city.strip(), "limit": 1, "appid": OWM_KEY},
+            timeout=5,
+        )
+        if resp.status_code != 200:
+            logger.warning(
+                "weather.geocode_failed",
+                extra={"event_name": "weather.geocode_failed", "city": city, "status": resp.status_code},
+            )
+            return None
+        results = resp.json()
+        if not results:
+            return None
+        lat = results[0].get("lat")
+        lon = results[0].get("lon")
+        if lat is None or lon is None:
+            return None
+        return float(lat), float(lon)
+    except Exception as exc:
+        logger.warning(
+            "weather.geocode_error",
+            extra={"event_name": "weather.geocode_error", "city": city, "error": str(exc)},
+        )
+        return None
+
+
 def enrich_assignment_weather(assignment) -> bool:
     """
     Fetches OWM forecast and stores weather_snapshot on the assignment.

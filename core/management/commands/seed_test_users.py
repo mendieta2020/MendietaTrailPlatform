@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from core.models import Alumno, Membership, Organization
+from core.models import Alumno, Athlete, Membership, Organization
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +47,13 @@ _USERS = [
 ]
 
 _ALUMNOS = [
-    {"username": "atleta1@test.com", "nombre": "Atleta1", "apellido": "Test"},
-    {"username": "atleta2@test.com", "nombre": "Atleta2", "apellido": "Test"},
+    {"username": "atleta1@test.com", "nombre": "Atleta1", "apellido": "Test", "ciudad": "Buenos Aires"},
+    {"username": "atleta2@test.com", "nombre": "Atleta2", "apellido": "Test", "ciudad": "Buenos Aires"},
 ]
+
+# Buenos Aires coordinates for local weather testing (bypasses geocoding API)
+_TEST_LAT = -34.6037
+_TEST_LON = -58.3816
 
 
 class Command(BaseCommand):
@@ -107,6 +111,19 @@ class Command(BaseCommand):
                         "nombre": alumno_spec["nombre"],
                         "apellido": alumno_spec["apellido"],
                         "email": athlete_user.email,
+                        "ciudad": alumno_spec["ciudad"],
+                    },
+                )
+                # Seed org-first Athlete record with coordinates so local weather works
+                # without a geocoding API call (Fix 9 / Fix 4).
+                Athlete.objects.update_or_create(
+                    user=athlete_user,
+                    organization=org,
+                    defaults={
+                        "is_active": True,
+                        "location_city": alumno_spec["ciudad"],
+                        "location_lat": _TEST_LAT,
+                        "location_lon": _TEST_LON,
                     },
                 )
 

@@ -69,6 +69,97 @@ function WeatherRow({ weather }) {
   );
 }
 
+// Fix 5: hierarchical block viewer with "Repetir × N" grouping
+function BlockGroupList({ blocks }) {
+  if (!blocks?.length) return null;
+
+  const totalDistM = blocks.reduce((sum, b) => {
+    const reps = b.repetitions ?? 1;
+    const blockDist = (b.intervals ?? []).reduce((s, iv) => s + (iv.distance_meters ?? 0), 0);
+    return sum + blockDist * reps;
+  }, 0);
+  const totalDurS = blocks.reduce((sum, b) => {
+    const reps = b.repetitions ?? 1;
+    const blockDur = (b.intervals ?? []).reduce((s, iv) => s + (iv.duration_seconds ?? 0), 0);
+    return sum + blockDur * reps;
+  }, 0);
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+      {blocks.map((block, bi) => {
+        const reps = block.repetitions ?? 1;
+        const isRepeat = reps > 1;
+        const intervals = block.intervals ?? [];
+        const blockDistM = intervals.reduce((s, iv) => s + (iv.distance_meters ?? 0), 0);
+
+        return (
+          <Box key={bi}>
+            {isRepeat ? (
+              <Box sx={{ border: '1px solid #bfdbfe', borderRadius: 1.5, overflow: 'hidden' }}>
+                <Box sx={{ px: 1, py: 0.4, bgcolor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Typography sx={{ fontSize: '0.62rem', fontWeight: 700, color: '#1d4ed8' }}>
+                    Repetir × {reps}
+                  </Typography>
+                  {blockDistM > 0 && (
+                    <Typography sx={{ fontSize: '0.58rem', color: '#3b82f6' }}>
+                      {fmtDistance(blockDistM * reps)} trabajo
+                    </Typography>
+                  )}
+                </Box>
+                <Box sx={{ px: 0.5, py: 0.4, display: 'flex', flexDirection: 'column', gap: 0.3 }}>
+                  {intervals.map((iv, ii) => <IntervalRow key={ii} iv={iv} />)}
+                </Box>
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.3 }}>
+                {intervals.map((iv, ii) => (
+                  <IntervalRow key={ii} iv={iv} blockName={block.name || block.block_type} />
+                ))}
+              </Box>
+            )}
+          </Box>
+        );
+      })}
+      {/* Total volume row */}
+      {(totalDistM > 0 || totalDurS > 0) && (
+        <Box sx={{ borderTop: '1px solid #e2e8f0', pt: 0.5, display: 'flex', gap: 2 }}>
+          {totalDistM > 0 && (
+            <Typography sx={{ fontSize: '0.62rem', color: '#64748b' }}>
+              📏 Total: {fmtDistance(totalDistM)}
+            </Typography>
+          )}
+          {totalDurS > 0 && (
+            <Typography sx={{ fontSize: '0.62rem', color: '#64748b' }}>
+              ~{fmtDuration(totalDurS)} estimado
+            </Typography>
+          )}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+function IntervalRow({ iv, blockName }) {
+  const duration = iv.duration_seconds ? fmtDuration(iv.duration_seconds) : null;
+  const distance = iv.distance_meters ? fmtDistance(iv.distance_meters) : null;
+  const label = iv.target_label || null;
+  const reps = iv.repetitions > 1 ? `${iv.repetitions}×` : null;
+  const metric = [reps, distance, duration, label].filter(Boolean).join(' · ');
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 0.3, borderRadius: 1, bgcolor: '#f8fafc' }}>
+      {blockName && (
+        <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, color: '#94a3b8', minWidth: 52, flexShrink: 0 }}>
+          {blockName}
+        </Typography>
+      )}
+      <Typography sx={{ fontSize: '0.65rem', color: '#1e293b' }}>
+        {metric || (iv.description || '—')}
+      </Typography>
+    </Box>
+  );
+}
+
+// Legacy flat step list (kept for fallback when blocks not available)
 function IntensityStepsList({ steps }) {
   if (!steps?.length) return null;
   return (
@@ -141,9 +232,11 @@ export default function WorkoutModal({ open, onClose, payload, role = 'athlete' 
 
   const discipline = pw?.discipline ?? act?.sport ?? 'other';
   const color = sportColor(discipline);
-  const title = isFree
+  // Fix 2: strip "(personalizado)" suffix from displayed title
+  const rawTitle = isFree
     ? sportLabel(discipline)
     : (pw?.name ?? assignment?.planned_workout_title ?? 'Entrenamiento');
+  const title = rawTitle.replace(/ \(personalizado\)$/i, '');
 
   const dateStr = isFree
     ? (act?.date ?? '')
@@ -259,8 +352,16 @@ export default function WorkoutModal({ open, onClose, payload, role = 'athlete' 
               </>
             )}
 
-            {/* Intensity steps list */}
-            {intensitySteps.length > 0 && (
+            {/* Fix 5: hierarchical block view (preferred); flat steps as fallback */}
+            {blocks.length > 0 && (
+              <>
+                <SectionLabel>📋 Pasos</SectionLabel>
+                <Box sx={{ mb: 1.5 }}>
+                  <BlockGroupList blocks={blocks} />
+                </Box>
+              </>
+            )}
+            {blocks.length === 0 && intensitySteps.length > 0 && (
               <>
                 <SectionLabel>📋 Pasos</SectionLabel>
                 <Box sx={{ mb: 1.5 }}>
