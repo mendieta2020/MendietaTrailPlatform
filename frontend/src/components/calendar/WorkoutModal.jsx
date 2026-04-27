@@ -200,8 +200,8 @@ function IntensityStepsList({ steps }) {
 
 function ComplianceBar({ pct }) {
   if (pct == null) return null;
-  const capped = Math.min(pct, 200);
-  const color = pct > 150 ? '#7c3aed' : pct >= 80 ? '#22c55e' : '#f59e0b';
+  const fillPct = Math.min(pct, 100);
+  const color = pct > 150 ? '#7c3aed' : pct > 120 ? '#3b82f6' : pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444';
   return (
     <Box sx={{ mb: 1 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.3 }}>
@@ -209,7 +209,7 @@ function ComplianceBar({ pct }) {
         <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color }}>{pct}%</Typography>
       </Box>
       <Box sx={{ height: 6, borderRadius: 3, bgcolor: '#e2e8f0', overflow: 'hidden' }}>
-        <Box sx={{ height: '100%', width: `${Math.min(capped / 2, 100)}%`, bgcolor: color, borderRadius: 3, transition: 'width 0.3s' }} />
+        <Box sx={{ height: '100%', width: `${fillPct}%`, bgcolor: color, borderRadius: 3, transition: 'width 0.3s' }} />
       </Box>
     </Box>
   );
