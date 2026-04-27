@@ -132,7 +132,10 @@ class Alumno(models.Model):
     telefono = models.CharField(max_length=20, null=True, blank=True)
     instagram = models.CharField(max_length=50, blank=True, help_text="Usuario sin @")
     ciudad = models.CharField(max_length=50, null=True, blank=True)
-    
+    # PR-188e (ADR-005): mirror of Athlete.location_lat/lon for weather sync
+    location_lat = models.FloatField(null=True, blank=True)
+    location_lon = models.FloatField(null=True, blank=True)
+
     # --- ESTADO Y FINANZAS ---
     estado_actual = models.CharField(max_length=20, choices=ESTADOS_ALUMNO, default='ACTIVO', verbose_name="Estado Actual")
     fecha_alta = models.DateField(auto_now_add=True)

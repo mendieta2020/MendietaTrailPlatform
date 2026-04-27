@@ -851,9 +851,9 @@ class AthletePlanVsRealView(APIView):
 
                 # Compliance: distance-based if available, else duration-based
                 if planned_km and actual_km is not None:
-                    compliance_pct = min(150, round(actual_km / planned_km * 100))
+                    compliance_pct = min(151, round(actual_km / planned_km * 100))
                 elif planned_min and actual_min is not None:
-                    compliance_pct = min(150, round(actual_min / planned_min * 100))
+                    compliance_pct = min(151, round(actual_min / planned_min * 100))
 
                 actual_sessions += 1
                 total_actual_km += actual_km or 0
@@ -892,6 +892,130 @@ class AthletePlanVsRealView(APIView):
                 "distance_km": round(total_actual_km, 1),
                 "duration_min": total_actual_min,
                 "elevation_m": total_actual_elev,
+            },
+            "compliance_pct": overall_compliance,
+            "per_session": per_session,
+        })
+
+
+# ---------------------------------------------------------------------------
+# A4b: Coach view of athlete plan vs real (PR-188e Fix 5c)
+# ---------------------------------------------------------------------------
+
+
+class CoachAthletePlanVsRealView(APIView):
+    """
+    GET /api/planning/athlete/<athlete_id>/plan-vs-real/?week_start=YYYY-MM-DD
+
+    Coach-facing plan vs real summary for a specific athlete.
+    Uses Athlete.pk — no Alumno mapping needed (WorkoutAssignment uses Athlete FK).
+
+    Tenancy: coach must share an organization with the athlete.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, athlete_id):
+        coach_membership = _get_coach_membership(request)
+        if coach_membership is None:
+            raise PermissionDenied("Coach or owner membership required.")
+
+        athlete = get_object_or_404(
+            Athlete,
+            pk=athlete_id,
+            organization=coach_membership.organization,
+            is_active=True,
+        )
+        org = coach_membership.organization
+
+        week_str = request.query_params.get("week_start")
+        if week_str:
+            try:
+                week_monday = _monday(datetime.date.fromisoformat(week_str))
+            except ValueError:
+                week_monday = _monday(datetime.date.today())
+        else:
+            week_monday = _monday(datetime.date.today())
+
+        week_end = week_monday + datetime.timedelta(days=6)
+
+        assignments = list(
+            WorkoutAssignment.objects
+            .filter(
+                organization=org,
+                athlete=athlete,
+                scheduled_date__gte=week_monday,
+                scheduled_date__lte=week_end,
+            )
+            .select_related("planned_workout")
+            .order_by("scheduled_date", "day_order")
+        )
+
+        per_session = []
+        total_planned_km = 0.0
+        total_planned_min = 0
+        total_actual_km = 0.0
+        total_actual_min = 0
+        actual_sessions = 0
+
+        for a in assignments:
+            pw = a.planned_workout
+            planned_km = (
+                round(pw.estimated_distance_meters / 1000, 2)
+                if pw and pw.estimated_distance_meters else None
+            )
+            planned_min = (
+                pw.estimated_duration_seconds // 60
+                if pw and pw.estimated_duration_seconds else None
+            )
+            is_completed = a.status == WorkoutAssignment.Status.COMPLETED
+            actual_km = None
+            actual_min = None
+            compliance_pct = None
+
+            if is_completed:
+                if a.actual_distance_meters is not None:
+                    actual_km = round(a.actual_distance_meters / 1000, 2)
+                if a.actual_duration_seconds is not None:
+                    actual_min = a.actual_duration_seconds // 60
+                if planned_km and actual_km is not None:
+                    compliance_pct = min(151, round(actual_km / planned_km * 100))
+                elif planned_min and actual_min is not None:
+                    compliance_pct = min(151, round(actual_min / planned_min * 100))
+                actual_sessions += 1
+                total_actual_km += actual_km or 0
+                total_actual_min += actual_min or 0
+
+            total_planned_km += planned_km or 0
+            total_planned_min += planned_min or 0
+
+            per_session.append({
+                "date": a.scheduled_date.isoformat(),
+                "workout": pw.name if pw else None,
+                "planned_km": planned_km,
+                "actual_km": actual_km,
+                "compliance_pct": compliance_pct,
+                "completed": is_completed,
+                "rpe": a.rpe,
+            })
+
+        overall_compliance = None
+        if assignments:
+            completed_count = sum(1 for a in assignments if a.status == WorkoutAssignment.Status.COMPLETED)
+            overall_compliance = round(completed_count / len(assignments) * 100)
+
+        return Response({
+            "week_start": week_monday.isoformat(),
+            "athlete_id": athlete_id,
+            "planned": {
+                "sessions": len(assignments),
+                "distance_km": round(total_planned_km, 1),
+                "duration_min": total_planned_min,
+            },
+            "actual": {
+                "sessions": actual_sessions,
+                "distance_km": round(total_actual_km, 1),
+                "duration_min": total_actual_min,
             },
             "compliance_pct": overall_compliance,
             "per_session": per_session,

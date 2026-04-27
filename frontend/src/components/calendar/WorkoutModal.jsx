@@ -251,16 +251,19 @@ export default function WorkoutModal({ open, onClose, payload, role = 'athlete' 
     ?? (pw?.estimated_distance_meters ? (pw.estimated_distance_meters / 1000).toFixed(1) : null);
   const planElevation = planDetails?.estimated_elevation_m ?? pw?.elevation_gain_min_m ?? null;
 
-  // Real metrics
+  // Real metrics — from Strava activity if paired, else from manual completion data on assignment
   const realDurationMin = act?.duration_min
     ?? (act?.duration_s != null ? Math.round(act.duration_s / 60) : null)
-    ?? (act?.actual_duration_seconds != null ? Math.round(act.actual_duration_seconds / 60) : null);
+    ?? (act?.actual_duration_seconds != null ? Math.round(act.actual_duration_seconds / 60) : null)
+    ?? (assignment?.actual_duration_seconds != null ? Math.round(assignment.actual_duration_seconds / 60) : null);
   const realDistanceKm = act?.distance_km
     ?? (act?.distance_m != null ? (act.distance_m / 1000).toFixed(1) : null)
-    ?? (act?.actual_distance_meters != null ? (act.actual_distance_meters / 1000).toFixed(1) : null);
-  const realElevation = act?.elevation_m ?? act?.elevation_gain_m ?? act?.actual_elevation_gain ?? null;
+    ?? (act?.actual_distance_meters != null ? (act.actual_distance_meters / 1000).toFixed(1) : null)
+    ?? (assignment?.actual_distance_meters != null ? (assignment.actual_distance_meters / 1000).toFixed(1) : null);
+  const realElevation = act?.elevation_m ?? act?.elevation_gain_m ?? act?.actual_elevation_gain
+    ?? assignment?.actual_elevation_gain ?? null;
 
-  const compliancePct = reconciliation?.compliance_pct ?? null;
+  const compliancePct = reconciliation?.compliance_pct ?? assignment?.compliance_pct ?? null;
   const athleteRpe = planDetails?.rpe ?? assignment?.rpe ?? null;
   const athleteNotes = planDetails?.athlete_notes ?? assignment?.athlete_notes ?? '';
   const coachNotes = planDetails?.coach_notes ?? assignment?.coach_notes ?? '';
@@ -391,6 +394,36 @@ export default function WorkoutModal({ open, onClose, payload, role = 'athlete' 
                   <Typography sx={{ fontSize: '0.75rem', color: '#1e40af' }}>{coachNotes}</Typography>
                 </Box>
               </>
+            )}
+          </>
+        )}
+
+        {/* ── Case 1 + manually completed: show athlete's own session data ── */}
+        {caseNum === 1 && assignment?.status === 'completed' && (realDurationMin || realDistanceKm || athleteRpe != null) && (
+          <>
+            <Divider sx={{ my: 1.5 }} />
+            <SectionLabel>✅ Tu sesión</SectionLabel>
+            {(realDurationMin || realDistanceKm || realElevation) && (
+              <Box sx={{ display: 'flex', gap: 2, mb: 1.5, flexWrap: 'wrap' }}>
+                <MetricChip label="Duración" value={realDurationMin ? `${realDurationMin}min` : null} color="#16a34a" />
+                <MetricChip label="Distancia" value={realDistanceKm ? `${realDistanceKm}km` : null} color="#16a34a" />
+                {realElevation && <MetricChip label="D+" value={`${realElevation}m`} color="#16a34a" />}
+              </Box>
+            )}
+            <ComplianceBar pct={compliancePct} />
+            {(athleteRpe != null || athleteNotes) && (
+              <Box sx={{ p: 1, bgcolor: '#f8fafc', borderRadius: 1.5, border: '1px solid #e2e8f0', mb: 1 }}>
+                {athleteRpe != null && (
+                  <Typography sx={{ fontSize: '0.8rem', mb: 0.5 }}>
+                    {RPE_EMOJI[athleteRpe] ?? ''} RPE {athleteRpe}/5
+                  </Typography>
+                )}
+                {athleteNotes && (
+                  <Typography sx={{ fontSize: '0.75rem', color: '#475569', fontStyle: 'italic' }}>
+                    "{athleteNotes}"
+                  </Typography>
+                )}
+              </Box>
             )}
           </>
         )}

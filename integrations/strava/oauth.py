@@ -62,29 +62,17 @@ class LoggedOAuth2Client(OAuth2Client):
         )
 
         content_type = resp.headers.get("content-type", "")
-        body_preview = None
-        try:
-            if content_type.split(";")[0] == "application/json" or (resp.text or "")[:2] == '{"':
-                body_preview = sanitize_secrets(resp.json())
-            else:
-                body_preview = sanitize_secrets(resp.text)
-        except Exception:
-            body_preview = "<unparseable>"
 
         logger.info("strava.http.request", extra={
             "method": self.access_token_method,
             "url_path": "/oauth/token",
             "status_code": resp.status_code,
         })
-        logger.debug(
-            "Strava token exchange: status=%s method=%s url=%s redirect_uri=%s content_type=%s body=%s",
-            resp.status_code,
-            self.access_token_method,
-            url,
-            self.callback_url,
-            content_type,
-            body_preview,
-        )
+        logger.debug("strava.token_exchange.response", extra={
+            "status_code": resp.status_code,
+            "method": self.access_token_method,
+            "content_type": content_type,
+        })
 
         access_token = None
         if resp.status_code in [HTTPStatus.OK, HTTPStatus.CREATED]:
@@ -188,13 +176,20 @@ def refresh_strava_token(credential):
         except ImportError:
             _strava_exc = None
 
+        import logging as _logging
+        _stravalib_log = _logging.getLogger('stravalib')
+        _prev_level = _stravalib_log.level
+        _stravalib_log.setLevel(_logging.WARNING)
         try:
-            temp = Client()
-            resp = temp.refresh_access_token(
-                client_id=app_config.client_id,
-                client_secret=app_config.secret,
-                refresh_token=locked.refresh_token,
-            )
+            try:
+                temp = Client()
+                resp = temp.refresh_access_token(
+                    client_id=app_config.client_id,
+                    client_secret=app_config.secret,
+                    refresh_token=locked.refresh_token,
+                )
+            finally:
+                _stravalib_log.setLevel(_prev_level)
         except Exception as exc:
             if _strava_exc and isinstance(exc, _strava_exc.AccessUnauthorized):
                 _event = "strava.token.refreshed.strava_401"

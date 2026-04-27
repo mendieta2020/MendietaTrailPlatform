@@ -287,6 +287,7 @@ _ASSIGNMENT_FIELDS = [
     "actual_elevation_gain",
     "rpe",
     "compliance_color",
+    "compliance_pct",
     "weather_snapshot",
     # PR-145g: coach comment
     "coach_comment",
@@ -501,6 +502,26 @@ class PlannedWorkoutReadSerializer(serializers.ModelSerializer):
         ]
 
 
+def _compute_assignment_compliance_pct(obj) -> int | None:
+    """ADR-004: backend-authoritative compliance % for a WorkoutAssignment."""
+    if obj.status != "completed":
+        return None
+    pw = getattr(obj, "planned_workout", None)
+    plan_dist = float(pw.estimated_distance_meters or 0) if pw else 0.0
+    plan_dur = float(pw.estimated_duration_seconds or 0) if pw else 0.0
+    actual_dist = float(obj.actual_distance_meters or 0)
+    actual_dur = float(obj.actual_duration_seconds or 0)
+    if plan_dist > 0:
+        ratio = (actual_dist / plan_dist) * 100.0
+    elif plan_dur > 0:
+        ratio = (actual_dur / plan_dur) * 100.0
+    else:
+        return 100  # freestyle — completed = 100%
+    if ratio > 150.0:
+        return 151
+    return int(min(max(ratio, 0.0), 150.0))
+
+
 class WorkoutAssignmentSerializer(serializers.ModelSerializer):
     """
     Coach-write serializer for WorkoutAssignment.
@@ -539,6 +560,9 @@ class WorkoutAssignmentSerializer(serializers.ModelSerializer):
     compliance_color = serializers.CharField(read_only=True)
     weather_snapshot = serializers.JSONField(read_only=True)
 
+    # PR-188e: backend-computed compliance percentage (ADR-004)
+    compliance_pct = serializers.SerializerMethodField()
+
     # PR-145g-fix: athlete display name
     athlete_name = serializers.SerializerMethodField()
 
@@ -552,6 +576,7 @@ class WorkoutAssignmentSerializer(serializers.ModelSerializer):
             "assigned_by_id",
             "snapshot_version",
             "compliance_color",
+            "compliance_pct",
             "weather_snapshot",
             "coach_comment",
             "coach_commented_at",
@@ -576,6 +601,9 @@ class WorkoutAssignmentSerializer(serializers.ModelSerializer):
         user = obj.athlete.user
         name = f"{user.first_name} {user.last_name}".strip()
         return name or user.username or ""
+
+    def get_compliance_pct(self, obj):
+        return _compute_assignment_compliance_pct(obj)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -628,6 +656,9 @@ class WorkoutAssignmentAthleteSerializer(serializers.ModelSerializer):
     compliance_color = serializers.CharField(read_only=True)
     weather_snapshot = serializers.JSONField(read_only=True)
 
+    # PR-188e: backend-authoritative compliance % (ADR-004)
+    compliance_pct = serializers.SerializerMethodField()
+
     # PR-145g-fix: athlete display name
     athlete_name = serializers.SerializerMethodField()
 
@@ -650,6 +681,7 @@ class WorkoutAssignmentAthleteSerializer(serializers.ModelSerializer):
             "target_power_override",
             "snapshot_version",
             "compliance_color",
+            "compliance_pct",
             "weather_snapshot",
             "coach_comment",
             "coach_commented_at",
@@ -674,6 +706,9 @@ class WorkoutAssignmentAthleteSerializer(serializers.ModelSerializer):
         user = obj.athlete.user
         name = f"{user.first_name} {user.last_name}".strip()
         return name or user.username or ""
+
+    def get_compliance_pct(self, obj):
+        return _compute_assignment_compliance_pct(obj)
 
 
 # ==============================================================================

@@ -1,7 +1,7 @@
 def calcular_porcentaje_cumplimiento(entrenamiento) -> int:
     """
     Calcula el porcentaje de cumplimiento de un entrenamiento.
-    Regla de Negocio (PR5): cap fijo 120%, prioridad Distancia > Tiempo.
+    Regla de Negocio (ADR-004): cap 150%, >150 devuelve 151 (⚠️ Exceso). Prioridad Distancia > Tiempo.
     Floor 0%. Safe division.
     """
     if not entrenamiento.completado:
@@ -26,6 +26,8 @@ def calcular_porcentaje_cumplimiento(entrenamiento) -> int:
         else:
              return 100
 
-    # Business Rules: Floor 0, Cap 120
-    final_score = int(min(max(ratio, 0.0), 120.0))
+    # Business Rules: Floor 0, Cap 150 (ADR-004); >150 = ⚠️ Exceso sentinel
+    if ratio > 150.0:
+        return 151
+    final_score = int(min(max(ratio, 0.0), 150.0))
     return final_score
