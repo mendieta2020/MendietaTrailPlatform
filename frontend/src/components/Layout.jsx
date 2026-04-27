@@ -145,13 +145,19 @@ const Layout = ({ children }) => {
   };
 
   const handleCoachSessionClick = (referenceId, referenceDate, contactUserId) => {
-    const athlete = athletes.find((a) => a.user_id === contactUserId);
-    if (athlete) {
-      sessionStorage.setItem('calendarSelectedTarget', `a:${athlete.athlete_id}`);
+    const athlete = athletes.find(
+      (a) => a.user_id === contactUserId || a.athlete_id === contactUserId
+    );
+    if (!athlete) {
+      console.warn('[Layout] handleCoachSessionClick: no athlete found for contactUserId', contactUserId, { athletes });
     }
-    sessionStorage.setItem('calendarOpenAssignment', String(referenceId));
-    if (referenceDate) sessionStorage.setItem('calendarOpenAssignmentDate', referenceDate);
-    navigate('/calendar');
+    navigate('/calendar', {
+      state: {
+        openAssignment: referenceId,
+        openAssignmentDate: referenceDate ?? null,
+        calendarTarget: athlete ? `a:${athlete.athlete_id}` : null,
+      },
+    });
   };
 
   const isAdminOrOwner = userRole === 'owner' || userRole === 'admin';

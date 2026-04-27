@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useReducer, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import withDragAndDrop from 'react-big-calendar/lib/addons/dragAndDrop';
 import {
   format,
   parse,
   startOfWeek,
+  endOfWeek,
+  addMonths,
   getDay,
   startOfMonth,
   endOfMonth,
@@ -546,6 +548,7 @@ export default function CalendarPage() {
   const { activeOrg } = useOrg();
   const orgId = activeOrg?.org_id ?? null;
   const navigate = useNavigate();
+  const location = useLocation();
   const [libDrawerOpen, setLibDrawerOpen] = useState(false);
   const [mobileAssignWorkout, setMobileAssignWorkout] = useState(null);
   const [mobileAssignDialogOpen, setMobileAssignDialogOpen] = useState(false);
@@ -570,6 +573,7 @@ export default function CalendarPage() {
 
   // PR-145g: drawer state
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [pendingAssignmentId, setPendingAssignmentId] = useState(null);
 
   // Calendar events
   const [eventsState, eventsDispatch] = useReducer(fetchReducer, {
@@ -579,7 +583,11 @@ export default function CalendarPage() {
   });
 
   // UI
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const [currentDate, setCurrentDate] = useState(() => {
+    const today = new Date();
+    const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
+    return weekEnd > endOfMonth(today) ? addMonths(today, 1) : today;
+  });
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -727,7 +735,10 @@ export default function CalendarPage() {
       };
     }
     const athleteId = target.id;
-    const from = format(startOfMonth(currentDate), 'yyyy-MM-dd');
+    const from = format(
+      startOfWeek(startOfMonth(currentDate), { weekStartsOn: 1 }),
+      'yyyy-MM-dd'
+    );
     const to = format(endOfMonth(currentDate), 'yyyy-MM-dd');
     getCoachAthleteTrainingPhases(orgId, athleteId, from, to)
       .then((res) => {
@@ -814,7 +825,10 @@ export default function CalendarPage() {
   }, [orgId, selectedTarget, currentDate]);
 
   // Derived date range for the visible month (used by multiple effects below)
-  const dateFrom = format(startOfMonth(currentDate), 'yyyy-MM-dd');
+  const dateFrom = format(
+    startOfWeek(startOfMonth(currentDate), { weekStartsOn: 1 }),
+    'yyyy-MM-dd'
+  );
   const dateTo = format(endOfMonth(currentDate), 'yyyy-MM-dd');
 
   // PR-179a: Load calendar timeline for coach month grid when individual athlete selected
@@ -886,10 +900,23 @@ export default function CalendarPage() {
   }, [orgId, selectedTarget, dateFrom, dateTo]);
 
   // Deep-link from MessagesDrawer:
-  // Step 1 (mount-only) — navigate to the right month so the correct events are fetched.
-  // Step 2 (data-watch) — once events load, find and open the target assignment drawer.
-  // Both setState calls are conditional one-shots driven by sessionStorage flags;
-  // they cannot loop. The rule suppression is intentional and safe here.
+  // Step 1 — consume router state, store pending id in React state so data-watch can react
+  // even when the coach is already on /calendar and eventsState.data doesn't reload.
+  useEffect(() => {
+    const s = location.state;
+    if (!s?.openAssignment) return;
+    if (s.calendarTarget) {
+      setSelectedTarget(s.calendarTarget);
+      sessionStorage.setItem('calendarSelectedTarget', s.calendarTarget);
+    }
+    if (s.openAssignmentDate) {
+      setCurrentDate(new Date(s.openAssignmentDate + 'T00:00:00'));
+    }
+    setPendingAssignmentId(parseInt(s.openAssignment, 10));
+    window.history.replaceState(null, document.title);
+  }, [location.state]);
+
+  // Step 2 (mount-only date restore) — handles direct URL access with sessionStorage already set.
   useEffect(() => {
     const assignmentDate = sessionStorage.getItem('calendarOpenAssignmentDate');
     if (!assignmentDate) return;
@@ -898,16 +925,21 @@ export default function CalendarPage() {
     setCurrentDate(targetDate);
   }, []); // intentionally mount-only
 
+  // Step 3 (data-watch) — once events load, find and open the target assignment drawer.
+  // Merges pendingAssignmentId (in-memory, for already-mounted coach nav) with the
+  // sessionStorage path (for fresh page loads / hard refreshes).
   useEffect(() => {
-    const assignmentId = sessionStorage.getItem('calendarOpenAssignment');
-    if (!assignmentId || eventsState.loading || eventsState.data.length === 0) return;
-    const targetId = parseInt(assignmentId, 10);
+    const idFromPending = pendingAssignmentId;
+    const idFromStorage = sessionStorage.getItem('calendarOpenAssignment');
+    const targetId = idFromPending ?? (idFromStorage ? parseInt(idFromStorage, 10) : null);
+    if (!targetId || eventsState.loading || eventsState.data.length === 0) return;
     const event = eventsState.data.find((e) => e.id === targetId);
     if (event) {
-      sessionStorage.removeItem('calendarOpenAssignment');
+      if (idFromStorage) sessionStorage.removeItem('calendarOpenAssignment');
+      if (idFromPending) setPendingAssignmentId(null);
       setSelectedEvent(event);
     }
-  }, [eventsState.data, eventsState.loading]);
+  }, [eventsState.data, eventsState.loading, pendingAssignmentId]);
 
   // ── Drag handlers ─────────────────────────────────────────────────────────
 
@@ -1704,7 +1736,7 @@ export default function CalendarPage() {
                 if (g?.target_date) goalDateMap[g.target_date] = g;
               });
               return (
-                <Box sx={{ flex: 1, overflowY: 'auto' }}>
+                <Box sx={{ flex: 1, overflowY: 'auto', '&::-webkit-scrollbar': { display: 'none' }, msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
                   <CalendarGrid
                     assignments={rawAssignments}
                     goalDateMap={goalDateMap}

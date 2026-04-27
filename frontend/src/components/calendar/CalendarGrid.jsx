@@ -278,7 +278,7 @@ export default function CalendarGrid({
         )}
 
         {/* Week sections — vertical list */}
-        <Box sx={{ bgcolor: 'white' }}>
+        <Box sx={{ bgcolor: 'white', '&::-webkit-scrollbar': { display: 'none' }, msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
           {weeks.map((week, wIdx) => {
             const weekDateKeys = week.map((d) => format(d, 'yyyy-MM-dd'));
             const weekAssignments = weekDateKeys.flatMap((k) => assignmentsByDate[k] ?? []);
@@ -298,8 +298,9 @@ export default function CalendarGrid({
               return isSameMonth(d, currentDate) && !assignmentsByDate[dk]?.length && !goalDateMap[dk] && !activitiesByDate[dk]?.length;
             });
 
+            const isCurrentWeek = week.some((d) => isSameDay(d, today));
             return (
-              <React.Fragment key={wIdx}>
+              <div key={wIdx} data-week-current={isCurrentWeek ? 'true' : undefined}>
                 {/* Week separator */}
                 {wIdx > 0 && <Box sx={{ height: 1, bgcolor: '#e2e8f0' }} />}
 
@@ -417,7 +418,7 @@ export default function CalendarGrid({
                     </Box>
                   );
                 })}
-              </React.Fragment>
+              </div>
             );
           })}
         </Box>
@@ -504,9 +505,10 @@ export default function CalendarGrid({
         const pvr = planVsRealMap[weekMondayKey] ?? null;
         const trainingPhase = trainingPhaseMap[weekMondayKey] ?? null;
         const phaseMeta = trainingPhase ? TRAINING_PHASE_CONFIG[trainingPhase] : null;
+        const isCurrentWeek = week.some((d) => isSameDay(d, today));
 
         return (
-          <React.Fragment key={wIdx}>
+          <div key={wIdx} data-week-current={isCurrentWeek ? 'true' : undefined}>
             {/* Week phase strip */}
             {phaseMeta && (
               <Box sx={{ height: 3, bgcolor: phaseMeta.color, opacity: 0.6 }} />
@@ -663,7 +665,7 @@ export default function CalendarGrid({
               pmcData={pmcData}
               trainingPhase={trainingPhase}
             />
-          </React.Fragment>
+          </div>
         );
       })}
 

@@ -6,7 +6,7 @@ import {
   TextField, Grid, FormControl, InputLabel, Select, MenuItem as MuiMenuItem,
 } from '@mui/material';
 import {
-  startOfMonth, endOfMonth, startOfWeek, format,
+  startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, format,
 } from 'date-fns';
 import AthleteLayout from '../components/AthleteLayout';
 import WorkoutModal from '../components/calendar/WorkoutModal';
@@ -121,7 +121,11 @@ const AthleteMyTraining = () => {
   const location = useLocation();
   const orgId = user?.memberships?.[0]?.org_id;
 
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const [currentDate, setCurrentDate] = useState(() => {
+    const today = new Date();
+    const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
+    return weekEnd > endOfMonth(today) ? addMonths(today, 1) : today;
+  });
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -150,7 +154,10 @@ const AthleteMyTraining = () => {
     setLoading(true);
     setError('');
     try {
-      const dateFrom = format(startOfMonth(currentDate), 'yyyy-MM-dd');
+      const dateFrom = format(
+        startOfWeek(startOfMonth(currentDate), { weekStartsOn: 1 }),
+        'yyyy-MM-dd'
+      );
       const dateTo = format(endOfMonth(currentDate), 'yyyy-MM-dd');
       const [res, timelineRes] = await Promise.all([
         listAssignments(orgId, { dateFrom, dateTo }),
