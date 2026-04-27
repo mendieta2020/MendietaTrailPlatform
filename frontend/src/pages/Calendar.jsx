@@ -571,6 +571,7 @@ export default function CalendarPage() {
 
   // PR-145g: drawer state
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [pendingAssignmentId, setPendingAssignmentId] = useState(null);
 
   // Calendar events
   const [eventsState, eventsDispatch] = useReducer(fetchReducer, {
@@ -887,8 +888,8 @@ export default function CalendarPage() {
   }, [orgId, selectedTarget, dateFrom, dateTo]);
 
   // Deep-link from MessagesDrawer:
-  // Step 1 (mount-only) — navigate to the right month so the correct events are fetched.
-  // Consume router state from handleCoachSessionClick (navigate with state).
+  // Step 1 — consume router state, store pending id in React state so data-watch can react
+  // even when the coach is already on /calendar and eventsState.data doesn't reload.
   useEffect(() => {
     const s = location.state;
     if (!s?.openAssignment) return;
@@ -896,21 +897,25 @@ export default function CalendarPage() {
       setSelectedTarget(s.calendarTarget);
       sessionStorage.setItem('calendarSelectedTarget', s.calendarTarget);
     }
-    sessionStorage.setItem('calendarOpenAssignment', String(s.openAssignment));
-    if (s.openAssignmentDate)
-      sessionStorage.setItem('calendarOpenAssignmentDate', s.openAssignmentDate);
-    window.history.replaceState({}, '');
+    if (s.openAssignmentDate) {
+      setCurrentDate(new Date(s.openAssignmentDate + 'T00:00:00'));
+    }
+    setPendingAssignmentId(parseInt(s.openAssignment, 10));
+    window.history.replaceState(null, document.title);
   }, [location.state]);
 
-  // Scroll calendar to current week on mount.
+  // Scroll calendar to current week once after data loads.
+  const hasScrolledRef = useRef(false);
   useEffect(() => {
+    if (eventsState.loading || hasScrolledRef.current) return;
     const el = document.querySelector('[data-week-current="true"]');
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, []); // mount-only
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      hasScrolledRef.current = true;
+    }
+  }, [eventsState.loading]);
 
-  // Step 2 (data-watch) — once events load, find and open the target assignment drawer.
-  // Both setState calls are conditional one-shots driven by sessionStorage flags;
-  // they cannot loop. The rule suppression is intentional and safe here.
+  // Step 2 (mount-only date restore) — handles direct URL access with sessionStorage already set.
   useEffect(() => {
     const assignmentDate = sessionStorage.getItem('calendarOpenAssignmentDate');
     if (!assignmentDate) return;
@@ -919,16 +924,21 @@ export default function CalendarPage() {
     setCurrentDate(targetDate);
   }, []); // intentionally mount-only
 
+  // Step 3 (data-watch) — once events load, find and open the target assignment drawer.
+  // Merges pendingAssignmentId (in-memory, for already-mounted coach nav) with the
+  // sessionStorage path (for fresh page loads / hard refreshes).
   useEffect(() => {
-    const assignmentId = sessionStorage.getItem('calendarOpenAssignment');
-    if (!assignmentId || eventsState.loading || eventsState.data.length === 0) return;
-    const targetId = parseInt(assignmentId, 10);
+    const idFromPending = pendingAssignmentId;
+    const idFromStorage = sessionStorage.getItem('calendarOpenAssignment');
+    const targetId = idFromPending ?? (idFromStorage ? parseInt(idFromStorage, 10) : null);
+    if (!targetId || eventsState.loading || eventsState.data.length === 0) return;
     const event = eventsState.data.find((e) => e.id === targetId);
     if (event) {
-      sessionStorage.removeItem('calendarOpenAssignment');
+      if (idFromStorage) sessionStorage.removeItem('calendarOpenAssignment');
+      if (idFromPending) setPendingAssignmentId(null);
       setSelectedEvent(event);
     }
-  }, [eventsState.data, eventsState.loading]);
+  }, [eventsState.data, eventsState.loading, pendingAssignmentId]);
 
   // ── Drag handlers ─────────────────────────────────────────────────────────
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import {
   Box, Typography, CircularProgress, Alert, Button,
@@ -272,11 +272,16 @@ const AthleteMyTraining = () => {
     fetchData();
   }, [location.state?._deepLinkAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Scroll to current week on mount (CalendarGrid marks it with data-week-current="true").
+  // Scroll to current week once after data loads.
+  const hasScrolledRef = useRef(false);
   useEffect(() => {
+    if (loading || hasScrolledRef.current) return;
     const el = document.querySelector('[data-week-current="true"]');
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, []); // mount-only
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      hasScrolledRef.current = true;
+    }
+  }, [loading]);
 
   useEffect(() => {
     client.get('/api/athlete/pmc/')
