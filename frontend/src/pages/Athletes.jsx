@@ -375,46 +375,47 @@ const Athletes = () => {
                   <RiskBadge risk={athlete.injury_risk} />
                 </TableCell>
                 <TableCell onClick={e => e.stopPropagation()}>
-                  {Array.isArray(athlete.devices) && athlete.devices.length > 0 ? (
-                    <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
-                      {athlete.devices.slice(0, 2).map(d => (
-                        <Tooltip key={d.provider} title={d.provider}>
-                          <Chip
-                            label={d.provider}
-                            size="small"
-                            sx={{
-                              bgcolor: '#DCFCE7', color: '#166534',
-                              fontWeight: 600, fontSize: '0.7rem',
-                              textTransform: 'capitalize',
-                            }}
-                          />
-                        </Tooltip>
-                      ))}
-                    </Box>
-                  ) : (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <Typography variant="caption" sx={{ color: '#94A3B8' }}>—</Typography>
-                      {athlete.membership_id && (
-                        <Tooltip title={
-                          notifyState[athlete.membership_id] === 'sent' ? 'Notificación enviada' :
-                          notifyState[athlete.membership_id] === 'duplicate' ? 'Ya notificado' : 'Notificar'
-                        }>
-                          <span>
-                            <IconButton
-                              size="small"
-                              disabled={!!notifyState[athlete.membership_id]}
-                              onClick={() => handleNotify(athlete.membership_id)}
-                              sx={{ color: notifyState[athlete.membership_id] ? '#00D4AA' : '#94A3B8' }}
-                            >
-                              {notifyState[athlete.membership_id] === 'sent' || notifyState[athlete.membership_id] === 'duplicate'
-                                ? <CheckCircle fontSize="small" />
-                                : <NotificationsActive fontSize="small" />}
-                            </IconButton>
-                          </span>
-                        </Tooltip>
-                      )}
-                    </Box>
-                  )}
+                  {(() => {
+                    const stravaHealth = fitnessMap[athlete.membership_id]?.strava_sync_health;
+                    if (stravaHealth === 'healthy') return (
+                      <Chip label="Strava" size="small"
+                        sx={{ bgcolor: '#ECFDF5', color: '#059669', fontWeight: 600, fontSize: '0.7rem' }} />
+                    );
+                    if (stravaHealth === 'deferred') return (
+                      <Tooltip title="Actividades pendientes de sincronizar">
+                        <Chip label="⚠ Strava" size="small"
+                          sx={{ bgcolor: '#FFFBEB', color: '#D97706', fontWeight: 600, fontSize: '0.7rem' }} />
+                      </Tooltip>
+                    );
+                    if (stravaHealth === 'disconnected') return (
+                      <Chip label="Sin Strava" size="small"
+                        sx={{ bgcolor: '#F1F5F9', color: '#94A3B8', fontWeight: 600, fontSize: '0.7rem' }} />
+                    );
+                    return (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Typography variant="caption" sx={{ color: '#CBD5E1' }}>—</Typography>
+                        {athlete.membership_id && (
+                          <Tooltip title={
+                            notifyState[athlete.membership_id] === 'sent' ? 'Notificación enviada' :
+                            notifyState[athlete.membership_id] === 'duplicate' ? 'Ya notificado' : 'Notificar'
+                          }>
+                            <span>
+                              <IconButton
+                                size="small"
+                                disabled={!!notifyState[athlete.membership_id]}
+                                onClick={() => handleNotify(athlete.membership_id)}
+                                sx={{ color: notifyState[athlete.membership_id] ? '#00D4AA' : '#94A3B8' }}
+                              >
+                                {notifyState[athlete.membership_id] === 'sent' || notifyState[athlete.membership_id] === 'duplicate'
+                                  ? <CheckCircle fontSize="small" />
+                                  : <NotificationsActive fontSize="small" />}
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        )}
+                      </Box>
+                    );
+                  })()}
                 </TableCell>
                 <TableCell align="right">
                   <IconButton size="small" onClick={(e) => { e.stopPropagation(); }}>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useReducer, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import withDragAndDrop from 'react-big-calendar/lib/addons/dragAndDrop';
 import {
@@ -546,6 +546,7 @@ export default function CalendarPage() {
   const { activeOrg } = useOrg();
   const orgId = activeOrg?.org_id ?? null;
   const navigate = useNavigate();
+  const location = useLocation();
   const [libDrawerOpen, setLibDrawerOpen] = useState(false);
   const [mobileAssignWorkout, setMobileAssignWorkout] = useState(null);
   const [mobileAssignDialogOpen, setMobileAssignDialogOpen] = useState(false);
@@ -887,6 +888,26 @@ export default function CalendarPage() {
 
   // Deep-link from MessagesDrawer:
   // Step 1 (mount-only) — navigate to the right month so the correct events are fetched.
+  // Consume router state from handleCoachSessionClick (navigate with state).
+  useEffect(() => {
+    const s = location.state;
+    if (!s?.openAssignment) return;
+    if (s.calendarTarget) {
+      setSelectedTarget(s.calendarTarget);
+      sessionStorage.setItem('calendarSelectedTarget', s.calendarTarget);
+    }
+    sessionStorage.setItem('calendarOpenAssignment', String(s.openAssignment));
+    if (s.openAssignmentDate)
+      sessionStorage.setItem('calendarOpenAssignmentDate', s.openAssignmentDate);
+    window.history.replaceState({}, '');
+  }, [location.state]);
+
+  // Scroll calendar to current week on mount.
+  useEffect(() => {
+    const el = document.querySelector('[data-week-current="true"]');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []); // mount-only
+
   // Step 2 (data-watch) — once events load, find and open the target assignment drawer.
   // Both setState calls are conditional one-shots driven by sessionStorage flags;
   // they cannot loop. The rule suppression is intentional and safe here.
@@ -1704,7 +1725,7 @@ export default function CalendarPage() {
                 if (g?.target_date) goalDateMap[g.target_date] = g;
               });
               return (
-                <Box sx={{ flex: 1, overflowY: 'auto' }}>
+                <Box sx={{ flex: 1, overflowY: 'auto', '&::-webkit-scrollbar': { display: 'none' }, msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
                   <CalendarGrid
                     assignments={rawAssignments}
                     goalDateMap={goalDateMap}

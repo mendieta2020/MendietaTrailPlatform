@@ -935,7 +935,55 @@ def _process_strava_event_body(self, *, event_id: int, attempt_no: int, t0: floa
                             extra={"provider": event.provider, "external_user_id": owner_key, "event_uid": event_uid},
                         )
 
+    # 3rd fallback: SocialAccount (allauth) → User → Alumno
+    if not alumno and owner_key:
+        from allauth.socialaccount.models import SocialAccount
+        sa = (
+            SocialAccount.objects
+            .filter(provider="strava", uid=owner_key)
+            .select_related("user")
+            .first()
+        )
+        if sa:
+            alumno = (
+                Alumno.objects
+                .filter(usuario=sa.user)
+                .select_related("entrenador", "equipo")
+                .first()
+            )
+            if alumno:
+                ExternalIdentity.objects.filter(
+                    provider=event.provider, external_user_id=owner_key
+                ).update(
+                    alumno=alumno,
+                    status=ExternalIdentity.Status.LINKED,
+                    linked_at=timezone.now(),
+                )
+                logger.info(
+                    "strava.identity.resolved_via_socialaccount",
+                    extra={
+                        "event_name": "strava.identity.resolved_via_socialaccount",
+                        "provider": event.provider,
+                        "external_user_id": owner_key,
+                        "alumno_id": alumno.pk,
+                        "outcome": "success",
+                    },
+                )
+                drain_strava_events_for_athlete.delay(
+                    provider=event.provider, owner_id=int(owner_key)
+                )
+
     if not alumno:
+        logger.warning(
+            "strava.identity.link_required",
+            extra={
+                "event_name": "strava.identity.link_required",
+                "provider": event.provider,
+                "external_user_id": owner_key,
+                "event_id": event.pk,
+                "outcome": "deferred",
+            },
+        )
         instruction = (
             "Webhook recibido para atleta aún no vinculado. "
             "Acción: el atleta debe conectar Strava (OAuth) o un admin debe vincular el athlete_id al Alumno. "

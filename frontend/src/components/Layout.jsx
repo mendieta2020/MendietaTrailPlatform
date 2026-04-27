@@ -145,13 +145,16 @@ const Layout = ({ children }) => {
   };
 
   const handleCoachSessionClick = (referenceId, referenceDate, contactUserId) => {
-    const athlete = athletes.find((a) => a.user_id === contactUserId);
-    if (athlete) {
-      sessionStorage.setItem('calendarSelectedTarget', `a:${athlete.athlete_id}`);
-    }
-    sessionStorage.setItem('calendarOpenAssignment', String(referenceId));
-    if (referenceDate) sessionStorage.setItem('calendarOpenAssignmentDate', referenceDate);
-    navigate('/calendar');
+    const athlete = athletes.find(
+      (a) => a.user_id === contactUserId || a.athlete_id === contactUserId
+    );
+    navigate('/calendar', {
+      state: {
+        openAssignment: referenceId,
+        openAssignmentDate: referenceDate ?? null,
+        calendarTarget: athlete ? `a:${athlete.athlete_id}` : null,
+      },
+    });
   };
 
   const isAdminOrOwner = userRole === 'owner' || userRole === 'admin';

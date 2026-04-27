@@ -491,6 +491,13 @@ class CoachAthletePMCView(APIView):
         return Response(payload)
 
 
+def _strava_health(identity_status, has_deferred: bool) -> str:
+    from core.models import ExternalIdentity as _EI
+    if identity_status == _EI.Status.LINKED:
+        return "deferred" if has_deferred else "healthy"
+    return "disconnected"
+
+
 class TeamReadinessView(APIView):
     """
     GET /api/coach/team-readiness/
@@ -592,6 +599,49 @@ class TeamReadinessView(APIView):
         user_to_alumno_id = {row["usuario_id"]: row["pk"] for row in alumnos_qs}
         alumno_ids = list(user_to_alumno_id.values())
 
+        # Strava sync health — two batch queries
+        from core.models import ExternalIdentity, StravaWebhookEvent
+        identity_by_alumno = {
+            row["alumno_id"]: row["status"]
+            for row in ExternalIdentity.objects.filter(
+                provider="strava", alumno_id__in=alumno_ids
+            ).values("alumno_id", "status")
+        }
+        deferred_alumno_ids = set(
+            ExternalIdentity.objects.filter(
+                provider="strava",
+                alumno_id__in=alumno_ids,
+                status=ExternalIdentity.Status.LINKED,
+            ).filter(
+                alumno__strava_athlete_id__in=list(
+                    StravaWebhookEvent.objects.filter(
+                        status=StravaWebhookEvent.Status.LINK_REQUIRED
+                    ).values_list("owner_id", flat=True)
+                )
+            ).values_list("alumno_id", flat=True)
+        )
+
+        # Weekly compliance batch
+        from collections import defaultdict
+        week_start = today - timedelta(days=today.weekday())
+        assignments_this_week = list(
+            WorkoutAssignment.objects.filter(
+                organization=org,
+                date__gte=week_start,
+                date__lte=today,
+                alumno_id__in=alumno_ids,
+            ).values("alumno_id", "compliance_pct", "status")
+        )
+        compliance_by_alumno: dict = defaultdict(list)
+        for a in assignments_this_week:
+            if a["compliance_pct"] is not None:
+                compliance_by_alumno[a["alumno_id"]].append(a["compliance_pct"])
+
+        def _week_compliance(pcts: list):
+            if not pcts:
+                return None
+            return round(sum(pcts) / len(pcts))
+
         # GAP: last 7 days of run/trail activities — batched per alumno
         seven_ago_dt = today - timedelta(days=7)
         run_sports = ["RUN", "TRAIL"]
@@ -668,6 +718,13 @@ class TeamReadinessView(APIView):
                 "ramp_rate_7d": ramp_rate_7d,
                 "avg_gap_formatted": gap_by_user.get(user_id, "—"),
                 "last_activity_days_ago": last_activity_days_ago,
+                "strava_sync_health": _strava_health(
+                    identity_by_alumno.get(alumno_id),
+                    alumno_id in deferred_alumno_ids,
+                ),
+                "compliance_pct_this_week": _week_compliance(
+                    compliance_by_alumno.get(alumno_id, [])
+                ),
             })
 
         logger.info(

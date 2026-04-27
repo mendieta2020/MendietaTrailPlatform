@@ -136,6 +136,7 @@ const COLUMNS = [
   { key: 'atl',                     label: 'ATL',          sortFn: (a, b) => b.atl - a.atl,                                                            hideMobile: true },
   { key: 'tsb',                     label: 'TSB',          sortFn: (a, b) => b.tsb - a.tsb },
   { key: 'tsb_zone',                label: 'ESTADO',       sortFn: (a, b) => a.tsb_zone.localeCompare(b.tsb_zone) },
+  { key: 'compliance_pct_this_week', label: 'SEMANA',      sortFn: (a, b) => (b.compliance_pct_this_week ?? -1) - (a.compliance_pct_this_week ?? -1), hideMobile: true },
   { key: 'avg_gap_formatted',       label: 'GAP',          sortFn: (a, b) => (a.avg_gap_formatted ?? '—').localeCompare(b.avg_gap_formatted ?? '—'),    hideMobile: true },
   { key: 'ramp_rate_7d',            label: 'RAMP 7D',      sortFn: (a, b) => (b.ramp_rate_7d ?? -999) - (a.ramp_rate_7d ?? -999),                      hideMobile: true },
   { key: 'tendencia',               label: 'TENDENCIA',    sortFn: (a, b) => (b.ramp_rate_7d ?? 0) - (a.ramp_rate_7d ?? 0) },
@@ -260,6 +261,20 @@ const CoachAnalytics = () => {
                             <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tsbBadgeClass(a.tsb_zone)}`}>
                               {tsbZoneLabel(a.tsb_zone)}
                             </span>
+                          </td>
+                          <td className="px-4 py-3 text-center hidden sm:table-cell">
+                            {a.compliance_pct_this_week != null ? (
+                              <span className={`text-xs font-bold ${
+                                a.compliance_pct_this_week > 150 ? 'text-purple-600' :
+                                a.compliance_pct_this_week > 120 ? 'text-blue-600' :
+                                a.compliance_pct_this_week >= 80  ? 'text-green-600' :
+                                a.compliance_pct_this_week >= 50  ? 'text-amber-600' : 'text-red-500'
+                              }`}>
+                                {a.compliance_pct_this_week}%
+                              </span>
+                            ) : (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
                           </td>
                           <td className="px-2 sm:px-4 py-3 sm:py-4 text-xs sm:text-sm text-slate-600 font-mono hidden sm:table-cell">
                             {a.avg_gap_formatted ?? '—'}
