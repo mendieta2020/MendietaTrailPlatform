@@ -6,6 +6,8 @@ import {
   format,
   parse,
   startOfWeek,
+  endOfWeek,
+  addMonths,
   getDay,
   startOfMonth,
   endOfMonth,
@@ -581,7 +583,11 @@ export default function CalendarPage() {
   });
 
   // UI
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const [currentDate, setCurrentDate] = useState(() => {
+    const today = new Date();
+    const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
+    return weekEnd > endOfMonth(today) ? addMonths(today, 1) : today;
+  });
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -729,7 +735,10 @@ export default function CalendarPage() {
       };
     }
     const athleteId = target.id;
-    const from = format(startOfMonth(currentDate), 'yyyy-MM-dd');
+    const from = format(
+      startOfWeek(startOfMonth(currentDate), { weekStartsOn: 1 }),
+      'yyyy-MM-dd'
+    );
     const to = format(endOfMonth(currentDate), 'yyyy-MM-dd');
     getCoachAthleteTrainingPhases(orgId, athleteId, from, to)
       .then((res) => {
@@ -816,7 +825,10 @@ export default function CalendarPage() {
   }, [orgId, selectedTarget, currentDate]);
 
   // Derived date range for the visible month (used by multiple effects below)
-  const dateFrom = format(startOfMonth(currentDate), 'yyyy-MM-dd');
+  const dateFrom = format(
+    startOfWeek(startOfMonth(currentDate), { weekStartsOn: 1 }),
+    'yyyy-MM-dd'
+  );
   const dateTo = format(endOfMonth(currentDate), 'yyyy-MM-dd');
 
   // PR-179a: Load calendar timeline for coach month grid when individual athlete selected
@@ -903,22 +915,6 @@ export default function CalendarPage() {
     setPendingAssignmentId(parseInt(s.openAssignment, 10));
     window.history.replaceState(null, document.title);
   }, [location.state]);
-
-  // Scroll calendar to current week once after data loads.
-  const hasScrolledRef = useRef(false);
-  useEffect(() => {
-    if (eventsState.loading || hasScrolledRef.current) return;
-    const el = document.querySelector('[data-week-current="true"]');
-    if (el) {
-      window.history.scrollRestoration = 'manual';
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          el.scrollIntoView({ behavior: 'instant', block: 'start' });
-        });
-      });
-      hasScrolledRef.current = true;
-    }
-  }, [eventsState.loading]);
 
   // Step 2 (mount-only date restore) — handles direct URL access with sessionStorage already set.
   useEffect(() => {
