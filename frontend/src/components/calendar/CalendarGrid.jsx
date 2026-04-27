@@ -278,7 +278,7 @@ export default function CalendarGrid({
         )}
 
         {/* Week sections — vertical list */}
-        <Box sx={{ bgcolor: 'white' }}>
+        <Box sx={{ bgcolor: 'white', '&::-webkit-scrollbar': { display: 'none' }, msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
           {weeks.map((week, wIdx) => {
             const weekDateKeys = week.map((d) => format(d, 'yyyy-MM-dd'));
             const weekAssignments = weekDateKeys.flatMap((k) => assignmentsByDate[k] ?? []);

@@ -621,26 +621,38 @@ class TeamReadinessView(APIView):
             ).values_list("alumno_id", flat=True)
         )
 
-        # Weekly compliance batch
-        from collections import defaultdict
+        # Weekly compliance — uses Athlete (P1), not Alumno
         week_start = today - timedelta(days=today.weekday())
-        assignments_this_week = list(
+        user_to_athlete_id = dict(
+            Athlete.objects.filter(user_id__in=athlete_user_ids, organization=org)
+            .values_list("user_id", "id")
+        )
+        athlete_pks = list(user_to_athlete_id.values())
+        wa_this_week = list(
             WorkoutAssignment.objects.filter(
                 organization=org,
-                date__gte=week_start,
-                date__lte=today,
-                alumno_id__in=alumno_ids,
-            ).values("alumno_id", "compliance_pct", "status")
+                scheduled_date__gte=week_start,
+                scheduled_date__lte=today,
+                athlete_id__in=athlete_pks,
+            ).values(
+                "athlete_id",
+                "actual_distance_meters",
+                "planned_workout__estimated_distance_meters",
+                "compliance_color",
+            )
         )
-        compliance_by_alumno: dict = defaultdict(list)
-        for a in assignments_this_week:
-            if a["compliance_pct"] is not None:
-                compliance_by_alumno[a["alumno_id"]].append(a["compliance_pct"])
-
-        def _week_compliance(pcts: list):
-            if not pcts:
-                return None
-            return round(sum(pcts) / len(pcts))
+        compliance_by_user: dict = {}
+        for uid, ath_pk in user_to_athlete_id.items():
+            rows = [r for r in wa_this_week if r["athlete_id"] == ath_pk]
+            pcts = []
+            for r in rows:
+                pw_dist = r["planned_workout__estimated_distance_meters"]
+                ac_dist = r["actual_distance_meters"]
+                if pw_dist and ac_dist and pw_dist > 0:
+                    pcts.append(min(round(ac_dist / pw_dist * 100), 200))
+                elif r["compliance_color"] == "green":
+                    pcts.append(100)
+            compliance_by_user[uid] = round(sum(pcts) / len(pcts)) if pcts else None
 
         # GAP: last 7 days of run/trail activities — batched per alumno
         seven_ago_dt = today - timedelta(days=7)
@@ -722,9 +734,7 @@ class TeamReadinessView(APIView):
                     identity_by_alumno.get(alumno_id),
                     alumno_id in deferred_alumno_ids,
                 ),
-                "compliance_pct_this_week": _week_compliance(
-                    compliance_by_alumno.get(alumno_id, [])
-                ),
+                "compliance_pct_this_week": compliance_by_user.get(user_id),
             })
 
         logger.info(

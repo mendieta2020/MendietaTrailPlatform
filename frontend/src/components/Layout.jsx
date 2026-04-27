@@ -148,6 +148,9 @@ const Layout = ({ children }) => {
     const athlete = athletes.find(
       (a) => a.user_id === contactUserId || a.athlete_id === contactUserId
     );
+    if (!athlete) {
+      console.warn('[Layout] handleCoachSessionClick: no athlete found for contactUserId', contactUserId, { athletes });
+    }
     navigate('/calendar', {
       state: {
         openAssignment: referenceId,

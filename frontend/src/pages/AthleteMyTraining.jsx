@@ -272,6 +272,12 @@ const AthleteMyTraining = () => {
     fetchData();
   }, [location.state?._deepLinkAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Scroll to current week on mount (CalendarGrid marks it with data-week-current="true").
+  useEffect(() => {
+    const el = document.querySelector('[data-week-current="true"]');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []); // mount-only
+
   useEffect(() => {
     client.get('/api/athlete/pmc/')
       .then((res) => setPmcData(res.data))
