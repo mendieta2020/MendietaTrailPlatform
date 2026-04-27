@@ -72,11 +72,11 @@ export function buildCalendarWeeks(currentDate) {
 // ── Compliance — 6-range (no 150% cap) ───────────────────────────────────────
 
 /**
- * Compute raw compliance percentage from assignment data.
- * Returns null if there is insufficient data.
- * NOTE: no cap — caller receives the raw ratio (can exceed 150%).
+ * Compute compliance percentage for a WorkoutAssignment.
+ * Prefers backend-computed value (ADR-004); falls back to local calculation.
  */
 export function computeCompliancePct(assignment) {
+  if (assignment.compliance_pct != null) return assignment.compliance_pct;
   const pw = assignment.planned_workout;
   const plannedM = pw?.estimated_distance_meters;
   const actualM = assignment.actual_distance_meters;

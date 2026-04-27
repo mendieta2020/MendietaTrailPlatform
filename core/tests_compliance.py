@@ -30,16 +30,22 @@ def test_compliance_time_priority_if_no_distance():
     assert calcular_porcentaje_cumplimiento(e) == 100
 
 @pytest.mark.unit
-def test_compliance_cap_120():
-    # Plan: 10km, Real: 20km (200%) -> Should cap at 120
+def test_compliance_sentinel_151_for_200pct():
+    # ADR-004: >150% returns sentinel 151 (⚠️ Exceso), not old cap 120
     e = MockEntrenamiento(dist_plan=10, dist_real=20)
+    assert calcular_porcentaje_cumplimiento(e) == 151
+
+@pytest.mark.unit
+def test_compliance_cap_150_exact_at_120pct():
+    # Plan: 10km, Real: 12km (120%) -> within cap, returns 120
+    e = MockEntrenamiento(dist_plan=10, dist_real=12)
     assert calcular_porcentaje_cumplimiento(e) == 120
 
 @pytest.mark.unit
-def test_compliance_cap_120_exact():
-    # Plan: 10km, Real: 12km (120%) -> Should be 120
-    e = MockEntrenamiento(dist_plan=10, dist_real=12)
-    assert calcular_porcentaje_cumplimiento(e) == 120
+def test_compliance_cap_at_150():
+    # Plan: 10km, Real: 15km (150%) -> exactly at cap, returns 150
+    e = MockEntrenamiento(dist_plan=10, dist_real=15)
+    assert calcular_porcentaje_cumplimiento(e) == 150
 
 @pytest.mark.unit
 def test_compliance_floor_0():

@@ -140,6 +140,7 @@ from core.views_planning import (  # PR-158
     CopyWeekView,
     EstimatedWeeklyLoadView,
     AthletePlanVsRealView,
+    CoachAthletePlanVsRealView,
     GroupWeekTemplateView,
 )
 from core.views_athlete_card import (  # PR-159 / PR-161
@@ -318,6 +319,7 @@ urlpatterns = [
     path('p1/orgs/<int:org_id>/group-workout-history/', GroupWorkoutHistoryView.as_view(), name='p1-group-workout-history'),
     path('p1/orgs/<int:org_id>/copy-week/', CopyWeekView.as_view(), name='p1-copy-week'),
     path('athlete/plan-vs-real/', AthletePlanVsRealView.as_view(), name='athlete-plan-vs-real'),
+    path('planning/athlete/<int:athlete_id>/plan-vs-real/', CoachAthletePlanVsRealView.as_view(), name='coach-athlete-plan-vs-real'),
     # PR-158 hotfix: Group Planning View template
     path('p1/orgs/<int:org_id>/group-week-template/', GroupWeekTemplateView.as_view(), name='p1-group-week-template'),
 

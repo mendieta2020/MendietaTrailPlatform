@@ -499,10 +499,92 @@ def link_strava_on_oauth(sender, request, sociallogin, **kwargs):
 
 
 # ==============================================================================
-#  PR-188d Fix 4: Auto-geocode Athlete.location_city → lat/lon (OWM Geocoding)
+#  PR-188e (ADR-005): Bidirectional location sync Athlete ↔ Alumno
 # ==============================================================================
 
 from .models import Athlete  # noqa: E402
+
+
+@receiver(post_save, sender=Athlete)
+def sync_athlete_location_to_alumno(sender, instance: Athlete, **kwargs):
+    """
+    When Athlete.location_lat/lon change, mirror them to the linked Alumno.
+    Uses update_fields to avoid triggering the Alumno forecast signal.
+    """
+    update_fields = kwargs.get("update_fields") or []
+    location_changed = (
+        not update_fields
+        or "location_lat" in update_fields
+        or "location_lon" in update_fields
+        or "location_city" in update_fields
+    )
+    if not location_changed:
+        return
+    if instance.location_lat is None and instance.location_lon is None:
+        return
+    try:
+        alumno = Alumno.objects.filter(usuario=instance.user).first()
+        if alumno is None:
+            return
+        Alumno.objects.filter(pk=alumno.pk).update(
+            location_lat=instance.location_lat,
+            location_lon=instance.location_lon,
+            ciudad=instance.location_city or alumno.ciudad,
+        )
+        logger.info(
+            "alumno.location_synced_from_athlete",
+            extra={
+                "event_name": "alumno.location_synced_from_athlete",
+                "alumno_id": alumno.pk,
+                "athlete_id": instance.pk,
+                "outcome": "ok",
+            },
+        )
+    except Exception:
+        logger.exception(
+            "alumno.location_sync_error",
+            extra={"event_name": "alumno.location_sync_error", "athlete_id": instance.pk},
+        )
+
+
+@receiver(post_save, sender=Alumno)
+def sync_alumno_ciudad_to_athlete(sender, instance: Alumno, **kwargs):
+    """
+    When Alumno.ciudad changes and linked Athlete has no coordinates,
+    trigger geocoding on the Athlete (which will populate lat/lon and re-sync).
+    Skips if Athlete already has coordinates or no Athlete is linked.
+    """
+    if hasattr(instance, "_skip_signal"):
+        return
+    if not instance.ciudad:
+        return
+    try:
+        if instance.usuario_id is None:
+            return
+        athlete = Athlete.objects.filter(user_id=instance.usuario_id).first()
+        if athlete is None or athlete.location_lat is not None:
+            return
+        if not athlete.location_city:
+            Athlete.objects.filter(pk=athlete.pk).update(location_city=instance.ciudad)
+            logger.info(
+                "athlete.city_synced_from_alumno",
+                extra={
+                    "event_name": "athlete.city_synced_from_alumno",
+                    "alumno_id": instance.pk,
+                    "athlete_id": athlete.pk,
+                    "outcome": "ok",
+                },
+            )
+    except Exception:
+        logger.exception(
+            "athlete.city_sync_error",
+            extra={"event_name": "athlete.city_sync_error", "alumno_id": instance.pk},
+        )
+
+
+# ==============================================================================
+#  PR-188d Fix 4: Auto-geocode Athlete.location_city → lat/lon (OWM Geocoding)
+# ==============================================================================
 
 
 @receiver(post_save, sender=Athlete)

@@ -39,7 +39,10 @@ import {
 function resolveVariant(assignment, activity, reconciliation, isPast) {
   if (!assignment) return 'F'; // free activity
   const hasReal = !!activity;
-  if (!hasReal) return isPast ? 'E' : 'A';
+  if (!hasReal) {
+    if (assignment.status === 'completed') return 'B';
+    return isPast ? 'E' : 'A';
+  }
 
   const pct = reconciliation?.compliance_pct ?? computeCompliancePct(assignment);
   if (pct == null) return 'B';
@@ -93,40 +96,6 @@ function WeatherBadge({ weather }) {
         {props.alert && ' ⚡'}
       </Typography>
     </Tooltip>
-  );
-}
-
-// ── ComplianceBadge ── prominent bottom strip with semantic label ─────────────
-
-function resolveComplianceLabel(pct) {
-  if (pct == null) return null;
-  if (pct >= 80 && pct <= 120) return { label: 'Óptimo',  color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' };
-  if ((pct >= 50 && pct < 80) || (pct > 120 && pct <= 150)) return { label: 'Revisar', color: '#d97706', bg: '#fffbeb', border: '#fde68a' };
-  return { label: 'Alerta', color: '#dc2626', bg: '#fef2f2', border: '#fecaca' };
-}
-
-function ComplianceBadge({ pct, variant }) {
-  if (pct == null || variant === 'A' || variant === 'E' || variant === 'F') return null;
-  const meta = resolveComplianceLabel(pct);
-  if (!meta) return null;
-  return (
-    <Box
-      sx={{
-        mt: 0.5,
-        px: 0.75, py: 0.25,
-        borderRadius: 1,
-        bgcolor: meta.bg,
-        border: `1px solid ${meta.border}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}
-    >
-      <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: meta.color, lineHeight: 1.3 }}>
-        {meta.label}
-      </Typography>
-      <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: meta.color, lineHeight: 1.3 }}>
-        {pct}%
-      </Typography>
-    </Box>
   );
 }
 
@@ -186,7 +155,7 @@ export default function UnifiedCard({
   ) : null;
   const realElevation = act?.elevation_gain_m ?? act?.actual_elevation_gain ?? null;
 
-  const compliancePct = reconciliation?.compliance_pct ?? (
+  const compliancePct = reconciliation?.compliance_pct ?? assignment?.compliance_pct ?? (
     assignment && act ? computeCompliancePct(assignment) : null
   );
 
@@ -372,11 +341,8 @@ export default function UnifiedCard({
         </Typography>
       )}
 
-      {/* Row 7: compliance badge — prominent bottom strip */}
-      <ComplianceBadge pct={compliancePct} variant={variant} />
-
-      {/* Row 8: athlete-only "Marcar completado" — only when no real data yet */}
-      {role === 'athlete' && !isFreeVariant && !act && assignment && (
+      {/* Row 7: athlete-only "Marcar completado" — only when no real data yet */}
+      {role === 'athlete' && !isFreeVariant && !act && assignment && assignment.status !== 'completed' && (
         <Typography
           variant="caption"
           onClick={handleCompleteClick}
