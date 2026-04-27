@@ -278,7 +278,12 @@ const AthleteMyTraining = () => {
     if (loading || hasScrolledRef.current) return;
     const el = document.querySelector('[data-week-current="true"]');
     if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      window.history.scrollRestoration = 'manual';
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          el.scrollIntoView({ behavior: 'instant', block: 'start' });
+        });
+      });
       hasScrolledRef.current = true;
     }
   }, [loading]);
