@@ -39,7 +39,10 @@ import {
 function resolveVariant(assignment, activity, reconciliation, isPast) {
   if (!assignment) return 'F'; // free activity
   const hasReal = !!activity;
-  if (!hasReal) return isPast ? 'E' : 'A';
+  if (!hasReal) {
+    if (assignment.status === 'completed') return 'B';
+    return isPast ? 'E' : 'A';
+  }
 
   const pct = reconciliation?.compliance_pct ?? computeCompliancePct(assignment);
   if (pct == null) return 'B';
@@ -186,7 +189,7 @@ export default function UnifiedCard({
   ) : null;
   const realElevation = act?.elevation_gain_m ?? act?.actual_elevation_gain ?? null;
 
-  const compliancePct = reconciliation?.compliance_pct ?? (
+  const compliancePct = reconciliation?.compliance_pct ?? assignment?.compliance_pct ?? (
     assignment && act ? computeCompliancePct(assignment) : null
   );
 
@@ -376,7 +379,7 @@ export default function UnifiedCard({
       <ComplianceBadge pct={compliancePct} variant={variant} />
 
       {/* Row 8: athlete-only "Marcar completado" — only when no real data yet */}
-      {role === 'athlete' && !isFreeVariant && !act && assignment && (
+      {role === 'athlete' && !isFreeVariant && !act && assignment && assignment.status !== 'completed' && (
         <Typography
           variant="caption"
           onClick={handleCompleteClick}

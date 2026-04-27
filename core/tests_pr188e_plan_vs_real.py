@@ -329,3 +329,43 @@ class TestBackfillSportTypesCommand:
         act.refresh_from_db()
         assert act.sport == "RUN", f"Expected RUN, got {act.sport}"
         assert "updated 1" in out.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Fix: PATCH status=completed persists and compliance_pct is returned
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+class TestPatchSetsStatusCompleted:
+    def test_patch_sets_status_completed(self):
+        from django.test import Client as DjangoClient
+        from core.models import Athlete, Membership, Organization, PlannedWorkout, WorkoutAssignment
+        import datetime
+
+        org = Organization.objects.create(name="Patch Status Test 188e")
+        coach = User.objects.create_user(username="coach_patch188e", password="p", email="cp188e@t.com")
+        Membership.objects.create(user=coach, organization=org, role="coach", is_active=True)
+        ath_user = User.objects.create_user(username="ath_patch188e", password="p", email="ap188e@t.com")
+        Membership.objects.create(user=ath_user, organization=org, role="athlete", is_active=True)
+        athlete = Athlete.objects.create(user=ath_user, organization=org, is_active=True)
+
+        pw = PlannedWorkout.objects.create(
+            organization=org, name="Run", discipline="run",
+            estimated_distance_meters=10000, created_by=coach,
+        )
+        assignment = WorkoutAssignment.objects.create(
+            organization=org, athlete=athlete, planned_workout=pw,
+            scheduled_date=datetime.date.today(), assigned_by=coach,
+        )
+
+        c = DjangoClient()
+        c.force_login(ath_user)
+        res = c.patch(
+            f"/api/p1/orgs/{org.id}/assignments/{assignment.id}/",
+            data={"status": "completed", "actual_distance_meters": 9500},
+            content_type="application/json",
+        )
+        assert res.status_code == 200
+        assignment.refresh_from_db()
+        assert assignment.status == "completed"
+        assert res.json()["compliance_pct"] is not None
