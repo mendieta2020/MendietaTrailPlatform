@@ -33,7 +33,7 @@ import {
   buildCalendarWeeks, DAY_HEADERS, jsWeekdayToAvailIndex,
   getMenstrualPhaseForDate, TRAINING_PHASE_CONFIG,
 } from '../../utils/calendarHelpers';
-import { addMonths, subMonths } from 'date-fns';
+import { addMonths, subMonths, endOfWeek, endOfMonth } from 'date-fns';
 import WorkoutCard from './WorkoutCard';
 import UnifiedCard from './UnifiedCard';
 import WorkoutModal from './WorkoutModal';
@@ -264,10 +264,19 @@ export default function CalendarGrid({
           }}>
             {format(currentDate, 'MMMM yyyy', { locale: es })}
           </Typography>
-          <IconButton size="small" onClick={() => onNavigate(addMonths(currentDate, 1))}
-            sx={{ bgcolor: '#f1f5f9', '&:hover': { bgcolor: '#e2e8f0' } }}>
-            <ChevronRight fontSize="small" />
-          </IconButton>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Button size="small" onClick={() => {
+              const today = new Date();
+              const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
+              onNavigate(weekEnd > endOfMonth(today) ? addMonths(today, 1) : today);
+            }} sx={{ fontSize: '0.7rem', textTransform: 'none', color: '#059669', fontWeight: 600, minWidth: 0, px: 1 }}>
+              Hoy
+            </Button>
+            <IconButton size="small" onClick={() => onNavigate(addMonths(currentDate, 1))}
+              sx={{ bgcolor: '#f1f5f9', '&:hover': { bgcolor: '#e2e8f0' } }}>
+              <ChevronRight fontSize="small" />
+            </IconButton>
+          </Box>
         </Box>
 
         {/* View mode toggle (mobile) */}

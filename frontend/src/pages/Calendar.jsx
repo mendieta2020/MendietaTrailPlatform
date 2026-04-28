@@ -919,10 +919,9 @@ export default function CalendarPage() {
   // Step 2 (mount-only date restore) — handles direct URL access with sessionStorage already set.
   useEffect(() => {
     const assignmentDate = sessionStorage.getItem('calendarOpenAssignmentDate');
-    if (!assignmentDate) return;
-    const targetDate = new Date(assignmentDate + 'T00:00:00');
     sessionStorage.removeItem('calendarOpenAssignmentDate');
-    setCurrentDate(targetDate);
+    if (!assignmentDate) return;
+    setCurrentDate(new Date(assignmentDate + 'T00:00:00'));
   }, []); // intentionally mount-only
 
   // Step 3 (data-watch) — once events load, find and open the target assignment drawer.

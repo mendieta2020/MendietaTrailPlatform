@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-26 · PR-188d OPEN (branch p2/pr188d-data-quality) — 9 data-quality fixes: sport mapper unification Bug #67, (personalizado) display removal, libre neutral colors, OWM geocoding signal, BlockGroupList steps, Strava activity names, compliance pill, cache invalidation Bug #69, seed coords. Next in queue: PR-182 bug bundle (Bug #29/#30/#32/#27) → PR-179c design system._
+_Last updated: 2026-04-28 · PR-190 OPEN (branch p2/pr190-session-analysis-communication) — Session analysis tabs, inline conversation, race goal fix, Strava reconnect banner, Hoy button, TSS tooltips. 10 fixes + 6 tests. Next in queue: PR-181 (weather enrichment) → PR-182 bug bundle → PR-179c design system._
 
 ## Operational work completed 2026-04-24
 - Sentry alert rule configured: project=python-django, WHEN new issue, IF level=error OR fatal, THEN email → fernandorubenmedieta@gmail.com. "Send Test Notification" confirmed working.

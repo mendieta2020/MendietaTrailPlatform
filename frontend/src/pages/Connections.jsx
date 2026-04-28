@@ -34,6 +34,7 @@ const MOBILE_ONLY_PROVIDERS = ['apple_health'];
 const Connections = () => {
     const [loading, setLoading] = useState(true);
     const [integrations, setIntegrations] = useState([]);
+    const [deviceStatus, setDeviceStatus] = useState(null);
 
     const [alert, setAlert] = useState(null);
     // Avisarme modal state
@@ -80,6 +81,12 @@ const Connections = () => {
 
                 // Fetch integrations
                 await fetchIntegrations();
+
+                // Fetch device status for reconnect banner (athletes only; coaches get 403 → ignore)
+                try {
+                    const ds = await client.get('/api/athlete/device-status/');
+                    setDeviceStatus(ds.data);
+                } catch { /* non-athlete roles get 403 — safe to ignore */ }
             } catch (err) {
                 console.error('Failed to fetch data:', err);
                 setAlert({
@@ -372,6 +379,18 @@ const Connections = () => {
                                                 <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
                                                     Última sincronización: {new Date(integration.last_sync_at).toLocaleString('es-AR')}
                                                 </Typography>
+                                            )}
+
+                                            {/* Reconnect banner for Strava when token was revoked */}
+                                            {integration.provider === 'strava' && deviceStatus?.strava_needs_reconnect && (
+                                                <Box sx={{ p: 1.5, mt: 1, bgcolor: '#fef3c7', borderRadius: 1.5, border: '1px solid #fde68a' }}>
+                                                    <Typography sx={{ fontSize: '0.75rem', fontWeight: 600, color: '#92400e' }}>
+                                                        ⚠️ Tu conexión con Strava necesita renovarse
+                                                    </Typography>
+                                                    <Typography sx={{ fontSize: '0.7rem', color: '#92400e', mt: 0.25 }}>
+                                                        Reconectá para que tus actividades sigan sincronizando automáticamente.
+                                                    </Typography>
+                                                </Box>
                                             )}
                                         </Box>
 

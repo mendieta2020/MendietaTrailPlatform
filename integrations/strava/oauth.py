@@ -144,112 +144,132 @@ def refresh_strava_token(credential):
     from core.models import OAuthCredential  # noqa: PLC0415 — integrations may import core
 
     alumno_id = credential.alumno_id
+    _is_401_failure = False
 
-    with transaction.atomic():
-        locked = (
-            OAuthCredential.objects
-            .select_for_update()
-            .select_related("alumno")
-            .get(pk=credential.pk)
-        )
+    try:
+        with transaction.atomic():
+            locked = (
+                OAuthCredential.objects
+                .select_for_update()
+                .select_related("alumno")
+                .get(pk=credential.pk)
+            )
 
-        now = timezone.now()
-        buffer = datetime.timedelta(seconds=60)
-        if locked.expires_at is not None and now < (locked.expires_at - buffer):
+            now = timezone.now()
+            buffer = datetime.timedelta(seconds=60)
+            if locked.expires_at is not None and now < (locked.expires_at - buffer):
+                logger.info(
+                    "strava.token.refreshed.ok",
+                    extra={
+                        "event_name": "strava.token.refreshed.ok",
+                        "alumno_id": alumno_id,
+                        "outcome": "ok",
+                        "reason_code": "ALREADY_FRESH",
+                    },
+                )
+                return locked.access_token
+
+            app_config = SocialApp.objects.filter(provider="strava").first()
+            if not app_config:
+                raise RuntimeError("No SocialApp configured for strava — cannot refresh token")
+
+            try:
+                from stravalib import exc as _strava_exc
+            except ImportError:
+                _strava_exc = None
+
+            import logging as _logging
+            _stravalib_log = _logging.getLogger('stravalib')
+            _prev_level = _stravalib_log.level
+            _stravalib_log.setLevel(_logging.WARNING)
+            try:
+                try:
+                    temp = Client()
+                    resp = temp.refresh_access_token(
+                        client_id=app_config.client_id,
+                        client_secret=app_config.secret,
+                        refresh_token=locked.refresh_token,
+                    )
+                finally:
+                    _stravalib_log.setLevel(_prev_level)
+            except Exception as exc:
+                if _strava_exc and isinstance(exc, _strava_exc.AccessUnauthorized):
+                    _event = "strava.token.refreshed.strava_401"
+                    _reason = "REFRESH_TOKEN_INVALID"
+                    _is_401_failure = True
+                elif isinstance(exc, _requests.exceptions.HTTPError):
+                    _status = exc.response.status_code if exc.response is not None else None
+                    if _status == 401:
+                        _event = "strava.token.refreshed.strava_401"
+                        _reason = "REFRESH_TOKEN_INVALID"
+                        _is_401_failure = True
+                    elif _status == 429:
+                        _event = "strava.token.refreshed.rate_limited"
+                        _reason = "STRAVA_RATE_LIMIT"
+                    else:
+                        _event = "strava.token.refreshed.unexpected_error"
+                        _reason = f"HTTP_{_status}"
+                else:
+                    _event = "strava.token.refreshed.unexpected_error"
+                    _reason = "UNEXPECTED_ERROR"
+                logger.exception(
+                    _event,
+                    extra={
+                        "event_name": _event,
+                        "alumno_id": alumno_id,
+                        "outcome": "fail",
+                        "reason_code": _reason,
+                    },
+                )
+                raise
+
+            new_access = resp["access_token"]
+            new_refresh = resp.get("refresh_token", locked.refresh_token)
+            new_expires_at = timezone.make_aware(
+                datetime.datetime.fromtimestamp(resp["expires_at"])
+            )
+
+            OAuthCredential.objects.filter(pk=locked.pk).update(
+                access_token=new_access,
+                refresh_token=new_refresh,
+                expires_at=new_expires_at,
+            )
+
+            # Mirror to SocialToken so the legacy allauth path stays in sync.
+            if locked.alumno.usuario_id is not None:
+                sa = SocialAccount.objects.filter(
+                    user_id=locked.alumno.usuario_id, provider="strava"
+                ).first()
+                if sa:
+                    SocialToken.objects.filter(account=sa).update(
+                        token=new_access,
+                        token_secret=new_refresh,
+                        expires_at=new_expires_at,
+                    )
+
             logger.info(
                 "strava.token.refreshed.ok",
                 extra={
                     "event_name": "strava.token.refreshed.ok",
                     "alumno_id": alumno_id,
                     "outcome": "ok",
-                    "reason_code": "ALREADY_FRESH",
+                    "reason_code": "TOKEN_REFRESHED",
                 },
             )
-            return locked.access_token
-
-        app_config = SocialApp.objects.filter(provider="strava").first()
-        if not app_config:
-            raise RuntimeError("No SocialApp configured for strava — cannot refresh token")
-
-        try:
-            from stravalib import exc as _strava_exc
-        except ImportError:
-            _strava_exc = None
-
-        import logging as _logging
-        _stravalib_log = _logging.getLogger('stravalib')
-        _prev_level = _stravalib_log.level
-        _stravalib_log.setLevel(_logging.WARNING)
-        try:
+            return new_access
+    except Exception:
+        if _is_401_failure:
             try:
-                temp = Client()
-                resp = temp.refresh_access_token(
-                    client_id=app_config.client_id,
-                    client_secret=app_config.secret,
-                    refresh_token=locked.refresh_token,
-                )
-            finally:
-                _stravalib_log.setLevel(_prev_level)
-        except Exception as exc:
-            if _strava_exc and isinstance(exc, _strava_exc.AccessUnauthorized):
-                _event = "strava.token.refreshed.strava_401"
-                _reason = "REFRESH_TOKEN_INVALID"
-            elif isinstance(exc, _requests.exceptions.HTTPError):
-                _status = exc.response.status_code if exc.response is not None else None
-                if _status == 401:
-                    _event = "strava.token.refreshed.strava_401"
-                    _reason = "REFRESH_TOKEN_INVALID"
-                elif _status == 429:
-                    _event = "strava.token.refreshed.rate_limited"
-                    _reason = "STRAVA_RATE_LIMIT"
-                else:
-                    _event = "strava.token.refreshed.unexpected_error"
-                    _reason = f"HTTP_{_status}"
-            else:
-                _event = "strava.token.refreshed.unexpected_error"
-                _reason = "UNEXPECTED_ERROR"
-            logger.exception(
-                _event,
-                extra={
-                    "event_name": _event,
+                from core.models import ExternalIdentity  # noqa: PLC0415
+                ExternalIdentity.objects.filter(
+                    provider="strava",
+                    alumno_id=alumno_id,
+                ).update(status=ExternalIdentity.Status.UNLINKED)
+                logger.warning("strava.identity.reconnect_required", extra={
+                    "event_name": "strava.identity.reconnect_required",
                     "alumno_id": alumno_id,
-                    "outcome": "fail",
-                    "reason_code": _reason,
-                },
-            )
-            raise
-
-        new_access = resp["access_token"]
-        new_refresh = resp.get("refresh_token", locked.refresh_token)
-        new_expires_at = timezone.make_aware(
-            datetime.datetime.fromtimestamp(resp["expires_at"])
-        )
-
-        OAuthCredential.objects.filter(pk=locked.pk).update(
-            access_token=new_access,
-            refresh_token=new_refresh,
-            expires_at=new_expires_at,
-        )
-
-        # Mirror to SocialToken so the legacy allauth path stays in sync.
-        if locked.alumno.usuario_id is not None:
-            sa = SocialAccount.objects.filter(
-                user_id=locked.alumno.usuario_id, provider="strava"
-            ).first()
-            if sa:
-                SocialToken.objects.filter(account=sa).update(
-                    token=new_access,
-                    token_secret=new_refresh,
-                    expires_at=new_expires_at,
-                )
-
-        logger.info(
-            "strava.token.refreshed.ok",
-            extra={
-                "event_name": "strava.token.refreshed.ok",
-                "alumno_id": alumno_id,
-                "outcome": "ok",
-                "reason_code": "TOKEN_REFRESHED",
-            },
-        )
-        return new_access
+                    "outcome": "token_permanently_revoked",
+                })
+            except Exception:  # noqa: BLE001
+                logger.exception("strava.identity.reconnect_flag_failed")
+        raise

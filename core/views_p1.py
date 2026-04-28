@@ -23,6 +23,7 @@ import datetime
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import models
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
@@ -125,44 +126,42 @@ class AthleteSubscriptionGateMixin:
         return membership
 
 
-def _notify_coach_of_athlete_note(assignment, athlete_user, organization):
-    """
-    Send an InternalMessage to the athlete's coach when the athlete saves a
-    non-empty note on a workout assignment.
+def _resolve_coach_for_notification(assignment, org):
+    """Return coach User for a notification, or None if unresolvable."""
+    from core.models import Membership  # noqa: PLC0415
 
-    Recipient resolution (in order):
-      1. assignment.athlete.coach.user  — directly assigned coach
-      2. First active coach/owner Membership in the org  — fallback
-
-    No notification is sent if no coach user can be resolved.
-    """
-    from core.models import InternalMessage, Membership  # noqa: PLC0415
-
-    coach_user = None
-
-    # 1. Primary: athlete's assigned coach
-    if assignment.athlete and assignment.athlete.coach_id:
-        try:
-            coach_user = assignment.athlete.coach.user
-        except Exception:  # noqa: BLE001
-            pass
-
-    # 2. Fallback: first active coach/owner in the org
-    if coach_user is None:
-        m = (
-            Membership.objects.filter(
-                organization=organization,
-                role__in=_WRITE_ROLES,
-                is_active=True,
-            )
-            .select_related("user")
-            .first()
+    # Path 1: Legacy — Alumno.entrenador
+    try:
+        if assignment.alumno_id and assignment.alumno.entrenador_id:
+            return assignment.alumno.entrenador
+    except Exception:  # noqa: BLE001
+        pass
+    # Path 2: P1 — Athlete.coach
+    try:
+        if assignment.athlete_id and assignment.athlete.coach_id:
+            return assignment.athlete.coach.user
+    except Exception:  # noqa: BLE001
+        pass
+    # Path 3: Org fallback (Bug #33 mitigation)
+    m = (
+        Membership.objects.filter(
+            organization=org,
+            role__in=_WRITE_ROLES,
+            is_active=True,
         )
-        if m:
-            coach_user = m.user
+        .select_related("user")
+        .first()
+    )
+    return m.user if m else None
 
+
+def _notify_coach_of_athlete_note(assignment, athlete_user, organization):
+    """Send an InternalMessage to the coach when athlete saves a non-empty note."""
+    from core.models import InternalMessage  # noqa: PLC0415
+
+    coach_user = _resolve_coach_for_notification(assignment, organization)
     if not coach_user or coach_user == athlete_user:
-        return  # nothing to do
+        return
 
     workout_name = (
         assignment.planned_workout.name
@@ -224,6 +223,19 @@ class RaceEventViewSet(OrgTenantMixin, viewsets.ModelViewSet):
 
     def perform_destroy(self, instance):
         self._require_write_role()
+        import logging as _re_logging
+        _re_logger = _re_logging.getLogger(__name__)
+        AthleteGoal.objects.filter(
+            target_event=instance,
+            organization=self.organization,
+            status__in=[AthleteGoal.Status.PLANNED, AthleteGoal.Status.ACTIVE],
+        ).update(status=AthleteGoal.Status.CANCELLED)
+        _re_logger.info("race_event.deleted", extra={
+            "event_name": "race_event.deleted",
+            "organization_id": self.organization.pk,
+            "race_event_id": instance.pk,
+            "outcome": "success",
+        })
         instance.delete()
 
 
@@ -602,6 +614,25 @@ class WorkoutAssignmentViewSet(
             and new_notes != old_athlete_notes
         ):
             _notify_coach_of_athlete_note(instance, self.request.user, self.organization)
+
+        # Notify coach when athlete submits RPE without notes (notes already handled above)
+        if self.membership.role == "athlete":
+            rpe_changed = "rpe" in self.request.data or "athlete_rpe" in self.request.data
+            notes_just_sent = bool((self.request.data.get("athlete_notes") or "").strip())
+            if rpe_changed and not notes_just_sent and instance.rpe is not None:
+                from core.models import InternalMessage  # noqa: PLC0415
+                coach_user = _resolve_coach_for_notification(instance, self.organization)
+                if coach_user and coach_user != self.request.user:
+                    workout_name = instance.planned_workout.name if instance.planned_workout else "sesión"
+                    InternalMessage.objects.create(
+                        organization=self.organization,
+                        sender=self.request.user,
+                        recipient=coach_user,
+                        content=f"🔥 RPE {instance.rpe}/5 en '{workout_name}'",
+                        alert_type="athlete_session_note",
+                        reference_id=instance.pk,
+                        reference_date=instance.scheduled_date,
+                    )
 
         # Bug #69: invalidate CalendarTimeline cache so athlete sees updated assignment.
         # Key format mirrors CalendarTimelineView.get():
@@ -2510,11 +2541,16 @@ class CalendarTimelineView(OrgTenantMixin, views.APIView):
         completed = list(
             CompletedActivity.objects.filter(
                 organization=self.organization,
-                athlete=athlete,
                 start_time__date__gte=start_date,
                 start_time__date__lte=end_date,
                 deleted_at__isnull=True,
-            ).order_by("start_time")
+            ).filter(
+                Q(athlete=athlete) | Q(alumno__usuario_id=athlete.user_id)
+            ).select_related("alumno").distinct().order_by("start_time")
+        )
+        _ctl_logger.info(
+            "calendar.timeline.activity_match",
+            extra={"count": len(completed), "org_id": self.organization.pk},
         )
 
         is_athlete = self.membership.role == "athlete"
@@ -2685,6 +2721,25 @@ class CalendarTimelineView(OrgTenantMixin, views.APIView):
                 f"https://www.strava.com/activities/{act.provider_activity_id}"
                 if act.provider == "strava" and act.provider_activity_id else None
             )
+            raw = act.raw_payload or {}
+            raw_splits = (
+                raw.get("splits_metric")
+                or raw.get("splits_standard")
+                or []
+            )
+            splits = [
+                {
+                    "km": round(s.get("distance", 0) / 1000, 2),
+                    "time_s": s.get("elapsed_time", 0),
+                    "pace_s_km": (
+                        round(1000 / s["average_speed"], 1)
+                        if s.get("average_speed") else None
+                    ),
+                    "avg_hr": s.get("average_heartrate"),
+                    "elevation_diff_m": s.get("elevation_difference"),
+                }
+                for s in raw_splits
+            ]
             result.append({
                 "id": act.id,
                 "date": str(act.start_time.date()),
@@ -2692,10 +2747,15 @@ class CalendarTimelineView(OrgTenantMixin, views.APIView):
                 "duration_min": round(act.duration_s / 60, 1),
                 "distance_km": round(act.distance_m / 1000, 2),
                 "elevation_m": act.elevation_gain_m,
+                "avg_hr": act.avg_hr,
+                "max_hr": act.max_hr,
+                "avg_pace_s_km": act.avg_pace_s_km,
                 "provider": act.provider,
                 "provider_activity_id": act.provider_activity_id,
                 "strava_url": strava_url,
                 "linked_plan_id": act_to_plan.get(act.id),
                 "canonical_load": act.canonical_load,
+                "splits": splits,
+                "calories": raw.get("calories"),
             })
         return result

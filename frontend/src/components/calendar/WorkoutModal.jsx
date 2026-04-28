@@ -10,10 +10,10 @@
  * Law 3: PlannedWorkout and CompletedActivity are displayed side-by-side but
  *         never merged — they remain distinct objects in the UI and backend.
  */
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
-  Box, Typography, Chip, Button, Divider, Tooltip,
+  Box, Typography, Chip, Button, Divider, Tooltip, Tabs, Tab,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import IconButton from '@mui/material/IconButton';
@@ -21,6 +21,8 @@ import { MiniWorkoutProfile } from '../MiniWorkoutProfile';
 import { weatherBadgeProps } from '../../hooks/useWeatherIcon';
 import { sportLabel, sportColor, fmtDuration, fmtDistance } from '../../utils/calendarHelpers';
 import MarkdownRenderer from '../MarkdownRenderer';
+import { getSessionMessages, sendMessage } from '../../api/messages';
+import { useOrg } from '../../context/OrgContext';
 
 const RPE_EMOJI = { 1: '😴', 2: '😐', 3: '🙂', 4: '💪', 5: '🔥' };
 
@@ -215,9 +217,89 @@ function ComplianceBar({ pct }) {
   );
 }
 
+const fmtPace = (s) => {
+  const m = Math.floor(s / 60);
+  return `${m}:${String(Math.round(s % 60)).padStart(2, '0')}/km`;
+};
+
+// ── SessionConversation ───────────────────────────────────────────────────────
+
+function SessionConversation({ assignmentId, orgId, role }) {
+  const [msgs, setMsgs] = useState([]);
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    if (!assignmentId || !orgId) return;
+    getSessionMessages(orgId, assignmentId)
+      .then((r) => setMsgs(Array.isArray(r.data) ? r.data : []))
+      .catch(() => {});
+  }, [assignmentId, orgId]);
+
+  const handleSend = async () => {
+    if (!text.trim() || sending) return;
+    setSending(true);
+    try {
+      await sendMessage(orgId, {
+        content: text.trim(),
+        alert_type: 'session_comment',
+        reference_id: assignmentId,
+      });
+      const r = await getSessionMessages(orgId, assignmentId);
+      setMsgs(Array.isArray(r.data) ? r.data : []);
+      setText('');
+    } catch { /* graceful */ } finally {
+      setSending(false);
+    }
+  };
+
+  if (!assignmentId || !orgId) return null;
+  return (
+    <>
+      <Divider sx={{ my: 1.5 }} />
+      <SectionLabel>💬 Conversación</SectionLabel>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, mb: 1.5 }}>
+        {msgs.map((m) => (
+          <Box key={m.id} sx={{
+            p: 1, borderRadius: 1.5, border: '1px solid #e2e8f0',
+            bgcolor: m.is_coach_message ? '#f0fdf4' : '#f8fafc',
+          }}>
+            <Typography sx={{ fontSize: '0.62rem', color: '#94a3b8', mb: 0.25 }}>
+              {m.sender_name}
+            </Typography>
+            <Typography sx={{ fontSize: '0.74rem', color: '#1e293b' }}>{m.content}</Typography>
+          </Box>
+        ))}
+        {msgs.length === 0 && (
+          <Typography sx={{ fontSize: '0.72rem', color: '#94a3b8' }}>Sin mensajes aún.</Typography>
+        )}
+      </Box>
+      <Box sx={{ display: 'flex', gap: 1 }}>
+        <Box component="input"
+          sx={{ flex: 1, fontSize: '0.74rem', p: '6px 10px',
+            border: '1px solid #e2e8f0', borderRadius: 2, outline: 'none',
+            '&:focus': { borderColor: '#059669' } }}
+          placeholder={role === 'coach' ? 'Responder al atleta...' : 'Responder al coach...'}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+        />
+        <Button size="small" variant="contained" disabled={sending || !text.trim()}
+          onClick={handleSend}
+          sx={{ bgcolor: '#059669', '&:hover': { bgcolor: '#047857' },
+            fontSize: '0.7rem', px: 1.5, minWidth: 0 }}>→</Button>
+      </Box>
+    </>
+  );
+}
+
 // ── Main Modal ────────────────────────────────────────────────────────────────
 
 export default function WorkoutModal({ open, onClose, payload, role = 'athlete' }) {
+  const [activeTab, setActiveTab] = useState(0);
+  const { activeOrg } = useOrg();
+  const orgId = activeOrg?.id;
+
   if (!payload) return null;
 
   const { assignment, activity, reconciliation, planDetails, freeActivity } = payload;
@@ -315,7 +397,85 @@ export default function WorkoutModal({ open, onClose, payload, role = 'athlete' 
         </IconButton>
       </DialogTitle>
 
+      {/* Tab bar — only show Análisis if there's a real activity */}
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}>
+        <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)}
+          sx={{ minHeight: 36 }} textColor="inherit"
+          TabIndicatorProps={{ style: { backgroundColor: '#059669' } }}>
+          <Tab label="Resumen" sx={{ fontSize: '0.72rem', minHeight: 36, textTransform: 'none' }} />
+          <Tab label="Análisis" disabled={!act && !assignment?.actual_duration_seconds && !assignment?.actual_distance_meters}
+            sx={{ fontSize: '0.72rem', minHeight: 36, textTransform: 'none' }} />
+        </Tabs>
+      </Box>
+
       <DialogContent sx={{ px: 2.5, py: 2, overflowY: 'auto' }}>
+        {/* ── Tab 1: Análisis ── */}
+        {activeTab === 1 && (act || assignment?.actual_duration_seconds) && (
+          <Box sx={{ pt: 1 }}>
+            {!act && (assignment?.actual_duration_seconds || assignment?.actual_distance_meters) && (
+              <Box sx={{ display:'flex', gap:1.5, flexWrap:'wrap', mb:2 }}>
+                {assignment.actual_duration_seconds && <MetricChip label="Duración" value={`${Math.round(assignment.actual_duration_seconds/60)}min`} color="#16a34a"/>}
+                {assignment.actual_distance_meters && <MetricChip label="Distancia" value={`${(assignment.actual_distance_meters/1000).toFixed(1)}km`} color="#16a34a"/>}
+                {assignment.actual_elevation_gain && <MetricChip label="D+" value={`${assignment.actual_elevation_gain}m`} color="#16a34a"/>}
+                <Typography sx={{fontSize:'0.72rem',color:'#94a3b8',alignSelf:'center',ml:1}}>
+                  Análisis completo disponible al sincronizar con Strava.
+                </Typography>
+              </Box>
+            )}
+            {act && (
+              <>
+                <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
+                  {act.avg_hr && <MetricChip label="FC prom" value={`${act.avg_hr}bpm`} />}
+                  {act.max_hr && <MetricChip label="FC máx" value={`${act.max_hr}bpm`} />}
+                  {act.avg_pace_s_km && <MetricChip label="Ritmo" value={fmtPace(act.avg_pace_s_km)} />}
+                  {(act.elevation_gain_m ?? act.actual_elevation_gain) != null && (
+                    <MetricChip label="D+" value={`${Math.round(act.elevation_gain_m ?? act.actual_elevation_gain)}m`} />
+                  )}
+                  {act.calories && <MetricChip label="Calorías" value={`${Math.round(act.calories)}kcal`} />}
+                  {act?.canonical_load && (
+                    <Tooltip title="Training Stress Score (TSS): carga del entrenamiento. 100 = 1 hora al máximo esfuerzo." arrow>
+                      <Box><MetricChip label="TSS ①" value={String(Math.round(act.canonical_load))} color="#7c3aed"/></Box>
+                    </Tooltip>
+                  )}
+                </Box>
+                {(act.splits ?? []).length > 0 ? (
+                  <>
+                    <SectionLabel>Splits</SectionLabel>
+                    <Box sx={{ overflowX: 'auto', mb: 1.5 }}>
+                      <table style={{ width: '100%', fontSize: '0.7rem', borderCollapse: 'collapse' }}>
+                        <thead><tr>
+                          {['#', 'Dist', 'Tiempo', 'Ritmo', 'FC', 'D+'].map((h) => (
+                            <th key={h} style={{ textAlign: 'left', padding: '4px 6px', color: '#94a3b8', fontWeight: 600 }}>{h}</th>
+                          ))}
+                        </tr></thead>
+                        <tbody>
+                          {act.splits.map((s, i) => (
+                            <tr key={i} style={{ borderTop: '1px solid #f1f5f9' }}>
+                              <td style={{ padding: '4px 6px' }}>{i + 1}</td>
+                              <td style={{ padding: '4px 6px' }}>{s.km != null ? `${s.km}km` : '—'}</td>
+                              <td style={{ padding: '4px 6px' }}>{s.time_s ? fmtDuration(s.time_s) : '—'}</td>
+                              <td style={{ padding: '4px 6px' }}>{s.pace_s_km ? fmtPace(s.pace_s_km) : '—'}</td>
+                              <td style={{ padding: '4px 6px' }}>{s.avg_hr ? Math.round(s.avg_hr) : '—'}</td>
+                              <td style={{ padding: '4px 6px' }}>{s.elevation_diff_m != null ? `${Math.round(s.elevation_diff_m)}m` : '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </Box>
+                  </>
+                ) : (
+                  <Typography sx={{ fontSize: '0.75rem', color: '#94a3b8', textAlign: 'center', py: 2 }}>
+                    {act ? 'Splits no disponibles para esta actividad' : 'Análisis completo disponible cuando la actividad se sincronice con Strava.'}
+                  </Typography>
+                )}
+              </>
+            )}
+          </Box>
+        )}
+
+        {/* ── Tab 0: Resumen ── */}
+        {activeTab === 0 && (
+          <>
         {/* Weather row */}
         <WeatherRow weather={weather} />
 
@@ -437,6 +597,13 @@ export default function WorkoutModal({ open, onClose, payload, role = 'athlete' 
               <MetricChip label="Duración" value={realDurationMin ? `${realDurationMin}min` : null} color="#16a34a" />
               <MetricChip label="Distancia" value={realDistanceKm ? `${realDistanceKm}km` : null} color="#16a34a" />
               {realElevation && <MetricChip label="D+" value={`${realElevation}m`} color="#16a34a" />}
+              {act.avg_hr && <MetricChip label="FC prom" value={`${act.avg_hr}bpm`} color="#16a34a" />}
+              {act.max_hr && <MetricChip label="FC máx" value={`${act.max_hr}bpm`} color="#16a34a" />}
+              {act.canonical_load && (
+                <Tooltip title="Training Stress Score (TSS): carga del entrenamiento. 100 = 1h al máximo esfuerzo." arrow>
+                  <Box><MetricChip label="TSS ①" value={String(Math.round(act.canonical_load))} color="#7c3aed" /></Box>
+                </Tooltip>
+              )}
             </Box>
 
             <ComplianceBar pct={compliancePct} />
@@ -472,6 +639,11 @@ export default function WorkoutModal({ open, onClose, payload, role = 'athlete' 
               </>
             )}
           </>
+        )}
+          </>
+        )}
+        {assignment?.id && orgId && (
+          <SessionConversation assignmentId={assignment.id} orgId={orgId} role={role} />
         )}
       </DialogContent>
 

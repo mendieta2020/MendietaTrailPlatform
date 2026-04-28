@@ -74,6 +74,32 @@ class InternalMessageListCreateView(OrgTenantMixin, APIView):
     def get(self, request, org_id):
         from django.db.models import Q  # noqa: PLC0415
 
+        reference_id_raw = request.query_params.get("reference_id")
+        if reference_id_raw:
+            try:
+                ref_id = int(reference_id_raw)
+            except (TypeError, ValueError):
+                ref_id = None
+            if ref_id is not None:
+                session_msgs = (
+                    InternalMessage.objects
+                    .filter(organization=self.organization, reference_id=ref_id)
+                    .filter(Q(sender=request.user) | Q(recipient=request.user))
+                    .order_by("created_at")
+                    .select_related("sender", "recipient")
+                )
+                coach_ids = set(
+                    Membership.objects.filter(
+                        organization=self.organization,
+                        role__in=_WRITE_ROLES,
+                        is_active=True,
+                    ).values_list("user_id", flat=True)
+                )
+                return Response([
+                    {**_message_to_dict(m), "is_coach_message": m.sender_id in coach_ids}
+                    for m in session_msgs
+                ])
+
         qs = (
             InternalMessage.objects.filter(
                 organization=self.organization,
@@ -116,10 +142,40 @@ class InternalMessageListCreateView(OrgTenantMixin, APIView):
         return Response({"results": messages, "coaches": coaches, "unread_count": unread_count})
 
     def post(self, request, org_id):
+        from django.db.models import Q as _Q  # noqa: PLC0415
+
         recipient_id = request.data.get("recipient_id")
         content = request.data.get("content", "").strip()
         alert_type = request.data.get("alert_type", "")
         whatsapp_sent = bool(request.data.get("whatsapp_sent", False))
+        ref_id_raw = request.data.get("reference_id")
+
+        if not recipient_id and ref_id_raw:
+            try:
+                ref_id = int(ref_id_raw)
+            except (TypeError, ValueError):
+                ref_id = None
+            if ref_id is not None:
+                existing = (
+                    InternalMessage.objects
+                    .filter(organization=self.organization, reference_id=ref_id)
+                    .filter(_Q(sender=request.user) | _Q(recipient=request.user))
+                    .first()
+                )
+                if existing:
+                    recipient_id = (
+                        existing.recipient_id
+                        if existing.sender == request.user
+                        else existing.sender_id
+                    )
+                elif self.membership.role == "athlete":
+                    coach_m = Membership.objects.filter(
+                        organization=self.organization,
+                        role__in=_WRITE_ROLES,
+                        is_active=True,
+                    ).first()
+                    if coach_m:
+                        recipient_id = coach_m.user_id
 
         if not recipient_id:
             raise DRFValidationError({"recipient_id": "This field is required."})
@@ -154,7 +210,7 @@ class InternalMessageListCreateView(OrgTenantMixin, APIView):
         else:
             raise PermissionDenied("Only org members can send messages.")
 
-        msg = InternalMessage.objects.create(
+        create_kwargs = dict(
             organization=self.organization,
             sender=request.user,
             recipient_id=recipient_id,
@@ -162,6 +218,12 @@ class InternalMessageListCreateView(OrgTenantMixin, APIView):
             alert_type=alert_type,
             whatsapp_sent=whatsapp_sent,
         )
+        if ref_id_raw:
+            try:
+                create_kwargs["reference_id"] = int(ref_id_raw)
+            except (TypeError, ValueError):
+                pass
+        msg = InternalMessage.objects.create(**create_kwargs)
         msg.refresh_from_db()
         msg.sender  # force select so get_full_name works
         msg = InternalMessage.objects.select_related("sender", "recipient").get(pk=msg.pk)
@@ -199,8 +261,8 @@ class InternalMessageMarkReadView(OrgTenantMixin, APIView):
         except InternalMessage.DoesNotExist:
             raise NotFound("Message not found.")
 
-        if msg.recipient != request.user:
-            raise PermissionDenied("Only the recipient can mark a message as read.")
+        if msg.recipient != request.user and msg.sender != request.user:
+            raise PermissionDenied("Only sender or recipient can mark a message as read.")
 
         if msg.read_at is None:
             msg.read_at = timezone.now()
