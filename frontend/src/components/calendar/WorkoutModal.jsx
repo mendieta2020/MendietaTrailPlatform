@@ -432,6 +432,11 @@ export default function WorkoutModal({ open, onClose, payload, role = 'athlete' 
                     <MetricChip label="D+" value={`${Math.round(act.elevation_gain_m ?? act.actual_elevation_gain)}m`} />
                   )}
                   {act.calories && <MetricChip label="Calorías" value={`${Math.round(act.calories)}kcal`} />}
+                  {act?.canonical_load && (
+                    <Tooltip title="Training Stress Score (TSS): carga del entrenamiento. 100 = 1 hora al máximo esfuerzo." arrow>
+                      <Box><MetricChip label="TSS ①" value={String(Math.round(act.canonical_load))} color="#7c3aed"/></Box>
+                    </Tooltip>
+                  )}
                 </Box>
                 {(act.splits ?? []).length > 0 ? (
                   <>
@@ -460,7 +465,7 @@ export default function WorkoutModal({ open, onClose, payload, role = 'athlete' 
                   </>
                 ) : (
                   <Typography sx={{ fontSize: '0.75rem', color: '#94a3b8', textAlign: 'center', py: 2 }}>
-                    Splits no disponibles para esta actividad
+                    {act ? 'Splits no disponibles para esta actividad' : 'Análisis completo disponible cuando la actividad se sincronice con Strava.'}
                   </Typography>
                 )}
               </>
