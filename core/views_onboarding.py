@@ -300,6 +300,16 @@ class OnboardingCompleteView(APIView):
                     },
                 )
 
+                # Auto-link to org's primary coach (safe for single-coach orgs)
+                if not athlete.coach:
+                    from core.models import Coach as _Coach
+                    org_coach = _Coach.objects.filter(
+                        organization=org, is_active=True
+                    ).first()
+                    if org_coach:
+                        athlete.coach = org_coach
+                        athlete.save(update_fields=["coach"])
+
                 # Calculate age from birth_date
                 today = timezone.now().date()
                 bd = data["birth_date"]
