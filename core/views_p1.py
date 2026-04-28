@@ -23,6 +23,7 @@ import datetime
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import models
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
@@ -125,18 +126,26 @@ class AthleteSubscriptionGateMixin:
         return membership
 
 
-def _resolve_coach_for_notification(assignment, organization):
+def _resolve_coach_for_notification(assignment, org):
     """Return coach User for a notification, or None if unresolvable."""
     from core.models import Membership  # noqa: PLC0415
 
-    if assignment.athlete and assignment.athlete.coach_id:
-        try:
+    # Path 1: Legacy — Alumno.entrenador
+    try:
+        if assignment.alumno_id and assignment.alumno.entrenador_id:
+            return assignment.alumno.entrenador
+    except Exception:  # noqa: BLE001
+        pass
+    # Path 2: P1 — Athlete.coach
+    try:
+        if assignment.athlete_id and assignment.athlete.coach_id:
             return assignment.athlete.coach.user
-        except Exception:  # noqa: BLE001
-            pass
+    except Exception:  # noqa: BLE001
+        pass
+    # Path 3: Org fallback (Bug #33 mitigation)
     m = (
         Membership.objects.filter(
-            organization=organization,
+            organization=org,
             role__in=_WRITE_ROLES,
             is_active=True,
         )
@@ -2532,11 +2541,16 @@ class CalendarTimelineView(OrgTenantMixin, views.APIView):
         completed = list(
             CompletedActivity.objects.filter(
                 organization=self.organization,
-                athlete=athlete,
                 start_time__date__gte=start_date,
                 start_time__date__lte=end_date,
                 deleted_at__isnull=True,
-            ).order_by("start_time")
+            ).filter(
+                Q(athlete=athlete) | Q(alumno__usuario_id=athlete.user_id)
+            ).select_related("alumno").distinct().order_by("start_time")
+        )
+        _ctl_logger.info(
+            "calendar.timeline.activity_match",
+            extra={"count": len(completed), "org_id": self.organization.pk},
         )
 
         is_athlete = self.membership.role == "athlete"

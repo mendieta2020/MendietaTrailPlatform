@@ -403,53 +403,67 @@ export default function WorkoutModal({ open, onClose, payload, role = 'athlete' 
           sx={{ minHeight: 36 }} textColor="inherit"
           TabIndicatorProps={{ style: { backgroundColor: '#059669' } }}>
           <Tab label="Resumen" sx={{ fontSize: '0.72rem', minHeight: 36, textTransform: 'none' }} />
-          <Tab label="Análisis" disabled={!act}
+          <Tab label="Análisis" disabled={!act && !assignment?.actual_duration_seconds && !assignment?.actual_distance_meters}
             sx={{ fontSize: '0.72rem', minHeight: 36, textTransform: 'none' }} />
         </Tabs>
       </Box>
 
       <DialogContent sx={{ px: 2.5, py: 2, overflowY: 'auto' }}>
         {/* ── Tab 1: Análisis ── */}
-        {activeTab === 1 && act && (
+        {activeTab === 1 && (act || assignment?.actual_duration_seconds) && (
           <Box sx={{ pt: 1 }}>
-            <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
-              {act.avg_hr && <MetricChip label="FC prom" value={`${act.avg_hr}bpm`} />}
-              {act.max_hr && <MetricChip label="FC máx" value={`${act.max_hr}bpm`} />}
-              {act.avg_pace_s_km && <MetricChip label="Ritmo" value={fmtPace(act.avg_pace_s_km)} />}
-              {(act.elevation_gain_m ?? act.actual_elevation_gain) != null && (
-                <MetricChip label="D+" value={`${Math.round(act.elevation_gain_m ?? act.actual_elevation_gain)}m`} />
-              )}
-              {act.calories && <MetricChip label="Calorías" value={`${Math.round(act.calories)}kcal`} />}
-            </Box>
-            {(act.splits ?? []).length > 0 ? (
+            {!act && (assignment?.actual_duration_seconds || assignment?.actual_distance_meters) && (
+              <Box sx={{ display:'flex', gap:1.5, flexWrap:'wrap', mb:2 }}>
+                {assignment.actual_duration_seconds && <MetricChip label="Duración" value={`${Math.round(assignment.actual_duration_seconds/60)}min`} color="#16a34a"/>}
+                {assignment.actual_distance_meters && <MetricChip label="Distancia" value={`${(assignment.actual_distance_meters/1000).toFixed(1)}km`} color="#16a34a"/>}
+                {assignment.actual_elevation_gain && <MetricChip label="D+" value={`${assignment.actual_elevation_gain}m`} color="#16a34a"/>}
+                <Typography sx={{fontSize:'0.72rem',color:'#94a3b8',alignSelf:'center',ml:1}}>
+                  Análisis completo disponible al sincronizar con Strava.
+                </Typography>
+              </Box>
+            )}
+            {act && (
               <>
-                <SectionLabel>Splits</SectionLabel>
-                <Box sx={{ overflowX: 'auto', mb: 1.5 }}>
-                  <table style={{ width: '100%', fontSize: '0.7rem', borderCollapse: 'collapse' }}>
-                    <thead><tr>
-                      {['#', 'Dist', 'Tiempo', 'Ritmo', 'FC', 'D+'].map((h) => (
-                        <th key={h} style={{ textAlign: 'left', padding: '4px 6px', color: '#94a3b8', fontWeight: 600 }}>{h}</th>
-                      ))}
-                    </tr></thead>
-                    <tbody>
-                      {act.splits.map((s, i) => (
-                        <tr key={i} style={{ borderTop: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '4px 6px' }}>{i + 1}</td>
-                          <td style={{ padding: '4px 6px' }}>{s.km != null ? `${s.km}km` : '—'}</td>
-                          <td style={{ padding: '4px 6px' }}>{s.time_s ? fmtDuration(s.time_s) : '—'}</td>
-                          <td style={{ padding: '4px 6px' }}>{s.pace_s_km ? fmtPace(s.pace_s_km) : '—'}</td>
-                          <td style={{ padding: '4px 6px' }}>{s.avg_hr ? Math.round(s.avg_hr) : '—'}</td>
-                          <td style={{ padding: '4px 6px' }}>{s.elevation_diff_m != null ? `${Math.round(s.elevation_diff_m)}m` : '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
+                  {act.avg_hr && <MetricChip label="FC prom" value={`${act.avg_hr}bpm`} />}
+                  {act.max_hr && <MetricChip label="FC máx" value={`${act.max_hr}bpm`} />}
+                  {act.avg_pace_s_km && <MetricChip label="Ritmo" value={fmtPace(act.avg_pace_s_km)} />}
+                  {(act.elevation_gain_m ?? act.actual_elevation_gain) != null && (
+                    <MetricChip label="D+" value={`${Math.round(act.elevation_gain_m ?? act.actual_elevation_gain)}m`} />
+                  )}
+                  {act.calories && <MetricChip label="Calorías" value={`${Math.round(act.calories)}kcal`} />}
                 </Box>
+                {(act.splits ?? []).length > 0 ? (
+                  <>
+                    <SectionLabel>Splits</SectionLabel>
+                    <Box sx={{ overflowX: 'auto', mb: 1.5 }}>
+                      <table style={{ width: '100%', fontSize: '0.7rem', borderCollapse: 'collapse' }}>
+                        <thead><tr>
+                          {['#', 'Dist', 'Tiempo', 'Ritmo', 'FC', 'D+'].map((h) => (
+                            <th key={h} style={{ textAlign: 'left', padding: '4px 6px', color: '#94a3b8', fontWeight: 600 }}>{h}</th>
+                          ))}
+                        </tr></thead>
+                        <tbody>
+                          {act.splits.map((s, i) => (
+                            <tr key={i} style={{ borderTop: '1px solid #f1f5f9' }}>
+                              <td style={{ padding: '4px 6px' }}>{i + 1}</td>
+                              <td style={{ padding: '4px 6px' }}>{s.km != null ? `${s.km}km` : '—'}</td>
+                              <td style={{ padding: '4px 6px' }}>{s.time_s ? fmtDuration(s.time_s) : '—'}</td>
+                              <td style={{ padding: '4px 6px' }}>{s.pace_s_km ? fmtPace(s.pace_s_km) : '—'}</td>
+                              <td style={{ padding: '4px 6px' }}>{s.avg_hr ? Math.round(s.avg_hr) : '—'}</td>
+                              <td style={{ padding: '4px 6px' }}>{s.elevation_diff_m != null ? `${Math.round(s.elevation_diff_m)}m` : '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </Box>
+                  </>
+                ) : (
+                  <Typography sx={{ fontSize: '0.75rem', color: '#94a3b8', textAlign: 'center', py: 2 }}>
+                    Splits no disponibles para esta actividad
+                  </Typography>
+                )}
               </>
-            ) : (
-              <Typography sx={{ fontSize: '0.75rem', color: '#94a3b8', textAlign: 'center', py: 2 }}>
-                Splits no disponibles para esta actividad
-              </Typography>
             )}
           </Box>
         )}
@@ -608,9 +622,6 @@ export default function WorkoutModal({ open, onClose, payload, role = 'athlete' 
               </>
             )}
 
-            {/* Inline session conversation */}
-            <SessionConversation assignmentId={assignment?.id} orgId={orgId} role={role} />
-
             {/* Coach-only: legacy coach_comment quick note */}
             {role === 'coach' && payload?.assignment?.coach_comment && (
               <>
@@ -625,6 +636,9 @@ export default function WorkoutModal({ open, onClose, payload, role = 'athlete' 
           </>
         )}
           </>
+        )}
+        {assignment?.id && orgId && (
+          <SessionConversation assignmentId={assignment.id} orgId={orgId} role={role} />
         )}
       </DialogContent>
 
