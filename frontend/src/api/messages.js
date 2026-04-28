@@ -13,3 +13,6 @@ export const markMessageRead = (orgId, messageId) =>
 
 export const getAthleteAlerts = (orgId, athleteId) =>
   client.get(`${p1Base(orgId)}/athletes/${athleteId}/alerts/`);
+
+export const getSessionMessages = (orgId, assignmentId) =>
+  client.get(`${p1Base(orgId)}/messages/?reference_id=${assignmentId}`);

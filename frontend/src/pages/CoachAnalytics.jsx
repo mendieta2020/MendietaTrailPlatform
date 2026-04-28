@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { Alert, Skeleton } from '@mui/material'
+import { Alert, Skeleton, Tooltip } from '@mui/material'
 import { Users, ChevronRight, ChevronUp, ChevronDown, Minus } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { LineChart, Line, ResponsiveContainer } from 'recharts'
@@ -132,9 +132,9 @@ const SummaryCards = ({ summary = {} }) => (
 // ── Column definitions ────────────────────────────────────────────────────────
 const COLUMNS = [
   { key: 'name',                    label: 'ATLETA',       sortFn: (a, b) => a.name.localeCompare(b.name) },
-  { key: 'ctl',                     label: 'CTL',          sortFn: (a, b) => b.ctl - a.ctl },
-  { key: 'atl',                     label: 'ATL',          sortFn: (a, b) => b.atl - a.atl,                                                            hideMobile: true },
-  { key: 'tsb',                     label: 'TSB',          sortFn: (a, b) => b.tsb - a.tsb },
+  { key: 'ctl', label: 'CTL', tooltip: 'Fitness crónico acumulado en 42 días', sortFn: (a, b) => b.ctl - a.ctl },
+  { key: 'atl', label: 'ATL', tooltip: 'Fatiga aguda de los últimos 7 días', sortFn: (a, b) => b.atl - a.atl, hideMobile: true },
+  { key: 'tsb', label: 'TSB', tooltip: 'Balance: CTL − ATL. Positivo = fresco', sortFn: (a, b) => b.tsb - a.tsb },
   { key: 'tsb_zone',                label: 'ESTADO',       sortFn: (a, b) => a.tsb_zone.localeCompare(b.tsb_zone) },
   { key: 'compliance_pct_this_week', label: 'SEMANA',      sortFn: (a, b) => (b.compliance_pct_this_week ?? -1) - (a.compliance_pct_this_week ?? -1), hideMobile: true },
   { key: 'avg_gap_formatted',       label: 'GAP',          sortFn: (a, b) => (a.avg_gap_formatted ?? '—').localeCompare(b.avg_gap_formatted ?? '—'),    hideMobile: true },
@@ -238,7 +238,11 @@ const CoachAnalytics = () => {
                             onClick={() => handleSort(col)}
                             className={`text-xs uppercase tracking-wide text-slate-500 px-2 sm:px-4 py-3 text-left font-medium whitespace-nowrap select-none ${col.sortFn ? 'cursor-pointer hover:text-slate-700' : ''} ${col.key === 'name' ? 'sticky left-0 bg-white z-10' : ''} ${col.hideMobile ? 'hidden sm:table-cell' : ''}`}
                           >
-                            {col.label}
+                            {col.tooltip ? (
+                              <Tooltip title={col.tooltip} arrow>
+                                <span style={{ cursor: 'help', borderBottom: '1px dotted #94a3b8' }}>{col.label}</span>
+                              </Tooltip>
+                            ) : col.label}
                             <SortIcon col={col} sortKey={sortKey} sortDir={sortDir} />
                           </th>
                         ))}

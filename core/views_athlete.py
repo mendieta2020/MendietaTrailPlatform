@@ -25,6 +25,7 @@ from core.models import (
     AthleteNotification,
     Alumno,
     CompletedActivity,
+    ExternalIdentity,
     Membership,
     OAuthIntegrationStatus,
     WellnessCheckIn,
@@ -255,12 +256,19 @@ class AthleteDeviceStatusView(APIView):
             recipient=request.user, organization=org, read=False,
         ).count()
 
+        strava_needs_reconnect = ExternalIdentity.objects.filter(
+            alumno__usuario=request.user,
+            provider="strava",
+            status=ExternalIdentity.Status.UNLINKED,
+        ).exists()
+
         return Response({
             "has_device": has_device,
             "show_prompt": show_prompt,
             "dismissed": dismissed,
             "dismissed_reason": dismissed_reason,
             "unread_notifications": unread_count,
+            "strava_needs_reconnect": strava_needs_reconnect,
         })
 
 
