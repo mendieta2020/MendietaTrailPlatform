@@ -22,13 +22,15 @@ Two agents operate this repo with distinct roles:
 ## Current Phase: P2 — Historical Data, Analytics & Billing
 
 PR queue:
-- PR-125 through PR-180 ✅ MERGED (see `.claude/agent-memory-local/cto/project_roadmap_state.md` for full history)
-- No PR in flight as of 2026-04-22
+- PR-125 through PR-191 ✅ MERGED (see `.claude/agent-memory-local/cto/project_roadmap_state.md` for full history)
+- No PR in flight as of 2026-04-28
 
 ### Next queue (confirmed order — "paint after plumbing")
-1. **PR-181** — Weather enrichment (Bug #23): populate `weather_snapshot` in `/calendar-timeline/` (OWM Case A window ±4d).
-2. **PR-182** — Residual bug bundle: Bug #29 (notification "Ver sesión" nav), Bug #30 (drawer 41min vs modal 165.9min data inconsistency), Bug #32 (intensity graph flat on "personalizado" workouts), Bug #27 (TRAIL↔RUNNING pairing now unblocked after PR-180).
-3. **PR-179c** — Design system: card unification, grid alignment, calendar auto-scroll, coach single-modal (replaces modal+drawer), coach-first landing.
+1. **PR-182** — Bug bundle: Bug #29 (notification "Ver sesión" nav), Bug #30 (drawer 41min vs modal 165.9min data inconsistency), Bug #32 (intensity graph flat on "personalizado" workouts), Bug #27 (TRAIL↔RUNNING pairing) — READY FOR REVIEW.
+2. **PR-179b-hotfix** — 6 critical regressions from production validation — READY FOR REVIEW.
+3. **PR-181** — Railway runbook + ADR-003 formalization (documentation-only) — READY FOR REVIEW.
+4. **PR-193** — Weather enrichment (Bug #23): populate `weather_snapshot` in `/calendar-timeline/` (OWM Case A window ±4d).
+5. **PR-179c** — Design system: card unification, grid alignment, calendar auto-scroll, coach single-modal (replaces modal+drawer), coach-first landing.
 
 ### Future PRs (non-blocking, triaged)
 - Bug #33: `Alumno.entrenador_id` upstream persistence fix (PR-180 added resilience, not root-cause).
