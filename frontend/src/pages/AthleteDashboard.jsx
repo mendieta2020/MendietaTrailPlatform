@@ -793,6 +793,13 @@ const AthleteDashboard = ({ user }) => {
                 setSubActionToast('🔄 ¡Bienvenido de vuelta! Tu suscripción está activa.');
                 return data; // propagate to SubscriptionCard so it can open redirect_url
               }}
+              onRefreshSubscription={() => {
+                const orgIdForCoach = user?.memberships?.[0]?.org_id || user?.org_id || null;
+                refreshSubscription();
+                getMySubscriptionWithCoach(orgIdForCoach)
+                  .then(res => setMySubWithCoach(res.data))
+                  .catch(() => {});
+              }}
             />
           ) : (
             /* ── PR-150 fallback: original inline subscription widget ── */

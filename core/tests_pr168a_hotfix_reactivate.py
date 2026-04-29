@@ -108,10 +108,11 @@ class TestReactivateCancelledWithMpPlanId(TestCase):
         _add_mp_cred(self.org)
         self.client.force_authenticate(user=user)
 
+        # FIX-1: creates individual preapproval; id stamped before redirect
         with patch(
-            "integrations.mercadopago.subscriptions.get_preapproval_plan"
-        ) as mock_get:
-            mock_get.return_value = {"id": "mp_plan_existing", "init_point": "https://mp.com/plan/checkout"}
+            "integrations.mercadopago.subscriptions.create_coach_athlete_preapproval"
+        ) as mock_create:
+            mock_create.return_value = {"id": "new_preapproval_168a", "init_point": "https://mp.com/plan/checkout"}
             resp = self.client.post("/api/athlete/subscription/reactivate/")
 
         self.assertEqual(resp.status_code, 200)
@@ -121,7 +122,8 @@ class TestReactivateCancelledWithMpPlanId(TestCase):
 
         sub.refresh_from_db()
         self.assertEqual(sub.status, "pending")
-        self.assertIsNone(sub.mp_preapproval_id)  # stale ID must be cleared
+        # FIX-1: preapproval_id stamped (not None) — webhook fast-path works
+        self.assertEqual(sub.mp_preapproval_id, "new_preapproval_168a")
         self.assertIsNone(sub.cancelled_at)
 
     def test_stale_mp_preapproval_id_cleared_before_mp_call(self):
@@ -137,15 +139,15 @@ class TestReactivateCancelledWithMpPlanId(TestCase):
 
         call_order = []
 
-        def fake_get_plan(*args, **kwargs):
-            # By the time MP is called, the DB must already have mp_preapproval_id=None
+        def fake_create_preapproval(*args, **kwargs):
+            # By the time create_coach_athlete_preapproval is called, mp_preapproval_id must be None
             sub.refresh_from_db()
             call_order.append(("mp_preapproval_id_at_call_time", sub.mp_preapproval_id))
-            return {"init_point": "https://mp.com/plan/checkout"}
+            return {"id": "test_stamped_id", "init_point": "https://mp.com/plan/checkout"}
 
         with patch(
-            "integrations.mercadopago.subscriptions.get_preapproval_plan",
-            side_effect=fake_get_plan,
+            "integrations.mercadopago.subscriptions.create_coach_athlete_preapproval",
+            side_effect=fake_create_preapproval,
         ):
             self.client.post("/api/athlete/subscription/reactivate/")
 
@@ -165,8 +167,8 @@ class TestReactivateCancelledWithMpPlanId(TestCase):
         before = InternalMessage.objects.filter(organization=self.org, recipient=self.owner).count()
 
         with patch(
-            "integrations.mercadopago.subscriptions.get_preapproval_plan",
-            return_value={"init_point": "https://mp.com/plan/checkout"},
+            "integrations.mercadopago.subscriptions.create_coach_athlete_preapproval",
+            return_value={"id": "notif_preapproval_168a", "init_point": "https://mp.com/plan/checkout"},
         ):
             resp = self.client.post("/api/athlete/subscription/reactivate/")
 
@@ -195,9 +197,15 @@ class TestReactivateCancelledNoMpPlanId(TestCase):
 
         with patch(
             "integrations.mercadopago.subscriptions.create_preapproval_plan"
-        ) as mock_create:
-            mock_create.return_value = {
+        ) as mock_create_plan, patch(
+            "integrations.mercadopago.subscriptions.create_coach_athlete_preapproval"
+        ) as mock_create_preapproval:
+            mock_create_plan.return_value = {
                 "id": "newly_created_plan_id",
+                "init_point": "https://mp.com/new_plan/checkout",
+            }
+            mock_create_preapproval.return_value = {
+                "id": "newly_created_preapproval_id",
                 "init_point": "https://mp.com/new_plan/checkout",
             }
             resp = self.client.post("/api/athlete/subscription/reactivate/")
@@ -210,10 +218,10 @@ class TestReactivateCancelledNoMpPlanId(TestCase):
         plan.refresh_from_db()
         self.assertEqual(plan.mp_plan_id, "newly_created_plan_id")
 
-        # Sub status updated, stale preapproval cleared
+        # FIX-1: Sub status updated, preapproval_id stamped (not None)
         sub.refresh_from_db()
         self.assertEqual(sub.status, "pending")
-        self.assertIsNone(sub.mp_preapproval_id)
+        self.assertEqual(sub.mp_preapproval_id, "newly_created_preapproval_id")
 
     def test_create_preapproval_plan_called_with_correct_args(self):
         """create_preapproval_plan receives org name, plan name, price."""
@@ -227,7 +235,10 @@ class TestReactivateCancelledNoMpPlanId(TestCase):
 
         with patch(
             "integrations.mercadopago.subscriptions.create_preapproval_plan"
-        ) as mock_create:
+        ) as mock_create, patch(
+            "integrations.mercadopago.subscriptions.create_coach_athlete_preapproval",
+            return_value={"id": "args_test_preapproval", "init_point": "https://mp.com/checkout"},
+        ):
             mock_create.return_value = {
                 "id": "plan_new",
                 "init_point": "https://mp.com/checkout",
@@ -272,7 +283,7 @@ class TestReactivateCancelledErrorCases(TestCase):
         self.client.force_authenticate(user=user)
 
         with patch(
-            "integrations.mercadopago.subscriptions.get_preapproval_plan",
+            "integrations.mercadopago.subscriptions.create_coach_athlete_preapproval",
             side_effect=Exception("MP timeout"),
         ):
             resp = self.client.post("/api/athlete/subscription/reactivate/")
@@ -290,7 +301,7 @@ class TestReactivateCancelledErrorCases(TestCase):
         self.client.force_authenticate(user=user)
 
         with patch(
-            "integrations.mercadopago.subscriptions.get_preapproval_plan",
+            "integrations.mercadopago.subscriptions.create_coach_athlete_preapproval",
             return_value={"id": "mp_plan_existing"},  # no init_point key
         ):
             resp = self.client.post("/api/athlete/subscription/reactivate/")
@@ -309,7 +320,7 @@ class TestReactivateCancelledErrorCases(TestCase):
         self.client.force_authenticate(user=user)
 
         with patch(
-            "integrations.mercadopago.subscriptions.get_preapproval_plan",
+            "integrations.mercadopago.subscriptions.create_coach_athlete_preapproval",
             side_effect=Exception("MP down"),
         ):
             self.client.post("/api/athlete/subscription/reactivate/")

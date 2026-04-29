@@ -820,6 +820,7 @@ const Finanzas = () => {
                       <th className="text-left px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Atleta</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Plan</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Estado</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Motivo</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Monto</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Próximo pago</th>
                       <th className="text-right px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Acciones</th>
@@ -867,6 +868,15 @@ const Finanzas = () => {
                                 <span className="text-xs text-amber-600 font-medium">Trial ({trialDaysLeft}d)</span>
                               )}
                             </div>
+                          </td>
+                          <td className="px-4 py-4">
+                            {(sub.pause_reason || sub.cancellation_reason) ? (
+                              <p className="text-xs text-slate-500 max-w-[120px] truncate" title={sub.pause_reason || sub.cancellation_reason}>
+                                {sub.pause_reason || sub.cancellation_reason}
+                              </p>
+                            ) : (
+                              <p className="text-xs text-slate-300">—</p>
+                            )}
                           </td>
                           <td className="px-4 py-4">
                             <p className="text-sm font-semibold text-slate-900">{formatARS(sub.price_ars)}</p>

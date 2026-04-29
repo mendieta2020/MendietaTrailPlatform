@@ -1092,6 +1092,8 @@ class AthleteSubscriptionListView(BillingOrgMixin, APIView):
                 "last_payment_at": sub.last_payment_at.isoformat() if sub.last_payment_at else None,
                 "next_payment_at": sub.next_payment_at.isoformat() if sub.next_payment_at else None,
                 "trial_ends_at": sub.trial_ends_at.isoformat() if sub.trial_ends_at else None,
+                "pause_reason": sub.pause_reason,
+                "cancellation_reason": sub.cancellation_reason,
                 "created_at": sub.created_at.isoformat(),
             }
             for sub in subscriptions
@@ -2012,9 +2014,13 @@ class AthleteSubscriptionReactivateView(APIView):
         if sub is None:
             return Response({"detail": "No subscription found."}, status=status.HTTP_404_NOT_FOUND)
 
-        if sub.status not in (AthleteSubscription.Status.PAUSED, AthleteSubscription.Status.CANCELLED):
+        if sub.status not in (
+            AthleteSubscription.Status.PAUSED,
+            AthleteSubscription.Status.CANCELLED,
+            AthleteSubscription.Status.OVERDUE,
+        ):
             return Response(
-                {"detail": "Solo se puede reactivar una suscripción pausada o cancelada."},
+                {"detail": "Solo se puede reactivar una suscripción pausada, cancelada o morosa."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -2072,10 +2078,12 @@ class AthleteSubscriptionReactivateView(APIView):
             _notify_owner(sub, f"\U0001f504 {athlete_name} reactivó su suscripción", alert_type="subscription_reactivated")
             return Response({"status": "active"})
 
-        # ── Case 3: cancelled → generate new payment link ─────────────────────
+        # ── Case 3: cancelled or overdue → generate new payment link ─────────────
         # MP doesn't allow reactivating cancelled preapprovals.
-        # Clear the stale preapproval_id and generate a fresh payment link via
-        # the plan's init_point (lazy-creates the preapproval_plan if needed).
+        # FIX-1: Create individual preapproval (not generic plan URL) and stamp its
+        # ID to the DB BEFORE redirecting the athlete to MP checkout — this allows
+        # the webhook fast-path to match without a manual sync.
+        # FIX-3: Overdue treated the same as cancelled; athlete must pay again.
         from core.models import OrgOAuthCredential
         from django.conf import settings as django_settings
 
@@ -2092,7 +2100,7 @@ class AthleteSubscriptionReactivateView(APIView):
         frontend_url = getattr(django_settings, "FRONTEND_URL", "http://localhost:3000")
         coach_plan = sub.coach_plan
 
-        # Clear the dead preapproval BEFORE calling MP so we never hold a stale ID
+        # Clear the stale preapproval BEFORE calling MP so we never hold a stale ID
         sub.mp_preapproval_id = None
         sub.save(update_fields=["mp_preapproval_id", "updated_at"])
 
@@ -2108,19 +2116,23 @@ class AthleteSubscriptionReactivateView(APIView):
                 )
                 coach_plan.mp_plan_id = mp_plan["id"]
                 coach_plan.save(update_fields=["mp_plan_id", "updated_at"])
-                init_point = mp_plan.get("init_point")
-            else:
-                # Plan already registered in MP — fetch it to get its checkout URL
-                from integrations.mercadopago.subscriptions import get_preapproval_plan
-                mp_plan = get_preapproval_plan(
-                    access_token=cred.access_token,
-                    plan_id=coach_plan.mp_plan_id,
-                )
-                init_point = mp_plan.get("init_point")
+
+            # FIX-1: Create individual athlete preapproval so we get a real ID to stamp
+            from integrations.mercadopago.subscriptions import create_coach_athlete_preapproval
+            mp_preapproval = create_coach_athlete_preapproval(
+                access_token=cred.access_token,
+                mp_plan_id=coach_plan.mp_plan_id,
+                payer_email=sub.athlete.user.email,
+                reason=f"Quantoryn {coach_plan.name} — {sub.organization.name}",
+                back_url=f"{frontend_url}/payment/callback",
+            )
+            new_preapproval_id = mp_preapproval.get("id")
+            init_point = mp_preapproval.get("init_point")
         except Exception as exc:
             logger.error(
                 "athlete_subscription.reactivate_new_preapproval_error",
                 extra={
+                    "event_name": "athlete_subscription.reactivate_new_preapproval_error",
                     "organization_id": sub.organization_id,
                     "subscription_id": sub.pk,
                     "error": str(exc),
@@ -2138,12 +2150,15 @@ class AthleteSubscriptionReactivateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # FIX-1: Stamp new preapproval_id and set status BEFORE returning init_point
+        # so the webhook fast-path can match this athlete without a manual sync.
+        sub.mp_preapproval_id = new_preapproval_id
         sub.status = AthleteSubscription.Status.PENDING
         sub.cancelled_at = None
         sub.cancellation_reason = None
         sub.cancellation_comment = None
         sub.save(update_fields=[
-            "status", "cancelled_at",
+            "mp_preapproval_id", "status", "cancelled_at",
             "cancellation_reason", "cancellation_comment", "updated_at",
         ])
 
@@ -2156,6 +2171,7 @@ class AthleteSubscriptionReactivateView(APIView):
                 "organization_id": sub.organization_id,
                 "subscription_id": sub.pk,
                 "user_id": request.user.pk,
+                "new_preapproval_id": new_preapproval_id,
                 "outcome": "pending",
             },
         )
