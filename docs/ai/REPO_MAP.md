@@ -194,7 +194,10 @@ Current ADRs:
 
 - [ADR-001 — Claude Design adoption deferred](../decisions/ADR-001-claude-design-deferred.md) (2026-04-21)
 - [ADR-002 — Ratify teal as canonical Quantoryn brand](../decisions/ADR-002-teal-canonical-brand.md) (2026-04-21)
+- [ADR-003 — Railway internal env vars must be dynamic references](../decisions/ADR-003-railway-env-vars-references.md) (2026-04-22)
+- [ADR-004 — Compliance: backend single source of truth (cap 150 %)](../decisions/ADR-004-compliance-single-source-of-truth.md) (2026-04-26)
+- [ADR-005 — Alumno/Athlete duality resolution strategy](../decisions/ADR-005-alumno-athlete-duality-resolution.md) (2026-04-26)
 
 ---
 
-*Last updated: 2026-04-21 · See also: `docs/ai/CONSTITUTION.md`*
+*Last updated: 2026-04-28 · See also: `docs/ai/CONSTITUTION.md`*

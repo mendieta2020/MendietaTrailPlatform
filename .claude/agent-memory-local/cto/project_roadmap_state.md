@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-28 · PR-190 OPEN (branch p2/pr190-session-analysis-communication) — Session analysis tabs, inline conversation, race goal fix, Strava reconnect banner, Hoy button, TSS tooltips. 10 fixes + 6 tests. Next in queue: PR-181 (weather enrichment) → PR-182 bug bundle → PR-179c design system._
+_Last updated: 2026-04-28 · PR-191 MERGED (onboarding coach auto-assign). PR-192 in flight (docs sync). Next: PR-193 Weather enrichment (Bug #23) → PR-179c Design system. PRs 181/182/179b-hotfix/183/184/185/186/188/188b/188c/188d/188e/189/190/191 all ✅ MERGED._
 
 ## Operational work completed 2026-04-24
 - Sentry alert rule configured: project=python-django, WHEN new issue, IF level=error OR fatal, THEN email → fernandorubenmedieta@gmail.com. "Send Test Notification" confirmed working.
@@ -321,7 +321,7 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - Deferred to PR-179c: historical comparison (last 3 executions)
 - Risk: MEDIUM — RESOLVED
 
-### PR-179b-hotfix — 6 Critical Regressions from Production Validation 🔄 READY FOR REVIEW
+### PR-179b-hotfix — 6 Critical Regressions from Production Validation ✅ MERGED (PR #333)
 - Branch: p2/pr179b-hotfix-6-critical-fixes
 - BUG 1: Dual modal on athlete card click — role guard in CalendarGrid.handleCardOpen; drawer deep-link coach-only; athletes use WorkoutModal exclusively. Files: CalendarGrid.jsx, AthleteMyTraining.jsx
 - BUG 2: Weather wiring (Case A only) — structured warn when upcoming assignments in ±4d window lack weather_snapshot. Case B (real weather from Strava) DEFERRED — requires CompletedActivity schema extension; provider field extraction in core/ would violate Law 4. Follow-up PR needed. Files: AthleteMyTraining.jsx
@@ -343,7 +343,7 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - Validation: `manage.py check` ✅ | `pytest pr180` 9/9 ✅ | `pytest pr175` 6/6 ✅ | full suite ✅ | npm lint ✅ | npm build ✅
 - Risk: HIGH (OAuth token lifecycle, backfill dispatch) — RESOLVED
 
-### PR-182 — Bug Bundle Post-PR-180 Validation 🔄 READY FOR REVIEW
+### PR-182 — Bug Bundle Post-PR-180 Validation ✅ MERGED (PR #339)
 - Branch: p2/pr182-bug-bundle-post-pr180-validation
 - **Bug #40 FIXED**: MP webhook type discrimination — `process_athlete_subscription_webhook` now accepts `webhook_type` from `?type=` query param; `payment` and `subscription_authorized_payment` resolve preapproval_id via new `get_mp_payment` helper (metadata.preapproval_id → POI.transaction_data.subscription_id). `subscription_preapproval` (fast path) and None (backward compat) unchanged.
 - **Law 6 pre-existing violation REMOVED**: `[DEBUG PR-167]` `print()` statements in `create_coach_athlete_preapproval` that logged full MP response body to Railway stdout. Removed as part of PR-182 file diff.
@@ -359,7 +359,7 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - Constitution deviation (~650 LOC) approved by Fernando Mendieta (product owner) 2026-04-22.
 - Risk: HIGH (MP webhook critical path + reconciliation engine) — READY FOR REVIEW
 
-### PR-181 — Railway Env Vars Refactor: ADR-003 + Operations Runbook 🔄 READY FOR REVIEW
+### PR-181 — Railway Env Vars Refactor: ADR-003 + Operations Runbook ✅ MERGED (PR #337)
 - Branch: p2/pr181-railway-infra-formalization
 - **Scope**: documentation-only PR that formalizes the Railway dynamic-references pattern applied manually on 2026-04-22 after two production incidents (backend 2026-04-21, worker 2026-04-22).
 - **Files created**: `docs/decisions/ADR-003-railway-env-vars-references.md`, `docs/infra/railway-runbook.md`.
@@ -370,7 +370,7 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - **No code changes. No migrations. No env var changes in repo.** All env var changes already applied directly in Railway UI.
 - Risk: LOW (documentation only) — READY FOR REVIEW
 
-### PR-183 — Sentry LoggingIntegration for structured logs capture ✅ READY FOR REVIEW
+### PR-183 — Sentry LoggingIntegration for structured logs capture ✅ MERGED (PR #340)
 - Branch: `p2/pr183-sentry-logging-integration`
 - **Motivation**: Observability gap discovered during PR-182 post-validation (2026-04-22) via Claude Code + Sentry MCP. Structured events like `mp.athlete_webhook.not_found`, `strava.token.refreshed.*`, `strava.backfill.dispatched` were invisible in Sentry because the SDK default only captures unhandled exceptions, treating `logger.warning()` calls as breadcrumbs only.
 - **Fix**: Add `LoggingIntegration(level=WARNING, event_level=WARNING)` to sentry_sdk.init in both tiers: `backend/wsgi.py` (web) + `backend/celery.py` (async worker).
@@ -408,19 +408,10 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - Runbook updated: WCS-36049 resolved, MERCADOPAGO_WEBHOOK_SECRET documented
 - Tests: core/tests_pr186_mp_preapproval_stamp.py (T1, T2)
 
-### PR-185 — Cleanup Bundle: Soft-Delete + Rescue Backfill + Ordering + DEBUG 🔄 READY FOR REVIEW
-- Branch: `p2/pr185-cleanup-bundle`
-- **Bug #44 FIXED**: `AlumnoViewSet` missing `ordering = ['nombre']` (DRF OrderingFilter was silently ignored). `filterwarnings` added for drf-yasg DeprecationWarning. staticfiles sub-item deferred to post-merge CI observation.
-- **Bug #46 VALIDATED** (no code change): `test_athlete_organization_cascade_delete` already passes on current main — likely fixed as side-effect of PR-183 or PR-184.
-- **Bug #47 FIXED**: `CompletedActivity` soft-delete via new `deleted_at` field. Strava `activity.delete` webhook now sets `deleted_at` (replaces old IGNORED stub). PMC recompute dispatched after deletion. Full queryset audit: 9 read sites patched with `deleted_at__isnull=True` (services_analytics, services_pmc, services_reconciliation, views_athlete, views_p1 ×2, views_pmc ×3, views_reports ×2, views_planning). Integrations (`update_or_create`) intentionally unfiltered — restore-on-reingestion policy (see design notes). Migrations 0116 (deleted_at + indexes).
-- **Bug #48 FIXED**: `DEBUG = get_env_variable(..., required=False)` — Railway deploy no longer requires DEBUG in env.
-- **Bug #50 FIXED**: OAuth rescue backfill now uses smart window logic: oldest failed `StravaWebhookEvent` for this athlete → fallback 7d → hard cap 90d. Throttled per-athlete via `last_rescue_dispatched_at` (30 min). Structured logs: dispatched / skipped_recent / skipped_org_unresolved. Migration 0117 (last_rescue_dispatched_at). Index on StravaWebhookEvent(owner_id, status).
-- **14 protective tests**: 7 rescue dispatch (T1-T7) + 7 strava delete webhook (T1-T7 incl. T6 PMC tripwire + T7 reconciliation tripwire). 14/14 PASS.
-- **Design notes**: restore-on-reingestion policy — `update_or_create` in ingest paths preserves `deleted_at`, keeping soft-deleted rows hidden in reads. Re-evaluation needed if Strava "activity restored" webhook is ever implemented.
-- Validation: `manage.py check` ✅ | `makemigrations --check` ✅ | 14/14 PR-185 tests ✅ | full suite pending (in progress at time of commit prep)
-- Risk: MEDIUM (soft-delete is new data lifecycle path; query audit is broad but each change is a 1-line filter addition) — READY FOR REVIEW
+### PR-185 — Cleanup Bundle: Soft-Delete + Rescue Backfill + Ordering + DEBUG ✅ MERGED (PR #342)
+- (duplicate entry removed — see first PR-185 section above for full details)
 
-### PR-184 — Strava sport mapping hotfix 🔄 READY FOR REVIEW
+### PR-184 — Strava sport mapping hotfix ✅ MERGED (PR #341)
 - Branch: `p2/pr184-strava-sport-mapping-fix`
 - **Motivation**: PR-182 updated `normalizer.py::_normalize_strava_sport_type` but the actual Strava webhook flow uses a SEPARATE mapping in `services_strava_ingest._STRAVA_SPORT_MAP`. Diagnosed by Claude Code + Sentry MCP on 2026-04-23 — Garmin→Strava synced activities (sport_type=WeightTraining) still appeared as OTHER in the calendar.
 - **Root cause**: `core/tasks.py:1227` falls back from empty `type` to `tipo_deporte` (already normalized to "STRENGTH" by normalizer.py), then calls `_normalize_sport("STRENGTH")` which returned "OTHER" because "STRENGTH" was not a key in `_STRAVA_SPORT_MAP`.
@@ -432,6 +423,55 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - **2 new regression tests**: `test_strava_webhook_weight_training_maps_to_strength_via_ingest_flow` + `test_strava_ingest_accepts_normalized_business_codes_as_passthrough` in `core/tests_pr182_strava_sport_mapping.py`. 10/10 pass.
 - Validation: `manage.py check` ✅ | 10/10 new tests ✅ | full suite ✅ | npm lint ✅ | npm build ✅
 - Risk: LOW (dict entries + field preference, no tenancy/OAuth/model changes).
+
+### PR-188b — Dev Velocity Bundle ✅ MERGED (PR #345)
+- Branch: `p2/pr188b-dev-velocity`
+- Seed management command, CI split, local README improvements.
+
+### PR-188c — Athlete Flow Regressions ✅ MERGED (PR #346)
+- Branch: `p2/pr188c-athlete-flow-fixes`
+- **Bug #70 FIXED**: "Marcar completado" appearing on coach panel instead of athlete panel (panel divergence).
+- **Bug #29 FIXED**: Auth latent crash.
+- 3 athlete flow regressions resolved.
+
+### PR-188d — 9 Data-Quality Fixes ✅ MERGED (PR #347)
+- Branch: `p2/pr188d-data-quality`
+- Sport mapper fix, display text normalization, cache improvements, geocoding fix.
+
+### PR-188e — Plan vs Real Certero ✅ MERGED (PR #348)
+- Branch: `p2/pr188e-plan-vs-real`
+- **Compliance**: backend as single source of truth (ADR-004). Cap 150 %, backend computes compliance_pct.
+- **Duality sync**: Alumno/Athlete duality resolution applied (ADR-005).
+- **Status fix**: hide "Marcar completado" after PATCH status=completed.
+- **Backfill command**: management command to backfill compliance for existing records.
+- **Log redaction**: structured log redaction for Law 6 compliance.
+- ADR-004 and ADR-005 committed as part of this PR.
+
+### PR-189 — Reliability + Coach UX + Calendar ✅ MERGED (PR #349)
+- Branch: `p2/pr189-reliability-coach-ux`
+- Strava 3rd fallback, sync health indicators, compliance semana, "Ver sesión" deep-link, auto-scroll.
+- Smart month init + calStart fetch range — current week always first row.
+- instant rAF scroll to current week.
+
+### PR-190 — Session Analysis Tabs + Inline Conversation ✅ MERGED (PR #350)
+- Branch: `p2/pr190-session-analysis-communication`
+- Session analysis tabs (Análisis/Conversación/Timeline).
+- Inline conversation thread in workout modal.
+- Race goal fix, Strava reconnect banner, Hoy button.
+- TSS added to Análisis tab; fallback message for sessions without data.
+- 10 fixes + 6 tests.
+
+### PR-191 — Onboarding: Coach Auto-Assign ✅ MERGED (2026-04-28)
+- Branch: `p2/pr191-onboarding-coach-autoassign`
+- Auto-link athlete to primary coach on onboarding flow completion.
+- Resolves the bottleneck where athletes joined the org but had no coach assigned.
+
+### PR-192 — Docs Sync: ADR-004/005 + Roadmap + PR Numbering Fix ✅ 2026-04-28
+- Branch: `p2/pr192-docs-sync`
+- Documentation-only PR. No code changes.
+- **REPO_MAP.md**: added ADR-003, ADR-004, ADR-005 to the ADR section.
+- **CLAUDE.md**: corrected next queue — PR-193 (weather enrichment) replaces the incorrectly numbered PR-181 entry; added PR-181/182/179b-hotfix as READY FOR REVIEW (pending merge).
+- **project_roadmap_state.md**: synced all PR statuses; added 188b–192 entries; updated header.
 
 ### Before Mes 2 (10 external coaches)
 - PR-155 ✅ — Building cleanup (sidebar consolidation, duplicate removal) — DONE
@@ -448,7 +488,7 @@ P2 — Historical Data, Analytics & Billing (IN PROGRESS)
 - **Queryset audit discipline (PR-185 lesson)**: Any future soft-delete field introduction requires a full `git grep CompletedActivity.objects` (and equivalent for the affected model) across ALL read paths — not just the write-path patch. PR-185 found 9 read sites needing `deleted_at__isnull=True` across views_pmc (×3), views_reports (×2), views_planning, services_analytics, services_pmc, services_reconciliation, views_athlete, views_p1 (×2). Two regression tripwire tests (T6/T7) added to `tests_pr185_strava_delete_webhook.py` to catch future regressions. Document in Constitution as mandatory step.
 - **Bug #45**: Unify `_STRAVA_SPORT_MAP` and `normalizer.py::_normalize_strava_sport_type` into a single source of truth — future PR.
 - **Bug #45**: Unify `_STRAVA_SPORT_MAP` and `normalizer.py::_normalize_strava_sport_type` into a single source of truth — future PR.
-- **Next queue (confirmed order)**: PR-182 (Bug bundle frontend: #29 notifications nav, #30 modal math, #32 intensity graph, #27 TRAIL↔RUNNING pairing) → PR-179c (design system: card unification, grid alignment, calendar auto-scroll, coach single-modal, coach-first landing) → PR-187 (Bug #33 root cause: Alumno.entrenador_id upstream persistence).
+- **Next queue (confirmed order, 2026-04-28)**: PR-193 (weather enrichment Bug #23: populate weather_snapshot in /calendar-timeline/ OWM Case A window ±4d) → PR-179c (design system: card unification, grid alignment, calendar auto-scroll, coach single-modal, coach-first landing) → Bug #33 root cause: Alumno.entrenador_id upstream persistence.
 - FINDING-X4-A: ExternalIdentityViewSet legacy scope (low priority)
 - Migration 0083 uses atomic=False (standard pattern for PostgreSQL FK+DDL)
 - PR-132 was merged directly to main (no feature branch) — process gap corrected
