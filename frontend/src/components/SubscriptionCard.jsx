@@ -33,7 +33,7 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-export default function SubscriptionCard({ subscription, orgName, onUpdatePayment, onChangePlan, onPause, onCancel, onReactivate }) {
+export default function SubscriptionCard({ subscription, orgName, onUpdatePayment, onChangePlan, onPause, onCancel, onReactivate, onRefreshSubscription }) {
   const [modal, setModal] = useState(null); // 'pause' | 'cancel' | null
   const [reactivateLoading, setReactivateLoading] = useState(false);
   const [reactivateError, setReactivateError] = useState('');
@@ -52,8 +52,13 @@ export default function SubscriptionCard({ subscription, orgName, onUpdatePaymen
         window.open(result.redirect_url, '_blank');
       }
     } catch (err) {
-      console.error('[SubscriptionCard] reactivate error:', err);
-      setReactivateError('No se pudo generar el link de pago. Contactá a tu coach.');
+      if (err?.response?.status === 400) {
+        setReactivateError('Tu suscripción ya está activa.');
+        if (onRefreshSubscription) onRefreshSubscription();
+      } else {
+        console.error('[SubscriptionCard] reactivate error:', err);
+        setReactivateError('No se pudo generar el link de pago. Contactá a tu coach.');
+      }
     } finally {
       setReactivateLoading(false);
     }

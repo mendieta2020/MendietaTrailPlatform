@@ -253,12 +253,21 @@ def _reconcile_by_payer(mp_data, cred):
             )
 
     # 4. Match by preapproval_plan_id only — no email required (handles email mismatch case)
+    # FIX-2: Extended to also match cancelled subs (resubscription race condition where
+    # webhook arrives after mp_preapproval_id was cleared but before new ID was stamped)
+    # and pending subs with a stale/different preapproval_id.
     if preapproval_plan_id:
+        from django.db.models import Q as _DjQ
+        incoming_preapproval_id = str(mp_data.get("id") or "")
         candidate_qs = AthleteSubscription.objects.filter(
             organization=cred.organization,
             coach_plan__mp_plan_id=preapproval_plan_id,
-            mp_preapproval_id__isnull=True,
-            status__in=["pending", "active", "overdue"],
+            status__in=["pending", "active", "overdue", "cancelled"],
+        ).filter(
+            _DjQ(mp_preapproval_id__isnull=True) |
+            _DjQ(status__in=["cancelled", "pending"])
+        ).exclude(
+            mp_preapproval_id=incoming_preapproval_id
         )
         count = candidate_qs.count()
         if count == 1:

@@ -145,30 +145,116 @@ const PaywallOverlay = ({ message }) => {
   );
 };
 
-const PausedBadge = ({ label }) => (
-  <Box
-    sx={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: 0.5,
-      px: 1.5,
-      py: 0.5,
-      borderRadius: 2,
-      bgcolor: '#FEF3C7',
-      border: '1px solid #FDE68A',
-      mb: 1.5,
-    }}
-  >
-    <Typography variant="caption" sx={{ color: '#92400E', fontWeight: 600 }}>
-      {label || '⏸️ Suscripción pausada — solo lectura'}
-    </Typography>
-  </Box>
-);
+const PausedOverlay = () => {
+  const { refresh } = useSubscription();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [refresh]);
+
+  const handleReactivate = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const { data } = await reactivateMySubscription();
+      await refresh();
+      if (data?.redirect_url) {
+        window.open(data.redirect_url, '_blank');
+      }
+    } catch (err) {
+      console.error('[PausedOverlay] reactivate error:', err);
+      setError('No se pudo generar el link de pago. Contactá a tu coach.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Box
+      sx={{
+        position: 'relative',
+        minHeight: 220,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 3,
+        overflow: 'hidden',
+        background: 'linear-gradient(135deg, rgba(146,64,14,0.12) 0%, rgba(120,53,15,0.10) 100%)',
+        backdropFilter: 'blur(8px)',
+        border: '1px solid rgba(253,186,116,0.25)',
+        p: 4,
+      }}
+    >
+      <Box sx={{ textAlign: 'center', maxWidth: 340 }}>
+        <Box
+          sx={{
+            width: 56,
+            height: 56,
+            borderRadius: '50%',
+            bgcolor: 'rgba(251,191,36,0.15)',
+            border: '1px solid rgba(251,191,36,0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            mx: 'auto',
+            mb: 2,
+          }}
+        >
+          <Typography sx={{ fontSize: 26 }}>⏸</Typography>
+        </Box>
+
+        <Typography
+          variant="subtitle1"
+          sx={{ fontWeight: 700, color: '#1E293B', mb: 1 }}
+        >
+          Suscripción pausada
+        </Typography>
+
+        <Typography
+          variant="body2"
+          sx={{ color: '#64748B', mb: 3, lineHeight: 1.6 }}
+        >
+          Reactivá tu plan para continuar entrenando.
+        </Typography>
+
+        <Button
+          variant="contained"
+          size="small"
+          onClick={handleReactivate}
+          disabled={loading}
+          sx={{
+            bgcolor: '#00D4AA',
+            '&:hover': { bgcolor: '#00B899' },
+            borderRadius: 2,
+            textTransform: 'none',
+            fontWeight: 700,
+            px: 3,
+            py: 1,
+            minWidth: 140,
+          }}
+        >
+          {loading ? <CircularProgress size={16} sx={{ color: 'white' }} /> : 'Reactivar'}
+        </Button>
+
+        {error && (
+          <Typography variant="caption" sx={{ color: '#EF4444', mt: 1.5, display: 'block' }}>
+            {error}
+          </Typography>
+        )}
+      </Box>
+    </Box>
+  );
+};
 
 const VisibilityGate = ({
   requiredAccess = 'full',
   children,
-  pausedLabel,
   paywallMessage,
 }) => {
   const { subscriptionStatus } = useSubscription();
@@ -178,18 +264,14 @@ const VisibilityGate = ({
     return children;
   }
 
-  if (!canAccess(subscriptionStatus, requiredAccess)) {
-    return <PaywallOverlay message={paywallMessage} />;
+  // Paused → always show PausedOverlay for any gated content (Spotify model:
+  // keep nav visible, show overlay on feature pages, dashboard stays accessible).
+  if (subscriptionStatus === 'paused' && requiredAccess !== 'any') {
+    return <PausedOverlay />;
   }
 
-  // Paused + limited access: render children with a read-only badge
-  if (subscriptionStatus === 'paused' && requiredAccess === 'limited') {
-    return (
-      <Box>
-        <PausedBadge label={pausedLabel} />
-        {children}
-      </Box>
-    );
+  if (!canAccess(subscriptionStatus, requiredAccess)) {
+    return <PaywallOverlay message={paywallMessage} />;
   }
 
   return children;
