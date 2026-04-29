@@ -13,6 +13,8 @@ from .models import (
     ActivityStream,
     WorkoutReconciliation,
     TeamInvitation,
+    AthleteSubscription, CoachPricingPlan,
+    OrganizationSubscription, AthleteInvitation,
 )
 
 # ==============================================================================
@@ -327,3 +329,34 @@ class WorkoutReconciliationAdmin(admin.ModelAdmin):
 @admin.register(TeamInvitation)
 class TeamInvitationAdmin(admin.ModelAdmin):
     list_display = ("token", "organization", "role", "status", "created_at", "expires_at")
+
+
+# ==============================================================================
+#  PR-193: Billing models
+# ==============================================================================
+
+@admin.register(AthleteSubscription)
+class AthleteSubscriptionAdmin(admin.ModelAdmin):
+    list_display = ("athlete", "organization", "coach_plan", "status", "mp_preapproval_id", "mp_payer_id", "created_at")
+    list_filter = ("status", "organization")
+    search_fields = ("athlete__user__email", "mp_preapproval_id")
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("-created_at",)
+
+
+@admin.register(CoachPricingPlan)
+class CoachPricingPlanAdmin(admin.ModelAdmin):
+    list_display = ("organization", "name", "price_ars", "mp_plan_id", "is_active")
+    list_filter = ("organization", "is_active")
+
+
+@admin.register(OrganizationSubscription)
+class OrganizationSubscriptionAdmin(admin.ModelAdmin):
+    list_display = ("organization", "plan", "is_active", "trial_ends_at")
+    list_filter = ("is_active",)
+
+
+@admin.register(AthleteInvitation)
+class AthleteInvitationAdmin(admin.ModelAdmin):
+    list_display = ("email", "organization", "status", "mp_preapproval_id", "expires_at")
+    list_filter = ("status",)
