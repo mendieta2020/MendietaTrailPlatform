@@ -10,7 +10,7 @@ T5: AthleteSubscription visible in Django Admin → 200 OK.
 import pytest
 from unittest.mock import patch
 from django.contrib.auth import get_user_model
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 
 User = get_user_model()
 
@@ -198,6 +198,9 @@ class TestAthleteSubscriptionAdmin(TestCase):
         self.client = Client()
         self.client.force_login(self.superuser)
 
+    @override_settings(
+        STATICFILES_STORAGE='django.contrib.staticfiles.storage.StaticFilesStorage'
+    )
     def test_athlete_subscription_admin_200(self):
         resp = self.client.get("/admin/core/athletesubscription/")
         self.assertEqual(resp.status_code, 200)
