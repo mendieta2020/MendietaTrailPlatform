@@ -89,7 +89,7 @@ export const SubscriptionProvider = ({ children }) => {
     // Convenience booleans
     isActive: subscriptionStatus === 'active' || subscriptionStatus === 'trial',
     isPaused: subscriptionStatus === 'paused',
-    isPaywalled: ['cancelled', 'trial_expired'].includes(subscriptionStatus),
+    isPaywalled: ['cancelled', 'trial_expired', 'paused', 'overdue'].includes(subscriptionStatus),
   };
 
   return (

@@ -252,6 +252,46 @@ def _reconcile_by_payer(mp_data, cred):
                 },
             )
 
+    # 4. Match by preapproval_plan_id only — no email required (handles email mismatch case)
+    if preapproval_plan_id:
+        candidate_qs = AthleteSubscription.objects.filter(
+            organization=cred.organization,
+            coach_plan__mp_plan_id=preapproval_plan_id,
+            mp_preapproval_id__isnull=True,
+            status__in=["pending", "active", "overdue"],
+        )
+        count = candidate_qs.count()
+        if count == 1:
+            sub = candidate_qs.select_related("coach_plan", "athlete__user").first()
+            stamped_preapproval_id = str(mp_data.get("id") or "")
+            sub.mp_preapproval_id = stamped_preapproval_id
+            update_fields = ["mp_preapproval_id", "updated_at"]
+            if payer_id:
+                sub.mp_payer_id = payer_id
+                update_fields.append("mp_payer_id")
+            sub.save(update_fields=update_fields)
+            logger.info(
+                "mp.webhook.reconciled_by_plan_id",
+                extra={
+                    "event_name": "mp.webhook.reconciled_by_plan_id",
+                    "preapproval_id": stamped_preapproval_id,
+                    "subscription_id": sub.id,
+                    "organization_id": cred.organization_id,
+                    "outcome": "stamped",
+                },
+            )
+            return sub
+        elif count > 1:
+            logger.warning(
+                "mp.webhook.reconcile_ambiguous",
+                extra={
+                    "event_name": "mp.webhook.reconcile_ambiguous",
+                    "count": count,
+                    "plan_id": preapproval_plan_id,
+                },
+            )
+            return None
+
     return None
 
 

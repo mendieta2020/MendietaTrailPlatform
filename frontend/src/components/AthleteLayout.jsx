@@ -29,8 +29,8 @@ const DRAWER_COLLAPSED = 60;
 const LS_KEY = 'athlete_sidebar_collapsed';
 
 const menuItems = [
-  { text: 'Hoy', icon: <Home />, path: '/dashboard' },
-  { text: 'Mi Entrenamiento', icon: <CalendarMonth />, path: '/athlete/training' },
+  { text: 'Hoy', icon: <Home />, path: '/dashboard', requiresActiveSubscription: true },
+  { text: 'Mi Entrenamiento', icon: <CalendarMonth />, path: '/athlete/training', requiresActiveSubscription: true },
   { text: 'Mi Progreso', icon: <BarChart />, path: '/athlete/progress' },
   { text: 'Conexiones', icon: <LinkIcon />, path: '/connections' },
   { text: 'Perfil', icon: <Person />, path: '/athlete/profile' },
@@ -153,6 +153,7 @@ const AthleteLayout = ({ children, user }) => {
 
       <List sx={{ flexGrow: 1, px: collapsed ? 0.5 : 1, mt: 1 }}>
         {menuItems.map((item) => {
+          if (isPaywalled && item.requiresActiveSubscription) return null;
           const isActive = location.pathname === item.path;
           return (
             <ListItem key={item.text} disablePadding sx={{ mb: 1 }}>
@@ -243,7 +244,7 @@ const AthleteLayout = ({ children, user }) => {
 
   // Build athlete bottom tabs with dynamic Entreno badge
   const ATHLETE_BOTTOM_TABS = [
-    { label: 'Hoy',      icon: <Home sx={{ fontSize: 22 }} />,         value: '/dashboard' },
+    { label: 'Hoy', icon: <Home sx={{ fontSize: 22 }} />, value: '/dashboard', requiresActiveSubscription: true },
     {
       label: 'Entreno',
       icon: (
@@ -252,9 +253,10 @@ const AthleteLayout = ({ children, user }) => {
         </Badge>
       ),
       value: '/athlete/training',
+      requiresActiveSubscription: true,
     },
-    { label: 'Progreso', icon: <BarChart sx={{ fontSize: 22 }} />,      value: '/athlete/progress' },
-    { label: 'Perfil',   icon: <Person sx={{ fontSize: 22 }} />,        value: '/athlete/profile' },
+    { label: 'Progreso', icon: <BarChart sx={{ fontSize: 22 }} />, value: '/athlete/progress' },
+    { label: 'Perfil', icon: <Person sx={{ fontSize: 22 }} />, value: '/athlete/profile' },
   ];
 
   // Determine active bottom tab value
@@ -287,20 +289,22 @@ const AthleteLayout = ({ children, user }) => {
     },
   };
 
-  const bottomTabItems = ATHLETE_BOTTOM_TABS.map((tab) => (
-    <BottomNavigationAction
-      key={tab.value}
-      label={tab.label}
-      value={tab.value}
-      icon={tab.icon}
-      sx={{
-        '&.Mui-selected svg': {
-          transform: 'scale(1.05)',
-          transition: 'transform 100ms ease',
-        },
-      }}
-    />
-  ));
+  const bottomTabItems = ATHLETE_BOTTOM_TABS
+    .filter((tab) => !(isPaywalled && tab.requiresActiveSubscription))
+    .map((tab) => (
+      <BottomNavigationAction
+        key={tab.value}
+        label={tab.label}
+        value={tab.value}
+        icon={tab.icon}
+        sx={{
+          '&.Mui-selected svg': {
+            transform: 'scale(1.05)',
+            transition: 'transform 100ms ease',
+          },
+        }}
+      />
+    ));
 
   // ── MOBILE: flex-column layout — header + scroll area + bottom nav ──
   if (isMobile) {
