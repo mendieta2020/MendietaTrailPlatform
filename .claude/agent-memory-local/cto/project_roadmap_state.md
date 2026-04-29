@@ -1,5 +1,5 @@
 # Project Roadmap State — CTO Memory
-_Last updated: 2026-04-28 · PR-191 MERGED (onboarding coach auto-assign). PR-192 in flight (docs sync). Next: PR-193 Weather enrichment (Bug #23) → PR-179c Design system. PRs 181/182/179b-hotfix/183/184/185/186/188/188b/188c/188d/188e/189/190/191 all ✅ MERGED._
+_Last updated: 2026-04-29 · PR-193 MERGED (billing webhook fix). PR-194 in flight (auto-activation fix + overdue gate + churn data). PRs 181/182/179b-hotfix/183/184/185/186/188/188b/188c/188d/188e/189/190/191/192/193 all ✅ MERGED._
 
 ## Operational work completed 2026-04-24
 - Sentry alert rule configured: project=python-django, WHEN new issue, IF level=error OR fatal, THEN email → fernandorubenmedieta@gmail.com. "Send Test Notification" confirmed working.
