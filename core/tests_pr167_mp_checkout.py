@@ -168,8 +168,9 @@ def test_payment_link_requires_auth():
 @pytest.mark.django_db
 def test_create_mp_preapproval_returns_init_point_from_plan(org_with_mp):
     """
-    _create_mp_preapproval now returns init_point from the preapproval_plan (GET),
-    instead of creating a /preapproval (which requires card_token_id).
+    FIX-1: _create_mp_preapproval creates an individual athlete preapproval
+    (create_coach_athlete_preapproval) and returns both {id, init_point}.
+    The preapproval_id is stamped before the athlete reaches MP checkout.
     """
     from core.models import AthleteInvitation
     import uuid as _uuid
@@ -185,16 +186,14 @@ def test_create_mp_preapproval_returns_init_point_from_plan(org_with_mp):
         expires_at=_tz.now() + _td(days=30),
     )
 
-    def fake_get_plan(access_token, plan_id):
-        return {
-            "id": plan_id,
-            "init_point": "https://mp.com/checkout/plan",
-            "status": "active",
-        }
+    fake_preapproval = {
+        "id": "individual_preapproval_167",
+        "init_point": "https://mp.com/checkout/plan",
+    }
 
     with patch(
-        "integrations.mercadopago.subscriptions.get_preapproval_plan",
-        side_effect=fake_get_plan,
+        "integrations.mercadopago.subscriptions.create_coach_athlete_preapproval",
+        return_value=fake_preapproval,
     ):
         from core.views_onboarding import _create_mp_preapproval
         mp_data, error = _create_mp_preapproval(invitation, "invited@test.com", coach_plan=plan)
@@ -202,5 +201,5 @@ def test_create_mp_preapproval_returns_init_point_from_plan(org_with_mp):
     assert error is None
     assert mp_data is not None
     assert mp_data.get("init_point") == "https://mp.com/checkout/plan"
-    # No preapproval_id — it will arrive via webhook when athlete pays
-    assert mp_data.get("id") is None
+    # FIX-1: preapproval_id is now present so webhook fast-path works without /sync
+    assert mp_data.get("id") == "individual_preapproval_167"

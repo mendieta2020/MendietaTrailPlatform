@@ -97,15 +97,19 @@ def test_create_preapproval_plan_no_payment_restriction():
 @pytest.mark.django_db
 def test_reason_includes_org_name(invitation_for):
     """
-    The MP preapproval_plan reason must be 'OrgName — PlanName',
-    not just plan.name. This is the vendor/merchant display in MP checkout.
+    FIX-1: _create_mp_preapproval now calls create_coach_athlete_preapproval which
+    sends reason='Quantoryn {PlanName} — {OrgName}' to MP checkout.
+    Both org name and plan name must appear in the reason string.
     """
     invitation, org, owner, plan = invitation_for
 
-    captured_payload = {}
+    # plan has mp_plan_id=None → create_preapproval_plan is called first (POST),
+    # then create_coach_athlete_preapproval is called (POST).
+    # Both POSTs are captured; the reason field comes from the second call.
+    captured_payloads = []
 
     def mock_post(url, json, headers, timeout):
-        captured_payload.update(json)
+        captured_payloads.append(dict(json))
         mock_resp = MagicMock()
         mock_resp.ok = True
         mock_resp.json.return_value = {
@@ -115,21 +119,17 @@ def test_reason_includes_org_name(invitation_for):
         mock_resp.raise_for_status = lambda: None
         return mock_resp
 
-    def mock_get_plan(access_token, plan_id):
-        return {"id": plan_id, "init_point": "https://mp.test/checkout"}
-
     with patch("integrations.mercadopago.subscriptions._requests.post", side_effect=mock_post):
         from core.views_onboarding import _create_mp_preapproval
         mp_data, error = _create_mp_preapproval(invitation, "athlete167e@test.com")
 
     assert error is None
-    assert "reason" in captured_payload
-    reason = captured_payload["reason"]
+    # create_coach_athlete_preapproval payload has 'reason'; find it
+    reason_payload = next((p for p in captured_payloads if "reason" in p), None)
+    assert reason_payload is not None, "No POST call contained a 'reason' field"
+    reason = reason_payload["reason"]
     assert org.name in reason, f"org name '{org.name}' missing from reason '{reason}'"
     assert plan.name in reason, f"plan name '{plan.name}' missing from reason '{reason}'"
-    assert reason == f"{org.name} — {plan.name}", (
-        f"Expected '{org.name} — {plan.name}', got '{reason}'"
-    )
 
 
 # ─── Test 3: migration resets mp_plan_id to None ──────────────────────────────

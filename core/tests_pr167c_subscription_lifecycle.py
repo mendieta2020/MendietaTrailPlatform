@@ -286,9 +286,9 @@ class TestAthleteSubscriptionReactivate(TestCase):
         )
         self.client.force_authenticate(user=user)
 
-        # New code fetches the plan's init_point (not create_coach_athlete_preapproval)
-        with patch("integrations.mercadopago.subscriptions.get_preapproval_plan") as mock_get:
-            mock_get.return_value = {"id": "mp_plan_test_167c", "init_point": "https://mp.com/checkout/new"}
+        # FIX-1: creates individual preapproval; id stamped to DB before redirect
+        with patch("integrations.mercadopago.subscriptions.create_coach_athlete_preapproval") as mock_create:
+            mock_create.return_value = {"id": "new_preapproval_167c", "init_point": "https://mp.com/checkout/new"}
             resp = self.client.post("/api/athlete/subscription/reactivate/")
 
         self.assertEqual(resp.status_code, 200)
@@ -296,8 +296,8 @@ class TestAthleteSubscriptionReactivate(TestCase):
         self.assertIn("redirect_url", resp.data)
         sub.refresh_from_db()
         self.assertEqual(sub.status, "pending")
-        # mp_preapproval_id is cleared (not set to a new one — athlete creates their own via MP)
-        self.assertIsNone(sub.mp_preapproval_id)
+        # FIX-1: preapproval_id is now stamped (not None) so webhook fast-path works
+        self.assertEqual(sub.mp_preapproval_id, "new_preapproval_167c")
 
     def test_cannot_reactivate_active(self):
         """Reactivating an already-active sub returns 400."""
